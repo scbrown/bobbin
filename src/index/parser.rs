@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use std::path::Path;
 use tree_sitter::{Language, Node};
 
@@ -38,7 +38,8 @@ impl Parser {
         };
 
         let Some(tree) = parser.parse(content, None) else {
-            bail!("Failed to parse file: {}", path.display());
+            // Gracefully handle parse errors - fall back to line-based chunking
+            return Ok(self.chunk_by_lines(path, content));
         };
 
         let mut chunks = Vec::new();
@@ -194,4 +195,175 @@ fn generate_chunk_id(path: &Path, start_line: u32, end_line: u32) -> String {
     let input = format!("{}:{}:{}", path.display(), start_line, end_line);
     let hash = Sha256::digest(input.as_bytes());
     hex::encode(&hash[..8])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_parse_rust_function() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+fn hello_world() {
+    println!("Hello, world!");
+}
+"#;
+        let path = PathBuf::from("test.rs");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].chunk_type, ChunkType::Function);
+        assert_eq!(chunks[0].name, Some("hello_world".to_string()));
+        assert_eq!(chunks[0].language, "rust");
+    }
+
+    #[test]
+    fn test_parse_rust_struct_and_impl() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+struct Point {
+    x: f64,
+    y: f64,
+}
+
+impl Point {
+    fn new(x: f64, y: f64) -> Self {
+        Self { x, y }
+    }
+}
+"#;
+        let path = PathBuf::from("test.rs");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert_eq!(chunks.len(), 3); // struct, impl, function inside impl
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Struct));
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Impl));
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Function && c.name == Some("new".to_string())));
+    }
+
+    #[test]
+    fn test_parse_typescript_class() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+class Greeter {
+    greeting: string;
+
+    constructor(message: string) {
+        this.greeting = message;
+    }
+
+    greet() {
+        return "Hello, " + this.greeting;
+    }
+}
+"#;
+        let path = PathBuf::from("test.ts");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Class));
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Method));
+    }
+
+    #[test]
+    fn test_parse_typescript_interface() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+interface User {
+    name: string;
+    age: number;
+}
+
+function greet(user: User): string {
+    return `Hello, ${user.name}`;
+}
+"#;
+        let path = PathBuf::from("test.ts");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Interface));
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Function));
+    }
+
+    #[test]
+    fn test_parse_python_class() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+class Dog:
+    def __init__(self, name):
+        self.name = name
+
+    def bark(self):
+        print(f"{self.name} says woof!")
+"#;
+        let path = PathBuf::from("test.py");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Class && c.name == Some("Dog".to_string())));
+        // Functions inside class are also extracted
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Function && c.name == Some("__init__".to_string())));
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Function && c.name == Some("bark".to_string())));
+    }
+
+    #[test]
+    fn test_unknown_language_fallback() {
+        let mut parser = Parser::new().unwrap();
+        let content = "line1\nline2\nline3\nline4\nline5";
+        let path = PathBuf::from("test.xyz");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        // Should fall back to line-based chunking
+        assert!(!chunks.is_empty());
+        assert!(chunks.iter().all(|c| c.chunk_type == ChunkType::Other));
+    }
+
+    #[test]
+    fn test_detect_language() {
+        assert_eq!(detect_language(Path::new("foo.rs")), Some("rust".to_string()));
+        assert_eq!(detect_language(Path::new("foo.ts")), Some("typescript".to_string()));
+        assert_eq!(detect_language(Path::new("foo.tsx")), Some("tsx".to_string()));
+        assert_eq!(detect_language(Path::new("foo.py")), Some("python".to_string()));
+        assert_eq!(detect_language(Path::new("foo.js")), Some("javascript".to_string()));
+        assert_eq!(detect_language(Path::new("foo.go")), Some("go".to_string()));
+        assert_eq!(detect_language(Path::new("foo.unknown")), None);
+    }
+
+    #[test]
+    fn test_chunk_id_deterministic() {
+        let path = Path::new("test.rs");
+        let id1 = generate_chunk_id(path, 1, 10);
+        let id2 = generate_chunk_id(path, 1, 10);
+        let id3 = generate_chunk_id(path, 1, 11);
+
+        assert_eq!(id1, id2); // Same inputs = same ID
+        assert_ne!(id1, id3); // Different inputs = different ID
+    }
+
+    #[test]
+    fn test_empty_file() {
+        let mut parser = Parser::new().unwrap();
+        let content = "";
+        let path = PathBuf::from("test.rs");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        // Empty file should return empty chunks (no fallback needed)
+        assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn test_file_with_only_comments() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+// This is a comment
+// Another comment
+/* Block comment */
+"#;
+        let path = PathBuf::from("test.rs");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        // No semantic chunks, should fall back to line-based
+        assert!(!chunks.is_empty());
+        assert!(chunks.iter().all(|c| c.chunk_type == ChunkType::Other));
+    }
 }

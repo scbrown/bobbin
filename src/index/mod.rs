@@ -3,5 +3,5 @@ pub mod embedder;
 pub mod git;
 
 pub use parser::Parser;
-pub use embedder::Embedder;
+pub use embedder::{ensure_model, Embedder, SharedEmbedder};
 pub use git::GitAnalyzer;

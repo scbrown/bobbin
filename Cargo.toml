@@ -35,13 +35,16 @@ arrow = { version = "54", default-features = false }
 rusqlite = { version = "0.33", features = ["bundled", "backup"] }
 
 # ONNX runtime for embeddings
-ort = { version = "2.0.0-rc.10", default-features = false, features = ["ndarray", "download-binaries"] }
+ort = { version = "2.0.0-rc.10", default-features = false, features = ["std", "ndarray", "download-binaries"] }
 ndarray = "0.16"
 tokenizers = "0.21"
 
 # Error handling
 anyhow = "1"
 thiserror = "2"
+
+# HTTP client for model downloads
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 # Utilities
 walkdir = "2"

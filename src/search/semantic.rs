@@ -20,7 +20,7 @@ impl SemanticSearch {
     }
 
     /// Search for semantically similar code
-    pub async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+    pub async fn search(&mut self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         // Embed the query
         let query_embedding = self.embedder.embed(query)?;
 
