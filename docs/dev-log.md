@@ -1,5 +1,46 @@
 # Development Log
 
+## 2026-01-02: Tambour Agent Harness
+
+### Problem
+
+Running multiple Claude agents on the same codebase causes conflicts:
+- File changes collide when agents work in the same directory
+- Race conditions when multiple agents grab tasks from `bd ready`
+- Crashed agents leave issues stuck in `in_progress`
+
+### Solution
+
+Created agent harness scripts using beads' native worktree support:
+
+**`scripts/start-agent.sh`** - Spawns isolated agent:
+- Uses `bd worktree create` for proper beads redirect
+- Claims issue atomically before agent starts (prevents races)
+- Passes task context as initial prompt so agent starts working immediately
+- Traps failures to unclaim issue if script or Claude crashes
+
+**`scripts/finish-agent.sh`** - Cleans up after completion:
+- Merges branch, removes worktree, closes issue
+
+### Key Design Decisions
+
+1. **Claim at script start, not agent start** - Prevents race conditions when spawning agents rapidly
+2. **Wrapper instead of exec** - Allows monitoring Claude's exit code for failure recovery
+3. **Beads native worktree** - Uses `bd worktree create` which handles the `.beads/redirect` automatically
+
+### Files Created
+
+- `scripts/start-agent.sh` - Agent launcher
+- `scripts/finish-agent.sh` - Cleanup script
+- `docs/tambour.md` - Vision doc for the agent harness
+- `CLAUDE.md` - Agent instructions for worktree workflow
+
+### Next Steps
+
+See `docs/tambour.md` for future directions including agent pools, health monitoring, and deeper beads/bobbin integration.
+
+---
+
 ## 2026-01-02: Project Scaffolding (bobbin-lqq)
 
 ### Completed
