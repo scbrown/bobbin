@@ -84,7 +84,13 @@ $BD_SHOW_OUTPUT
 You are now in a git worktree at: $ABSOLUTE_PATH
 Branch: $ISSUE_ID
 
-Please begin working on this task."
+Begin working on this task now:
+1. Read CLAUDE.md and any relevant docs to understand the project
+2. Explore the codebase to understand what exists and what you need to build
+3. Implement the task, committing your changes as you go
+4. When complete, inform the user the task is ready for review
+
+Start immediately - do not ask for confirmation."
 
 # Start Claude in the worktree with the task prompt
 cd "$ABSOLUTE_PATH"
