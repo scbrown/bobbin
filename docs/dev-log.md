@@ -13,27 +13,57 @@ Running multiple Claude agents on the same codebase causes conflicts:
 
 Created agent harness scripts using beads' native worktree support:
 
-**`scripts/start-agent.sh`** - Spawns isolated agent:
+**`scripts/start-agent.sh [issue-id] [--label <label>]`** - Spawns isolated agent:
 - Uses `bd worktree create` for proper beads redirect
 - Claims issue atomically before agent starts (prevents races)
-- Passes task context as initial prompt so agent starts working immediately
+- Injects `bd show` output so agent sees exactly what beads command was run
+- Provides explicit execution instructions (read docs, explore, implement, commit)
 - Traps failures to unclaim issue if script or Claude crashes
+- Optional `--label` flag to filter by label (workflow-agnostic)
 
 **`scripts/finish-agent.sh`** - Cleans up after completion:
 - Merges branch, removes worktree, closes issue
+
+**`scripts/health-check.sh [--fix]`** - Zombie detection:
+- Finds in_progress issues with no agent running
+- `--fix` automatically unclaims zombied tasks
+
+### Tenets
+
+1. **Tambour enables workflows, it doesn't impose them** - No hardcoded labels or filtering. Use `--label` if you want to focus.
+2. **Tambour is distinct from any specific project** - It orchestrates agents on beads issues, nothing more.
+3. **Tambour will eventually be extracted** - Lives in bobbin temporarily while interface stabilizes.
 
 ### Key Design Decisions
 
 1. **Claim at script start, not agent start** - Prevents race conditions when spawning agents rapidly
 2. **Wrapper instead of exec** - Allows monitoring Claude's exit code for failure recovery
 3. **Beads native worktree** - Uses `bd worktree create` which handles the `.beads/redirect` automatically
+4. **Just module** - Tambour recipes isolated in `tambour.just`, accessed via `just tambour <recipe>`
+5. **Workflow-agnostic** - Picks next ready task by priority; label filtering is opt-in
 
 ### Files Created
 
-- `scripts/start-agent.sh` - Agent launcher
+- `scripts/start-agent.sh` - Agent launcher with `--label` support
 - `scripts/finish-agent.sh` - Cleanup script
-- `docs/tambour.md` - Vision doc for the agent harness
+- `scripts/health-check.sh` - Zombie detection and recovery
+- `justfile` - Main justfile importing tambour module
+- `tambour.just` - Tambour-specific recipes
+- `docs/tambour.md` - Vision doc with tenets
 - `CLAUDE.md` - Agent instructions for worktree workflow
+- `AGENT.md` - Development notes, tambour vs bobbin boundaries
+
+### Recipes
+
+```bash
+just tambour agent                  # Next ready task by priority
+just tambour agent-for <issue>      # Specific issue
+just tambour agent-label <label>    # Filter by label
+just tambour finish <issue>         # Merge and cleanup
+just tambour abort <issue>          # Cancel/unclaim
+just tambour health                 # Check for zombies
+just tambour health-fix             # Auto-fix zombies
+```
 
 ### Next Steps
 

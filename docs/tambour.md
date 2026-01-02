@@ -4,6 +4,17 @@
 
 Tambour is an agent orchestration harness that coordinates multiple AI agents working on [beads](https://github.com/steveyegge/beads) issues. The name comes from embroidery - a tambour is the frame that holds fabric taut while working with beads and thread.
 
+## Tenets
+
+1. **Tambour enables workflows, it doesn't impose them.**
+   The harness is agnostic to how you organize your work. It picks the next ready task by priority - no special filtering, no hardcoded labels. If you want to focus on a specific label, use `--label`. Your workflow, your rules.
+
+2. **Tambour is distinct from any specific project.**
+   It emerged from bobbin development but doesn't know or care about bobbin. It orchestrates agents working on beads issues - that's it.
+
+3. **Tambour will eventually be extracted.**
+   It lives here temporarily while the interface stabilizes. When it needs to orchestrate agents across multiple repositories, it becomes its own project.
+
 ## Vision
 
 Tambour bridges three components:
@@ -33,26 +44,33 @@ Each agent gets its own git worktree, providing:
 
 ### Justfile Recipes
 
+Tambour is a just module - all recipes are prefixed with `tambour`:
+
 ```bash
-just agent              # Spawn agent on next ready task
-just agent-for <issue>  # Spawn agent on specific issue
-just finish <issue>     # Merge branch and cleanup
-just health             # Check for zombied tasks
-just health-fix         # Auto-unclaim zombied tasks
-just wip                # Show in-progress tasks
-just worktrees          # List active worktrees
+just tambour agent                  # Spawn agent on next ready task (by priority)
+just tambour agent-for <issue>      # Spawn agent on specific issue
+just tambour agent-label <label>    # Spawn agent filtered by label
+just tambour finish <issue>         # Merge branch and cleanup
+just tambour abort <issue>          # Cancel agent (unclaim, remove worktree)
+just tambour health                 # Check for zombied tasks
+just tambour health-fix             # Auto-unclaim zombied tasks
+just tambour wip                    # Show in-progress tasks
+just tambour worktrees              # List active worktrees
+just tambour ready                  # Show ready tasks
 ```
 
 ### Scripts
 
-**`scripts/start-agent.sh [issue-id]`**
+**`scripts/start-agent.sh [issue-id] [--label <label>]`**
 
 Spawns an agent for a beads task:
-1. Picks next ready task (or uses provided issue-id)
-2. Creates worktree via `bd worktree create` (with beads redirect)
-3. Claims the issue atomically (prevents race conditions)
-4. Launches Claude with task context as initial prompt
-5. On failure/crash, automatically unclaims the issue
+1. Runs health check (warns about zombies)
+2. Picks next ready task by priority (or filters by `--label`, or uses provided issue-id)
+3. Creates worktree via `bd worktree create` (with beads redirect)
+4. Claims the issue atomically (prevents race conditions)
+5. Injects `bd show` output as initial prompt so agent sees the task details
+6. Launches Claude with explicit execution instructions
+7. On failure/crash, automatically unclaims the issue
 
 **`scripts/finish-agent.sh <issue-id> [--merge]`**
 
@@ -84,25 +102,31 @@ The harness handles these failure modes:
 ### Usage
 
 ```bash
-# Spawn agent on next ready task
-just agent
+# Spawn agent on next ready task (by priority)
+just tambour agent
 
 # Spawn agent on specific task
-just agent-for bobbin-j0x
+just tambour agent-for bobbin-j0x
+
+# Spawn agent filtered by label (e.g., focus on "backend" tasks)
+just tambour agent-label backend
 
 # Spawn multiple agents rapidly
 for i in 1 2 3; do
-    just agent &
+    just tambour agent &
 done
 
 # Check for zombied tasks
-just health
+just tambour health
 
 # Auto-fix zombied tasks
-just health-fix
+just tambour health-fix
+
+# Abort/cancel an agent (if started by mistake)
+just tambour abort bobbin-j0x
 
 # After agent completes, merge and cleanup
-just finish bobbin-j0x
+just tambour finish bobbin-j0x
 ```
 
 ## Future Directions
