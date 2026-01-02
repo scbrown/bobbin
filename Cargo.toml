@@ -20,6 +20,7 @@ toml = "0.8"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
+futures = "0.3"
 
 # Tree-sitter parsing
 tree-sitter = "0.24"
@@ -29,7 +30,9 @@ tree-sitter-python = "0.23"
 
 # Vector database
 lancedb = "0.17"
-arrow = { version = "54", default-features = false }
+arrow = { version = "53", default-features = false }
+arrow-array = "53"
+arrow-schema = "53"
 
 # SQLite with FTS
 rusqlite = { version = "0.33", features = ["bundled", "backup"] }
