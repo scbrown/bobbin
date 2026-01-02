@@ -1,8 +1,10 @@
 #!/bin/bash
 # Start a Claude agent in an isolated worktree for a beads task
 #
-# Usage: ./scripts/start-agent.sh [issue-id]
-#   If no issue-id provided, picks the first ready task (skipping epics)
+# Usage: ./scripts/start-agent.sh [issue-id] [--label <label>]
+#   issue-id: Work on specific issue
+#   --label:  Filter ready tasks by label
+#   If no args, picks the next ready task by priority (skipping epics)
 
 set -e
 
@@ -29,15 +31,39 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Parse arguments
+ISSUE_ID=""
+FILTER_LABEL=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --label)
+            FILTER_LABEL="$2"
+            shift 2
+            ;;
+        *)
+            ISSUE_ID="$1"
+            shift
+            ;;
+    esac
+done
+
 # Get issue ID from argument or pick next ready task
-if [ -n "$1" ]; then
-    ISSUE_ID="$1"
-else
-    # Get first ready task (not epic)
-    ISSUE_ID=$(bd ready --json | jq -r '[.[] | select(.issue_type == "task")][0].id')
+if [ -z "$ISSUE_ID" ]; then
+    READY_JSON=$(bd ready --json)
+
+    if [ -n "$FILTER_LABEL" ]; then
+        # Filter by label if specified
+        ISSUE_ID=$(echo "$READY_JSON" | jq -r --arg label "$FILTER_LABEL" '
+            [.[] | select(.issue_type == "task" and ((.labels // []) | index($label)))][0].id
+        ')
+    else
+        # Get first ready task (not epic)
+        ISSUE_ID=$(echo "$READY_JSON" | jq -r '[.[] | select(.issue_type == "task")][0].id')
+    fi
 
     if [ -z "$ISSUE_ID" ] || [ "$ISSUE_ID" = "null" ]; then
-        echo "No ready tasks available"
+        echo "No ready tasks available${FILTER_LABEL:+ with label '$FILTER_LABEL'}"
         bd ready
         exit 1
     fi

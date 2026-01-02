@@ -14,6 +14,10 @@ agent:
 agent-for issue:
     ./scripts/start-agent.sh {{issue}}
 
+# Spawn an agent filtered by label (e.g., just tambour agent-label tambour)
+agent-label label:
+    ./scripts/start-agent.sh --label {{label}}
+
 # Finish and merge an agent's work
 finish issue:
     ./scripts/finish-agent.sh {{issue}} --merge
