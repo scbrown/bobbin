@@ -3,6 +3,7 @@ use clap::Args;
 use colored::Colorize;
 use ignore::WalkBuilder;
 use indicatif::{ProgressBar, ProgressStyle};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -27,6 +28,22 @@ pub struct IndexArgs {
     /// Directory to index (defaults to current directory)
     #[arg(default_value = ".")]
     path: PathBuf,
+}
+
+#[derive(Serialize)]
+struct IndexOutput {
+    status: String,
+    files_indexed: usize,
+    chunks_created: usize,
+    deleted_files: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_files: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_chunks: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    elapsed_ms: Option<u128>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    errors: Option<usize>,
 }
 
 /// Result of indexing a single file
@@ -61,7 +78,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let data_dir = Config::data_dir(&repo_root);
 
     // Ensure the embedding model is downloaded
-    if output.verbose && !output.quiet {
+    if output.verbose && !output.quiet && !output.json {
         println!("  Checking embedding model...");
     }
     embedder::ensure_model(&data_dir).await
@@ -94,7 +111,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     // Collect files to index
     let files_to_index = collect_files(&repo_root, &config)?;
 
-    if output.verbose && !output.quiet {
+    if output.verbose && !output.quiet && !output.json {
         println!("  Found {} files matching patterns", files_to_index.len());
     }
 
@@ -111,7 +128,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     // Clean up deleted files
     if !deleted_files.is_empty() {
-        if output.verbose && !output.quiet {
+        if output.verbose && !output.quiet && !output.json {
             println!("  Cleaning up {} deleted files...", deleted_files.len());
         }
 
@@ -151,10 +168,17 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     if total_files == 0 {
         if output.json {
-            println!(
-                r#"{{"status": "up_to_date", "files_indexed": 0, "chunks_created": 0, "deleted_files": {}}}"#,
-                deleted_files.len()
-            );
+            let json_output = IndexOutput {
+                status: "up_to_date".to_string(),
+                files_indexed: 0,
+                chunks_created: 0,
+                deleted_files: deleted_files.len(),
+                total_files: None,
+                total_chunks: None,
+                elapsed_ms: None,
+                errors: None,
+            };
+            println!("{}", serde_json::to_string_pretty(&json_output)?);
         } else if !output.quiet {
             println!("{} Index is up to date", "✓".green());
         }
@@ -286,16 +310,17 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     // Output results
     if output.json {
         let stats = metadata_store.get_stats()?;
-        println!(
-            r#"{{"status": "indexed", "files_indexed": {}, "chunks_created": {}, "deleted_files": {}, "total_files": {}, "total_chunks": {}, "elapsed_ms": {}, "errors": {}}}"#,
-            indexed_files,
-            total_chunks,
-            deleted_files.len(),
-            stats.total_files,
-            stats.total_chunks,
-            elapsed.as_millis(),
-            errors.len()
-        );
+        let json_output = IndexOutput {
+            status: "indexed".to_string(),
+            files_indexed: indexed_files,
+            chunks_created: total_chunks,
+            deleted_files: deleted_files.len(),
+            total_files: Some(stats.total_files),
+            total_chunks: Some(stats.total_chunks),
+            elapsed_ms: Some(elapsed.as_millis()),
+            errors: Some(errors.len()),
+        };
+        println!("{}", serde_json::to_string_pretty(&json_output)?);
     } else if !output.quiet {
         println!(
             "{} Indexed {} files ({} chunks) in {:.2}s",

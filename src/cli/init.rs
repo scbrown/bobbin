@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use colored::Colorize;
+use serde::Serialize;
 use std::path::PathBuf;
 
 use super::OutputConfig;
@@ -18,6 +19,18 @@ pub struct InitArgs {
     force: bool,
 }
 
+#[derive(Serialize)]
+struct InitOutput {
+    status: String,
+    path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    database: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vectors: Option<String>,
+}
+
 pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
     let repo_root = args.path.canonicalize()
         .with_context(|| format!("Invalid path: {}", args.path.display()))?;
@@ -30,8 +43,14 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
     // Check if already initialized
     if config_path.exists() && !args.force {
         if output.json {
-            println!(r#"{{"status": "already_initialized", "path": "{}"}}"#,
-                     data_dir.display());
+            let json_output = InitOutput {
+                status: "already_initialized".to_string(),
+                path: data_dir.display().to_string(),
+                config: Some(config_path.display().to_string()),
+                database: Some(db_path.display().to_string()),
+                vectors: Some(lance_path.display().to_string()),
+            };
+            println!("{}", serde_json::to_string_pretty(&json_output)?);
         } else {
             bail!("Bobbin already initialized in {}. Use --force to reinitialize.",
                   data_dir.display());
@@ -47,7 +66,7 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
     let config = Config::default();
     config.save(&config_path)?;
 
-    if output.verbose && !output.quiet {
+    if output.verbose && !output.quiet && !output.json {
         println!("  Creating config: {}", config_path.display());
     }
 
@@ -59,7 +78,7 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
     let _metadata_store = MetadataStore::open(&db_path)
         .with_context(|| format!("Failed to initialize SQLite database: {}", db_path.display()))?;
 
-    if output.verbose && !output.quiet {
+    if output.verbose && !output.quiet && !output.json {
         println!("  Creating database: {}", db_path.display());
     }
 
@@ -72,7 +91,7 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
         .await
         .with_context(|| format!("Failed to initialize LanceDB: {}", lance_path.display()))?;
 
-    if output.verbose && !output.quiet {
+    if output.verbose && !output.quiet && !output.json {
         println!("  Creating vector store: {}", lance_path.display());
     }
 
@@ -87,20 +106,21 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
             use std::io::Write;
             writeln!(file, "\n# Bobbin index data\n.bobbin/")?;
 
-            if output.verbose && !output.quiet {
+            if output.verbose && !output.quiet && !output.json {
                 println!("  Updated .gitignore");
             }
         }
     }
 
     if output.json {
-        println!(
-            r#"{{"status": "initialized", "path": "{}", "config": "{}", "database": "{}", "vectors": "{}"}}"#,
-            data_dir.display(),
-            config_path.display(),
-            db_path.display(),
-            lance_path.display()
-        );
+        let json_output = InitOutput {
+            status: "initialized".to_string(),
+            path: data_dir.display().to_string(),
+            config: Some(config_path.display().to_string()),
+            database: Some(db_path.display().to_string()),
+            vectors: Some(lance_path.display().to_string()),
+        };
+        println!("{}", serde_json::to_string_pretty(&json_output)?);
     } else if !output.quiet {
         println!("{} Bobbin initialized in {}", "✓".green(), data_dir.display());
         println!("  Config:   {}", config_path.display());
