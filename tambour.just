@@ -18,9 +18,13 @@ agent-for issue:
 agent-label label:
     ./scripts/start-agent.sh --label {{label}}
 
-# Finish and merge an agent's work
+# Finish and merge an agent's work (prompts to continue to next task)
 finish issue:
     ./scripts/finish-agent.sh {{issue}} --merge
+
+# Finish and merge without continuation prompt
+finish-no-continue issue:
+    ./scripts/finish-agent.sh {{issue}} --merge --no-continue
 
 # Finish without merging (keep worktree)
 finish-keep issue:

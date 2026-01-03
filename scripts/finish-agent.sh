@@ -1,8 +1,9 @@
 #!/bin/bash
 # Cleanup after agent completes work in a worktree
 #
-# Usage: ./scripts/finish-agent.sh <issue-id> [--merge]
+# Usage: ./scripts/finish-agent.sh <issue-id> [--merge] [--no-continue]
 #   --merge: merge the branch back to main and remove worktree
+#   --no-continue: skip the "continue to next task" flow after completion
 
 set -e
 
@@ -10,7 +11,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKTREE_BASE="${REPO_ROOT}/../bobbin-worktrees"
 
 if [ -z "$1" ]; then
-    echo "Usage: $0 <issue-id> [--merge]"
+    echo "Usage: $0 <issue-id> [--merge] [--no-continue]"
     echo ""
     echo "Active worktrees:"
     bd worktree list
@@ -21,10 +22,25 @@ ISSUE_ID="$1"
 WORKTREE_PATH="${WORKTREE_BASE}/${ISSUE_ID}"
 BRANCH_NAME="$ISSUE_ID"
 DO_MERGE=false
+NO_CONTINUE=false
 
-if [ "$2" = "--merge" ]; then
-    DO_MERGE=true
-fi
+# Parse remaining arguments
+shift
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --merge)
+            DO_MERGE=true
+            shift
+            ;;
+        --no-continue)
+            NO_CONTINUE=true
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
 
 cd "$REPO_ROOT"
 
@@ -88,8 +104,40 @@ if [ "$DO_MERGE" = true ]; then
     echo "Deleting branch..."
     git branch -d "$BRANCH_NAME"
 
+    # Capture issue details before closing
+    ISSUE_JSON=$(bd show "$ISSUE_ID" --json 2>/dev/null | jq '.[0]' 2>/dev/null || echo '{}')
+    ISSUE_TITLE=$(echo "$ISSUE_JSON" | jq -r '.title // "Unknown"')
+
+    # Capture epic state before closing (for epics that might become eligible)
+    EPICS_BEFORE=$(bd epic status --json 2>/dev/null || echo '[]')
+
     echo "Closing issue..."
     bd close "$ISSUE_ID"
+
+    # Check for epics that became eligible for closure
+    EPICS_AFTER=$(bd epic status --json 2>/dev/null || echo '[]')
+
+    # Find epics that are now eligible but weren't before
+    NEWLY_ELIGIBLE_EPICS=$(jq -n \
+        --argjson before "$EPICS_BEFORE" \
+        --argjson after "$EPICS_AFTER" \
+        '[($after[] | select(.eligible_for_close == true) | .epic.id)] -
+         [($before[] | select(.eligible_for_close == true) | .epic.id)] | .[]' 2>/dev/null || echo '')
+
+    # Auto-close newly eligible epics
+    CLOSED_EPICS=""
+    if [ -n "$NEWLY_ELIGIBLE_EPICS" ]; then
+        for epic_id in $NEWLY_ELIGIBLE_EPICS; do
+            epic_title=$(bd show "$epic_id" --json 2>/dev/null | jq -r '.[0].title // "Unknown"' 2>/dev/null)
+            echo "  → Auto-closing completed epic: $epic_id \"$epic_title\""
+            bd close "$epic_id" 2>/dev/null || true
+            if [ -n "$CLOSED_EPICS" ]; then
+                CLOSED_EPICS="$CLOSED_EPICS,$epic_id:$epic_title"
+            else
+                CLOSED_EPICS="$epic_id:$epic_title"
+            fi
+        done
+    fi
 
     echo ""
     if [ "$WORKTREE_REMOVED" = true ]; then
@@ -97,6 +145,116 @@ if [ "$DO_MERGE" = true ]; then
     else
         echo "Done! Branch merged, issue closed, but worktree needs manual cleanup."
         echo "See warning above for details."
+    fi
+
+    # === Task Depletion Flow ===
+    if [ "$NO_CONTINUE" = true ]; then
+        exit 0
+    fi
+
+    echo ""
+    echo "=== Completion Summary ==="
+    echo "✓ Task: $ISSUE_ID \"$ISSUE_TITLE\""
+
+    # Show any auto-closed epics
+    if [ -n "$CLOSED_EPICS" ]; then
+        echo ""
+        echo "Epics completed:"
+        IFS=',' read -ra EPIC_ARRAY <<< "$CLOSED_EPICS"
+        for epic_entry in "${EPIC_ARRAY[@]}"; do
+            epic_id="${epic_entry%%:*}"
+            epic_title="${epic_entry#*:}"
+            echo "  ✓ $epic_id \"$epic_title\" (all children done)"
+        done
+    fi
+
+    echo ""
+
+    # Check for remaining ready tasks
+    READY_JSON=$(bd ready --json 2>/dev/null || echo '[]')
+    READY_TASKS=$(echo "$READY_JSON" | jq '[.[] | select(.issue_type == "task")]')
+    READY_COUNT=$(echo "$READY_TASKS" | jq 'length')
+
+    if [ "$READY_COUNT" -eq 0 ]; then
+        # No more ready tasks - offer to create new ones
+        echo "📭 No more ready tasks in the queue!"
+        echo ""
+        echo "Would you like to create new tasks? (y/n)"
+        read -r CREATE_TASKS
+
+        if [ "$CREATE_TASKS" = "y" ] || [ "$CREATE_TASKS" = "Y" ]; then
+            echo ""
+            echo "Opening interactive task creation..."
+            bd create-form
+
+            # Check if tasks were created
+            NEW_READY_JSON=$(bd ready --json 2>/dev/null || echo '[]')
+            NEW_READY_COUNT=$(echo "$NEW_READY_JSON" | jq '[.[] | select(.issue_type == "task")] | length')
+
+            if [ "$NEW_READY_COUNT" -gt 0 ]; then
+                echo ""
+                echo "New tasks available! Spawn agent on next task? (y/n)"
+                read -r SPAWN_AGENT
+
+                if [ "$SPAWN_AGENT" = "y" ] || [ "$SPAWN_AGENT" = "Y" ]; then
+                    # Build completion context for the new session
+                    COMPLETION_CONTEXT="Previous session completed:
+- Task: $ISSUE_ID \"$ISSUE_TITLE\""
+
+                    if [ -n "$CLOSED_EPICS" ]; then
+                        COMPLETION_CONTEXT="$COMPLETION_CONTEXT
+Epics completed:"
+                        for epic_entry in "${EPIC_ARRAY[@]}"; do
+                            epic_id="${epic_entry%%:*}"
+                            epic_title="${epic_entry#*:}"
+                            COMPLETION_CONTEXT="$COMPLETION_CONTEXT
+- $epic_id \"$epic_title\" (all children done)"
+                        done
+                    fi
+
+                    # Export context for start-agent.sh to pick up
+                    export TAMBOUR_COMPLETION_CONTEXT="$COMPLETION_CONTEXT"
+
+                    echo ""
+                    exec "$REPO_ROOT/scripts/start-agent.sh"
+                fi
+            else
+                echo "No new tasks created."
+            fi
+        fi
+    else
+        # There are more ready tasks
+        NEXT_TASK=$(echo "$READY_TASKS" | jq -r '.[0].id')
+        NEXT_TITLE=$(echo "$READY_TASKS" | jq -r '.[0].title')
+
+        echo "📋 $READY_COUNT ready task(s) remaining"
+        echo "   Next: $NEXT_TASK \"$NEXT_TITLE\""
+        echo ""
+        echo "Continue to next task? (y/n)"
+        read -r CONTINUE
+
+        if [ "$CONTINUE" = "y" ] || [ "$CONTINUE" = "Y" ]; then
+            # Build completion context for the new session
+            COMPLETION_CONTEXT="Previous session completed:
+- Task: $ISSUE_ID \"$ISSUE_TITLE\""
+
+            if [ -n "$CLOSED_EPICS" ]; then
+                COMPLETION_CONTEXT="$COMPLETION_CONTEXT
+Epics completed:"
+                for epic_entry in "${EPIC_ARRAY[@]}"; do
+                    epic_id="${epic_entry%%:*}"
+                    epic_title="${epic_entry#*:}"
+                    COMPLETION_CONTEXT="$COMPLETION_CONTEXT
+- $epic_id \"$epic_title\" (all children done)"
+                done
+            fi
+
+            # Export context for start-agent.sh to pick up
+            export TAMBOUR_COMPLETION_CONTEXT="$COMPLETION_CONTEXT"
+
+            echo ""
+            exec "$REPO_ROOT/scripts/start-agent.sh"
+        fi
     fi
 else
     echo "Worktree preserved at: $WORKTREE_PATH"

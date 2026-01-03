@@ -50,7 +50,8 @@ Tambour is a just module - all recipes are prefixed with `tambour`:
 just tambour agent                  # Spawn agent on next ready task (by priority)
 just tambour agent-for <issue>      # Spawn agent on specific issue
 just tambour agent-label <label>    # Spawn agent filtered by label
-just tambour finish <issue>         # Merge branch and cleanup
+just tambour finish <issue>         # Merge branch, cleanup, prompt for next task
+just tambour finish-no-continue <issue>  # Merge and cleanup without continuation prompt
 just tambour abort <issue>          # Cancel agent (unclaim, remove worktree)
 just tambour health                 # Check for zombied tasks
 just tambour health-fix             # Auto-unclaim zombied tasks
@@ -72,12 +73,16 @@ Spawns an agent for a beads task:
 6. Launches Claude with explicit execution instructions
 7. On failure/crash, automatically unclaims the issue
 
-**`scripts/finish-agent.sh <issue-id> [--merge]`**
+**`scripts/finish-agent.sh <issue-id> [--merge] [--no-continue]`**
 
 Cleans up after agent completion:
 1. Merges branch to main (with `--merge`)
 2. Removes worktree via `bd worktree remove`
 3. Closes the beads issue
+4. Auto-closes any epics that became eligible (all children complete)
+5. Shows completion summary with closed tasks and epics
+6. Prompts to continue to next task or create new tasks (unless `--no-continue`)
+7. Injects completion context into next agent session
 
 **`scripts/health-check.sh [--fix]`**
 
@@ -129,14 +134,45 @@ just tambour abort bobbin-j0x
 just tambour finish bobbin-j0x
 ```
 
-## Future Directions
+## Current Features
 
 ### Task Depletion & Context Continuity
-- Detect when ready queue is empty after task completion
-- Present completion summary (task, auto-closed epics, transitive closes)
-- Prompt user to create more tasks when queue is depleted
-- Spawn new agent sessions with completion context injected
-- Epic-aware: track when completing a task closes its parent epic
+After completing a task, the finish script provides workflow continuity:
+- **Completion summary** - Shows the task that was just closed
+- **Epic awareness** - Detects and auto-closes epics when all children are complete
+- **Task depletion detection** - Checks if the ready queue is empty
+- **Interactive continuation** - Prompts to continue to next task or create new tasks
+- **Context injection** - Passes completion context to the next agent session
+
+Example workflow:
+```bash
+$ just tambour finish bobbin-xyz
+
+=== Completion Summary ===
+✓ Task: bobbin-xyz "Implement feature X"
+
+Epics completed:
+  ✓ bobbin-abc "Phase 1" (all children done)
+
+📋 3 ready task(s) remaining
+   Next: bobbin-def "Next feature"
+
+Continue to next task? (y/n)
+```
+
+When continuing, the next agent session receives:
+```
+Previous session completed:
+- Task: bobbin-xyz "Implement feature X"
+Epics completed:
+- bobbin-abc "Phase 1" (all children done)
+
+---
+
+You have been assigned to work on a beads issue...
+```
+
+## Future Directions
 
 ### Agent Pool Management
 - Configurable number of concurrent agents

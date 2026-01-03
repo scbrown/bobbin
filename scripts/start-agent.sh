@@ -102,7 +102,17 @@ echo ""
 BD_SHOW_OUTPUT=$(bd show "$ISSUE_ID")
 
 # Build the prompt showing what we executed
-PROMPT="You have been assigned to work on a beads issue. Here's what was executed to show you the task:
+# Include completion context from previous session if available
+CONTEXT_PREFIX=""
+if [ -n "$TAMBOUR_COMPLETION_CONTEXT" ]; then
+    CONTEXT_PREFIX="$TAMBOUR_COMPLETION_CONTEXT
+
+---
+
+"
+fi
+
+PROMPT="${CONTEXT_PREFIX}You have been assigned to work on a beads issue. Here's what was executed to show you the task:
 
 \$ bd show $ISSUE_ID
 $BD_SHOW_OUTPUT
