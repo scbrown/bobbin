@@ -179,7 +179,11 @@ else
 fi
 
 # Start Agent in the worktree with the task prompt
-$AGENT_CLI "$PROMPT"
+if [[ "$AGENT_CLI" == "gemini"* ]]; then
+    $AGENT_CLI -i "$PROMPT"
+else
+    $AGENT_CLI "$PROMPT"
+fi
 AGENT_EXIT=$?
 
 # Clear claimed issue so trap doesn't unclaim on normal exit
