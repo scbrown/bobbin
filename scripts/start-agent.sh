@@ -141,4 +141,23 @@ else
     echo "Claude exited with code $CLAUDE_EXIT"
 fi
 
+# Check if worktree still exists (wasn't merged during the session)
+# Go back to the main repo to check
+cd "$REPO_ROOT"
+if [ -d "$WORKTREE_PATH" ]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "⚠️  Worktree still exists at: $ABSOLUTE_PATH"
+    echo ""
+    echo "The agent session ended but the task wasn't merged."
+    echo "To finish and merge the task, run:"
+    echo ""
+    echo "    just tambour finish $ISSUE_ID"
+    echo ""
+    echo "Or to abort and discard changes:"
+    echo ""
+    echo "    just tambour abort $ISSUE_ID"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+fi
+
 exit $CLAUDE_EXIT

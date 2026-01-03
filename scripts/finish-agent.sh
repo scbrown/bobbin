@@ -7,7 +7,28 @@
 
 set -e
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Determine if we're running from inside a worktree or the main repo
+# The script could be in:
+#   1. Main repo: /path/to/bobbin/scripts/finish-agent.sh
+#   2. Worktree: /path/to/bobbin-worktrees/bobbin-xxx/scripts/finish-agent.sh
+# We need to find the MAIN repo root, not the worktree root
+
+# Get the git toplevel - this will be the worktree if we're in one
+GIT_TOPLEVEL="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"
+
+# Check if this is a worktree by looking for the .git file (worktrees have a .git file, main repo has .git directory)
+if [ -f "$GIT_TOPLEVEL/.git" ]; then
+    # We're in a worktree - need to find the main repo
+    # The .git file contains: "gitdir: /path/to/main/.git/worktrees/branch-name"
+    MAIN_GIT_DIR="$(cat "$GIT_TOPLEVEL/.git" | sed 's/^gitdir: //' | sed 's|/worktrees/.*||')"
+    REPO_ROOT="$(dirname "$MAIN_GIT_DIR")"
+else
+    # We're in the main repo
+    REPO_ROOT="$GIT_TOPLEVEL"
+fi
+
 WORKTREE_BASE="${REPO_ROOT}/../bobbin-worktrees"
 
 if [ -z "$1" ]; then
@@ -42,8 +63,6 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-cd "$REPO_ROOT"
-
 if [ ! -d "$WORKTREE_PATH" ]; then
     echo "Worktree not found: $WORKTREE_PATH"
     echo ""
@@ -56,6 +75,10 @@ echo "=== Finishing agent work for: $ISSUE_ID ==="
 
 if [ "$DO_MERGE" = true ]; then
     echo "Merging $BRANCH_NAME into main..."
+
+    # Change to main repo first - this is critical if we're running from inside a worktree
+    # We cannot checkout a different branch while in the worktree we're about to remove
+    cd "$REPO_ROOT"
 
     # Ensure we're on main
     git checkout main
