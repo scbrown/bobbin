@@ -86,6 +86,13 @@ if [ "$DO_MERGE" = true ]; then
     # Merge the branch
     git merge "$BRANCH_NAME" --no-edit
 
+    # Before removing the worktree, detach HEAD there so the branch isn't checked out
+    # This is necessary because git won't let us delete a branch that's checked out anywhere
+    echo "Detaching HEAD in worktree..."
+    if ! git -C "$WORKTREE_PATH" checkout --detach 2>/dev/null; then
+        echo "Warning: Could not detach HEAD in worktree (may already be detached)"
+    fi
+
     # Try to remove worktree - if it fails, warn but continue
     WORKTREE_REMOVED=true
     echo "Removing worktree..."
@@ -125,7 +132,14 @@ if [ "$DO_MERGE" = true ]; then
     fi
 
     echo "Deleting branch..."
-    git branch -d "$BRANCH_NAME"
+    # Use -d normally, but if that fails (e.g., worktree still exists but detached),
+    # the branch should still be deletable since we detached HEAD
+    if ! git branch -d "$BRANCH_NAME" 2>/dev/null; then
+        # Branch might still show as checked out if worktree wasn't removed
+        # Since we detached HEAD, force delete should be safe (changes are merged)
+        echo "Standard delete failed, trying force delete (branch is merged)..."
+        git branch -D "$BRANCH_NAME"
+    fi
 
     # Capture issue details before closing
     ISSUE_JSON=$(bd show "$ISSUE_ID" --json 2>/dev/null | jq '.[0]' 2>/dev/null || echo '{}')
