@@ -14,3 +14,11 @@ Thumbs.db
 
 # Bobbin index data
 .bobbin/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
