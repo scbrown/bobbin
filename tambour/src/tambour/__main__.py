@@ -72,6 +72,16 @@ def create_parser() -> argparse.ArgumentParser:
     get_parser = config_subparsers.add_parser("get", help="Get configuration value")
     get_parser.add_argument("key", help="Configuration key (e.g. agent.default_cli)")
 
+    # heartbeat command
+    heartbeat_parser = subparsers.add_parser("heartbeat", help="Start heartbeat writer")
+    heartbeat_parser.add_argument("worktree", help="Worktree path")
+    heartbeat_parser.add_argument(
+        "--interval",
+        type=int,
+        default=30,
+        help="Heartbeat interval in seconds",
+    )
+
     # context command
     context_parser = subparsers.add_parser("context", help="Context provider management")
     context_subparsers = context_parser.add_subparsers(
@@ -256,6 +266,16 @@ def cmd_config_validate(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_heartbeat(args: argparse.Namespace) -> int:
+    """Handle 'heartbeat' command."""
+    from tambour.heartbeat import HeartbeatWriter
+
+    worktree = Path(args.worktree)
+    writer = HeartbeatWriter(worktree, interval=args.interval)
+    writer.start()
+    return 0
+
+
 def main() -> NoReturn:
     """Main entry point."""
     parser = create_parser()
@@ -287,6 +307,8 @@ def main() -> NoReturn:
         else:
             parser.parse_args(["config", "--help"])
             sys.exit(1)
+    elif args.command == "heartbeat":
+        sys.exit(cmd_heartbeat(args))
     else:
         parser.print_help()
         sys.exit(1)
