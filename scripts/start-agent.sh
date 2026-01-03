@@ -34,11 +34,16 @@ trap cleanup EXIT
 # Parse arguments
 ISSUE_ID=""
 FILTER_LABEL=""
+AGENT_CLI=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --label)
             FILTER_LABEL="$2"
+            shift 2
+            ;;
+        --agent-cli)
+            AGENT_CLI="$2"
             shift 2
             ;;
         *)
@@ -47,6 +52,20 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
+
+# Resolve Agent CLI
+if [ -z "$AGENT_CLI" ]; then
+    # Try to get from config if tambour is available
+    if command -v python3 &> /dev/null; then
+        AGENT_CLI=$(PYTHONPATH="$REPO_ROOT/tambour/src" python3 -m tambour config get agent.default_cli 2>/dev/null) || true
+    fi
+fi
+
+# Fallback to claude if still empty
+if [ -z "$AGENT_CLI" ]; then
+    echo "💡 Note: No agent CLI specified or configured. Defaulting to 'claude'."
+    AGENT_CLI="claude"
+fi
 
 # Get issue ID from argument or pick next ready task
 if [ -z "$ISSUE_ID" ]; then
@@ -94,7 +113,7 @@ fi
 
 ABSOLUTE_PATH="$(cd "$WORKTREE_PATH" && pwd)"
 echo ""
-echo "=== Launching Claude in worktree ==="
+echo "=== Launching $AGENT_CLI in worktree ==="
 echo "Path: $ABSOLUTE_PATH"
 echo ""
 
@@ -159,16 +178,16 @@ else
     PROMPT="$BASE_PROMPT"
 fi
 
-# Start Claude in the worktree with the task prompt
-claude "$PROMPT"
-CLAUDE_EXIT=$?
+# Start Agent in the worktree with the task prompt
+$AGENT_CLI "$PROMPT"
+AGENT_EXIT=$?
 
 # Clear claimed issue so trap doesn't unclaim on normal exit
-if [ $CLAUDE_EXIT -eq 0 ]; then
+if [ $AGENT_EXIT -eq 0 ]; then
     CLAIMED_ISSUE=""
 else
     echo ""
-    echo "Claude exited with code $CLAUDE_EXIT"
+    echo "$AGENT_CLI exited with code $AGENT_EXIT"
 fi
 
 # Check if worktree still exists (wasn't merged during the session)
@@ -190,4 +209,4 @@ if [ -d "$WORKTREE_PATH" ]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 fi
 
-exit $CLAUDE_EXIT
+exit $AGENT_EXIT

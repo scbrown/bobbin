@@ -84,6 +84,13 @@ class DaemonConfig:
 
 
 @dataclass
+class AgentConfig:
+    """Configuration for the agent."""
+
+    default_cli: str = "claude"  # Default CLI command to run
+
+
+@dataclass
 class WorktreeConfig:
     """Configuration for worktree paths."""
 
@@ -96,6 +103,7 @@ class Config:
 
     version: str = "1"
     daemon: DaemonConfig = field(default_factory=DaemonConfig)
+    agent: AgentConfig = field(default_factory=AgentConfig)
     worktree: WorktreeConfig = field(default_factory=WorktreeConfig)
     plugins: dict[str, PluginConfig] = field(default_factory=dict)
     context_providers: dict[str, ContextProviderConfig] = field(default_factory=dict)
@@ -161,6 +169,12 @@ class Config:
             auto_recover=daemon_data.get("auto_recover", False),
         )
 
+        # Parse agent config
+        agent_data = data.get("agent", {})
+        agent = AgentConfig(
+            default_cli=agent_data.get("default_cli", "claude"),
+        )
+
         # Parse worktree config
         worktree_data = data.get("worktree", {})
         worktree = WorktreeConfig(
@@ -201,3 +215,26 @@ class Config:
         """Get all enabled context providers sorted by order (lowest first)."""
         providers = [p for p in self.context_providers.values() if p.enabled]
         return sorted(providers, key=lambda p: p.order)
+
+    def get_value(self, key_path: str) -> Any:
+        """Get a configuration value by dot-separated path.
+
+        Args:
+            key_path: Dot-separated path to value (e.g. "agent.default_cli").
+
+        Returns:
+            The configuration value.
+
+        Raises:
+            KeyError: If path is invalid.
+        """
+        parts = key_path.split(".")
+        current = self
+        for part in parts:
+            if hasattr(current, part):
+                current = getattr(current, part)
+            elif isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                raise KeyError(f"Invalid config path: {key_path}")
+        return current

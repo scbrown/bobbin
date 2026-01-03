@@ -7,16 +7,24 @@ default:
     @just --list tambour
 
 # Spawn an agent on the next ready task
-agent:
-    ./scripts/start-agent.sh
+agent cli="":
+    ./scripts/start-agent.sh ${if cli == "" { "" } else { "--agent-cli " + cli }}
 
 # Spawn an agent on a specific issue
-agent-for issue:
-    ./scripts/start-agent.sh {{issue}}
+agent-for issue cli="":
+    ./scripts/start-agent.sh {{issue}} ${if cli == "" { "" } else { "--agent-cli " + cli }}
 
 # Spawn an agent filtered by label (e.g., just tambour agent-label tambour)
-agent-label label:
-    ./scripts/start-agent.sh --label {{label}}
+agent-label label cli="":
+    ./scripts/start-agent.sh --label {{label}} ${if cli == "" { "" } else { "--agent-cli " + cli }}
+
+# Spawn a Gemini agent on the next ready task
+gemini:
+    ./scripts/start-agent.sh --agent-cli gemini
+
+# Spawn a Gemini agent on a specific issue
+gemini-for issue:
+    ./scripts/start-agent.sh {{issue}} --agent-cli gemini
 
 # Finish and merge an agent's work (prompts to continue to next task)
 finish issue:

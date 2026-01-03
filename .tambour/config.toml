@@ -9,6 +9,9 @@ health_interval = 60          # Seconds between health checks
 zombie_threshold = 300        # Seconds before task is considered zombie
 auto_recover = false          # Automatically unclaim zombies
 
+[agent]
+default_cli = "gemini"
+
 [worktree]
 base_path = "../{repo}-worktrees"
 

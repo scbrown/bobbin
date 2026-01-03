@@ -283,6 +283,9 @@ Agents working across multiple repositories.
 [tambour]
 version = "1"
 
+[agent]
+default_cli = "claude"        # Default agent CLI command
+
 [daemon]
 health_interval = 60          # Seconds between health checks
 zombie_threshold = 300        # Seconds before task is considered zombie

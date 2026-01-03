@@ -56,11 +56,16 @@ def create_parser() -> argparse.ArgumentParser:
 
     # config command
     config_parser = subparsers.add_parser("config", help="Configuration management")
-    config_parser.add_argument(
-        "config_command",
-        choices=["validate"],
-        help="Configuration operation",
+    config_subparsers = config_parser.add_subparsers(
+        dest="config_command", help="Config subcommands"
     )
+
+    # config validate
+    config_subparsers.add_parser("validate", help="Validate configuration")
+
+    # config get
+    get_parser = config_subparsers.add_parser("get", help="Get configuration value")
+    get_parser.add_argument("key", help="Configuration key (e.g. agent.default_cli)")
 
     # context command
     context_parser = subparsers.add_parser("context", help="Context provider management")
@@ -190,6 +195,23 @@ def cmd_daemon(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_config_get(args: argparse.Namespace) -> int:
+    """Handle 'config get' command."""
+    from tambour.config import Config
+
+    try:
+        config = Config.load_or_default()
+        value = config.get_value(args.key)
+        print(value)
+        return 0
+    except KeyError:
+        print(f"Error: Config key not found: {args.key}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error reading config: {e}", file=sys.stderr)
+        return 1
+
+
 def cmd_config_validate(args: argparse.Namespace) -> int:
     """Handle 'config validate' command."""
     from tambour.config import Config
@@ -198,6 +220,7 @@ def cmd_config_validate(args: argparse.Namespace) -> int:
         config = Config.load()
         print(f"Configuration valid: {config.config_path}")
         print(f"  Version: {config.version}")
+        print(f"  Agent CLI: {config.agent.default_cli}")
         print(f"  Plugins: {len(config.plugins)}")
         for name, plugin in config.plugins.items():
             status = "enabled" if plugin.enabled else "disabled"
@@ -241,6 +264,8 @@ def main() -> NoReturn:
     elif args.command == "config":
         if args.config_command == "validate":
             sys.exit(cmd_config_validate(args))
+        elif args.config_command == "get":
+            sys.exit(cmd_config_get(args))
         else:
             parser.parse_args(["config", "--help"])
             sys.exit(1)

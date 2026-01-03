@@ -116,6 +116,14 @@ just tambour agent-for bobbin-j0x
 # Spawn agent filtered by label (e.g., focus on "backend" tasks)
 just tambour agent-label backend
 
+# Spawn with specific CLI (overrides config)
+just tambour agent cli="gemini"
+just tambour agent-for bobbin-j0x cli="gemini"
+
+# Convenience recipes for Gemini
+just tambour gemini
+just tambour gemini-for bobbin-j0x
+
 # Spawn multiple agents rapidly
 for i in 1 2 3; do
     just tambour agent &
@@ -133,6 +141,21 @@ just tambour abort bobbin-j0x
 # After agent completes, merge and cleanup
 just tambour finish bobbin-j0x
 ```
+
+## Configuration
+
+Tambour can be configured via `.tambour/config.toml` in the repository root.
+
+```toml
+[agent]
+default_cli = "claude"        # Default agent CLI (e.g., "claude", "gemini")
+
+[daemon]
+health_interval = 60
+zombie_threshold = 300
+```
+
+You can override the default CLI per-invocation using the `--agent-cli` flag with the script, or the `cli` parameter with `just`.
 
 ## Current Features
 
