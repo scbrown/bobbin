@@ -110,3 +110,18 @@ def test_event_env_vars():
     assert env["TAMBOUR_ISSUE_ID"] == "issue-123"
     assert env["TAMBOUR_CUSTOM"] == "value"
     assert "TAMBOUR_TIMESTAMP" in env
+
+
+def test_event_env_vars_with_paths():
+    """Test that path variables are correctly set in environment."""
+    event = Event(
+        event_type=EventType.BRANCH_MERGED,
+        main_repo=Path("/path/to/repo"),
+        beads_db=Path("/path/to/beads"),
+    )
+
+    env = event.to_env()
+
+    assert env["TAMBOUR_MAIN_REPO"] == "/path/to/repo"
+    assert env["TAMBOUR_BEADS_DB"] == "/path/to/beads"
+

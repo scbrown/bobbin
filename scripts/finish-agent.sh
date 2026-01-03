@@ -57,8 +57,10 @@ emit_event() {
 
     if command -v python3 &> /dev/null; then
         PYTHONPATH="$REPO_ROOT/tambour/src" python3 -m tambour events emit "$event_type" \
-            ${issue_id:+"--issue" "$issue_id"} \
-            ${worktree:+"--worktree" "$worktree"} \
+            ${issue_id:+--issue "$issue_id"} \
+            ${worktree:+--worktree "$worktree"} \
+            --main-repo "$REPO_ROOT" \
+            --beads-db "$REPO_ROOT/.beads" \
             "${extra_args[@]}" \
             2>/dev/null || true
     fi
@@ -143,8 +145,8 @@ if [ "$DO_MERGE" = true ]; then
         else
             # Unexpected failure - show diagnostics
             echo ""
-            echo "ℹ️  Note: Worktree at $WORKTREE_PATH could not be automatically removed."
-            echo "   This usually means it contains uncommitted changes or unpushed commits."
+            echo "⚠️  Warning: Could not remove worktree at $WORKTREE_PATH"
+            echo "   The worktree may have uncommitted changes or other issues."
             echo ""
 
             # Show what's in the worktree that might be blocking removal
@@ -243,8 +245,8 @@ if [ "$DO_MERGE" = true ]; then
         echo "To clean up this worktree after exiting, run:"
         echo "  rm -rf $WORKTREE_PATH && git -C $REPO_ROOT worktree prune"
     else
-        echo "Done! Branch merged and issue closed, but worktree needs manual cleanup."
-        echo "See note above for details."
+        echo "Done! Branch merged, issue closed, but worktree needs manual cleanup."
+        echo "See warning above for details."
     fi
 
     # === Task Depletion Flow ===

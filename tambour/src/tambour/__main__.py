@@ -45,6 +45,8 @@ def create_parser() -> argparse.ArgumentParser:
     emit_parser.add_argument("event", help="Event type to emit")
     emit_parser.add_argument("--issue", help="Issue ID")
     emit_parser.add_argument("--worktree", help="Worktree path")
+    emit_parser.add_argument("--main-repo", help="Main repository path")
+    emit_parser.add_argument("--beads-db", help="Beads database path")
     emit_parser.add_argument(
         "--extra",
         action="append",
@@ -181,6 +183,8 @@ def cmd_events_emit(args: argparse.Namespace) -> int:
         event_type=event_type,
         issue_id=args.issue,
         worktree=Path(args.worktree) if args.worktree else None,
+        main_repo=Path(args.main_repo) if args.main_repo else None,
+        beads_db=Path(args.beads_db) if args.beads_db else None,
         extra=extra,
     )
 
