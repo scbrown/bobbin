@@ -10,6 +10,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# Valid event names that plugins can subscribe to
+VALID_EVENT_NAMES = frozenset({
+    "agent.spawned",
+    "agent.finished",
+    "branch.merged",
+    "task.claimed",
+    "task.completed",
+    "health.zombie",
+})
+
 
 @dataclass
 class PluginConfig:
@@ -24,15 +34,34 @@ class PluginConfig:
 
     @classmethod
     def from_dict(cls, name: str, data: dict[str, Any]) -> PluginConfig:
-        """Create a PluginConfig from a dictionary."""
+        """Create a PluginConfig from a dictionary.
+
+        Args:
+            name: The plugin name (from config section).
+            data: Dictionary of plugin configuration values.
+
+        Returns:
+            A configured PluginConfig instance.
+
+        Raises:
+            ValueError: If required fields are missing or event name is invalid.
+        """
         if "on" not in data:
             raise ValueError(f"Plugin '{name}' missing required field 'on'")
         if "run" not in data:
             raise ValueError(f"Plugin '{name}' missing required field 'run'")
 
+        event_name = data["on"]
+        if event_name not in VALID_EVENT_NAMES:
+            valid_events = ", ".join(sorted(VALID_EVENT_NAMES))
+            raise ValueError(
+                f"Plugin '{name}' has invalid event name '{event_name}'. "
+                f"Valid events are: {valid_events}"
+            )
+
         return cls(
             name=name,
-            on=data["on"],
+            on=event_name,
             run=data["run"],
             blocking=data.get("blocking", False),
             timeout=data.get("timeout", 30),
