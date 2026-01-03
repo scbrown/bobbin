@@ -8,15 +8,15 @@ default:
 
 # Spawn an agent on the next ready task
 agent cli="":
-    ./scripts/start-agent.sh ${if cli == "" { "" } else { "--agent-cli " + cli }}
+    ./scripts/start-agent.sh {{ if cli == "" { "" } else { "--agent-cli " + cli } }}
 
 # Spawn an agent on a specific issue
 agent-for issue cli="":
-    ./scripts/start-agent.sh {{issue}} ${if cli == "" { "" } else { "--agent-cli " + cli }}
+    ./scripts/start-agent.sh {{issue}} {{ if cli == "" { "" } else { "--agent-cli " + cli } }}
 
 # Spawn an agent filtered by label (e.g., just tambour agent-label tambour)
 agent-label label cli="":
-    ./scripts/start-agent.sh --label {{label}} ${if cli == "" { "" } else { "--agent-cli " + cli }}
+    ./scripts/start-agent.sh --label {{label}} {{ if cli == "" { "" } else { "--agent-cli " + cli } }}
 
 # Spawn a Gemini agent on the next ready task
 gemini:
