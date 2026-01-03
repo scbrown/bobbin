@@ -49,6 +49,10 @@ abort issue:
     git branch -D "{{issue}}" 2>/dev/null || true
     echo "Done."
 
+# Cleanup a stuck task (retry finish/merge for closed/broken tasks)
+cleanup issue:
+    ./scripts/finish-agent.sh {{issue}} --merge --no-continue
+
 # Check for zombied tasks (in_progress but no agent)
 health:
     ./scripts/health-check.sh
