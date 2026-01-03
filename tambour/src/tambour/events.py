@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -102,13 +104,15 @@ class PluginResult:
 class EventDispatcher:
     """Dispatches events to configured plugins."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, log_file: Path | None = None):
         """Initialize the dispatcher with configuration.
 
         Args:
             config: The tambour configuration.
+            log_file: Optional path to log file for async results.
         """
         self.config = config
+        self.log_file = log_file
 
     def dispatch(self, event: Event) -> list[PluginResult]:
         """Dispatch an event to all configured plugins.
@@ -118,19 +122,65 @@ class EventDispatcher:
 
         Returns:
             List of results from each plugin execution.
+            For non-blocking plugins, returns a placeholder result.
         """
         plugins = self.config.get_plugins_for_event(event.event_type.value)
         results: list[PluginResult] = []
 
         for plugin in plugins:
-            result = self._execute_plugin(plugin, event)
-            results.append(result)
+            if plugin.blocking:
+                result = self._execute_plugin(plugin, event)
+                self._log_result(result)
+                results.append(result)
 
-            # Stop on blocking plugin failure
-            if plugin.blocking and not result.success:
-                break
+                # Stop on blocking plugin failure
+                if not result.success:
+                    break
+            else:
+                # Fire and forget (async)
+                self._dispatch_async(plugin, event)
+                
+                # Return placeholder
+                results.append(PluginResult(
+                    plugin_name=plugin.name,
+                    success=True,
+                    output="(Async execution started)",
+                    duration_ms=0,
+                ))
 
         return results
+
+    def _dispatch_async(self, plugin: PluginConfig, event: Event) -> None:
+        """Run a plugin in a background thread."""
+        def task() -> None:
+            result = self._execute_plugin(plugin, event)
+            self._log_result(result)
+
+        # Use daemon thread so it doesn't block program exit if needed,
+        # but note that this means operations might be cut short on CLI exit.
+        # Given "fire-and-forget", this is often acceptable behavior for CLIs,
+        # or the user should run via the daemon.
+        thread = threading.Thread(target=task, daemon=False)
+        thread.start()
+
+    def _log_result(self, result: PluginResult) -> None:
+        """Log the result of a plugin execution."""
+        if not self.log_file:
+            return
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+        status = "SUCCESS" if result.success else "FAILED"
+        
+        try:
+            with open(self.log_file, "a") as f:
+                f.write(f"[{timestamp}] [{status}] Plugin '{result.plugin_name}': ")
+                if result.exit_code is not None:
+                    f.write(f"exit_code={result.exit_code} ")
+                f.write(f"duration={result.duration_ms}ms\n")
+                if result.error:
+                    f.write(f"  Error: {result.error}\n")
+        except Exception as e:
+            print(f"Failed to write to log file: {e}", file=sys.stderr)
 
     def _execute_plugin(self, plugin: PluginConfig, event: Event) -> PluginResult:
         """Execute a single plugin.
