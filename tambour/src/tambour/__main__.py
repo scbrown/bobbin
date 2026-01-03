@@ -162,7 +162,12 @@ def cmd_events_emit(args: argparse.Namespace) -> int:
     )
 
     config = Config.load_or_default()
-    dispatcher = EventDispatcher(config)
+    
+    # Use a log file for async execution results
+    log_file = Path.home() / ".tambour" / "events.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    dispatcher = EventDispatcher(config, log_file=log_file)
     results = dispatcher.dispatch(event)
 
     if not results:
