@@ -18,6 +18,23 @@ if [ "$1" = "--fix" ]; then
     FIX_MODE=true
 fi
 
+# Event emission helper
+emit_event() {
+    local event_type="$1"
+    local issue_id="$2"
+    local worktree="$3"
+    shift 3
+    local extra_args=("$@")
+
+    if command -v python3 &> /dev/null; then
+        PYTHONPATH="$REPO_ROOT/tambour/src" python3 -m tambour events emit "$event_type" \
+            ${issue_id:+--issue "$issue_id"} \
+            ${worktree:+--worktree "$worktree"} \
+            "${extra_args[@]}" \
+            2>/dev/null || true
+    fi
+}
+
 cd "$REPO_ROOT"
 
 echo "=== Tambour Health Check ==="
@@ -74,6 +91,9 @@ echo "$IN_PROGRESS" | jq -r '.[] | "\(.id)\t\(.title)"' | while IFS=$'\t' read -
     echo "    Status: $STATUS"
 
     if [[ "$STATUS" == ZOMBIE* ]]; then
+        # Emit health.zombie event
+        emit_event "health.zombie" "$ISSUE_ID" "$WORKTREE_PATH" "--extra" "zombie_reason=$STATUS"
+
         if [ "$FIX_MODE" = true ]; then
             echo "    Action: Unclaiming..."
             bd update "$ISSUE_ID" --status open --assignee "" 2>/dev/null && echo "    Done." || echo "    Failed to unclaim."

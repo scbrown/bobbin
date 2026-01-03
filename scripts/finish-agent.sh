@@ -47,6 +47,23 @@ BRANCH_NAME="$ISSUE_ID"
 DO_MERGE=false
 NO_CONTINUE=false
 
+# Event emission helper
+emit_event() {
+    local event_type="$1"
+    local issue_id="$2"
+    local worktree="$3"
+    shift 3
+    local extra_args=("$@")
+
+    if command -v python3 &> /dev/null; then
+        PYTHONPATH="$REPO_ROOT/tambour/src" python3 -m tambour events emit "$event_type" \
+            ${issue_id:+--issue "$issue_id"} \
+            ${worktree:+--worktree "$worktree"} \
+            "${extra_args[@]}" \
+            2>/dev/null || true
+    fi
+}
+
 # Check if we're running from inside the target worktree
 RUNNING_FROM_TARGET_WORKTREE=false
 if [ "$RUNNING_FROM_WORKTREE" = true ]; then
@@ -98,6 +115,9 @@ if [ "$DO_MERGE" = true ]; then
 
     # Merge the branch
     git merge "$BRANCH_NAME" --no-edit
+
+    # Emit branch.merged event
+    emit_event "branch.merged" "$ISSUE_ID" "$WORKTREE_PATH"
 
     # Before removing the worktree, detach HEAD there so the branch isn't checked out
     # This is necessary because git won't let us delete a branch that's checked out anywhere
@@ -170,6 +190,9 @@ if [ "$DO_MERGE" = true ]; then
 
     echo "Closing issue..."
     bd close "$ISSUE_ID"
+
+    # Emit task.completed event
+    emit_event "task.completed" "$ISSUE_ID" "$WORKTREE_PATH"
 
     # Check for epics that became eligible for closure
     EPICS_AFTER=$(bd epic status --json 2>/dev/null || echo '[]')

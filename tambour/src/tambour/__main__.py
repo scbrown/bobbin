@@ -45,6 +45,11 @@ def create_parser() -> argparse.ArgumentParser:
     emit_parser.add_argument("event", help="Event type to emit")
     emit_parser.add_argument("--issue", help="Issue ID")
     emit_parser.add_argument("--worktree", help="Worktree path")
+    emit_parser.add_argument(
+        "--extra",
+        action="append",
+        help="Extra data (key=value). Can be used multiple times.",
+    )
 
     # daemon command
     daemon_parser = subparsers.add_parser("daemon", help="Daemon management")
@@ -155,10 +160,18 @@ def cmd_events_emit(args: argparse.Namespace) -> int:
         print(f"Valid events: {valid_events}", file=sys.stderr)
         return 1
 
+    extra = {}
+    if args.extra:
+        for item in args.extra:
+            if "=" in item:
+                key, value = item.split("=", 1)
+                extra[key] = value
+
     event = Event(
         event_type=event_type,
         issue_id=args.issue,
         worktree=Path(args.worktree) if args.worktree else None,
+        extra=extra,
     )
 
     config = Config.load_or_default()

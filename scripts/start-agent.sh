@@ -31,6 +31,23 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Event emission helper
+emit_event() {
+    local event_type="$1"
+    local issue_id="$2"
+    local worktree="$3"
+    shift 3
+    local extra_args=("$@")
+
+    if command -v python3 &> /dev/null; then
+        PYTHONPATH="$REPO_ROOT/tambour/src" python3 -m tambour events emit "$event_type" \
+            ${issue_id:+--issue "$issue_id"} \
+            ${worktree:+--worktree "$worktree"} \
+            "${extra_args[@]}" \
+            2>/dev/null || true
+    fi
+}
+
 # Parse arguments
 ISSUE_ID=""
 FILTER_LABEL=""
@@ -101,12 +118,18 @@ if [ -d "$WORKTREE_PATH" ]; then
 else
     echo "Creating worktree with beads redirect..."
     bd worktree create "$WORKTREE_PATH" --branch "$ISSUE_ID"
+    
+    # Emit agent.spawned event
+    ABSOLUTE_PATH="$(cd "$WORKTREE_PATH" && pwd)"
+    emit_event "agent.spawned" "$ISSUE_ID" "$ABSOLUTE_PATH"
 fi
 
 # Claim the issue (sets assignee + status to in_progress)
 echo "Claiming $ISSUE_ID..."
 if bd update "$ISSUE_ID" --claim; then
     CLAIMED_ISSUE="$ISSUE_ID"
+    ABSOLUTE_PATH="$(cd "$WORKTREE_PATH" && pwd)"
+    emit_event "task.claimed" "$ISSUE_ID" "$ABSOLUTE_PATH"
 else
     echo "Warning: Could not claim issue (may already be claimed)"
 fi
@@ -185,6 +208,9 @@ else
     $AGENT_CLI "$PROMPT"
 fi
 AGENT_EXIT=$?
+
+# Emit agent.finished event
+emit_event "agent.finished" "$ISSUE_ID" "$ABSOLUTE_PATH" "--extra" "exit_code=$AGENT_EXIT"
 
 # Clear claimed issue so trap doesn't unclaim on normal exit
 if [ $AGENT_EXIT -eq 0 ]; then
