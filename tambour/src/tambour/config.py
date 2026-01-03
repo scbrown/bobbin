@@ -197,6 +197,7 @@ class Config:
         return cls(
             version=version,
             daemon=daemon,
+            agent=agent,
             worktree=worktree,
             plugins=plugins,
             context_providers=context_providers,
