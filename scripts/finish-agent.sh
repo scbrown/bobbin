@@ -19,11 +19,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 GIT_TOPLEVEL="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"
 
 # Check if this is a worktree by looking for the .git file (worktrees have a .git file, main repo has .git directory)
+RUNNING_FROM_WORKTREE=false
 if [ -f "$GIT_TOPLEVEL/.git" ]; then
     # We're in a worktree - need to find the main repo
     # The .git file contains: "gitdir: /path/to/main/.git/worktrees/branch-name"
     MAIN_GIT_DIR="$(cat "$GIT_TOPLEVEL/.git" | sed 's/^gitdir: //' | sed 's|/worktrees/.*||')"
     REPO_ROOT="$(dirname "$MAIN_GIT_DIR")"
+    RUNNING_FROM_WORKTREE=true
 else
     # We're in the main repo
     REPO_ROOT="$GIT_TOPLEVEL"
@@ -44,6 +46,17 @@ WORKTREE_PATH="${WORKTREE_BASE}/${ISSUE_ID}"
 BRANCH_NAME="$ISSUE_ID"
 DO_MERGE=false
 NO_CONTINUE=false
+
+# Check if we're running from inside the target worktree
+RUNNING_FROM_TARGET_WORKTREE=false
+if [ "$RUNNING_FROM_WORKTREE" = true ]; then
+    # Get the absolute path of both directories and compare
+    TARGET_ABS="$(cd "$WORKTREE_PATH" 2>/dev/null && pwd)" || true
+    CURRENT_ABS="$GIT_TOPLEVEL"
+    if [ "$TARGET_ABS" = "$CURRENT_ABS" ]; then
+        RUNNING_FROM_TARGET_WORKTREE=true
+    fi
+fi
 
 # Parse remaining arguments
 shift
@@ -98,37 +111,44 @@ if [ "$DO_MERGE" = true ]; then
     echo "Removing worktree..."
     if ! bd worktree remove "$WORKTREE_PATH" 2>/dev/null; then
         WORKTREE_REMOVED=false
-        echo ""
-        echo "⚠️  Warning: Could not remove worktree at $WORKTREE_PATH"
-        echo "   The worktree may have uncommitted changes or other issues."
-        echo ""
 
-        # Show what's in the worktree that might be blocking removal
-        if [ -d "$WORKTREE_PATH" ]; then
-            echo "   Worktree status:"
-
-            # Check for uncommitted changes
-            UNCOMMITTED=$(cd "$WORKTREE_PATH" && git status --porcelain 2>/dev/null)
-            if [ -n "$UNCOMMITTED" ]; then
-                echo "   - Uncommitted changes:"
-                echo "$UNCOMMITTED" | sed 's/^/       /'
-            fi
-
-            # Check for unpushed commits (compare to main)
-            UNPUSHED=$(cd "$WORKTREE_PATH" && git log main..HEAD --oneline 2>/dev/null)
-            if [ -n "$UNPUSHED" ]; then
-                echo "   - Commits not in main (should be merged now):"
-                echo "$UNPUSHED" | sed 's/^/       /'
-            fi
-
+        if [ "$RUNNING_FROM_TARGET_WORKTREE" = true ]; then
+            # Expected failure - we're inside the worktree we're trying to remove
+            echo "   (Worktree in use - will need manual cleanup after exit)"
+        else
+            # Unexpected failure - show diagnostics
             echo ""
-            echo "   To manually clean up, run:"
-            echo "     rm -rf $WORKTREE_PATH"
-            echo "     git worktree prune"
+            echo "⚠️  Warning: Could not remove worktree at $WORKTREE_PATH"
+            echo "   The worktree may have uncommitted changes or other issues."
+            echo ""
+
+            # Show what's in the worktree that might be blocking removal
+            if [ -d "$WORKTREE_PATH" ]; then
+                echo "   Worktree status:"
+
+                # Check for uncommitted changes
+                UNCOMMITTED=$(cd "$WORKTREE_PATH" && git status --porcelain 2>/dev/null)
+                if [ -n "$UNCOMMITTED" ]; then
+                    echo "   - Uncommitted changes:"
+                    echo "$UNCOMMITTED" | sed 's/^/       /'
+                fi
+
+                # Check for unpushed commits (compare to main)
+                UNPUSHED=$(cd "$WORKTREE_PATH" && git log main..HEAD --oneline 2>/dev/null)
+                if [ -n "$UNPUSHED" ]; then
+                    echo "   - Commits not in main (should be merged now):"
+                    echo "$UNPUSHED" | sed 's/^/       /'
+                fi
+
+                echo ""
+                echo "   To manually clean up, run:"
+                echo "     rm -rf $WORKTREE_PATH"
+                echo "     git worktree prune"
+            fi
+            echo ""
+            echo "   Continuing with remaining cleanup..."
+            echo ""
         fi
-        echo ""
-        echo "   Continuing with remaining cleanup..."
-        echo ""
     fi
 
     echo "Deleting branch..."
@@ -179,13 +199,20 @@ if [ "$DO_MERGE" = true ]; then
     echo ""
     if [ "$WORKTREE_REMOVED" = true ]; then
         echo "Done! Branch merged and worktree cleaned up."
+    elif [ "$RUNNING_FROM_TARGET_WORKTREE" = true ]; then
+        echo "Done! Branch merged and issue closed."
+        echo ""
+        echo "To clean up this worktree after exiting, run:"
+        echo "  rm -rf $WORKTREE_PATH && git -C $REPO_ROOT worktree prune"
     else
         echo "Done! Branch merged, issue closed, but worktree needs manual cleanup."
         echo "See warning above for details."
     fi
 
     # === Task Depletion Flow ===
-    if [ "$NO_CONTINUE" = true ]; then
+    # Skip if --no-continue was passed, or if running from inside the target worktree
+    # (can't spawn new agent from inside a worktree we just finished), or if not interactive
+    if [ "$NO_CONTINUE" = true ] || [ "$RUNNING_FROM_TARGET_WORKTREE" = true ] || [ ! -t 0 ]; then
         exit 0
     fi
 
