@@ -282,11 +282,9 @@ impl MetadataStore {
     pub fn upsert_coupling(&self, coupling: &FileCoupling) -> Result<()> {
         self.conn.execute(
             r#"INSERT INTO coupling (file_a, file_b, score, co_changes, last_co_change)
-               VALUES (
-                   (SELECT id FROM files WHERE path = ?1),
-                   (SELECT id FROM files WHERE path = ?2),
-                   ?3, ?4, ?5
-               )
+               SELECT f1.id, f2.id, ?3, ?4, ?5
+               FROM files f1, files f2
+               WHERE f1.path = ?1 AND f2.path = ?2
                ON CONFLICT(file_a, file_b) DO UPDATE SET
                    score = excluded.score,
                    co_changes = excluded.co_changes,
