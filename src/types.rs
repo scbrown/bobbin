@@ -26,6 +26,7 @@ pub enum ChunkType {
     Module,
     Impl,
     Trait,
+    Doc,
     Other,
 }
 
@@ -41,6 +42,7 @@ impl std::fmt::Display for ChunkType {
             ChunkType::Module => write!(f, "module"),
             ChunkType::Impl => write!(f, "impl"),
             ChunkType::Trait => write!(f, "trait"),
+            ChunkType::Doc => write!(f, "doc"),
             ChunkType::Other => write!(f, "other"),
         }
     }

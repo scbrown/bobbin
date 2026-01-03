@@ -443,6 +443,7 @@ fn parse_chunk_type(s: &str) -> crate::types::ChunkType {
         "module" => crate::types::ChunkType::Module,
         "impl" => crate::types::ChunkType::Impl,
         "trait" => crate::types::ChunkType::Trait,
+        "doc" => crate::types::ChunkType::Doc,
         _ => crate::types::ChunkType::Other,
     }
 }
