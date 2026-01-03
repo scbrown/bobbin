@@ -6,6 +6,7 @@ optionally triggers recovery actions.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -98,8 +99,6 @@ class HealthChecker:
                 return []
 
             # Parse JSON output
-            import json
-
             return json.loads(result.stdout)
         except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
             return []
@@ -123,8 +122,6 @@ class HealthChecker:
             if result.returncode != 0:
                 return None
 
-            import json
-
             return json.loads(result.stdout)
         except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
             return None
@@ -146,15 +143,16 @@ class HealthChecker:
         worktree_path = self._find_worktree(issue_id)
         worktree_exists = worktree_path is not None and worktree_path.exists()
 
-        # Check if agent process is running (if worktree exists)
-        process_running = False
+        is_alive = False
+        last_activity = None
+        
         if worktree_exists and worktree_path:
-            process_running = self._is_process_running_in_worktree(worktree_path)
+            is_alive, last_activity = self._check_heartbeat(worktree_path)
 
         # A task is a zombie if it's in_progress but:
         # 1. Has no worktree, OR
-        # 2. Has a worktree but no agent process running in it
-        is_zombie = status == "in_progress" and (not worktree_exists or not process_running)
+        # 2. Has a worktree but is not alive (no heartbeat or process)
+        is_zombie = status == "in_progress" and (not worktree_exists or not is_alive)
 
         return TaskHealth(
             issue_id=issue_id,
@@ -163,7 +161,35 @@ class HealthChecker:
             worktree_path=worktree_path,
             worktree_exists=worktree_exists,
             is_zombie=is_zombie,
+            last_activity=last_activity,
         )
+
+    def _check_heartbeat(self, worktree_path: Path) -> tuple[bool, datetime | None]:
+        """Check heartbeat status for a worktree.
+
+        Returns:
+            Tuple of (is_alive, last_activity).
+        """
+        heartbeat_file = worktree_path / ".tambour" / "heartbeat"
+        
+        # Priority: Check heartbeat file
+        if heartbeat_file.exists():
+            try:
+                data = json.loads(heartbeat_file.read_text())
+                timestamp_str = data.get("timestamp")
+                if timestamp_str:
+                    last_activity = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+                    age = (datetime.now(timezone.utc) - last_activity).total_seconds()
+                    
+                    # Alive if heartbeat is fresh
+                    is_alive = age < self.zombie_threshold
+                    return is_alive, last_activity
+            except (json.JSONDecodeError, ValueError, OSError):
+                pass
+        
+        # Fallback: Check process
+        is_alive = self._is_process_running_in_worktree(worktree_path)
+        return is_alive, None
 
     def _is_process_running_in_worktree(self, worktree_path: Path) -> bool:
         """Check if any process has the worktree as its CWD.

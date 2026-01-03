@@ -19,10 +19,17 @@ cd "$REPO_ROOT"
 
 # Track if we claimed an issue (for cleanup on failure)
 CLAIMED_ISSUE=""
+HEARTBEAT_PID=""
 
 # Cleanup handler - unclaim if we exit before Claude takes over
 cleanup() {
     local exit_code=$?
+    
+    # Stop heartbeat if running
+    if [ -n "$HEARTBEAT_PID" ]; then
+        kill "$HEARTBEAT_PID" 2>/dev/null || true
+    fi
+
     if [ -n "$CLAIMED_ISSUE" ] && [ $exit_code -ne 0 ]; then
         echo ""
         echo "Script failed - unclaiming $CLAIMED_ISSUE..."
@@ -199,6 +206,12 @@ if [ -n "$INJECTED_CONTEXT" ]; then
 ${INJECTED_CONTEXT}"
 else
     PROMPT="$BASE_PROMPT"
+fi
+
+# Start heartbeat writer
+if command -v python3 &> /dev/null; then
+    PYTHONPATH="$REPO_ROOT/tambour/src" python3 -m tambour heartbeat "$ABSOLUTE_PATH" >/dev/null 2>&1 &
+    HEARTBEAT_PID=$!
 fi
 
 # Start Agent in the worktree with the task prompt
