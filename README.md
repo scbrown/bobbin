@@ -33,10 +33,10 @@ bobbin init
 # Index your codebase (downloads embedding model on first run)
 bobbin index
 
-# Search for code semantically (coming soon)
+# Search for code semantically
 bobbin search "authentication middleware"
 
-# Keyword search (coming soon)
+# Keyword search
 bobbin grep "handleAuth"
 ```
 
@@ -64,7 +64,7 @@ bobbin index --verbose      # Show detailed statistics
 bobbin index --json         # Output in JSON format
 ```
 
-### `bobbin search <QUERY>` (coming soon)
+### `bobbin search <QUERY>`
 
 Semantic search across your codebase using vector similarity.
 
@@ -74,7 +74,7 @@ bobbin search "database connection" --limit 20
 bobbin search "auth" --type rust
 ```
 
-### `bobbin grep <PATTERN>` (coming soon)
+### `bobbin grep <PATTERN>`
 
 Keyword and regex search using SQLite FTS5.
 
@@ -83,7 +83,7 @@ bobbin grep "TODO"
 bobbin grep "handleRequest" --ignore-case
 ```
 
-### `bobbin status` (coming soon)
+### `bobbin status`
 
 Show index statistics.
 
@@ -167,6 +167,7 @@ Bobbin uses Tree-sitter for structure-aware parsing. The following languages hav
 | Rust | `.rs` | functions, impl blocks, structs, enums, traits, modules |
 | TypeScript | `.ts`, `.tsx` | functions, methods, classes, interfaces |
 | Python | `.py` | functions, classes |
+| Markdown | `.md` | headers, sections |
 
 Other file types fall back to line-based chunking (50 lines per chunk with 10-line overlap).
 
@@ -215,7 +216,7 @@ cargo check
 
 ## Roadmap
 
-### Phase 1: Foundation (MVP) - In Progress
+### Phase 1: Foundation (MVP) - Complete
 - [x] Tree-sitter code indexing (Rust, TypeScript, Python)
 - [x] LanceDB vector storage
 - [x] SQLite metadata + FTS
@@ -223,9 +224,9 @@ cargo check
 - [x] CLI: `index` command (full and incremental)
 - [x] Configuration management
 - [x] ONNX embedding generation
-- [ ] CLI: `search` command
-- [ ] CLI: `grep` command
-- [ ] CLI: `status` command
+- [x] CLI: `search` command
+- [x] CLI: `grep` command
+- [x] CLI: `status` command
 
 ### Phase 2: Intelligence
 - [ ] Semantic + hybrid search

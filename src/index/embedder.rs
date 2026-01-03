@@ -23,21 +23,21 @@ impl ModelConfig {
                 repo: "Xenova/all-MiniLM-L6-v2".to_string(),
                 dim: 384,
                 max_seq: 256,
-                onnx_path: "model.onnx".to_string(),
+                onnx_path: "onnx/model.onnx".to_string(),
             }),
             "bge-small-en-v1.5" => Ok(Self {
                 name: name.to_string(),
                 repo: "Xenova/bge-small-en-v1.5".to_string(),
                 dim: 384,
                 max_seq: 512,
-                onnx_path: "model.onnx".to_string(),
+                onnx_path: "onnx/model.onnx".to_string(),
             }),
             "gte-small" => Ok(Self {
                 name: name.to_string(),
                 repo: "Xenova/gte-small".to_string(),
                 dim: 384,
                 max_seq: 512,
-                onnx_path: "model.onnx".to_string(),
+                onnx_path: "onnx/model.onnx".to_string(),
             }),
             _ => anyhow::bail!(
                 "Unsupported model: {}. Supported: all-MiniLM-L6-v2, bge-small-en-v1.5, gte-small",
@@ -223,6 +223,13 @@ pub async fn ensure_model(cache_dir: &Path, model_name: &str) -> Result<PathBuf>
 
     std::fs::create_dir_all(&model_dir)
         .with_context(|| format!("Failed to create model directory: {}", model_dir.display()))?;
+
+    if let Some(parent) = model_path.parent() {
+        if !parent.exists() {
+             std::fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create model parent directory: {}", parent.display()))?;
+        }
+    }
 
     eprintln!("Downloading embedding model {}...", model_name);
 
