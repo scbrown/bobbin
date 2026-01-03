@@ -82,6 +82,48 @@ class TestPluginConfig:
             assert plugin.on == event_name
 
 
+class TestContextProviderConfig:
+    """Tests for ContextProviderConfig parsing."""
+
+    def test_from_dict_with_required_fields_only(self):
+        """Test parsing provider with only required fields."""
+        data = {"run": "tree.sh"}
+        provider = ContextProviderConfig.from_dict("tree", data)
+
+        assert provider.name == "tree"
+        assert provider.run == "tree.sh"
+        # Check defaults
+        assert provider.timeout == 10
+        assert provider.enabled is True
+        assert provider.order == 100
+        assert provider.options == {}
+
+    def test_from_dict_with_options(self):
+        """Test parsing provider with extra options."""
+        data = {
+            "run": "tree.sh",
+            "exclude": [".git", "node_modules"],
+            "depth": 3,
+            "timeout": 20,
+        }
+        provider = ContextProviderConfig.from_dict("tree", data)
+
+        assert provider.name == "tree"
+        assert provider.run == "tree.sh"
+        assert provider.timeout == 20
+        assert provider.options == {
+            "exclude": [".git", "node_modules"],
+            "depth": 3,
+        }
+
+    def test_from_dict_missing_run_field(self):
+        """Test error when 'run' field is missing."""
+        data = {"exclude": []}
+        with pytest.raises(ValueError) as exc_info:
+            ContextProviderConfig.from_dict("broken", data)
+        assert "missing required field 'run'" in str(exc_info.value)
+
+
 class TestConfig:
     """Tests for Config parsing."""
 

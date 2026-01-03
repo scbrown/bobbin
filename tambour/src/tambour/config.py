@@ -47,6 +47,7 @@ class ContextProviderConfig:
     timeout: int = 10  # seconds (should be fast)
     enabled: bool = True
     order: int = 100  # Lower runs first (for ordering providers)
+    options: dict[str, Any] = field(default_factory=dict)  # Extra provider-specific options
 
     @classmethod
     def from_dict(cls, name: str, data: dict[str, Any]) -> ContextProviderConfig:
@@ -65,12 +66,23 @@ class ContextProviderConfig:
         if "run" not in data:
             raise ValueError(f"Context provider '{name}' missing required field 'run'")
 
+        # Extract known fields
+        run = data["run"]
+        timeout = data.get("timeout", 10)
+        enabled = data.get("enabled", True)
+        order = data.get("order", 100)
+
+        # Collect any remaining fields as options
+        known_keys = {"run", "timeout", "enabled", "order"}
+        options = {k: v for k, v in data.items() if k not in known_keys}
+
         return cls(
             name=name,
-            run=data["run"],
-            timeout=data.get("timeout", 10),
-            enabled=data.get("enabled", True),
-            order=data.get("order", 100),
+            run=run,
+            timeout=timeout,
+            enabled=enabled,
+            order=order,
+            options=options,
         )
 
 

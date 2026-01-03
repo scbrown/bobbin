@@ -295,6 +295,13 @@ auto_recover = false          # Automatically unclaim zombies
 base_path = "../{repo}-worktrees"   # Template for worktree location
 # {repo} expands to repository name
 
+[context.providers.tree]
+run = "tambour/providers/tree.sh"
+timeout = 10
+# Arbitrary options are passed as env vars (e.g. TREE_EXCLUDE)
+exclude = [".git", "node_modules", "target"]
+depth = 4
+
 [plugins.refresh-bobbin]
 on = "branch.merged"
 run = "bobbin index --incremental"

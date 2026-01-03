@@ -119,6 +119,17 @@ class ContextCollector:
         env = os.environ.copy()
         env.update(request.to_env())
 
+        # Inject provider options as environment variables
+        # Format: PROVIDERNAME_KEY (e.g. TREE_EXCLUDE for "tree" provider and "exclude" option)
+        for key, value in provider.options.items():
+            if isinstance(value, list):
+                env_value = ",".join(str(v) for v in value)
+            else:
+                env_value = str(value)
+            
+            env_var_name = f"{provider.name.upper()}_{key.upper()}"
+            env[env_var_name] = env_value
+
         # Set working directory
         cwd = request.worktree or request.main_repo or Path.cwd()
 
