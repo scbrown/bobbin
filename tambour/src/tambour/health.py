@@ -146,8 +146,15 @@ class HealthChecker:
         worktree_path = self._find_worktree(issue_id)
         worktree_exists = worktree_path is not None and worktree_path.exists()
 
-        # A task is a zombie if it's in_progress but has no worktree
-        is_zombie = status == "in_progress" and not worktree_exists
+        # Check if agent process is running (if worktree exists)
+        process_running = False
+        if worktree_exists and worktree_path:
+            process_running = self._is_process_running_in_worktree(worktree_path)
+
+        # A task is a zombie if it's in_progress but:
+        # 1. Has no worktree, OR
+        # 2. Has a worktree but no agent process running in it
+        is_zombie = status == "in_progress" and (not worktree_exists or not process_running)
 
         return TaskHealth(
             issue_id=issue_id,
@@ -157,6 +164,26 @@ class HealthChecker:
             worktree_exists=worktree_exists,
             is_zombie=is_zombie,
         )
+
+    def _is_process_running_in_worktree(self, worktree_path: Path) -> bool:
+        """Check if any process has the worktree as its CWD.
+
+        Uses lsof to find processes with CWD in the given path.
+        """
+        try:
+            # lsof +d <path> lists open files in path
+            # grep " cwd " filters for Current Working Directory
+            cmd = f"lsof +d '{worktree_path}' | grep ' cwd '"
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+            )
+            return result.returncode == 0
+        except subprocess.TimeoutExpired:
+            return False
 
     def _find_worktree(self, issue_id: str) -> Path | None:
         """Find the worktree path for a task.
