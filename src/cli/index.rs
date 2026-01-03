@@ -75,13 +75,13 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     let db_path = Config::db_path(&repo_root);
     let lance_path = Config::lance_path(&repo_root);
-    let data_dir = Config::data_dir(&repo_root);
+    let model_dir = Config::model_cache_dir()?;
 
     // Ensure the embedding model is downloaded
     if output.verbose && !output.quiet && !output.json {
         println!("  Checking embedding model...");
     }
-    embedder::ensure_model(&data_dir).await
+    embedder::ensure_model(&model_dir, &config.embedding.model).await
         .context("Failed to ensure embedding model is available")?;
 
     // Open storage
@@ -90,8 +90,41 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let mut vector_store = VectorStore::open(&lance_path).await
         .context("Failed to open vector store")?;
 
+    // Check for model change and migration
+    let current_model = config.embedding.model.as_str();
+    let stored_model = metadata_store.get_meta("embedding_model")?;
+
+    if let Some(stored) = stored_model {
+        if stored != current_model {
+            if !output.quiet && !output.json {
+                println!(
+                    "{} Embedding model changed from {} to {}. Re-indexing...",
+                    "!".yellow(),
+                    stored,
+                    current_model
+                );
+            }
+
+            // Wipe index for migration
+            metadata_store.clear_index()?;
+            
+            // Re-create vector store
+            // We need to drop the existing connection first to release locks
+            drop(vector_store);
+            if lance_path.exists() {
+                std::fs::remove_dir_all(&lance_path)
+                    .with_context(|| format!("Failed to remove vector store at {}", lance_path.display()))?;
+            }
+            vector_store = VectorStore::open(&lance_path).await
+                .context("Failed to re-open vector store")?;
+        }
+    }
+
+    // Update stored model
+    metadata_store.set_meta("embedding_model", current_model)?;
+
     // Load the embedder
-    let mut embed = Embedder::load(&data_dir)
+    let mut embed = Embedder::load(&model_dir, current_model)
         .context("Failed to load embedding model")?;
 
     // Create the parser

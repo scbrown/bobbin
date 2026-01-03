@@ -15,6 +15,10 @@ impl MetadataStore {
         let conn = Connection::open(path)
             .with_context(|| format!("Failed to open database: {}", path.display()))?;
 
+        // Enable foreign keys
+        conn.execute("PRAGMA foreign_keys = ON", [])
+            .context("Failed to enable foreign keys")?;
+
         let store = Self { conn };
         store.init_schema()?;
         Ok(store)
@@ -78,6 +82,12 @@ impl MetadataStore {
                 co_changes INTEGER,
                 last_co_change INTEGER,
                 PRIMARY KEY (file_a, file_b)
+            );
+
+            -- Global metadata
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
             );
 
             -- Indexes
@@ -429,6 +439,36 @@ impl MetadataStore {
     /// Get the database path
     pub fn path(&self) -> Option<String> {
         self.conn.path().map(|p| p.to_owned())
+    }
+
+    /// Get global metadata value
+    pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
+        let mut stmt = self.conn.prepare("SELECT value FROM meta WHERE key = ?1")?;
+        let result = stmt
+            .query_row([key], |row| row.get(0))
+            .optional()?;
+        Ok(result)
+    }
+
+    /// Set global metadata value
+    pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+            [key, value],
+        )?;
+        Ok(())
+    }
+
+    /// Clear all index data (files, chunks, coupling) but keep global metadata
+    pub fn clear_index(&self) -> Result<()> {
+        // Deleting from files cascades to chunks and coupling due to foreign keys
+        // if ON DELETE CASCADE is set.
+        // Schema says:
+        // file_id INTEGER REFERENCES files(id) ON DELETE CASCADE
+        // file_a INTEGER REFERENCES files(id) ON DELETE CASCADE
+        // So just deleting files is enough.
+        self.conn.execute("DELETE FROM files", [])?;
+        Ok(())
     }
 }
 

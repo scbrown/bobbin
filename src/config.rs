@@ -150,4 +150,11 @@ impl Config {
     pub fn lance_path(repo_root: &Path) -> PathBuf {
         Self::data_dir(repo_root).join("vectors")
     }
+
+    /// Get the global model cache directory
+    pub fn model_cache_dir() -> Result<PathBuf> {
+        let project_dirs = directories::ProjectDirs::from("dev", "bobbin", "bobbin")
+            .context("Failed to determine user directories")?;
+        Ok(project_dirs.cache_dir().join("models"))
+    }
 }

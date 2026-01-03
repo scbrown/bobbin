@@ -6,30 +6,66 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokenizers::Tokenizer;
 
-const MODEL_NAME: &str = "all-MiniLM-L6-v2";
-const EMBEDDING_DIM: usize = 384;
-const MAX_SEQ_LENGTH: usize = 256;
+#[derive(Clone, Debug)]
+pub struct ModelConfig {
+    pub name: String,
+    pub repo: String,
+    pub dim: usize,
+    pub max_seq: usize,
+    pub onnx_path: String,
+}
 
-/// HuggingFace model repository for ONNX sentence transformers
-const HF_MODEL_REPO: &str = "sentence-transformers/all-MiniLM-L6-v2";
+impl ModelConfig {
+    pub fn get(name: &str) -> Result<Self> {
+        match name {
+            "all-MiniLM-L6-v2" => Ok(Self {
+                name: name.to_string(),
+                repo: "Xenova/all-MiniLM-L6-v2".to_string(),
+                dim: 384,
+                max_seq: 256,
+                onnx_path: "model.onnx".to_string(),
+            }),
+            "bge-small-en-v1.5" => Ok(Self {
+                name: name.to_string(),
+                repo: "Xenova/bge-small-en-v1.5".to_string(),
+                dim: 384,
+                max_seq: 512,
+                onnx_path: "model.onnx".to_string(),
+            }),
+            "gte-small" => Ok(Self {
+                name: name.to_string(),
+                repo: "Xenova/gte-small".to_string(),
+                dim: 384,
+                max_seq: 512,
+                onnx_path: "model.onnx".to_string(),
+            }),
+            _ => anyhow::bail!(
+                "Unsupported model: {}. Supported: all-MiniLM-L6-v2, bge-small-en-v1.5, gte-small",
+                name
+            ),
+        }
+    }
+}
 
-/// Generates embeddings using ONNX runtime with all-MiniLM-L6-v2
+/// Generates embeddings using ONNX runtime
 pub struct Embedder {
     session: Session,
     tokenizer: Tokenizer,
+    config: ModelConfig,
 }
 
 impl Embedder {
     /// Load an embedding model from the cache directory
-    pub fn load(cache_dir: &Path) -> Result<Self> {
-        let model_dir = cache_dir.join(MODEL_NAME);
-        let model_path = model_dir.join("model.onnx");
+    pub fn load(cache_dir: &Path, model_name: &str) -> Result<Self> {
+        let config = ModelConfig::get(model_name)?;
+        let model_dir = cache_dir.join(&config.name);
+        let model_path = model_dir.join(&config.onnx_path);
         let tokenizer_path = model_dir.join("tokenizer.json");
 
         if !model_path.exists() || !tokenizer_path.exists() {
             anyhow::bail!(
-                "Model not found. Run `bobbin init` to download the model, or manually download to {}",
-                model_dir.display()
+                "Model {} not found. Run `bobbin init` or `bobbin index` to download it.",
+                model_name
             );
         }
 
@@ -38,12 +74,18 @@ impl Embedder {
             .with_intra_threads(4)
             .map_err(|e| anyhow::anyhow!("Failed to set thread count: {}", e))?
             .commit_from_file(&model_path)
-            .map_err(|e| anyhow::anyhow!("Failed to load ONNX model from {}: {}", model_path.display(), e))?;
+            .map_err(|e| {
+                anyhow::anyhow!("Failed to load ONNX model from {}: {}", model_path.display(), e)
+            })?;
 
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}", e))?;
 
-        Ok(Self { session, tokenizer })
+        Ok(Self {
+            session,
+            tokenizer,
+            config,
+        })
     }
 
     /// Generate embeddings for a batch of texts
@@ -63,7 +105,7 @@ impl Embedder {
             .map(|e| e.get_ids().len())
             .max()
             .unwrap_or(0)
-            .min(MAX_SEQ_LENGTH);
+            .min(self.config.max_seq);
 
         let mut input_ids = Array2::<i64>::zeros((batch_size, max_len));
         let mut attention_mask = Array2::<i64>::zeros((batch_size, max_len));
@@ -156,12 +198,12 @@ impl Embedder {
 
     /// Get the embedding dimension
     pub fn dimension(&self) -> usize {
-        EMBEDDING_DIM
+        self.config.dim
     }
 
     /// Get the model name
     pub fn model_name(&self) -> &str {
-        MODEL_NAME
+        &self.config.name
     }
 }
 
@@ -169,9 +211,10 @@ impl Embedder {
 pub type SharedEmbedder = Arc<Embedder>;
 
 /// Download the embedding model if not present
-pub async fn ensure_model(cache_dir: &Path) -> Result<PathBuf> {
-    let model_dir = cache_dir.join(MODEL_NAME);
-    let model_path = model_dir.join("model.onnx");
+pub async fn ensure_model(cache_dir: &Path, model_name: &str) -> Result<PathBuf> {
+    let config = ModelConfig::get(model_name)?;
+    let model_dir = cache_dir.join(&config.name);
+    let model_path = model_dir.join(&config.onnx_path);
     let tokenizer_path = model_dir.join("tokenizer.json");
 
     if model_path.exists() && tokenizer_path.exists() {
@@ -181,19 +224,19 @@ pub async fn ensure_model(cache_dir: &Path) -> Result<PathBuf> {
     std::fs::create_dir_all(&model_dir)
         .with_context(|| format!("Failed to create model directory: {}", model_dir.display()))?;
 
-    eprintln!("Downloading embedding model {}...", MODEL_NAME);
+    eprintln!("Downloading embedding model {}...", model_name);
 
     // Download model.onnx from HuggingFace
     let model_url = format!(
-        "https://huggingface.co/{}/resolve/main/onnx/model.onnx",
-        HF_MODEL_REPO
+        "https://huggingface.co/{}/resolve/main/{}",
+        config.repo, config.onnx_path
     );
     download_file(&model_url, &model_path).await?;
 
     // Download tokenizer.json
     let tokenizer_url = format!(
         "https://huggingface.co/{}/resolve/main/tokenizer.json",
-        HF_MODEL_REPO
+        config.repo
     );
     download_file(&tokenizer_url, &tokenizer_path).await?;
 
@@ -210,11 +253,7 @@ async fn download_file(url: &str, path: &Path) -> Result<()> {
         .with_context(|| format!("Failed to download {}", url))?;
 
     if !response.status().is_success() {
-        anyhow::bail!(
-            "Failed to download {}: HTTP {}",
-            url,
-            response.status()
-        );
+        anyhow::bail!("Failed to download {}: HTTP {}", url, response.status());
     }
 
     let bytes = response
