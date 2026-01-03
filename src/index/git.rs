@@ -32,10 +32,12 @@ impl GitAnalyzer {
     /// Analyze git history to find files that change together
     pub fn analyze_coupling(&self, depth: usize, threshold: u32) -> Result<Vec<FileCoupling>> {
         // Get commit log with files changed
+        // Format: COMMIT:<hash>:<timestamp>
+        // followed by list of files
         let output = Command::new("git")
             .args([
                 "log",
-                "--pretty=format:%H",
+                "--pretty=format:COMMIT:%H:%ct",
                 "--name-only",
                 &format!("-{}", depth),
             ])
@@ -49,6 +51,9 @@ impl GitAnalyzer {
         // Build co-change matrix
         let mut co_changes: HashMap<(String, String), u32> = HashMap::new();
         let mut last_seen: HashMap<(String, String), i64> = HashMap::new();
+        
+        // Track max co-changes for normalization
+        let mut max_co_changes = 0;
 
         for (commit_time, files) in commits {
             // Count co-changes for all pairs of files in this commit
@@ -60,11 +65,26 @@ impl GitAnalyzer {
                         (files[j].clone(), files[i].clone())
                     };
 
-                    *co_changes.entry(key.clone()).or_insert(0) += 1;
-                    last_seen.insert(key, commit_time);
+                    let count = co_changes.entry(key.clone()).or_insert(0);
+                    *count += 1;
+                    if *count > max_co_changes {
+                        max_co_changes = *count;
+                    }
+                    
+                    // Keep the most recent time
+                    let last = last_seen.entry(key).or_insert(0);
+                    if commit_time > *last {
+                        *last = commit_time;
+                    }
                 }
             }
         }
+
+        // Current time for recency calculation
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
 
         // Convert to FileCoupling, filtering by threshold
         let mut couplings: Vec<FileCoupling> = co_changes
@@ -79,7 +99,7 @@ impl GitAnalyzer {
                 FileCoupling {
                     file_a,
                     file_b,
-                    score: calculate_coupling_score(count, last_co_change),
+                    score: calculate_coupling_score(count, max_co_changes, last_co_change, now),
                     co_changes: count,
                     last_co_change,
                 }
@@ -148,17 +168,24 @@ fn parse_git_log(log: &str) -> Vec<(i64, Vec<String>)> {
     let mut current_time = 0i64;
 
     for line in log.lines() {
+        let line = line.trim();
         if line.is_empty() {
+            continue;
+        }
+
+        if line.starts_with("COMMIT:") {
+            // If we have accumulated files for the previous commit, push them
             if !current_files.is_empty() {
                 commits.push((current_time, std::mem::take(&mut current_files)));
             }
-        } else if line.len() == 40 && line.chars().all(|c| c.is_ascii_hexdigit()) {
-            // This is a commit hash
-            if !current_files.is_empty() {
-                commits.push((current_time, std::mem::take(&mut current_files)));
+            
+            // Parse new commit header: COMMIT:<hash>:<timestamp>
+            let parts: Vec<&str> = line.split(':').collect();
+            if parts.len() >= 3 {
+                if let Ok(ts) = parts[2].parse::<i64>() {
+                    current_time = ts;
+                }
             }
-            // Use commit count as proxy for time ordering
-            current_time = commits.len() as i64;
         } else {
             // This is a file path
             current_files.push(line.to_string());
@@ -173,9 +200,66 @@ fn parse_git_log(log: &str) -> Vec<(i64, Vec<String>)> {
     commits
 }
 
-/// Calculate coupling score based on co-change frequency and recency
-fn calculate_coupling_score(co_changes: u32, _last_co_change: i64) -> f32 {
-    // Simple scoring: log of co-changes
-    // TODO: Factor in recency
-    (co_changes as f32).ln_1p()
+/// Calculate coupling score based on frequency and recency
+fn calculate_coupling_score(co_changes: u32, max_co_changes: u32, last_co_change: i64, now: i64) -> f32 {
+    if max_co_changes == 0 {
+        return 0.0;
+    }
+
+    // Frequency score: normalized count (0.0 - 1.0)
+    let freq_score = co_changes as f32 / max_co_changes as f32;
+
+    // Recency score: decay based on days since last co-change
+    // Decay factor: 0.99 per day? Or simpler: 1 / (1 + days)
+    let days_diff = ((now - last_co_change) as f32 / 86400.0).max(0.0);
+    // Use a slow decay: at 30 days, score is ~0.5. at 0 days, score is 1.0
+    // 30 days * k = 1 => k = 1/30? 
+    // Let's use 1 / (1 + days/30)
+    let recency_score = 1.0 / (1.0 + days_diff / 30.0);
+
+    // Weighted combination: 70% frequency, 30% recency
+    // This emphasizes pairs that change often, with a boost if they changed recently
+    0.7 * freq_score + 0.3 * recency_score
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_git_log() {
+        let log = "COMMIT:hash1:1000\nfile1.rs\nfile2.rs\n\nCOMMIT:hash2:2000\nfile2.rs\nfile3.rs";
+        let commits = parse_git_log(log);
+        
+        assert_eq!(commits.len(), 2);
+        
+        assert_eq!(commits[0].0, 1000);
+        assert_eq!(commits[0].1, vec!["file1.rs", "file2.rs"]);
+        
+        assert_eq!(commits[1].0, 2000);
+        assert_eq!(commits[1].1, vec!["file2.rs", "file3.rs"]);
+    }
+
+    #[test]
+    fn test_calculate_coupling_score() {
+        let now = 10000;
+        let max_co_changes = 10;
+        
+        // Case 1: High frequency, recent
+        let score1 = calculate_coupling_score(10, max_co_changes, now, now);
+        // freq = 1.0, recency = 1.0 -> 1.0
+        assert!((score1 - 1.0).abs() < 0.001);
+
+        // Case 2: Low frequency, recent
+        let score2 = calculate_coupling_score(1, max_co_changes, now, now);
+        // freq = 0.1, recency = 1.0 -> 0.07 + 0.3 = 0.37
+        assert!((score2 - 0.37).abs() < 0.001);
+
+        // Case 3: High frequency, old
+        // 30 days old = 2592000 seconds
+        let old = now - 30 * 86400;
+        let score3 = calculate_coupling_score(10, max_co_changes, old, now);
+        // freq = 1.0, recency = 1/(1+1) = 0.5 -> 0.7 + 0.15 = 0.85
+        assert!((score3 - 0.85).abs() < 0.001);
+    }
 }

@@ -338,6 +338,44 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         pb.finish_and_clear();
     }
 
+    // Analyze and store git coupling if enabled
+    if config.git.coupling_enabled {
+        if output.verbose && !output.quiet && !output.json {
+             println!("  Analyzing git coupling...");
+        }
+        
+        // We use the fully qualified path to avoid import issues if it's not imported
+        match crate::index::git::GitAnalyzer::new(&repo_root) {
+             Ok(analyzer) => {
+                 match analyzer.analyze_coupling(config.git.coupling_depth, config.git.coupling_threshold) {
+                     Ok(couplings) => {
+                         let mut count = 0;
+                         metadata_store.begin_transaction()?;
+                         for coupling in couplings {
+                             if metadata_store.upsert_coupling(&coupling).is_ok() {
+                                 count += 1;
+                             }
+                         }
+                         metadata_store.commit()?;
+                         
+                         if output.verbose && !output.quiet && !output.json {
+                             println!("  Stored {} coupling relations", count);
+                         }
+                     },
+                     Err(e) => {
+                         // Warn but don't fail indexing
+                         if !output.quiet && !output.json {
+                             println!("{} Failed to analyze git coupling: {}", "!".yellow(), e);
+                         }
+                     }
+                 }
+             },
+             Err(_) => {
+                 // Not a git repo or git not available, just ignore
+             }
+        }
+    }
+
     let elapsed = start_time.elapsed();
 
     // Output results
