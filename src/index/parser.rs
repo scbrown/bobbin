@@ -1,4 +1,5 @@
 use anyhow::Result;
+use regex::Regex;
 use std::path::Path;
 use tree_sitter::{Language, Node};
 
@@ -9,6 +10,7 @@ pub struct Parser {
     rust_parser: tree_sitter::Parser,
     typescript_parser: tree_sitter::Parser,
     python_parser: tree_sitter::Parser,
+    header_regex: Regex,
 }
 
 impl Parser {
@@ -18,6 +20,7 @@ impl Parser {
             rust_parser: create_parser(tree_sitter_rust::LANGUAGE.into())?,
             typescript_parser: create_parser(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())?,
             python_parser: create_parser(tree_sitter_python::LANGUAGE.into())?,
+            header_regex: Regex::new(r"(?m)^(#{1,6})\s+(.+)$")?,
         })
     }
 
@@ -29,6 +32,10 @@ impl Parser {
             // Unknown language - fall back to line-based chunking
             return Ok(self.chunk_by_lines(path, content));
         };
+
+        if lang == "markdown" {
+            return Ok(self.chunk_markdown(path, content));
+        }
 
         let parser = match lang {
             "rust" => &mut self.rust_parser,
@@ -52,6 +59,83 @@ impl Parser {
         }
 
         Ok(chunks)
+    }
+
+    /// Extract markdown chunks based on headers
+    fn chunk_markdown(&self, path: &Path, content: &str) -> Vec<Chunk> {
+        let mut chunks = Vec::new();
+        let matches: Vec<_> = self.header_regex.find_iter(content).collect();
+
+        if matches.is_empty() {
+            return self.chunk_by_lines(path, content);
+        }
+
+        // Handle preamble (content before first header)
+        if matches[0].start() > 0 {
+            let pre_content = &content[0..matches[0].start()];
+            if !pre_content.trim().is_empty() {
+                let end_line = byte_offset_to_line(content, matches[0].start());
+                chunks.push(Chunk {
+                    id: generate_chunk_id(path, 1, end_line),
+                    file_path: path.to_string_lossy().to_string(),
+                    chunk_type: ChunkType::Doc,
+                    name: Some("Preamble".to_string()),
+                    start_line: 1,
+                    end_line,
+                    content: pre_content.to_string(),
+                    language: "markdown".to_string(),
+                });
+            }
+        }
+
+        // Stack of (level, title)
+        let mut header_stack: Vec<(usize, String)> = Vec::new();
+
+        for i in 0..matches.len() {
+            let m = matches[i];
+            let start = m.start();
+            let end = if i + 1 < matches.len() {
+                matches[i + 1].start()
+            } else {
+                content.len()
+            };
+
+            let chunk_content = &content[start..end];
+            let start_line = byte_offset_to_line(content, start);
+            let end_line = byte_offset_to_line(content, end);
+
+            // Extract header level and title
+            let captures = self.header_regex.captures(&content[start..m.end()]).unwrap();
+            let hashes = captures.get(1).unwrap().as_str();
+            let raw_title = captures.get(2).unwrap().as_str().trim().to_string();
+            let level = hashes.len();
+
+            // Update stack: pop headers that are same level or deeper
+            while let Some((last_level, _)) = header_stack.last() {
+                if *last_level >= level {
+                    header_stack.pop();
+                } else {
+                    break;
+                }
+            }
+            header_stack.push((level, raw_title));
+
+            // Construct full name
+            let full_name = header_stack.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>().join(" > ");
+
+            chunks.push(Chunk {
+                id: generate_chunk_id(path, start_line, end_line),
+                file_path: path.to_string_lossy().to_string(),
+                chunk_type: ChunkType::Doc,
+                name: Some(full_name),
+                start_line,
+                end_line,
+                content: chunk_content.to_string(),
+                language: "markdown".to_string(),
+            });
+        }
+
+        chunks
     }
 
     /// Extract semantic chunks from a syntax tree
@@ -195,6 +279,13 @@ fn generate_chunk_id(path: &Path, start_line: u32, end_line: u32) -> String {
     let input = format!("{}:{}:{}", path.display(), start_line, end_line);
     let hash = Sha256::digest(input.as_bytes());
     hex::encode(&hash[..8])
+}
+
+fn byte_offset_to_line(content: &str, offset: usize) -> u32 {
+    if offset >= content.len() {
+        return content.lines().count() as u32;
+    }
+    content[..offset].chars().filter(|&c| c == '\n').count() as u32 + 1
 }
 
 #[cfg(test)]
@@ -365,5 +456,60 @@ class Dog:
         // No semantic chunks, should fall back to line-based
         assert!(!chunks.is_empty());
         assert!(chunks.iter().all(|c| c.chunk_type == ChunkType::Other));
+    }
+
+    #[test]
+    fn test_parse_markdown() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"# Title
+
+Preamble content.
+
+## Section 1
+Content 1.
+
+### Subsection 1.1
+Content 1.1.
+
+## Section 2
+Content 2.
+"#;
+        let path = PathBuf::from("README.md");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert_eq!(chunks.len(), 4);
+
+        // Header 1 (Title + Preamble)
+        assert_eq!(chunks[0].chunk_type, ChunkType::Doc);
+        assert_eq!(chunks[0].name, Some("Title".to_string()));
+        
+        // Header 2 (Section 1)
+        assert_eq!(chunks[1].chunk_type, ChunkType::Doc);
+        assert_eq!(chunks[1].name, Some("Title > Section 1".to_string()));
+
+        // Header 3 (Subsection 1.1)
+        assert_eq!(chunks[2].chunk_type, ChunkType::Doc);
+        assert_eq!(chunks[2].name, Some("Title > Section 1 > Subsection 1.1".to_string()));
+
+        // Header 4 (Section 2)
+        assert_eq!(chunks[3].chunk_type, ChunkType::Doc);
+        assert_eq!(chunks[3].name, Some("Title > Section 2".to_string()));
+    }
+
+    #[test]
+    fn test_markdown_preamble() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"Preamble content without header.
+
+# Title
+Content.
+"#;
+        let path = PathBuf::from("README.md");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert_eq!(chunks.len(), 2);
+        
+        assert_eq!(chunks[0].name, Some("Preamble".to_string()));
+        assert_eq!(chunks[1].name, Some("Title".to_string()));
     }
 }

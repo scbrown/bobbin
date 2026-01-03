@@ -381,6 +381,7 @@ fn chunk_type_to_str(ct: &ChunkType) -> &'static str {
         ChunkType::Module => "module",
         ChunkType::Impl => "impl",
         ChunkType::Trait => "trait",
+        ChunkType::Doc => "doc",
         ChunkType::Other => "other",
     }
 }
@@ -397,6 +398,7 @@ fn str_to_chunk_type(s: &str) -> ChunkType {
         "module" => ChunkType::Module,
         "impl" => ChunkType::Impl,
         "trait" => ChunkType::Trait,
+        "doc" => ChunkType::Doc,
         _ => ChunkType::Other,
     }
 }

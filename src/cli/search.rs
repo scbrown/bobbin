@@ -148,9 +148,10 @@ fn parse_chunk_type(s: &str) -> Result<ChunkType> {
         "module" | "mod" => Ok(ChunkType::Module),
         "impl" => Ok(ChunkType::Impl),
         "trait" => Ok(ChunkType::Trait),
+        "doc" | "documentation" => Ok(ChunkType::Doc),
         "other" => Ok(ChunkType::Other),
         _ => bail!(
-            "Unknown chunk type '{}'. Valid types: function, method, class, struct, enum, interface, module, impl, trait, other",
+            "Unknown chunk type '{}'. Valid types: function, method, class, struct, enum, interface, module, impl, trait, doc, other",
             s
         ),
     }

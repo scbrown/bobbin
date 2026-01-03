@@ -3,24 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Main configuration for Bobbin
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Config {
     pub index: IndexConfig,
     pub embedding: EmbeddingConfig,
     pub search: SearchConfig,
     pub git: GitConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            index: IndexConfig::default(),
-            embedding: EmbeddingConfig::default(),
-            search: SearchConfig::default(),
-            git: GitConfig::default(),
-        }
-    }
 }
 
 /// Configuration for indexing behavior
