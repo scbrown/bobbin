@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use super::OutputConfig;
 use crate::config::Config;
+use crate::storage::{MetadataStore, VectorStore};
 
 #[derive(Args)]
 pub struct InitArgs {
@@ -23,6 +24,8 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
 
     let data_dir = Config::data_dir(&repo_root);
     let config_path = Config::config_path(&repo_root);
+    let db_path = Config::db_path(&repo_root);
+    let lance_path = Config::lance_path(&repo_root);
 
     // Check if already initialized
     if config_path.exists() && !args.force {
@@ -44,6 +47,35 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
     let config = Config::default();
     config.save(&config_path)?;
 
+    if output.verbose && !output.quiet {
+        println!("  Creating config: {}", config_path.display());
+    }
+
+    // Initialize SQLite database with schema
+    if args.force && db_path.exists() {
+        std::fs::remove_file(&db_path)
+            .with_context(|| format!("Failed to remove existing database: {}", db_path.display()))?;
+    }
+    let _metadata_store = MetadataStore::open(&db_path)
+        .with_context(|| format!("Failed to initialize SQLite database: {}", db_path.display()))?;
+
+    if output.verbose && !output.quiet {
+        println!("  Creating database: {}", db_path.display());
+    }
+
+    // Initialize LanceDB vector store
+    if args.force && lance_path.exists() {
+        std::fs::remove_dir_all(&lance_path)
+            .with_context(|| format!("Failed to remove existing vector store: {}", lance_path.display()))?;
+    }
+    let _vector_store = VectorStore::open(&lance_path)
+        .await
+        .with_context(|| format!("Failed to initialize LanceDB: {}", lance_path.display()))?;
+
+    if output.verbose && !output.quiet {
+        println!("  Creating vector store: {}", lance_path.display());
+    }
+
     // Add .bobbin to .gitignore if it exists
     let gitignore_path = repo_root.join(".gitignore");
     if gitignore_path.exists() {
@@ -54,15 +86,26 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
                 .open(&gitignore_path)?;
             use std::io::Write;
             writeln!(file, "\n# Bobbin index data\n.bobbin/")?;
+
+            if output.verbose && !output.quiet {
+                println!("  Updated .gitignore");
+            }
         }
     }
 
     if output.json {
-        println!(r#"{{"status": "initialized", "path": "{}", "config": "{}"}}"#,
-                 data_dir.display(), config_path.display());
+        println!(
+            r#"{{"status": "initialized", "path": "{}", "config": "{}", "database": "{}", "vectors": "{}"}}"#,
+            data_dir.display(),
+            config_path.display(),
+            db_path.display(),
+            lance_path.display()
+        );
     } else if !output.quiet {
         println!("{} Bobbin initialized in {}", "✓".green(), data_dir.display());
-        println!("  Config: {}", config_path.display());
+        println!("  Config:   {}", config_path.display());
+        println!("  Database: {}", db_path.display());
+        println!("  Vectors:  {}", lance_path.display());
         println!("\nNext steps:");
         println!("  {} to build the index", "bobbin index".cyan());
         println!("  {} to search code", "bobbin search <query>".cyan());
