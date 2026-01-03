@@ -53,8 +53,8 @@ order = 10  # Runs first - gives agent immediate codebase visibility
 # See prd.md for full event list and payload documentation.
 
 # Example: Refresh bobbin index after merges
-# [plugins.refresh-bobbin]
-# on = "branch.merged"
-# run = "bobbin index --incremental"
-# blocking = false
-# timeout = 120
+[plugins.refresh-bobbin]
+on = "branch.merged"
+run = "bobbin index --incremental \"$TAMBOUR_MAIN_REPO\""
+blocking = false
+timeout = 120
