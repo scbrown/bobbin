@@ -53,12 +53,12 @@ emit_event() {
     local issue_id="$2"
     local worktree="$3"
     shift 3
-    local extra_args=("$@")
+    local extra_args=($@)
 
     if command -v python3 &> /dev/null; then
         PYTHONPATH="$REPO_ROOT/tambour/src" python3 -m tambour events emit "$event_type" \
-            ${issue_id:+--issue "$issue_id"} \
-            ${worktree:+--worktree "$worktree"} \
+            ${issue_id:+"--issue" "$issue_id"} \
+            ${worktree:+"--worktree" "$worktree"} \
             "${extra_args[@]}" \
             2>/dev/null || true
     fi
@@ -82,14 +82,14 @@ while [ $# -gt 0 ]; do
         --merge)
             DO_MERGE=true
             shift
-            ;;
+            ;; 
         --no-continue)
             NO_CONTINUE=true
             shift
-            ;;
+            ;; 
         *)
             shift
-            ;;
+            ;; 
     esac
 done
 
@@ -113,8 +113,13 @@ if [ "$DO_MERGE" = true ]; then
     # Ensure we're on main
     git checkout main
 
-    # Merge the branch
-    git merge "$BRANCH_NAME" --no-edit
+    # Check if branch exists before merging
+    if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+        # Merge the branch
+        git merge "$BRANCH_NAME" --no-edit
+    else
+        echo "Branch $BRANCH_NAME does not exist. Assuming changes are already merged or discarded."
+    fi
 
     # Emit branch.merged event
     emit_event "branch.merged" "$ISSUE_ID" "$WORKTREE_PATH"
@@ -138,8 +143,8 @@ if [ "$DO_MERGE" = true ]; then
         else
             # Unexpected failure - show diagnostics
             echo ""
-            echo "⚠️  Warning: Could not remove worktree at $WORKTREE_PATH"
-            echo "   The worktree may have uncommitted changes or other issues."
+            echo "ℹ️  Note: Worktree at $WORKTREE_PATH could not be automatically removed."
+            echo "   This usually means it contains uncommitted changes or unpushed commits."
             echo ""
 
             # Show what's in the worktree that might be blocking removal
@@ -174,11 +179,15 @@ if [ "$DO_MERGE" = true ]; then
     echo "Deleting branch..."
     # Use -d normally, but if that fails (e.g., worktree still exists but detached),
     # the branch should still be deletable since we detached HEAD
-    if ! git branch -d "$BRANCH_NAME" 2>/dev/null; then
-        # Branch might still show as checked out if worktree wasn't removed
-        # Since we detached HEAD, force delete should be safe (changes are merged)
-        echo "Standard delete failed, trying force delete (branch is merged)..."
-        git branch -D "$BRANCH_NAME"
+    if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+        if ! git branch -d "$BRANCH_NAME" 2>/dev/null; then
+            # Branch might still show as checked out if worktree wasn't removed
+            # Since we detached HEAD, force delete should be safe (changes are merged)
+            echo "Standard delete failed, trying force delete (branch is merged)..."
+            git branch -D "$BRANCH_NAME"
+        fi
+    else
+        echo "Branch $BRANCH_NAME already deleted."
     fi
 
     # Capture issue details before closing
@@ -189,7 +198,13 @@ if [ "$DO_MERGE" = true ]; then
     EPICS_BEFORE=$(bd epic status --json 2>/dev/null || echo '[]')
 
     echo "Closing issue..."
-    bd close "$ISSUE_ID"
+    # Check if issue is already closed
+    ISSUE_STATUS=$(echo "$ISSUE_JSON" | jq -r '.status // "unknown"')
+    if [ "$ISSUE_STATUS" = "closed" ] || [ "$ISSUE_STATUS" = "done" ]; then
+        echo "Issue $ISSUE_ID is already closed."
+    else
+        bd close "$ISSUE_ID" || echo "Warning: Could not close issue $ISSUE_ID"
+    fi
 
     # Emit task.completed event
     emit_event "task.completed" "$ISSUE_ID" "$WORKTREE_PATH"
@@ -201,7 +216,7 @@ if [ "$DO_MERGE" = true ]; then
     NEWLY_ELIGIBLE_EPICS=$(jq -n \
         --argjson before "$EPICS_BEFORE" \
         --argjson after "$EPICS_AFTER" \
-        '[($after[] | select(.eligible_for_close == true) | .epic.id)] -
+        '[($after[] | select(.eligible_for_close == true) | .epic.id)] - \
          [($before[] | select(.eligible_for_close == true) | .epic.id)] | .[]' 2>/dev/null || echo '')
 
     # Auto-close newly eligible epics
@@ -228,8 +243,8 @@ if [ "$DO_MERGE" = true ]; then
         echo "To clean up this worktree after exiting, run:"
         echo "  rm -rf $WORKTREE_PATH && git -C $REPO_ROOT worktree prune"
     else
-        echo "Done! Branch merged, issue closed, but worktree needs manual cleanup."
-        echo "See warning above for details."
+        echo "Done! Branch merged and issue closed, but worktree needs manual cleanup."
+        echo "See note above for details."
     fi
 
     # === Task Depletion Flow ===
