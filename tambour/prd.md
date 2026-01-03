@@ -180,6 +180,47 @@ Better ergonomics and discoverability.
 - [ ] `tambour events` - List recent events (from log)
 - [ ] Color output and progress indicators
 
+##### 2.5 Task Depletion & Context Continuity
+
+**Priority**: Low
+
+Maintain workflow momentum when tasks complete.
+
+**Requirements**:
+
+- [ ] Detect when ready queue is empty after task completion
+- [ ] Present completion summary showing:
+  - The completed task
+  - Any epics auto-closed (when all children complete)
+  - Any tasks closed via `closes:` references
+- [ ] Prompt user to create more tasks when queue is depleted
+- [ ] If user creates tasks, spawn new agent session with context injection
+- [ ] Context injection includes prior completion info so new agent has continuity
+
+**Flow**:
+
+1. `finish-agent.sh` completes → task closed
+2. Query `bd ready --json` for remaining tasks
+3. If empty:
+   - Show completion summary
+   - Prompt "Create more tasks? (y/n)"
+   - If yes, open interactive task creation
+   - After creation, spawn new agent with completion context
+4. If tasks remain:
+   - Prompt "Continue to next task? (y/n)"
+   - If yes, spawn with completion context injected
+
+**Context Injection Format**:
+
+```
+Previous session completed:
+- Task: bobbin-xyz "Implement feature X"
+- Also closed: bobbin-abc (via closes: reference)
+- Epic completed: bobbin-epic "Phase 1" (all children done)
+
+You are now assigned to: bobbin-new "Next task"
+```
+
 ---
 
 ### Phase 3: "The Weave" (Future)

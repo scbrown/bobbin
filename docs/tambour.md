@@ -131,6 +131,13 @@ just tambour finish bobbin-j0x
 
 ## Future Directions
 
+### Task Depletion & Context Continuity
+- Detect when ready queue is empty after task completion
+- Present completion summary (task, auto-closed epics, transitive closes)
+- Prompt user to create more tasks when queue is depleted
+- Spawn new agent sessions with completion context injected
+- Epic-aware: track when completing a task closes its parent epic
+
 ### Agent Pool Management
 - Configurable number of concurrent agents
 - Automatic respawning when agents complete
