@@ -1,0 +1,57 @@
+# Tambour Configuration
+# See tambour/prd.md for full schema documentation
+
+[tambour]
+version = "1"
+
+[daemon]
+health_interval = 60          # Seconds between health checks
+zombie_threshold = 300        # Seconds before task is considered zombie
+auto_recover = false          # Automatically unclaim zombies
+
+[worktree]
+base_path = "../{repo}-worktrees"
+
+# Context Providers
+# -----------------
+# Context providers generate content that gets injected into the agent prompt
+# at session start. They run in order (lowest first) and their stdout is
+# concatenated to form the injected context.
+#
+# Available environment variables:
+#   TAMBOUR_PROMPT     - The base prompt (task description)
+#   TAMBOUR_ISSUE_ID   - The issue being worked on
+#   TAMBOUR_WORKTREE   - Path to the worktree
+#   TAMBOUR_MAIN_REPO  - Path to the main repository
+
+[context.providers.tree]
+run = "tambour/providers/tree.sh"
+timeout = 10
+enabled = true
+order = 10  # Runs first - gives agent immediate codebase visibility
+
+# Future providers (examples):
+#
+# [context.providers.bobbin]
+# run = "bobbin search --relevant-to \"$TAMBOUR_PROMPT\" --limit 10"
+# timeout = 30
+# enabled = false
+# order = 20
+#
+# [context.providers.recent-changes]
+# run = "git log --oneline -10"
+# timeout = 5
+# enabled = false
+# order = 30
+
+# Event Plugins
+# -------------
+# Plugins run in response to lifecycle events.
+# See prd.md for full event list and payload documentation.
+
+# Example: Refresh bobbin index after merges
+# [plugins.refresh-bobbin]
+# on = "branch.merged"
+# run = "bobbin index --incremental"
+# blocking = false
+# timeout = 120
