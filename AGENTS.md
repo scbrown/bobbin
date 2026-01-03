@@ -1,15 +1,63 @@
-# Agent Instructions
+# Bobbin - Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+## Project Overview
 
-## Quick Reference
+Bobbin is a semantic code indexing tool written in Rust. It indexes codebases for semantic search using embeddings stored in LanceDB.
 
+## Agent Workflow
+
+This project uses [beads](https://github.com/steveyegge/beads) for issue tracking and **tambour** as an agent harness for worktree isolation.
+
+### Finding and Starting Work
+
+To start working on a task (via tambour harness):
+```bash
+just tambour agent                  # Auto-picks next ready task by priority
+just tambour agent-for bobbin-xx    # Work on specific issue
+just tambour agent-label <label>    # Filter by label
+```
+
+Or manually with native beads commands:
 ```bash
 bd ready              # Find available work
 bd show <id>          # View issue details
 bd update <id> --status in_progress  # Claim work
+```
+
+### Working on Tasks
+
+If you're in a worktree (working on a task):
+```bash
+git branch --show-current  # Shows the issue ID (e.g., bobbin-j0x)
+bd show $(git branch --show-current)  # Shows full issue details
+```
+
+**Do NOT start working on code changes directly in main** - use the worktree workflow instead.
+
+### Finishing Work
+
+To finish and merge (via tambour):
+```bash
+just tambour finish bobbin-xx
+```
+
+To abort/cancel (if started by mistake):
+```bash
+just tambour abort bobbin-xx
+```
+
+Manual completion (if not using tambour harness):
+```bash
 bd close <id>         # Complete work
-bd sync               # Sync with git
+```
+
+## Build Commands
+
+```bash
+cargo build           # Build the project
+cargo test            # Run tests
+cargo check           # Type check without building
+cargo clippy          # Lint
 ```
 
 ## Landing the Plane (Session Completion)
@@ -38,9 +86,11 @@ bd sync               # Sync with git
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 
-# Agent Development Notes
+## Tambour Development Notes
 
-## Tambour Tenets
+The `scripts/` directory and `justfile` contain **tambour** - an agent harness for beads. This code lives here temporarily but will eventually become its own module/project.
+
+### Tambour Tenets
 
 1. **Tambour enables workflows, it doesn't impose them.**
    The harness is agnostic to how you organize your work. It picks the next ready task by priority - no special filtering, no hardcoded labels. If you want to focus on a specific label, use `--label`. Your workflow, your rules.
@@ -50,46 +100,3 @@ bd sync               # Sync with git
 
 3. **Tambour will eventually be extracted.**
    It lives here temporarily while the interface stabilizes. When it needs to orchestrate agents across multiple repositories, it becomes its own project.
-
----
-
-## Tambour: Temporary Home
-
-The `scripts/` directory and `justfile` contain **tambour** - an agent harness for beads. This code lives here temporarily but will eventually become its own module/project.
-
-### What Belongs to Tambour (not Bobbin)
-
-```
-scripts/
-├── start-agent.sh      # Agent spawning with worktree isolation
-├── finish-agent.sh     # Cleanup and merge workflow
-└── health-check.sh     # Zombie task detection
-
-justfile                # Tambour recipes (agent, health, finish, etc.)
-docs/tambour.md         # Tambour vision and design
-```
-
-### Why It's Here
-
-Tambour emerged organically while setting up multi-agent workflows for bobbin development. Rather than prematurely extract it, we're letting it grow here until:
-
-1. The interface stabilizes
-2. The scope becomes clear
-3. Other projects need it
-
-### Future: Tambour as Standalone
-
-Tambour will eventually be a harness that coordinates:
-- **Beads** - Issue tracking and task assignment
-- **Bobbin** - Semantic code indexing for agent context
-- **Agents** - Claude instances working in isolated worktrees
-
-The extraction will happen when tambour needs to orchestrate agents across multiple repositories, not just bobbin.
-
-### What Belongs to Bobbin
-
-Everything else - the Rust codebase for semantic code indexing:
-- `src/` - Core indexing engine
-- `Cargo.toml` - Rust dependencies
-- `docs/architecture.md` - Bobbin design
-- CLI commands: `bobbin index`, `bobbin search`, etc.
