@@ -32,40 +32,45 @@ class PluginConfig:
     timeout: int = 30  # seconds
     enabled: bool = True
 
+
+@dataclass
+class ContextProviderConfig:
+    """Configuration for a context provider.
+
+    Context providers generate content that gets injected into the agent prompt
+    at session start. Unlike regular plugins that run for side effects, context
+    providers return text that becomes part of the agent's initial context.
+    """
+
+    name: str
+    run: str  # Command to execute (stdout becomes context)
+    timeout: int = 10  # seconds (should be fast)
+    enabled: bool = True
+    order: int = 100  # Lower runs first (for ordering providers)
+
     @classmethod
-    def from_dict(cls, name: str, data: dict[str, Any]) -> PluginConfig:
-        """Create a PluginConfig from a dictionary.
+    def from_dict(cls, name: str, data: dict[str, Any]) -> ContextProviderConfig:
+        """Create a ContextProviderConfig from a dictionary.
 
         Args:
-            name: The plugin name (from config section).
-            data: Dictionary of plugin configuration values.
+            name: The provider name (from config section).
+            data: Dictionary of provider configuration values.
 
         Returns:
-            A configured PluginConfig instance.
+            A configured ContextProviderConfig instance.
 
         Raises:
-            ValueError: If required fields are missing or event name is invalid.
+            ValueError: If required fields are missing.
         """
-        if "on" not in data:
-            raise ValueError(f"Plugin '{name}' missing required field 'on'")
         if "run" not in data:
-            raise ValueError(f"Plugin '{name}' missing required field 'run'")
-
-        event_name = data["on"]
-        if event_name not in VALID_EVENT_NAMES:
-            valid_events = ", ".join(sorted(VALID_EVENT_NAMES))
-            raise ValueError(
-                f"Plugin '{name}' has invalid event name '{event_name}'. "
-                f"Valid events are: {valid_events}"
-            )
+            raise ValueError(f"Context provider '{name}' missing required field 'run'")
 
         return cls(
             name=name,
-            on=event_name,
             run=data["run"],
-            blocking=data.get("blocking", False),
-            timeout=data.get("timeout", 30),
+            timeout=data.get("timeout", 10),
             enabled=data.get("enabled", True),
+            order=data.get("order", 100),
         )
 
 
@@ -93,6 +98,7 @@ class Config:
     daemon: DaemonConfig = field(default_factory=DaemonConfig)
     worktree: WorktreeConfig = field(default_factory=WorktreeConfig)
     plugins: dict[str, PluginConfig] = field(default_factory=dict)
+    context_providers: dict[str, ContextProviderConfig] = field(default_factory=dict)
     config_path: Path | None = None
 
     @classmethod
@@ -167,11 +173,19 @@ class Config:
         for name, plugin_data in plugins_data.items():
             plugins[name] = PluginConfig.from_dict(name, plugin_data)
 
+        # Parse context providers
+        context_providers: dict[str, ContextProviderConfig] = {}
+        context_data = data.get("context", {})
+        providers_data = context_data.get("providers", {})
+        for name, provider_data in providers_data.items():
+            context_providers[name] = ContextProviderConfig.from_dict(name, provider_data)
+
         return cls(
             version=version,
             daemon=daemon,
             worktree=worktree,
             plugins=plugins,
+            context_providers=context_providers,
             config_path=path,
         )
 
@@ -182,3 +196,8 @@ class Config:
             for plugin in self.plugins.values()
             if plugin.on == event_type and plugin.enabled
         ]
+
+    def get_enabled_context_providers(self) -> list[ContextProviderConfig]:
+        """Get all enabled context providers sorted by order (lowest first)."""
+        providers = [p for p in self.context_providers.values() if p.enabled]
+        return sorted(providers, key=lambda p: p.order)

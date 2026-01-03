@@ -4,6 +4,7 @@ Usage:
     python -m tambour <command> [options]
 
 Commands:
+    context collect [--prompt FILE] [--issue ID] [--worktree PATH] [--verbose]
     events emit <event> [--issue ID] [--worktree PATH]
     daemon start|stop|status
     config validate
@@ -61,7 +62,79 @@ def create_parser() -> argparse.ArgumentParser:
         help="Configuration operation",
     )
 
+    # context command
+    context_parser = subparsers.add_parser("context", help="Context provider management")
+    context_subparsers = context_parser.add_subparsers(
+        dest="context_command", help="Context subcommands"
+    )
+
+    # context collect
+    collect_parser = context_subparsers.add_parser(
+        "collect", help="Collect context from all providers"
+    )
+    collect_parser.add_argument(
+        "--prompt",
+        help="File containing the base prompt (use - for stdin)",
+    )
+    collect_parser.add_argument("--issue", help="Issue ID")
+    collect_parser.add_argument("--worktree", help="Worktree path")
+    collect_parser.add_argument("--main-repo", help="Main repository path")
+    collect_parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show provider execution details"
+    )
+
     return parser
+
+
+def cmd_context_collect(args: argparse.Namespace) -> int:
+    """Handle 'context collect' command."""
+    from tambour.config import Config
+    from tambour.context import ContextCollector, ContextRequest
+
+    # Read prompt from file or stdin
+    prompt = ""
+    if args.prompt:
+        if args.prompt == "-":
+            prompt = sys.stdin.read()
+        else:
+            prompt_path = Path(args.prompt)
+            if prompt_path.exists():
+                prompt = prompt_path.read_text()
+            else:
+                print(f"Error: Prompt file not found: {args.prompt}", file=sys.stderr)
+                return 1
+
+    # Build context request
+    request = ContextRequest(
+        prompt=prompt,
+        issue_id=args.issue,
+        worktree=Path(args.worktree) if args.worktree else None,
+        main_repo=Path(args.main_repo) if args.main_repo else None,
+    )
+
+    config = Config.load_or_default()
+    collector = ContextCollector(config)
+    context, results = collector.collect(request)
+
+    if args.verbose:
+        providers = config.get_enabled_context_providers()
+        if not providers:
+            print("No context providers configured", file=sys.stderr)
+        else:
+            print(f"Ran {len(results)} context provider(s):", file=sys.stderr)
+            for result in results:
+                status = "OK" if result.success else "FAILED"
+                duration = f" ({result.duration_ms}ms)" if result.duration_ms else ""
+                print(f"  [{status}] {result.provider_name}{duration}", file=sys.stderr)
+                if not result.success and result.error:
+                    print(f"           {result.error}", file=sys.stderr)
+            print("", file=sys.stderr)
+
+    # Output the collected context
+    if context:
+        print(context)
+
+    return 0
 
 
 def cmd_events_emit(args: argparse.Namespace) -> int:
@@ -129,6 +202,10 @@ def cmd_config_validate(args: argparse.Namespace) -> int:
         for name, plugin in config.plugins.items():
             status = "enabled" if plugin.enabled else "disabled"
             print(f"    - {name}: on={plugin.on}, {status}")
+        print(f"  Context Providers: {len(config.context_providers)}")
+        for name, provider in config.context_providers.items():
+            status = "enabled" if provider.enabled else "disabled"
+            print(f"    - {name}: order={provider.order}, {status}")
         return 0
     except FileNotFoundError as e:
         print(f"No configuration found: {e}", file=sys.stderr)
@@ -147,7 +224,13 @@ def main() -> NoReturn:
         parser.print_help()
         sys.exit(0)
 
-    if args.command == "events":
+    if args.command == "context":
+        if args.context_command == "collect":
+            sys.exit(cmd_context_collect(args))
+        else:
+            parser.parse_args(["context", "--help"])
+            sys.exit(1)
+    elif args.command == "events":
         if args.events_command == "emit":
             sys.exit(cmd_events_emit(args))
         else:

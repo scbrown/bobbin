@@ -112,7 +112,7 @@ if [ -n "$TAMBOUR_COMPLETION_CONTEXT" ]; then
 "
 fi
 
-PROMPT="${CONTEXT_PREFIX}You have been assigned to work on a beads issue. Here's what was executed to show you the task:
+BASE_PROMPT="${CONTEXT_PREFIX}You have been assigned to work on a beads issue. Here's what was executed to show you the task:
 
 \$ bd show $ISSUE_ID
 $BD_SHOW_OUTPUT
@@ -128,8 +128,38 @@ Begin working on this task now:
 
 Start immediately - do not ask for confirmation."
 
-# Start Claude in the worktree with the task prompt
+# Collect context from configured providers
+# Context providers can use the prompt to generate task-aware context
 cd "$ABSOLUTE_PATH"
+INJECTED_CONTEXT=""
+if command -v python3 &> /dev/null; then
+    # Write prompt to temp file for provider access
+    PROMPT_FILE=$(mktemp)
+    echo "$BASE_PROMPT" > "$PROMPT_FILE"
+
+    # Collect context (providers run in worktree, receive prompt via env/file)
+    # Set PYTHONPATH to find tambour module
+    INJECTED_CONTEXT=$(PYTHONPATH="$REPO_ROOT/tambour/src" python3 -m tambour context collect \
+        --prompt "$PROMPT_FILE" \
+        --issue "$ISSUE_ID" \
+        --worktree "$ABSOLUTE_PATH" \
+        --main-repo "$REPO_ROOT" 2>/dev/null) || true
+
+    rm -f "$PROMPT_FILE"
+fi
+
+# Build final prompt with injected context
+if [ -n "$INJECTED_CONTEXT" ]; then
+    PROMPT="${BASE_PROMPT}
+
+---
+
+${INJECTED_CONTEXT}"
+else
+    PROMPT="$BASE_PROMPT"
+fi
+
+# Start Claude in the worktree with the task prompt
 claude "$PROMPT"
 CLAUDE_EXIT=$?
 
