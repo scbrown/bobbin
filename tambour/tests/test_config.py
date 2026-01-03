@@ -7,6 +7,7 @@ import pytest
 
 from tambour.config import (
     Config,
+    ContextProviderConfig,
     DaemonConfig,
     PluginConfig,
     WorktreeConfig,
@@ -69,7 +70,7 @@ class TestPluginConfig:
         data = {"on": "invalid.event", "run": "echo hello"}
         with pytest.raises(ValueError) as exc_info:
             PluginConfig.from_dict("broken", data)
-        assert "invalid event name 'invalid.event'" in str(exc_info.value)
+        assert "specifies invalid event 'invalid.event'" in str(exc_info.value)
         assert "broken" in str(exc_info.value)
         # Check that valid events are listed in error
         assert "agent.spawned" in str(exc_info.value)
@@ -232,7 +233,7 @@ run = "echo broken"
         try:
             with pytest.raises(ValueError) as exc_info:
                 Config.load(config_path)
-            assert "invalid event name" in str(exc_info.value)
+            assert "specifies invalid event" in str(exc_info.value)
         finally:
             config_path.unlink()
 
