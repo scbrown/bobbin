@@ -8,7 +8,7 @@ __version__ = "0.1.0"
 __author__ = "Bobbin Team"
 
 from tambour.events import EventType, Event, EventDispatcher
-from tambour.config import Config, PluginConfig
+from tambour.config import Config, PluginConfig, VALID_EVENT_NAMES
 
 __all__ = [
     "EventType",
@@ -16,4 +16,5 @@ __all__ = [
     "EventDispatcher",
     "Config",
     "PluginConfig",
+    "VALID_EVENT_NAMES",
 ]
