@@ -47,8 +47,43 @@ if [ "$DO_MERGE" = true ]; then
     # Merge the branch
     git merge "$BRANCH_NAME" --no-edit
 
+    # Try to remove worktree - if it fails, warn but continue
+    WORKTREE_REMOVED=true
     echo "Removing worktree..."
-    bd worktree remove "$WORKTREE_PATH"
+    if ! bd worktree remove "$WORKTREE_PATH" 2>/dev/null; then
+        WORKTREE_REMOVED=false
+        echo ""
+        echo "⚠️  Warning: Could not remove worktree at $WORKTREE_PATH"
+        echo "   The worktree may have uncommitted changes or other issues."
+        echo ""
+
+        # Show what's in the worktree that might be blocking removal
+        if [ -d "$WORKTREE_PATH" ]; then
+            echo "   Worktree status:"
+
+            # Check for uncommitted changes
+            UNCOMMITTED=$(cd "$WORKTREE_PATH" && git status --porcelain 2>/dev/null)
+            if [ -n "$UNCOMMITTED" ]; then
+                echo "   - Uncommitted changes:"
+                echo "$UNCOMMITTED" | sed 's/^/       /'
+            fi
+
+            # Check for unpushed commits (compare to main)
+            UNPUSHED=$(cd "$WORKTREE_PATH" && git log main..HEAD --oneline 2>/dev/null)
+            if [ -n "$UNPUSHED" ]; then
+                echo "   - Commits not in main (should be merged now):"
+                echo "$UNPUSHED" | sed 's/^/       /'
+            fi
+
+            echo ""
+            echo "   To manually clean up, run:"
+            echo "     rm -rf $WORKTREE_PATH"
+            echo "     git worktree prune"
+        fi
+        echo ""
+        echo "   Continuing with remaining cleanup..."
+        echo ""
+    fi
 
     echo "Deleting branch..."
     git branch -d "$BRANCH_NAME"
@@ -57,7 +92,12 @@ if [ "$DO_MERGE" = true ]; then
     bd close "$ISSUE_ID"
 
     echo ""
-    echo "Done! Branch merged and worktree cleaned up."
+    if [ "$WORKTREE_REMOVED" = true ]; then
+        echo "Done! Branch merged and worktree cleaned up."
+    else
+        echo "Done! Branch merged, issue closed, but worktree needs manual cleanup."
+        echo "See warning above for details."
+    fi
 else
     echo "Worktree preserved at: $WORKTREE_PATH"
     echo ""
