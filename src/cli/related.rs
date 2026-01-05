@@ -1,10 +1,12 @@
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use clap::Args;
 use colored::Colorize;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::OutputConfig;
+use crate::config::Config;
+use crate::storage::MetadataStore;
 
 #[derive(Args)]
 pub struct RelatedArgs {
@@ -22,33 +24,120 @@ pub struct RelatedArgs {
 
 #[derive(Serialize)]
 struct RelatedOutput {
-    status: String,
-    command: String,
     file: String,
-    message: String,
+    related: Vec<RelatedFile>,
+}
+
+#[derive(Serialize)]
+struct RelatedFile {
+    path: String,
+    score: f32,
+    co_changes: u32,
 }
 
 pub async fn run(args: RelatedArgs, output: OutputConfig) -> Result<()> {
-    if output.json {
-        let json_output = RelatedOutput {
-            status: "not_implemented".to_string(),
-            command: "related".to_string(),
-            file: args.file.display().to_string(),
-            message: "Related command not yet implemented".to_string(),
-        };
-        println!("{}", serde_json::to_string_pretty(&json_output)?);
-    } else if !output.quiet {
-        println!("{} Related command not yet implemented", "!".yellow());
-        println!("  file: {}", args.file.display().to_string().cyan());
-        println!("  limit: {}", args.limit);
-        println!("  coupling: {}", args.coupling);
+    // 1. Resolve path and repo root
+    let file_path = args
+        .file
+        .canonicalize()
+        .with_context(|| format!("File not found: {}", args.file.display()))?;
+
+    let repo_root = find_repo_root(&file_path)?;
+    let db_path = Config::db_path(&repo_root);
+
+    // 2. Open metadata store
+    let store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
+
+    // 3. Resolve relative path for query
+    let rel_path = file_path
+        .strip_prefix(&repo_root)
+        .context("File is not inside the repository")?
+        .to_string_lossy()
+        .to_string();
+
+    // Verify file exists in index
+    if store.get_file(&rel_path)?.is_none() {
+        if output.json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&RelatedOutput {
+                    file: rel_path,
+                    related: vec![],
+                })?
+            );
+        } else {
+            bail!("File not found in index: {}", rel_path);
+        }
+        return Ok(());
     }
 
-    // TODO: Implement related files
-    // 1. Look up file in index
-    // 2. Query temporal coupling from SQLite
-    // 3. Query vector similarity from LanceDB
-    // 4. Combine and rank results
+    // 4. Query coupling
+    let couplings = store.get_coupling(&rel_path, args.limit)?;
+
+    let related: Vec<RelatedFile> = couplings
+        .into_iter()
+        .map(|c| {
+            // coupling contains both files, figure out which is the "other" one
+            let other_path = if c.file_a == rel_path {
+                c.file_b
+            } else {
+                c.file_a
+            };
+
+            RelatedFile {
+                path: other_path,
+                score: c.score,
+                co_changes: c.co_changes,
+            }
+        })
+        .collect();
+
+    // 5. Output results
+    if output.json {
+        let json_output = RelatedOutput {
+            file: rel_path,
+            related,
+        };
+        println!("{}", serde_json::to_string_pretty(&json_output)?);
+    } else {
+        println!("Related files for {}:", rel_path.cyan());
+        if related.is_empty() {
+            println!("  No related files found (no shared commit history)");
+        } else {
+            for file in related {
+                print!("  {}", file.path);
+                if args.coupling {
+                    print!(
+                        " {} {}",
+                        format!("(Score: {:.2},", file.score).dimmed(),
+                        format!("Co-changes: {})", file.co_changes).dimmed()
+                    );
+                }
+                println!();
+            }
+        }
+    }
 
     Ok(())
+}
+
+/// Find the repository root by looking for .bobbin directory
+fn find_repo_root(start_path: &Path) -> Result<PathBuf> {
+    let mut current = start_path;
+    if current.is_file() {
+        if let Some(p) = current.parent() {
+            current = p;
+        }
+    }
+
+    loop {
+        if Config::config_path(current).exists() {
+            return Ok(current.to_path_buf());
+        }
+        match current.parent() {
+            Some(p) => current = p,
+            None => break,
+        }
+    }
+    bail!("Bobbin not initialized. Run `bobbin init` first.")
 }

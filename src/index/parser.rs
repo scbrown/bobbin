@@ -105,7 +105,10 @@ impl Parser {
             let end_line = byte_offset_to_line(content, end);
 
             // Extract header level and title
-            let captures = self.header_regex.captures(&content[start..m.end()]).unwrap();
+            let captures = self
+                .header_regex
+                .captures(&content[start..m.end()])
+                .unwrap();
             let hashes = captures.get(1).unwrap().as_str();
             let raw_title = captures.get(2).unwrap().as_str().trim().to_string();
             let level = hashes.len();
@@ -121,7 +124,11 @@ impl Parser {
             header_stack.push((level, raw_title));
 
             // Construct full name
-            let full_name = header_stack.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>().join(" > ");
+            let full_name = header_stack
+                .iter()
+                .map(|(_, t)| t.as_str())
+                .collect::<Vec<_>>()
+                .join(" > ");
 
             chunks.push(Chunk {
                 id: generate_chunk_id(path, start_line, end_line),
@@ -331,7 +338,9 @@ impl Point {
         assert_eq!(chunks.len(), 3); // struct, impl, function inside impl
         assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Struct));
         assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Impl));
-        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Function && c.name == Some("new".to_string())));
+        assert!(chunks
+            .iter()
+            .any(|c| c.chunk_type == ChunkType::Function && c.name == Some("new".to_string())));
     }
 
     #[test]
@@ -391,10 +400,19 @@ class Dog:
         let path = PathBuf::from("test.py");
         let chunks = parser.parse_file(&path, content).unwrap();
 
-        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Class && c.name == Some("Dog".to_string())));
+        assert!(chunks
+            .iter()
+            .any(|c| c.chunk_type == ChunkType::Class && c.name == Some("Dog".to_string())));
         // Functions inside class are also extracted
-        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Function && c.name == Some("__init__".to_string())));
-        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Function && c.name == Some("bark".to_string())));
+        assert!(
+            chunks
+                .iter()
+                .any(|c| c.chunk_type == ChunkType::Function
+                    && c.name == Some("__init__".to_string()))
+        );
+        assert!(chunks
+            .iter()
+            .any(|c| c.chunk_type == ChunkType::Function && c.name == Some("bark".to_string())));
     }
 
     #[test]
@@ -411,11 +429,26 @@ class Dog:
 
     #[test]
     fn test_detect_language() {
-        assert_eq!(detect_language(Path::new("foo.rs")), Some("rust".to_string()));
-        assert_eq!(detect_language(Path::new("foo.ts")), Some("typescript".to_string()));
-        assert_eq!(detect_language(Path::new("foo.tsx")), Some("tsx".to_string()));
-        assert_eq!(detect_language(Path::new("foo.py")), Some("python".to_string()));
-        assert_eq!(detect_language(Path::new("foo.js")), Some("javascript".to_string()));
+        assert_eq!(
+            detect_language(Path::new("foo.rs")),
+            Some("rust".to_string())
+        );
+        assert_eq!(
+            detect_language(Path::new("foo.ts")),
+            Some("typescript".to_string())
+        );
+        assert_eq!(
+            detect_language(Path::new("foo.tsx")),
+            Some("tsx".to_string())
+        );
+        assert_eq!(
+            detect_language(Path::new("foo.py")),
+            Some("python".to_string())
+        );
+        assert_eq!(
+            detect_language(Path::new("foo.js")),
+            Some("javascript".to_string())
+        );
         assert_eq!(detect_language(Path::new("foo.go")), Some("go".to_string()));
         assert_eq!(detect_language(Path::new("foo.unknown")), None);
     }
@@ -482,14 +515,17 @@ Content 2.
         // Header 1 (Title + Preamble)
         assert_eq!(chunks[0].chunk_type, ChunkType::Doc);
         assert_eq!(chunks[0].name, Some("Title".to_string()));
-        
+
         // Header 2 (Section 1)
         assert_eq!(chunks[1].chunk_type, ChunkType::Doc);
         assert_eq!(chunks[1].name, Some("Title > Section 1".to_string()));
 
         // Header 3 (Subsection 1.1)
         assert_eq!(chunks[2].chunk_type, ChunkType::Doc);
-        assert_eq!(chunks[2].name, Some("Title > Section 1 > Subsection 1.1".to_string()));
+        assert_eq!(
+            chunks[2].name,
+            Some("Title > Section 1 > Subsection 1.1".to_string())
+        );
 
         // Header 4 (Section 2)
         assert_eq!(chunks[3].chunk_type, ChunkType::Doc);
@@ -508,7 +544,7 @@ Content.
         let chunks = parser.parse_file(&path, content).unwrap();
 
         assert_eq!(chunks.len(), 2);
-        
+
         assert_eq!(chunks[0].name, Some("Preamble".to_string()));
         assert_eq!(chunks[1].name, Some("Title".to_string()));
     }

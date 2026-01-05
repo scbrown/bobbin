@@ -1,7 +1,7 @@
-pub mod semantic;
-pub mod keyword;
 pub mod hybrid;
+pub mod keyword;
+pub mod semantic;
 
-pub use semantic::SemanticSearch;
-pub use keyword::KeywordSearch;
 pub use hybrid::HybridSearch;
+pub use keyword::KeywordSearch;
+pub use semantic::SemanticSearch;

@@ -57,7 +57,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let start_time = Instant::now();
 
     // Resolve the repository root
-    let repo_root = args.path.canonicalize()
+    let repo_root = args
+        .path
+        .canonicalize()
         .with_context(|| format!("Invalid path: {}", args.path.display()))?;
 
     // Check if bobbin is initialized
@@ -70,8 +72,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     }
 
     // Load configuration
-    let config = Config::load(&config_path)
-        .with_context(|| "Failed to load configuration")?;
+    let config = Config::load(&config_path).with_context(|| "Failed to load configuration")?;
 
     let db_path = Config::db_path(&repo_root);
     let lance_path = Config::lance_path(&repo_root);
@@ -81,13 +82,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     if output.verbose && !output.quiet && !output.json {
         println!("  Checking embedding model...");
     }
-    embedder::ensure_model(&model_dir, &config.embedding.model).await
+    embedder::ensure_model(&model_dir, &config.embedding.model)
+        .await
         .context("Failed to ensure embedding model is available")?;
 
     // Open storage
-    let metadata_store = MetadataStore::open(&db_path)
-        .context("Failed to open metadata store")?;
-    let mut vector_store = VectorStore::open(&lance_path).await
+    let metadata_store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
+    let mut vector_store = VectorStore::open(&lance_path)
+        .await
         .context("Failed to open vector store")?;
 
     // Check for model change and migration
@@ -107,15 +109,17 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
             // Wipe index for migration
             metadata_store.clear_index()?;
-            
+
             // Re-create vector store
             // We need to drop the existing connection first to release locks
             drop(vector_store);
             if lance_path.exists() {
-                std::fs::remove_dir_all(&lance_path)
-                    .with_context(|| format!("Failed to remove vector store at {}", lance_path.display()))?;
+                std::fs::remove_dir_all(&lance_path).with_context(|| {
+                    format!("Failed to remove vector store at {}", lance_path.display())
+                })?;
             }
-            vector_store = VectorStore::open(&lance_path).await
+            vector_store = VectorStore::open(&lance_path)
+                .await
                 .context("Failed to re-open vector store")?;
         }
     }
@@ -124,18 +128,18 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     metadata_store.set_meta("embedding_model", current_model)?;
 
     // Load the embedder
-    let mut embed = Embedder::load(&model_dir, current_model)
-        .context("Failed to load embedding model")?;
+    let mut embed =
+        Embedder::load(&model_dir, current_model).context("Failed to load embedding model")?;
 
     // Create the parser
-    let mut parser = Parser::new()
-        .context("Failed to initialize parser")?;
+    let mut parser = Parser::new().context("Failed to initialize parser")?;
 
     // Get existing indexed files for incremental check
     let existing_files: HashSet<String> = if args.force {
         HashSet::new()
     } else {
-        metadata_store.get_all_files()?
+        metadata_store
+            .get_all_files()?
             .into_iter()
             .map(|f| f.path)
             .collect()
@@ -154,10 +158,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         .map(|p| p.to_string_lossy().to_string())
         .collect();
 
-    let deleted_files: Vec<String> = existing_files
-        .difference(&current_files)
-        .cloned()
-        .collect();
+    let deleted_files: Vec<String> = existing_files.difference(&current_files).cloned().collect();
 
     // Clean up deleted files
     if !deleted_files.is_empty() {
@@ -223,7 +224,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         let pb = ProgressBar::new(total_files as u64);
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
+                )
                 .unwrap()
                 .progress_chars("#>-"),
         );
@@ -305,7 +308,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 &metadata_store,
                 &mut vector_store,
                 &mut embed,
-            ).await?;
+            )
+            .await?;
 
             indexed_files += indexed;
             total_chunks += chunks_count;
@@ -324,7 +328,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             &metadata_store,
             &mut vector_store,
             &mut embed,
-        ).await?;
+        )
+        .await?;
 
         indexed_files += indexed;
         total_chunks += chunks_count;
@@ -341,38 +346,40 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     // Analyze and store git coupling if enabled
     if config.git.coupling_enabled {
         if output.verbose && !output.quiet && !output.json {
-             println!("  Analyzing git coupling...");
+            println!("  Analyzing git coupling...");
         }
-        
+
         // We use the fully qualified path to avoid import issues if it's not imported
         match crate::index::git::GitAnalyzer::new(&repo_root) {
-             Ok(analyzer) => {
-                 match analyzer.analyze_coupling(config.git.coupling_depth, config.git.coupling_threshold) {
-                     Ok(couplings) => {
-                         let mut count = 0;
-                         metadata_store.begin_transaction()?;
-                         for coupling in couplings {
-                             if metadata_store.upsert_coupling(&coupling).is_ok() {
-                                 count += 1;
-                             }
-                         }
-                         metadata_store.commit()?;
-                         
-                         if output.verbose && !output.quiet && !output.json {
-                             println!("  Stored {} coupling relations", count);
-                         }
-                     },
-                     Err(e) => {
-                         // Warn but don't fail indexing
-                         if !output.quiet && !output.json {
-                             println!("{} Failed to analyze git coupling: {}", "!".yellow(), e);
-                         }
-                     }
-                 }
-             },
-             Err(_) => {
-                 // Not a git repo or git not available, just ignore
-             }
+            Ok(analyzer) => {
+                match analyzer
+                    .analyze_coupling(config.git.coupling_depth, config.git.coupling_threshold)
+                {
+                    Ok(couplings) => {
+                        let mut count = 0;
+                        metadata_store.begin_transaction()?;
+                        for coupling in couplings {
+                            if metadata_store.upsert_coupling(&coupling).is_ok() {
+                                count += 1;
+                            }
+                        }
+                        metadata_store.commit()?;
+
+                        if output.verbose && !output.quiet && !output.json {
+                            println!("  Stored {} coupling relations", count);
+                        }
+                    }
+                    Err(e) => {
+                        // Warn but don't fail indexing
+                        if !output.quiet && !output.json {
+                            println!("{} Failed to analyze git coupling: {}", "!".yellow(), e);
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                // Not a git repo or git not available, just ignore
+            }
         }
     }
 
@@ -454,7 +461,7 @@ fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
     // Use ignore crate's WalkBuilder for gitignore support
     let mut builder = WalkBuilder::new(repo_root);
     builder
-        .hidden(true)  // Skip hidden files by default
+        .hidden(true) // Skip hidden files by default
         .git_ignore(config.index.use_gitignore)
         .git_global(config.index.use_gitignore)
         .git_exclude(config.index.use_gitignore);
@@ -477,17 +484,13 @@ fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
             .to_string_lossy();
 
         // Check exclude patterns first
-        let excluded = exclude_patterns
-            .iter()
-            .any(|p| p.matches(&rel_path));
+        let excluded = exclude_patterns.iter().any(|p| p.matches(&rel_path));
         if excluded {
             continue;
         }
 
         // Check include patterns
-        let included = include_patterns
-            .iter()
-            .any(|p| p.matches(&rel_path));
+        let included = include_patterns.iter().any(|p| p.matches(&rel_path));
 
         if included {
             files.push(path.to_path_buf());
@@ -522,11 +525,14 @@ async fn process_batch(
 
     // Generate embeddings in batch
     let content_refs: Vec<&str> = chunk_contents.iter().map(|s| s.as_str()).collect();
-    let embeddings = embed.embed_batch(&content_refs)
+    let embeddings = embed
+        .embed_batch(&content_refs)
         .context("Failed to generate embeddings")?;
 
     // Store in LanceDB
-    vector_store.insert(&all_chunks, &embeddings).await
+    vector_store
+        .insert(&all_chunks, &embeddings)
+        .await
         .context("Failed to store vectors")?;
 
     // Store metadata and chunks in SQLite
@@ -556,7 +562,8 @@ async fn process_batch(
         let file_id = metadata_store.upsert_file(&file_metadata)?;
 
         // Insert chunks
-        let file_chunks: Vec<Chunk> = all_chunks[chunk_idx..chunk_idx + result.chunks.len()].to_vec();
+        let file_chunks: Vec<Chunk> =
+            all_chunks[chunk_idx..chunk_idx + result.chunks.len()].to_vec();
         metadata_store.insert_chunks(&file_chunks, file_id)?;
 
         chunk_idx += result.chunks.len();
@@ -581,7 +588,8 @@ fn get_mtime(path: &Path) -> Result<i64> {
     let metadata = std::fs::metadata(path)
         .with_context(|| format!("Failed to get metadata for {}", path.display()))?;
 
-    let mtime = metadata.modified()
+    let mtime = metadata
+        .modified()
         .with_context(|| format!("Failed to get mtime for {}", path.display()))?;
 
     Ok(mtime
@@ -652,10 +660,16 @@ mod tests {
         let files = collect_files(root, &config).unwrap();
 
         // Should include main.rs
-        assert!(files.iter().any(|p| p.file_name().map(|n| n == "main.rs").unwrap_or(false)));
+        assert!(files
+            .iter()
+            .any(|p| p.file_name().map(|n| n == "main.rs").unwrap_or(false)));
 
         // Should not include files in target/ or node_modules/
-        assert!(!files.iter().any(|p| p.to_string_lossy().contains("target/")));
-        assert!(!files.iter().any(|p| p.to_string_lossy().contains("node_modules/")));
+        assert!(!files
+            .iter()
+            .any(|p| p.to_string_lossy().contains("target/")));
+        assert!(!files
+            .iter()
+            .any(|p| p.to_string_lossy().contains("node_modules/")));
     }
 }

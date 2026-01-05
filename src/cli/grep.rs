@@ -92,7 +92,11 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
     }
 
     // Parse the type filter if provided
-    let type_filter = args.r#type.as_ref().map(|t| parse_chunk_type(t)).transpose()?;
+    let type_filter = args
+        .r#type
+        .as_ref()
+        .map(|t| parse_chunk_type(t))
+        .transpose()?;
 
     // Build the regex pattern if regex mode is enabled
     let regex_pattern = if args.regex {
@@ -101,15 +105,17 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
         } else {
             args.pattern.clone()
         };
-        Some(Regex::new(&pattern).with_context(|| format!("Invalid regex pattern: {}", args.pattern))?)
+        Some(
+            Regex::new(&pattern)
+                .with_context(|| format!("Invalid regex pattern: {}", args.pattern))?,
+        )
     } else {
         None
     };
 
     // Open metadata store
     let db_path = Config::db_path(&repo_root);
-    let metadata_store = MetadataStore::open(&db_path)
-        .context("Failed to open metadata store")?;
+    let metadata_store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
 
     // Check if index exists
     let stats = metadata_store.get_stats()?;
@@ -163,7 +169,8 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
         // Filter by regex if enabled
         .filter(|r| {
             if let Some(ref re) = regex_pattern {
-                re.is_match(&r.chunk.content) || r.chunk.name.as_ref().is_some_and(|n| re.is_match(n))
+                re.is_match(&r.chunk.content)
+                    || r.chunk.name.as_ref().is_some_and(|n| re.is_match(n))
             } else {
                 true
             }
@@ -172,7 +179,10 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
         .filter(|r| {
             if !args.ignore_case && regex_pattern.is_none() {
                 r.chunk.content.contains(&args.pattern)
-                    || r.chunk.name.as_ref().is_some_and(|n| n.contains(&args.pattern))
+                    || r.chunk
+                        .name
+                        .as_ref()
+                        .is_some_and(|n| n.contains(&args.pattern))
             } else {
                 true
             }
@@ -184,7 +194,12 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
     if output.json {
         print_json_output(&args, &filtered_results, regex_pattern.as_ref())?;
     } else if !output.quiet {
-        print_human_output(&args, &filtered_results, regex_pattern.as_ref(), output.verbose);
+        print_human_output(
+            &args,
+            &filtered_results,
+            regex_pattern.as_ref(),
+            output.verbose,
+        );
     }
 
     Ok(())
@@ -241,7 +256,14 @@ fn parse_chunk_type(s: &str) -> Result<ChunkType> {
 }
 
 /// Find lines matching the pattern with context
-fn find_matching_lines(content: &str, pattern: &str, regex: Option<&Regex>, ignore_case: bool, context: usize, start_line: u32) -> Vec<MatchingLine> {
+fn find_matching_lines(
+    content: &str,
+    pattern: &str,
+    regex: Option<&Regex>,
+    ignore_case: bool,
+    context: usize,
+    start_line: u32,
+) -> Vec<MatchingLine> {
     let lines: Vec<&str> = content.lines().collect();
     let mut matching_indices = Vec::new();
 
@@ -330,9 +352,18 @@ fn print_json_output(
 }
 
 /// Print results in human-readable format
-fn print_human_output(args: &GrepArgs, results: &[SearchResult], regex: Option<&Regex>, verbose: bool) {
+fn print_human_output(
+    args: &GrepArgs,
+    results: &[SearchResult],
+    regex: Option<&Regex>,
+    verbose: bool,
+) {
     if results.is_empty() {
-        println!("{} No results found for: {}", "!".yellow(), args.pattern.cyan());
+        println!(
+            "{} No results found for: {}",
+            "!".yellow(),
+            args.pattern.cyan()
+        );
         return;
     }
 
@@ -388,11 +419,19 @@ fn print_human_output(args: &GrepArgs, results: &[SearchResult], regex: Option<&
             if !matching_lines.is_empty() {
                 for ml in matching_lines.iter().take(10) {
                     // Highlight the match in the line
-                    let highlighted = highlight_match(&ml.content, &args.pattern, regex, args.ignore_case);
-                    println!("   {}: {}", ml.line_number.to_string().dimmed(), highlighted);
+                    let highlighted =
+                        highlight_match(&ml.content, &args.pattern, regex, args.ignore_case);
+                    println!(
+                        "   {}: {}",
+                        ml.line_number.to_string().dimmed(),
+                        highlighted
+                    );
                 }
                 if matching_lines.len() > 10 {
-                    println!("   {}", format!("... {} more lines", matching_lines.len() - 10).dimmed());
+                    println!(
+                        "   {}",
+                        format!("... {} more lines", matching_lines.len() - 10).dimmed()
+                    );
                 }
             }
         }
@@ -407,7 +446,8 @@ fn highlight_match(line: &str, pattern: &str, regex: Option<&Regex>, ignore_case
         // Use regex to find and highlight matches
         re.replace_all(line, |caps: &regex::Captures| {
             format!("{}", caps[0].to_string().red().bold())
-        }).to_string()
+        })
+        .to_string()
     } else if ignore_case {
         // Case-insensitive highlighting
         let lower_line = line.to_lowercase();
@@ -417,7 +457,10 @@ fn highlight_match(line: &str, pattern: &str, regex: Option<&Regex>, ignore_case
 
         for (start, _) in lower_line.match_indices(&lower_pattern) {
             result.push_str(&line[last_end..start]);
-            result.push_str(&format!("{}", line[start..start + pattern.len()].red().bold()));
+            result.push_str(&format!(
+                "{}",
+                line[start..start + pattern.len()].red().bold()
+            ));
             last_end = start + pattern.len();
         }
         result.push_str(&line[last_end..]);
@@ -514,7 +557,12 @@ mod tests {
         assert!(score1 > 0.0 && score1 <= 1.0);
         assert!(score2 > 0.0 && score2 <= 1.0);
         // More negative BM25 = better match = higher normalized score
-        assert!(score1 > score2, "score1={} should be greater than score2={} because -20 is more negative", score1, score2);
+        assert!(
+            score1 > score2,
+            "score1={} should be greater than score2={} because -20 is more negative",
+            score1,
+            score2
+        );
 
         // Zero/near-zero score should be 0.5 (neutral)
         assert!((normalize_bm25_score(0.0) - 0.5).abs() < 0.01);

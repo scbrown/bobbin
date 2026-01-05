@@ -69,13 +69,16 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
             repo_root.display()
         );
     }
-    
+
     // Load configuration
-    let config = Config::load(&config_path)
-        .with_context(|| "Failed to load configuration")?;
+    let config = Config::load(&config_path).with_context(|| "Failed to load configuration")?;
 
     // Parse the type filter if provided
-    let type_filter = args.r#type.as_ref().map(|t| parse_chunk_type(t)).transpose()?;
+    let type_filter = args
+        .r#type
+        .as_ref()
+        .map(|t| parse_chunk_type(t))
+        .transpose()?;
 
     let lance_path = Config::lance_path(&repo_root);
     let db_path = Config::db_path(&repo_root);
@@ -85,7 +88,7 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
     let vector_store = VectorStore::open(&lance_path)
         .await
         .context("Failed to open vector store")?;
-    
+
     // Check if index exists
     let count = vector_store.count().await?;
     if count == 0 {
@@ -101,14 +104,13 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         }
         return Ok(());
     }
-    
+
     // Check model consistency
-    let metadata_store = MetadataStore::open(&db_path)
-        .context("Failed to open metadata store")?;
-        
+    let metadata_store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
+
     let current_model = config.embedding.model.as_str();
     let stored_model = metadata_store.get_meta("embedding_model")?;
-    
+
     if let Some(stored) = stored_model {
         if stored != current_model {
             bail!(
@@ -120,7 +122,8 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
     }
 
     // Load the embedder
-    let embedder = Embedder::load(&model_dir, current_model).context("Failed to load embedding model")?;
+    let embedder =
+        Embedder::load(&model_dir, current_model).context("Failed to load embedding model")?;
 
     // Create semantic search engine
     let mut search = SemanticSearch::new(embedder, vector_store);
