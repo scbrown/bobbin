@@ -75,7 +75,11 @@ impl Embedder {
             .map_err(|e| anyhow::anyhow!("Failed to set thread count: {}", e))?
             .commit_from_file(&model_path)
             .map_err(|e| {
-                anyhow::anyhow!("Failed to load ONNX model from {}: {}", model_path.display(), e)
+                anyhow::anyhow!(
+                    "Failed to load ONNX model from {}: {}",
+                    model_path.display(),
+                    e
+                )
             })?;
 
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
@@ -226,8 +230,12 @@ pub async fn ensure_model(cache_dir: &Path, model_name: &str) -> Result<PathBuf>
 
     if let Some(parent) = model_path.parent() {
         if !parent.exists() {
-             std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create model parent directory: {}", parent.display()))?;
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "Failed to create model parent directory: {}",
+                    parent.display()
+                )
+            })?;
         }
     }
 

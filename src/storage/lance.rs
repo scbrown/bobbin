@@ -127,7 +127,12 @@ impl VectorStore {
     }
 
     /// Create a RecordBatchIterator from a batch
-    fn batch_to_reader(batch: RecordBatch, schema: SchemaRef) -> RecordBatchIterator<impl Iterator<Item = std::result::Result<RecordBatch, arrow::error::ArrowError>>> {
+    fn batch_to_reader(
+        batch: RecordBatch,
+        schema: SchemaRef,
+    ) -> RecordBatchIterator<
+        impl Iterator<Item = std::result::Result<RecordBatch, arrow::error::ArrowError>>,
+    > {
         RecordBatchIterator::new(std::iter::once(Ok(batch)), schema)
     }
 
@@ -179,11 +184,7 @@ impl VectorStore {
     }
 
     /// Search for similar vectors using approximate nearest neighbor search
-    pub async fn search(
-        &self,
-        query_embedding: &[f32],
-        limit: usize,
-    ) -> Result<Vec<SearchResult>> {
+    pub async fn search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
         let table = match &self.table {
             Some(t) => t,
             None => return Ok(vec![]), // No data yet
@@ -445,7 +446,10 @@ mod tests {
 
         let mut store = VectorStore::open(&path).await.unwrap();
 
-        let chunks = vec![sample_chunk("chunk1", "main"), sample_chunk("chunk2", "helper")];
+        let chunks = vec![
+            sample_chunk("chunk1", "main"),
+            sample_chunk("chunk2", "helper"),
+        ];
         let embeddings = vec![sample_embedding(), sample_embedding()];
 
         store.insert(&chunks, &embeddings).await.unwrap();
@@ -481,7 +485,10 @@ mod tests {
 
         let mut store = VectorStore::open(&path).await.unwrap();
 
-        let chunks = vec![sample_chunk("chunk1", "main"), sample_chunk("chunk2", "helper")];
+        let chunks = vec![
+            sample_chunk("chunk1", "main"),
+            sample_chunk("chunk2", "helper"),
+        ];
         let embeddings = vec![sample_embedding(), sample_embedding()];
 
         store.insert(&chunks, &embeddings).await.unwrap();

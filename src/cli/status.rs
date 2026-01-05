@@ -29,7 +29,9 @@ struct StatusOutput {
 }
 
 pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
-    let repo_root = args.path.canonicalize()
+    let repo_root = args
+        .path
+        .canonicalize()
         .with_context(|| format!("Invalid path: {}", args.path.display()))?;
 
     let config_path = Config::config_path(&repo_root);
@@ -44,7 +46,11 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
             };
             println!("{}", serde_json::to_string_pretty(&json_output)?);
         } else if !output.quiet {
-            println!("{} Bobbin not initialized in {}", "!".yellow(), repo_root.display());
+            println!(
+                "{} Bobbin not initialized in {}",
+                "!".yellow(),
+                repo_root.display()
+            );
             println!("Run `bobbin init` to initialize.");
         }
         return Ok(());
@@ -52,8 +58,7 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
 
     // Load metadata store to get stats
     let db_path = Config::db_path(&repo_root);
-    let metadata_store = MetadataStore::open(&db_path)
-        .context("Failed to open metadata store")?;
+    let metadata_store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
 
     let stats = metadata_store.get_stats()?;
 
@@ -70,12 +75,12 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
         println!("  Status:       {}", "Ready".green());
         println!("  Total files:  {}", stats.total_files.to_string().cyan());
         println!("  Total chunks: {}", stats.total_chunks.to_string().cyan());
-        
+
         if let Some(ts) = stats.last_indexed {
-             let dt = chrono::DateTime::from_timestamp(ts, 0)
+            let dt = chrono::DateTime::from_timestamp(ts, 0)
                 .map(|t| t.to_rfc3339())
                 .unwrap_or_else(|| "Unknown".to_string());
-             println!("  Last indexed: {}", dt);
+            println!("  Last indexed: {}", dt);
         }
 
         if args.detailed {

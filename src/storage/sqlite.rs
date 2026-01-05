@@ -26,7 +26,8 @@ impl MetadataStore {
 
     /// Initialize the database schema
     fn init_schema(&self) -> Result<()> {
-        self.conn.execute_batch(r#"
+        self.conn.execute_batch(
+            r#"
             -- Indexed files
             CREATE TABLE IF NOT EXISTS files (
                 id INTEGER PRIMARY KEY,
@@ -93,7 +94,8 @@ impl MetadataStore {
             -- Indexes
             CREATE INDEX IF NOT EXISTS idx_chunks_file ON chunks(file_id);
             CREATE INDEX IF NOT EXISTS idx_coupling_score ON coupling(score DESC);
-        "#)?;
+        "#,
+        )?;
 
         Ok(())
     }
@@ -149,15 +151,16 @@ impl MetadataStore {
 
     /// Delete a file and its chunks
     pub fn delete_file(&self, file_path: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM files WHERE path = ?1", [file_path])?;
+        self.conn
+            .execute("DELETE FROM files WHERE path = ?1", [file_path])?;
         Ok(())
     }
 
     /// Get file metadata by path
     pub fn get_file(&self, file_path: &str) -> Result<Option<FileMetadata>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT path, language, mtime, hash, indexed_at FROM files WHERE path = ?1",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, language, mtime, hash, indexed_at FROM files WHERE path = ?1")?;
 
         let result = stmt
             .query_row([file_path], |row| {
@@ -176,9 +179,9 @@ impl MetadataStore {
 
     /// Get all indexed files
     pub fn get_all_files(&self) -> Result<Vec<FileMetadata>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT path, language, mtime, hash, indexed_at FROM files ORDER BY path",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, language, mtime, hash, indexed_at FROM files ORDER BY path")?;
 
         let results = stmt
             .query_map([], |row| {
@@ -196,7 +199,12 @@ impl MetadataStore {
     }
 
     /// Check if a file needs reindexing based on hash or mtime
-    pub fn needs_reindex(&self, file_path: &str, current_hash: &str, current_mtime: i64) -> Result<bool> {
+    pub fn needs_reindex(
+        &self,
+        file_path: &str,
+        current_hash: &str,
+        current_mtime: i64,
+    ) -> Result<bool> {
         match self.get_file(file_path)? {
             None => Ok(true), // File not indexed yet
             Some(metadata) => {
@@ -217,11 +225,9 @@ impl MetadataStore {
     pub fn get_file_id(&self, file_path: &str) -> Result<Option<i64>> {
         let result = self
             .conn
-            .query_row(
-                "SELECT id FROM files WHERE path = ?1",
-                [file_path],
-                |row| row.get(0),
-            )
+            .query_row("SELECT id FROM files WHERE path = ?1", [file_path], |row| {
+                row.get(0)
+            })
             .optional()?;
         Ok(result)
     }
@@ -312,23 +318,17 @@ impl MetadataStore {
 
     /// Get index statistics
     pub fn get_stats(&self) -> Result<IndexStats> {
-        let total_files: u64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let total_files: u64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
 
-        let total_chunks: u64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM chunks",
-            [],
-            |row| row.get(0),
-        )?;
+        let total_chunks: u64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))?;
 
-        let last_indexed: Option<i64> = self.conn.query_row(
-            "SELECT MAX(indexed_at) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let last_indexed: Option<i64> =
+            self.conn
+                .query_row("SELECT MAX(indexed_at) FROM files", [], |row| row.get(0))?;
 
         // Get per-language stats with chunk counts
         let mut stmt = self.conn.prepare(
@@ -351,9 +351,11 @@ impl MetadataStore {
         // Get database file size
         let index_size_bytes: u64 = self
             .conn
-            .query_row("SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()",
+                [],
+                |row| row.get(0),
+            )
             .unwrap_or(0);
 
         Ok(IndexStats {
@@ -442,9 +444,7 @@ impl MetadataStore {
     /// Get global metadata value
     pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
         let mut stmt = self.conn.prepare("SELECT value FROM meta WHERE key = ?1")?;
-        let result = stmt
-            .query_row([key], |row| row.get(0))
-            .optional()?;
+        let result = stmt.query_row([key], |row| row.get(0)).optional()?;
         Ok(result)
     }
 
@@ -573,9 +573,15 @@ mod tests {
     fn test_get_all_files() {
         let (store, _dir) = create_test_store();
 
-        store.upsert_file(&create_test_file_metadata("src/a.rs")).unwrap();
-        store.upsert_file(&create_test_file_metadata("src/b.rs")).unwrap();
-        store.upsert_file(&create_test_file_metadata("src/c.rs")).unwrap();
+        store
+            .upsert_file(&create_test_file_metadata("src/a.rs"))
+            .unwrap();
+        store
+            .upsert_file(&create_test_file_metadata("src/b.rs"))
+            .unwrap();
+        store
+            .upsert_file(&create_test_file_metadata("src/c.rs"))
+            .unwrap();
 
         let files = store.get_all_files().unwrap();
         assert_eq!(files.len(), 3);
@@ -591,16 +597,24 @@ mod tests {
         store.upsert_file(&metadata).unwrap();
 
         // Same hash and mtime - no reindex needed
-        assert!(!store.needs_reindex("src/main.rs", "abc123", 1234567890).unwrap());
+        assert!(!store
+            .needs_reindex("src/main.rs", "abc123", 1234567890)
+            .unwrap());
 
         // Different hash - needs reindex
-        assert!(store.needs_reindex("src/main.rs", "different_hash", 1234567890).unwrap());
+        assert!(store
+            .needs_reindex("src/main.rs", "different_hash", 1234567890)
+            .unwrap());
 
         // Different mtime but same hash - no reindex needed
-        assert!(!store.needs_reindex("src/main.rs", "abc123", 9999999999).unwrap());
+        assert!(!store
+            .needs_reindex("src/main.rs", "abc123", 9999999999)
+            .unwrap());
 
         // File not indexed - needs reindex
-        assert!(store.needs_reindex("src/new_file.rs", "any_hash", 0).unwrap());
+        assert!(store
+            .needs_reindex("src/new_file.rs", "any_hash", 0)
+            .unwrap());
     }
 
     #[test]
@@ -644,8 +658,12 @@ mod tests {
         let metadata = create_test_file_metadata("src/main.rs");
         let file_id = store.upsert_file(&metadata).unwrap();
 
-        store.insert_chunk(&create_test_chunk("chunk1", "src/main.rs"), file_id).unwrap();
-        store.insert_chunk(&create_test_chunk("chunk2", "src/main.rs"), file_id).unwrap();
+        store
+            .insert_chunk(&create_test_chunk("chunk1", "src/main.rs"), file_id)
+            .unwrap();
+        store
+            .insert_chunk(&create_test_chunk("chunk2", "src/main.rs"), file_id)
+            .unwrap();
 
         // Verify chunks exist
         assert_eq!(store.get_file_chunks("src/main.rs").unwrap().len(), 2);
@@ -666,7 +684,9 @@ mod tests {
         let metadata = create_test_file_metadata("src/main.rs");
         let file_id = store.upsert_file(&metadata).unwrap();
 
-        store.insert_chunk(&create_test_chunk("chunk1", "src/main.rs"), file_id).unwrap();
+        store
+            .insert_chunk(&create_test_chunk("chunk1", "src/main.rs"), file_id)
+            .unwrap();
 
         // Delete file (should cascade to chunks due to foreign key)
         store.delete_file("src/main.rs").unwrap();
@@ -682,7 +702,8 @@ mod tests {
         let file_id = store.upsert_file(&metadata).unwrap();
 
         let mut chunk = create_test_chunk("chunk1", "src/main.rs");
-        chunk.content = "fn calculate_total(items: Vec<Item>) -> i32 { items.iter().sum() }".to_string();
+        chunk.content =
+            "fn calculate_total(items: Vec<Item>) -> i32 { items.iter().sum() }".to_string();
         chunk.name = Some("calculate_total".to_string());
         store.insert_chunk(&chunk, file_id).unwrap();
 
@@ -714,9 +735,15 @@ mod tests {
         let file_id2 = store.upsert_file(&python_file).unwrap();
 
         // Add chunks
-        store.insert_chunk(&create_test_chunk("chunk1", "src/main.rs"), file_id1).unwrap();
-        store.insert_chunk(&create_test_chunk("chunk2", "src/main.rs"), file_id1).unwrap();
-        store.insert_chunk(&create_test_chunk("chunk3", "src/script.py"), file_id2).unwrap();
+        store
+            .insert_chunk(&create_test_chunk("chunk1", "src/main.rs"), file_id1)
+            .unwrap();
+        store
+            .insert_chunk(&create_test_chunk("chunk2", "src/main.rs"), file_id1)
+            .unwrap();
+        store
+            .insert_chunk(&create_test_chunk("chunk3", "src/script.py"), file_id2)
+            .unwrap();
 
         let stats = store.get_stats().unwrap();
         assert_eq!(stats.total_files, 2);
@@ -724,12 +751,20 @@ mod tests {
         assert_eq!(stats.languages.len(), 2);
 
         // Find rust stats
-        let rust_stats = stats.languages.iter().find(|l| l.language == "rust").unwrap();
+        let rust_stats = stats
+            .languages
+            .iter()
+            .find(|l| l.language == "rust")
+            .unwrap();
         assert_eq!(rust_stats.file_count, 1);
         assert_eq!(rust_stats.chunk_count, 2);
 
         // Find python stats
-        let python_stats = stats.languages.iter().find(|l| l.language == "python").unwrap();
+        let python_stats = stats
+            .languages
+            .iter()
+            .find(|l| l.language == "python")
+            .unwrap();
         assert_eq!(python_stats.file_count, 1);
         assert_eq!(python_stats.chunk_count, 1);
     }
@@ -739,8 +774,12 @@ mod tests {
         let (store, _dir) = create_test_store();
 
         // Create files first (required for foreign key)
-        store.upsert_file(&create_test_file_metadata("src/a.rs")).unwrap();
-        store.upsert_file(&create_test_file_metadata("src/b.rs")).unwrap();
+        store
+            .upsert_file(&create_test_file_metadata("src/a.rs"))
+            .unwrap();
+        store
+            .upsert_file(&create_test_file_metadata("src/b.rs"))
+            .unwrap();
 
         let coupling = FileCoupling {
             file_a: "src/a.rs".to_string(),
@@ -765,7 +804,9 @@ mod tests {
         let file_id = store.upsert_file(&metadata).unwrap();
 
         store.begin_transaction().unwrap();
-        store.insert_chunk(&create_test_chunk("chunk1", "src/main.rs"), file_id).unwrap();
+        store
+            .insert_chunk(&create_test_chunk("chunk1", "src/main.rs"), file_id)
+            .unwrap();
         store.rollback().unwrap();
 
         // Chunk should not be persisted

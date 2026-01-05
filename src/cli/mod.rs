@@ -1,8 +1,8 @@
-mod init;
-mod index;
-mod search;
 mod grep;
+mod index;
+mod init;
 mod related;
+mod search;
 mod status;
 
 use anyhow::Result;

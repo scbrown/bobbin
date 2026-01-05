@@ -51,7 +51,7 @@ impl GitAnalyzer {
         // Build co-change matrix
         let mut co_changes: HashMap<(String, String), u32> = HashMap::new();
         let mut last_seen: HashMap<(String, String), i64> = HashMap::new();
-        
+
         // Track max co-changes for normalization
         let mut max_co_changes = 0;
 
@@ -70,7 +70,7 @@ impl GitAnalyzer {
                     if *count > max_co_changes {
                         max_co_changes = *count;
                     }
-                    
+
                     // Keep the most recent time
                     let last = last_seen.entry(key).or_insert(0);
                     if commit_time > *last {
@@ -115,7 +115,13 @@ impl GitAnalyzer {
     /// Get files changed in a specific commit
     pub fn get_commit_files(&self, commit_hash: &str) -> Result<Vec<String>> {
         let output = Command::new("git")
-            .args(["diff-tree", "--no-commit-id", "--name-only", "-r", commit_hash])
+            .args([
+                "diff-tree",
+                "--no-commit-id",
+                "--name-only",
+                "-r",
+                commit_hash,
+            ])
             .current_dir(&self.repo_root)
             .output()
             .context("Failed to get commit files")?;
@@ -178,7 +184,7 @@ fn parse_git_log(log: &str) -> Vec<(i64, Vec<String>)> {
             if !current_files.is_empty() {
                 commits.push((current_time, std::mem::take(&mut current_files)));
             }
-            
+
             // Parse new commit header: COMMIT:<hash>:<timestamp>
             let parts: Vec<&str> = line.split(':').collect();
             if parts.len() >= 3 {
@@ -201,7 +207,12 @@ fn parse_git_log(log: &str) -> Vec<(i64, Vec<String>)> {
 }
 
 /// Calculate coupling score based on frequency and recency
-fn calculate_coupling_score(co_changes: u32, max_co_changes: u32, last_co_change: i64, now: i64) -> f32 {
+fn calculate_coupling_score(
+    co_changes: u32,
+    max_co_changes: u32,
+    last_co_change: i64,
+    now: i64,
+) -> f32 {
     if max_co_changes == 0 {
         return 0.0;
     }
@@ -213,7 +224,7 @@ fn calculate_coupling_score(co_changes: u32, max_co_changes: u32, last_co_change
     // Decay factor: 0.99 per day? Or simpler: 1 / (1 + days)
     let days_diff = ((now - last_co_change) as f32 / 86400.0).max(0.0);
     // Use a slow decay: at 30 days, score is ~0.5. at 0 days, score is 1.0
-    // 30 days * k = 1 => k = 1/30? 
+    // 30 days * k = 1 => k = 1/30?
     // Let's use 1 / (1 + days/30)
     let recency_score = 1.0 / (1.0 + days_diff / 30.0);
 
@@ -230,12 +241,12 @@ mod tests {
     fn test_parse_git_log() {
         let log = "COMMIT:hash1:1000\nfile1.rs\nfile2.rs\n\nCOMMIT:hash2:2000\nfile2.rs\nfile3.rs";
         let commits = parse_git_log(log);
-        
+
         assert_eq!(commits.len(), 2);
-        
+
         assert_eq!(commits[0].0, 1000);
         assert_eq!(commits[0].1, vec!["file1.rs", "file2.rs"]);
-        
+
         assert_eq!(commits[1].0, 2000);
         assert_eq!(commits[1].1, vec!["file2.rs", "file3.rs"]);
     }
@@ -244,7 +255,7 @@ mod tests {
     fn test_calculate_coupling_score() {
         let now = 10000;
         let max_co_changes = 10;
-        
+
         // Case 1: High frequency, recent
         let score1 = calculate_coupling_score(10, max_co_changes, now, now);
         // freq = 1.0, recency = 1.0 -> 1.0
