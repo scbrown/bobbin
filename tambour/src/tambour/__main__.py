@@ -4,6 +4,7 @@ Usage:
     python -m tambour <command> [options]
 
 Commands:
+    abort <issue> [--worktree-base PATH]
     agent [--cli CLI] [--issue ID] [--label LABEL]
     context collect [--prompt FILE] [--issue ID] [--worktree PATH] [--verbose]
     events emit <event> [--issue ID] [--worktree PATH]
@@ -89,6 +90,16 @@ def create_parser() -> argparse.ArgumentParser:
         "daemon_command",
         choices=["start", "stop", "status"],
         help="Daemon operation",
+    )
+
+    # abort command
+    abort_parser = subparsers.add_parser(
+        "abort", help="Abort/cancel agent work (unclaim issue, remove worktree, delete branch)"
+    )
+    abort_parser.add_argument("issue", help="Issue ID to abort")
+    abort_parser.add_argument(
+        "--worktree-base",
+        help="Base directory for worktrees (default: ../bobbin-worktrees relative to git root)",
     )
 
     # config command
@@ -444,6 +455,100 @@ def cmd_daemon(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_abort(args: argparse.Namespace) -> int:
+    """Handle 'abort' command.
+
+    Aborts/cancels agent work for an issue:
+    1. Unclaim the issue (status=open, assignee="")
+    2. Remove the worktree
+    3. Delete the feature branch
+    """
+    import subprocess
+
+    issue_id = args.issue
+    print(f"Aborting {issue_id}...")
+
+    # Determine worktree base path
+    if args.worktree_base:
+        worktree_base = Path(args.worktree_base)
+    else:
+        # Default: find git root and use ../bobbin-worktrees relative to it
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            git_root = Path(result.stdout.strip())
+            worktree_base = git_root.parent / "bobbin-worktrees"
+        except subprocess.CalledProcessError:
+            print("Error: Not in a git repository", file=sys.stderr)
+            return 1
+
+    worktree_path = worktree_base / issue_id
+
+    # Step 1: Unclaim the issue (set status=open, clear assignee)
+    print(f"  Unclaiming issue...")
+    result = subprocess.run(
+        ["bd", "update", issue_id, "--status", "open", "--assignee", ""],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        # Not a fatal error - issue may not exist or already be in open state
+        if result.stderr:
+            print(f"  Warning: {result.stderr.strip()}")
+
+    # Step 2: Remove the worktree
+    if worktree_path.exists():
+        print(f"  Removing worktree at {worktree_path}...")
+        # Use bd worktree remove with --force to handle uncommitted changes
+        result = subprocess.run(
+            ["bd", "worktree", "remove", str(worktree_path), "--force"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            # Fall back to git worktree remove
+            result = subprocess.run(
+                ["git", "worktree", "remove", str(worktree_path), "--force"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                # Last resort: just remove the directory
+                import shutil
+
+                try:
+                    shutil.rmtree(worktree_path)
+                    # Prune the worktree entry
+                    subprocess.run(
+                        ["git", "worktree", "prune"],
+                        capture_output=True,
+                        text=True,
+                    )
+                except Exception as e:
+                    print(f"  Warning: Could not remove worktree: {e}", file=sys.stderr)
+    else:
+        print(f"  Worktree not found (already removed)")
+
+    # Step 3: Delete the feature branch
+    print(f"  Deleting branch {issue_id}...")
+    result = subprocess.run(
+        ["git", "branch", "-D", issue_id],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        # Not fatal - branch may not exist
+        if "not found" not in result.stderr.lower() and result.stderr.strip():
+            print(f"  Warning: {result.stderr.strip()}")
+
+    print("Done.")
+    return 0
+
+
 def cmd_config_get(args: argparse.Namespace) -> int:
     """Handle 'config get' command."""
     from tambour.config import Config
@@ -538,6 +643,8 @@ def main() -> NoReturn:
             sys.exit(1)
     elif args.command == "daemon":
         sys.exit(cmd_daemon(args))
+    elif args.command == "abort":
+        sys.exit(cmd_abort(args))
     elif args.command == "config":
         if args.config_command == "validate":
             sys.exit(cmd_config_validate(args))

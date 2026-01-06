@@ -55,13 +55,12 @@ finish-keep issue:
 # Abort/cancel an agent (unclaim, remove worktree, delete branch)
 abort issue:
     #!/usr/bin/env bash
-    set -e
-    WORKTREE="../bobbin-worktrees/{{issue}}"
-    echo "Aborting {{issue}}..."
-    bd update "{{issue}}" --status open --assignee "" || true
-    bd worktree remove "$WORKTREE" --force 2>/dev/null || true
-    git branch -D "{{issue}}" 2>/dev/null || true
-    echo "Done."
+    TAMBOUR_VENV="$(pwd)/tambour/.venv"
+    if [ ! -f "$TAMBOUR_VENV/bin/python" ]; then
+        echo "Error: Run 'just tambour setup' first"
+        exit 1
+    fi
+    "$TAMBOUR_VENV/bin/python" -m tambour abort "{{issue}}"
 
 # Cleanup a stuck task (retry finish/merge for closed/broken tasks)
 cleanup issue:
