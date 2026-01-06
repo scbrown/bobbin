@@ -4,6 +4,9 @@ Usage:
     python -m tambour <command> [options]
 
 Commands:
+    finish <issue> [--merge] [--no-continue]
+    lock-status
+    lock-release
     context collect [--prompt FILE] [--issue ID] [--worktree PATH] [--verbose]
     events emit <event> [--issue ID] [--worktree PATH]
     metrics collect [--storage PATH]
@@ -270,6 +273,35 @@ def create_parser() -> argparse.ArgumentParser:
         "--storage",
         help="Path to metrics.jsonl file",
     )
+
+    # finish command
+    finish_parser = subparsers.add_parser(
+        "finish", help="Merge agent work and complete an issue"
+    )
+    finish_parser.add_argument("issue", help="Issue ID to finish")
+    finish_parser.add_argument(
+        "--merge",
+        action="store_true",
+        default=True,
+        help="Merge the branch into main (default: True)",
+    )
+    finish_parser.add_argument(
+        "--no-merge",
+        action="store_false",
+        dest="merge",
+        help="Skip merging (keep worktree for later)",
+    )
+    finish_parser.add_argument(
+        "--no-continue",
+        action="store_true",
+        help="Skip the 'continue to next task' flow after completion",
+    )
+
+    # lock-status command
+    subparsers.add_parser("lock-status", help="Check merge lock status")
+
+    # lock-release command
+    subparsers.add_parser("lock-release", help="Force-release stuck merge lock")
 
     return parser
 
@@ -547,6 +579,18 @@ def main() -> NoReturn:
         else:
             parser.parse_args(["metrics", "--help"])
             sys.exit(1)
+    elif args.command == "finish":
+        from tambour.finish import cmd_finish
+
+        sys.exit(cmd_finish(args))
+    elif args.command == "lock-status":
+        from tambour.finish import cmd_lock_status
+
+        sys.exit(cmd_lock_status(args))
+    elif args.command == "lock-release":
+        from tambour.finish import cmd_lock_release
+
+        sys.exit(cmd_lock_release(args))
     else:
         parser.print_help()
         sys.exit(1)
