@@ -17,9 +17,9 @@ pub struct RelatedArgs {
     #[arg(long, short = 'n', default_value = "10")]
     limit: usize,
 
-    /// Include temporal coupling scores
-    #[arg(long)]
-    coupling: bool,
+    /// Minimum score threshold
+    #[arg(long, default_value = "0.0")]
+    threshold: f32,
 }
 
 #[derive(Serialize)]
@@ -76,6 +76,7 @@ pub async fn run(args: RelatedArgs, output: OutputConfig) -> Result<()> {
 
     let related: Vec<RelatedFile> = couplings
         .into_iter()
+        .filter(|c| c.score >= args.threshold)
         .map(|c| {
             // coupling contains both files, figure out which is the "other" one
             let other_path = if c.file_a == rel_path {
@@ -100,20 +101,18 @@ pub async fn run(args: RelatedArgs, output: OutputConfig) -> Result<()> {
         };
         println!("{}", serde_json::to_string_pretty(&json_output)?);
     } else {
-        println!("Related files for {}:", rel_path.cyan());
+        println!("Related to {}:", rel_path.cyan());
         if related.is_empty() {
             println!("  No related files found (no shared commit history)");
         } else {
-            for file in related {
-                print!("  {}", file.path);
-                if args.coupling {
-                    print!(
-                        " {} {}",
-                        format!("(Score: {:.2},", file.score).dimmed(),
-                        format!("Co-changes: {})", file.co_changes).dimmed()
-                    );
-                }
-                println!();
+            for (i, file) in related.into_iter().enumerate() {
+                println!(
+                    "{}. {} (score: {:.2}) - Co-changed {} times",
+                    i + 1,
+                    file.path,
+                    file.score,
+                    file.co_changes
+                );
             }
         }
     }
