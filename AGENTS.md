@@ -6,15 +6,15 @@ Bobbin is a semantic code indexing tool written in Rust. It indexes codebases fo
 
 ## Session Management
 
-**At the start of each work session**, set a 3-word-or-less task summary using `/note`:
+**For human users**: Set a session note using `/note <summary>` (3 words or less):
 
 ```
 /note fix parser bug
 ```
 
-Example summaries: "fix parser bug", "add tests", "refactor indexer"
+This note appears in the status line. Examples: "fix parser bug", "add tests", "refactor indexer"
 
-This note appears in the status line to help track session context.
+**Note**: Agents should NOT try to run `/note` - the skill relies on session context that isn't available to subagents.
 
 ## Agent Workflow
 
@@ -205,3 +205,20 @@ cd tambour && source .venv/bin/activate && python -m pytest tests/ -v
 
 3. **Tambour will eventually be extracted.**
    It lives here temporarily while the interface stabilizes. When it needs to orchestrate agents across multiple repositories, it becomes its own project.
+
+### Merge Lock (Parallel Agent Support)
+
+When multiple agents work in parallel, they can race at merge time. Tambour uses a distributed merge lock to serialize merges:
+
+- **Automatic**: `just tambour finish` acquires the lock before merging, releases after push
+- **Agents wait**: If another merge is in progress, the agent waits (up to 5 minutes by default)
+- **No retries needed**: Agents don't need to manually pull/rebase - the lock ensures clean merges
+
+**Manual lock management** (for troubleshooting):
+```bash
+just tambour lock-status    # Check who holds the lock
+just tambour lock-release   # Force-release a stuck lock
+```
+
+**Environment variables:**
+- `TAMBOUR_LOCK_TIMEOUT`: Max seconds to wait for lock (default: 300)

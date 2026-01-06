@@ -112,16 +112,102 @@ if [ "$DO_MERGE" = true ]; then
     # We cannot checkout a different branch while in the worktree we're about to remove
     cd "$REPO_ROOT"
 
+    # === Merge Lock ===
+    # Acquire distributed lock to serialize merges across parallel agents
+    LOCK_REF="refs/tambour/merge-lock"
+    LOCK_ACQUIRED=false
+    LOCK_TIMEOUT=${TAMBOUR_LOCK_TIMEOUT:-300}
+    LOCK_POLL_INTERVAL=5
+
+    acquire_merge_lock() {
+        local holder="$1"
+        local deadline=$(($(date +%s) + LOCK_TIMEOUT))
+
+        # Create lock metadata
+        local lock_data=$(cat <<EOF
+{
+  "holder": "$holder",
+  "acquired_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "host": "$(hostname)",
+  "pid": $$
+}
+EOF
+        )
+
+        # Create commit object for lock
+        local blob_sha=$(echo "$lock_data" | git hash-object -w --stdin)
+        local tree_sha=$(echo -e "100644 blob $blob_sha\tlock.json" | git mktree)
+        local commit_sha=$(git commit-tree "$tree_sha" -m "merge lock: $holder")
+
+        while [ $(date +%s) -lt $deadline ]; do
+            if git push origin "$commit_sha:$LOCK_REF" 2>/dev/null; then
+                echo "Acquired merge lock for $holder"
+                LOCK_ACQUIRED=true
+                return 0
+            fi
+
+            # Check who holds it
+            git fetch origin "$LOCK_REF" 2>/dev/null || true
+            local current_holder=$(git cat-file -p FETCH_HEAD 2>/dev/null | grep '"holder"' | cut -d'"' -f4 || echo "unknown")
+            echo "Waiting for merge lock (held by $current_holder)..."
+            sleep $LOCK_POLL_INTERVAL
+        done
+
+        echo "ERROR: Timeout waiting for merge lock after ${LOCK_TIMEOUT}s"
+        return 1
+    }
+
+    release_merge_lock() {
+        local holder="$1"
+        if [ "$LOCK_ACQUIRED" = true ]; then
+            if git push origin --delete "$LOCK_REF" 2>/dev/null; then
+                echo "Released merge lock for $holder"
+            else
+                echo "Warning: Could not release merge lock"
+            fi
+            LOCK_ACQUIRED=false
+        fi
+    }
+
+    # Trap to ensure lock release on any exit
+    trap 'release_merge_lock "$ISSUE_ID"' EXIT
+
+    # Acquire the lock before any merge operations
+    if ! acquire_merge_lock "$ISSUE_ID"; then
+        echo "Failed to acquire merge lock. Another merge may be in progress."
+        echo "Use 'just tambour lock-status' to check, or 'just tambour lock-release' to force-release."
+        exit 1
+    fi
+
     # Ensure we're on main
     git checkout main
+
+    # Pull latest changes (critical for parallel agent workflows)
+    echo "Pulling latest main..."
+    git pull origin main --ff-only || {
+        echo "ERROR: Could not fast-forward main. Manual intervention may be needed."
+        exit 1
+    }
 
     # Check if branch exists before merging
     if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
         # Merge the branch
         git merge "$BRANCH_NAME" --no-edit
+
+        # Push the merge to remote
+        echo "Pushing to origin..."
+        if ! git push origin main; then
+            echo "ERROR: Push failed. The merge lock is still held."
+            echo "Resolve the issue and retry, or use 'just tambour lock-release' to release."
+            exit 1
+        fi
     else
         echo "Branch $BRANCH_NAME does not exist. Assuming changes are already merged or discarded."
     fi
+
+    # Release lock after successful push (trap will also release on exit, but explicit is clearer)
+    release_merge_lock "$ISSUE_ID"
+    trap - EXIT  # Clear the trap since we released manually
 
     # Emit branch.merged event
     emit_event "branch.merged" "$ISSUE_ID" "$WORKTREE_PATH"

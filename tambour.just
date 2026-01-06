@@ -123,3 +123,90 @@ spinoff title *args:
     fi
 
     bd show "$ISSUE_ID"
+
+# === Merge Lock ===
+# Distributed lock using git refs to serialize merges across agents/worktrees
+
+LOCK_REF := "refs/tambour/merge-lock"
+
+# Check merge lock status
+lock-status:
+    #!/usr/bin/env bash
+    set -e
+    git fetch origin {{LOCK_REF}} 2>/dev/null || {
+        echo "Lock: FREE (no lock held)"
+        exit 0
+    }
+    echo "Lock: HELD"
+    git cat-file -p FETCH_HEAD 2>/dev/null || echo "(no metadata)"
+
+# Force-release the merge lock (admin/recovery)
+lock-release:
+    #!/usr/bin/env bash
+    set -e
+    echo "Force-releasing merge lock..."
+    git push origin --delete {{LOCK_REF}} 2>/dev/null && echo "Lock released." || echo "Lock was not held."
+
+# Acquire merge lock (used internally by finish)
+[private]
+lock-acquire holder:
+    #!/usr/bin/env bash
+    set -e
+    LOCK_REF="{{LOCK_REF}}"
+    HOLDER="{{holder}}"
+    TIMEOUT=${TIMEOUT:-300}
+    POLL_INTERVAL=5
+    DEADLINE=$(($(date +%s) + TIMEOUT))
+
+    # Create lock metadata
+    LOCK_DATA=$(cat <<EOF
+    {
+      "holder": "$HOLDER",
+      "acquired_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+      "host": "$(hostname)",
+      "pid": $$
+    }
+    EOF
+    )
+
+    # Create commit object for lock
+    BLOB_SHA=$(echo "$LOCK_DATA" | git hash-object -w --stdin)
+    TREE_SHA=$(echo -e "100644 blob $BLOB_SHA\tlock.json" | git mktree)
+    COMMIT_SHA=$(git commit-tree "$TREE_SHA" -m "merge lock: $HOLDER")
+
+    while [ $(date +%s) -lt $DEADLINE ]; do
+        if git push origin "$COMMIT_SHA:$LOCK_REF" 2>/dev/null; then
+            echo "Acquired merge lock for $HOLDER"
+            exit 0
+        fi
+
+        # Check who holds it
+        git fetch origin "$LOCK_REF" 2>/dev/null || true
+        echo "Waiting for lock... ($(git cat-file -p FETCH_HEAD 2>/dev/null | head -5 || echo 'unknown holder'))"
+        sleep $POLL_INTERVAL
+    done
+
+    echo "ERROR: Timeout waiting for merge lock"
+    exit 1
+
+# Release merge lock (used internally by finish)
+[private]
+lock-release-for holder:
+    #!/usr/bin/env bash
+    set -e
+    LOCK_REF="{{LOCK_REF}}"
+    HOLDER="{{holder}}"
+
+    # Verify we hold the lock
+    git fetch origin "$LOCK_REF" 2>/dev/null || {
+        echo "Warning: lock already released"
+        exit 0
+    }
+
+    CURRENT_HOLDER=$(git cat-file -p FETCH_HEAD 2>/dev/null | grep '"holder"' | cut -d'"' -f4 || echo "")
+    if [ "$CURRENT_HOLDER" != "$HOLDER" ]; then
+        echo "ERROR: Lock held by '$CURRENT_HOLDER', not '$HOLDER'"
+        exit 1
+    fi
+
+    git push origin --delete "$LOCK_REF" && echo "Released merge lock for $HOLDER"

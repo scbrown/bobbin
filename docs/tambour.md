@@ -58,6 +58,8 @@ just tambour health-fix             # Auto-unclaim zombied tasks
 just tambour wip                    # Show in-progress tasks
 just tambour worktrees              # List active worktrees
 just tambour ready                  # Show ready tasks
+just tambour lock-status            # Check merge lock status
+just tambour lock-release           # Force-release stuck lock
 ```
 
 ### Scripts
@@ -76,13 +78,16 @@ Spawns an agent for a beads task:
 **`scripts/finish-agent.sh <issue-id> [--merge] [--no-continue]`**
 
 Cleans up after agent completion:
-1. Merges branch to main (with `--merge`)
-2. Removes worktree via `bd worktree remove`
-3. Closes the beads issue
-4. Auto-closes any epics that became eligible (all children complete)
-5. Shows completion summary with closed tasks and epics
-6. Prompts to continue to next task or create new tasks (unless `--no-continue`)
-7. Injects completion context into next agent session
+1. Acquires distributed merge lock (serializes merges across parallel agents)
+2. Pulls latest main and merges branch (with `--merge`)
+3. Pushes to origin
+4. Releases merge lock
+5. Removes worktree via `bd worktree remove`
+6. Closes the beads issue
+7. Auto-closes any epics that became eligible (all children complete)
+8. Shows completion summary with closed tasks and epics
+9. Prompts to continue to next task or create new tasks (unless `--no-continue`)
+10. Injects completion context into next agent session
 
 **`scripts/health-check.sh [--fix]`**
 
@@ -103,6 +108,39 @@ The harness handles these failure modes:
 | Claude exits normally | Issue stays claimed |
 | `kill -9` on process | `just health-fix` recovers |
 | Unknown zombie | `just health` detects, `just health-fix` recovers |
+| Merge lock timeout | Error message, suggests `lock-status` |
+| Agent crashes while holding lock | Trap releases lock; or use `lock-release` |
+
+### Merge Lock (Parallel Agent Support)
+
+When multiple agents work in parallel, they race at merge time. Tambour uses a distributed merge lock stored as a git ref on the remote (`refs/tambour/merge-lock`).
+
+**How it works:**
+1. Before merging, `finish-agent.sh` tries to push a lock ref to origin
+2. If ref already exists (another merge in progress), the push fails
+3. Agent waits and retries until lock is available or timeout (default: 5 minutes)
+4. After successful push to main, the lock ref is deleted
+
+**Properties:**
+| Property | Implementation |
+|----------|----------------|
+| Distributed | Lock lives on git remote, not local |
+| Atomic | `git push` fails if ref exists |
+| Works with worktrees | All worktrees share the same remote |
+| Recoverable | `lock-release` force-deletes stuck locks |
+| Visible | Lock metadata shows holder, timestamp, host |
+
+**Troubleshooting:**
+```bash
+# Check who holds the lock
+just tambour lock-status
+
+# Force-release a stuck lock (e.g., agent crashed)
+just tambour lock-release
+```
+
+**Environment variables:**
+- `TAMBOUR_LOCK_TIMEOUT`: Max seconds to wait for lock (default: 300)
 
 ### Usage
 
