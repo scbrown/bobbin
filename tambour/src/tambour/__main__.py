@@ -48,6 +48,10 @@ def create_parser() -> argparse.ArgumentParser:
     emit_parser.add_argument("--main-repo", help="Main repository path")
     emit_parser.add_argument("--beads-db", help="Beads database path")
     emit_parser.add_argument(
+        "--data",
+        help="JSON payload with event data (alternative to --extra flags)",
+    )
+    emit_parser.add_argument(
         "--extra",
         action="append",
         help="Extra data (key=value). Can be used multiple times.",
@@ -161,8 +165,10 @@ def cmd_context_collect(args: argparse.Namespace) -> int:
 
 def cmd_events_emit(args: argparse.Namespace) -> int:
     """Handle 'events emit' command."""
-    from tambour.events import EventType, Event, EventDispatcher
+    import json
+
     from tambour.config import Config
+    from tambour.events import Event, EventDispatcher, EventType
 
     try:
         event_type = EventType(args.event)
@@ -172,7 +178,23 @@ def cmd_events_emit(args: argparse.Namespace) -> int:
         print(f"Valid events: {valid_events}", file=sys.stderr)
         return 1
 
-    extra = {}
+    # Build extra dict from --data JSON or --extra flags
+    extra: dict[str, str] = {}
+
+    if args.data:
+        try:
+            data = json.loads(args.data)
+            if isinstance(data, dict):
+                # Flatten nested dicts to string values for env var compatibility
+                for key, value in data.items():
+                    if isinstance(value, dict):
+                        extra[key] = json.dumps(value)
+                    else:
+                        extra[key] = str(value)
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON in --data: {e}", file=sys.stderr)
+            return 1
+
     if args.extra:
         for item in args.extra:
             if "=" in item:
@@ -189,11 +211,11 @@ def cmd_events_emit(args: argparse.Namespace) -> int:
     )
 
     config = Config.load_or_default()
-    
+
     # Use a log file for async execution results
     log_file = Path.home() / ".tambour" / "events.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     dispatcher = EventDispatcher(config, log_file=log_file)
     results = dispatcher.dispatch(event)
 

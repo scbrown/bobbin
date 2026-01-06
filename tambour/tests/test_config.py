@@ -24,7 +24,7 @@ class TestPluginConfig:
         plugin = PluginConfig.from_dict("indexer", data)
 
         assert plugin.name == "indexer"
-        assert plugin.on == "branch.merged"
+        assert plugin.on == ["branch.merged"]
         assert plugin.run == "bobbin index"
         # Check defaults
         assert plugin.blocking is False
@@ -43,11 +43,26 @@ class TestPluginConfig:
         plugin = PluginConfig.from_dict("notify", data)
 
         assert plugin.name == "notify"
-        assert plugin.on == "agent.finished"
+        assert plugin.on == ["agent.finished"]
         assert plugin.run == "echo done"
         assert plugin.blocking is True
         assert plugin.timeout == 60
         assert plugin.enabled is False
+
+    def test_from_dict_with_multiple_events(self):
+        """Test parsing plugin that subscribes to multiple events."""
+        data = {
+            "on": ["tool.used", "tool.failed"],
+            "run": "metrics-collector.sh",
+        }
+        plugin = PluginConfig.from_dict("metrics", data)
+
+        assert plugin.name == "metrics"
+        assert plugin.on == ["tool.used", "tool.failed"]
+        assert plugin.run == "metrics-collector.sh"
+        assert plugin.matches_event("tool.used")
+        assert plugin.matches_event("tool.failed")
+        assert not plugin.matches_event("agent.finished")
 
     def test_from_dict_missing_on_field(self):
         """Test error when 'on' field is missing."""
@@ -80,7 +95,8 @@ class TestPluginConfig:
         for event_name in VALID_EVENT_NAMES:
             data = {"on": event_name, "run": "echo test"}
             plugin = PluginConfig.from_dict(f"plugin_{event_name}", data)
-            assert plugin.on == event_name
+            assert plugin.on == [event_name]
+            assert plugin.matches_event(event_name)
 
 
 class TestContextProviderConfig:
@@ -170,8 +186,8 @@ run = "notify-send 'Agent done'"
             assert len(config.plugins) == 2
             assert "indexer" in config.plugins
             assert "notifier" in config.plugins
-            assert config.plugins["indexer"].on == "branch.merged"
-            assert config.plugins["notifier"].on == "agent.finished"
+            assert config.plugins["indexer"].on == ["branch.merged"]
+            assert config.plugins["notifier"].on == ["agent.finished"]
         finally:
             config_path.unlink()
 
@@ -288,12 +304,20 @@ class TestValidEventNames:
     def test_contains_expected_events(self):
         """Test that all expected events are in the set."""
         expected = {
+            # Lifecycle events
             "agent.spawned",
             "agent.finished",
             "branch.merged",
             "task.claimed",
             "task.completed",
             "health.zombie",
+            # Tool use events
+            "tool.used",
+            "tool.failed",
+            # Session events
+            "session.started",
+            "session.file_read",
+            "session.file_written",
         }
         assert VALID_EVENT_NAMES == expected
 
