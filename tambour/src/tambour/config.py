@@ -12,12 +12,20 @@ from typing import Any
 
 # Valid event names that plugins can subscribe to
 VALID_EVENT_NAMES = frozenset({
+    # Lifecycle events
     "agent.spawned",
     "agent.finished",
     "branch.merged",
     "task.claimed",
     "task.completed",
     "health.zombie",
+    # Tool use events
+    "tool.used",
+    "tool.failed",
+    # Session events
+    "session.started",
+    "session.file_read",
+    "session.file_written",
 })
 
 
@@ -26,11 +34,22 @@ class PluginConfig:
     """Configuration for a single plugin."""
 
     name: str
-    on: str  # Event type to trigger on
+    on: list[str]  # Event types to trigger on (supports multiple events)
     run: str  # Command to execute
     blocking: bool = False
     timeout: int = 30  # seconds
     enabled: bool = True
+
+    def matches_event(self, event_type: str) -> bool:
+        """Check if this plugin should trigger for the given event type.
+
+        Args:
+            event_type: The event type string (e.g., "tool.used").
+
+        Returns:
+            True if the plugin subscribes to this event type.
+        """
+        return event_type in self.on
 
     @classmethod
     def from_dict(cls, name: str, data: dict[str, Any]) -> PluginConfig:
@@ -51,16 +70,28 @@ class PluginConfig:
         if "run" not in data:
             raise ValueError(f"Plugin '{name}' missing required field 'run'")
 
-        event_name = data["on"]
-        if event_name not in VALID_EVENT_NAMES:
+        # Support both single string and list of strings for 'on'
+        on_value = data["on"]
+        if isinstance(on_value, str):
+            event_names = [on_value]
+        elif isinstance(on_value, list):
+            event_names = on_value
+        else:
             raise ValueError(
-                f"Plugin '{name}' specifies invalid event '{event_name}'. "
-                f"Valid events are: {', '.join(sorted(VALID_EVENT_NAMES))}"
+                f"Plugin '{name}' has invalid 'on' field: expected string or list"
             )
+
+        # Validate all event names
+        for event_name in event_names:
+            if event_name not in VALID_EVENT_NAMES:
+                raise ValueError(
+                    f"Plugin '{name}' specifies invalid event '{event_name}'. "
+                    f"Valid events are: {', '.join(sorted(VALID_EVENT_NAMES))}"
+                )
 
         return cls(
             name=name,
-            on=event_name,
+            on=event_names,
             run=data["run"],
             blocking=data.get("blocking", False),
             timeout=data.get("timeout", 30),
@@ -256,7 +287,7 @@ class Config:
         return [
             plugin
             for plugin in self.plugins.values()
-            if plugin.on == event_type and plugin.enabled
+            if plugin.matches_event(event_type) and plugin.enabled
         ]
 
     def get_enabled_context_providers(self) -> list[ContextProviderConfig]:

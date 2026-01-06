@@ -23,12 +23,22 @@ if TYPE_CHECKING:
 class EventType(Enum):
     """Lifecycle events emitted by tambour."""
 
+    # Lifecycle events
     AGENT_SPAWNED = "agent.spawned"
     AGENT_FINISHED = "agent.finished"
     BRANCH_MERGED = "branch.merged"
     TASK_CLAIMED = "task.claimed"
     TASK_COMPLETED = "task.completed"
     HEALTH_ZOMBIE = "health.zombie"
+
+    # Tool use events
+    TOOL_USED = "tool.used"
+    TOOL_FAILED = "tool.failed"
+
+    # Session events
+    SESSION_STARTED = "session.started"
+    SESSION_FILE_READ = "session.file_read"
+    SESSION_FILE_WRITTEN = "session.file_written"
 
 
 @dataclass
@@ -87,6 +97,114 @@ class Event:
             env[env_key] = value
 
         return env
+
+
+@dataclass
+class ToolEvent:
+    """Event data for tool.used and tool.failed events.
+
+    Captures information about tool invocations from Claude Code sessions,
+    enabling metrics collection and analysis.
+
+    Attributes:
+        tool_name: Name of the tool (Read, Write, Edit, Bash, etc.).
+        tool_input: Parameters passed to the tool.
+        tool_response: Response/result from the tool.
+        session_id: Claude Code session identifier.
+        timestamp: When the tool was invoked.
+        issue_id: Associated beads issue ID (if in a worktree).
+        worktree: Path to the worktree (if applicable).
+        duration_ms: Tool execution time in milliseconds.
+        error: Error message if the tool failed.
+    """
+
+    tool_name: str
+    tool_input: dict[str, str]
+    tool_response: dict[str, str]
+    session_id: str
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    issue_id: str | None = None
+    worktree: Path | None = None
+    duration_ms: int | None = None
+    error: str | None = None
+
+    def to_event(self, failed: bool = False) -> Event:
+        """Convert to a standard Event for dispatching.
+
+        Args:
+            failed: If True, use TOOL_FAILED event type; otherwise TOOL_USED.
+
+        Returns:
+            An Event instance suitable for the event dispatcher.
+        """
+        event_type = EventType.TOOL_FAILED if failed else EventType.TOOL_USED
+        extra = {
+            "tool_name": self.tool_name,
+            "session_id": self.session_id,
+        }
+        if self.duration_ms is not None:
+            extra["duration_ms"] = str(self.duration_ms)
+        if self.error:
+            extra["error"] = self.error
+
+        return Event(
+            event_type=event_type,
+            issue_id=self.issue_id,
+            worktree=self.worktree,
+            timestamp=self.timestamp,
+            extra=extra,
+        )
+
+
+@dataclass
+class SessionEvent:
+    """Event data for session.* events.
+
+    Captures session lifecycle and file operation events.
+
+    Attributes:
+        session_id: Claude Code session identifier.
+        timestamp: When the event occurred.
+        issue_id: Associated beads issue ID (if in a worktree).
+        worktree: Path to the worktree (if applicable).
+        file_path: Path to the file (for file_read/file_written events).
+        lines: Number of lines read (for file_read events).
+        success: Whether the operation succeeded.
+    """
+
+    session_id: str
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    issue_id: str | None = None
+    worktree: Path | None = None
+    file_path: Path | None = None
+    lines: int | None = None
+    success: bool = True
+
+    def to_event(self, event_type: EventType) -> Event:
+        """Convert to a standard Event for dispatching.
+
+        Args:
+            event_type: The session event type (SESSION_STARTED, SESSION_FILE_READ, etc.).
+
+        Returns:
+            An Event instance suitable for the event dispatcher.
+        """
+        extra = {
+            "session_id": self.session_id,
+        }
+        if self.file_path:
+            extra["file_path"] = str(self.file_path)
+        if self.lines is not None:
+            extra["lines"] = str(self.lines)
+        extra["success"] = str(self.success).lower()
+
+        return Event(
+            event_type=event_type,
+            issue_id=self.issue_id,
+            worktree=self.worktree,
+            timestamp=self.timestamp,
+            extra=extra,
+        )
 
 
 @dataclass
