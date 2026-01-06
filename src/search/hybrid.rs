@@ -1,16 +1,56 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
+use crate::index::Embedder;
+use crate::storage::{MetadataStore, VectorStore};
 use crate::types::{MatchType, SearchResult};
 
-/// Combines semantic and keyword search results
-// TODO(bobbin-6vq.7): Integrate with `bobbin search` command
-#[allow(dead_code)]
-pub struct HybridSearch;
+/// Combines semantic and keyword search results using Reciprocal Rank Fusion (RRF)
+pub struct HybridSearch<'a> {
+    embedder: Embedder,
+    vector_store: VectorStore,
+    metadata_store: &'a MetadataStore,
+    semantic_weight: f32,
+}
 
-impl HybridSearch {
+impl<'a> HybridSearch<'a> {
+    /// Create a new hybrid search engine
+    pub fn new(
+        embedder: Embedder,
+        vector_store: VectorStore,
+        metadata_store: &'a MetadataStore,
+        semantic_weight: f32,
+    ) -> Self {
+        Self {
+            embedder,
+            vector_store,
+            metadata_store,
+            semantic_weight,
+        }
+    }
+
+    /// Perform hybrid search combining semantic and keyword results
+    pub async fn search(&mut self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        // Request more results from each source to have a good pool for fusion
+        let fetch_limit = limit * 2;
+
+        // Run semantic search
+        let query_embedding = self.embedder.embed(query)?;
+        let semantic_results = self.vector_store.search(&query_embedding, fetch_limit).await?;
+
+        // Run keyword search
+        let keyword_results = self.metadata_store.search_fts(query, fetch_limit)?;
+
+        // Combine using RRF
+        Self::combine(
+            semantic_results,
+            keyword_results,
+            self.semantic_weight,
+            limit,
+        )
+    }
+
     /// Combine semantic and keyword results using reciprocal rank fusion
-    #[allow(dead_code)]
     pub fn combine(
         semantic_results: Vec<SearchResult>,
         keyword_results: Vec<SearchResult>,
@@ -52,6 +92,7 @@ impl HybridSearch {
             .map(|(mut result, score)| {
                 result.score = score;
                 if result.match_type.is_none() {
+                    // Result only appeared in semantic search
                     result.match_type = Some(MatchType::Semantic);
                 }
                 result

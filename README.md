@@ -6,6 +6,7 @@ A local-first semantic code indexing tool. Bobbin indexes your codebase for sema
 
 - **Local-first**: All indexing and search happens on your machine. No data leaves your repository.
 - **Structure-aware**: Uses Tree-sitter for AST-based semantic chunking. Functions, classes, and modules are first-class citizens.
+- **Hybrid search**: Combines semantic (vector) and keyword (FTS) search using Reciprocal Rank Fusion for best-of-both-worlds results.
 - **Fast**: Sub-100ms queries using LanceDB vector search and SQLite FTS5.
 - **Incremental**: Only re-indexes files that have changed (hash-based detection).
 - **Configurable**: Customize include/exclude patterns, embedding model, and search weights via `.bobbin/config.toml`.
@@ -66,13 +67,24 @@ bobbin index --json         # Output in JSON format
 
 ### `bobbin search <QUERY>`
 
-Semantic search across your codebase using vector similarity.
+Search across your codebase. By default, uses hybrid search combining semantic (vector similarity) and keyword (FTS) results using Reciprocal Rank Fusion (RRF).
 
 ```bash
-bobbin search "error handling"
-bobbin search "database connection" --limit 20
-bobbin search "auth" --type rust
+bobbin search "error handling"                    # Hybrid search (default)
+bobbin search "database connection" --limit 20   # Limit results
+bobbin search "auth" --type function             # Filter by chunk type
+bobbin search "auth" --mode semantic             # Semantic-only search
+bobbin search "handleAuth" --mode keyword        # Keyword-only search
 ```
+
+**Search modes:**
+| Mode | Description |
+|------|-------------|
+| `hybrid` | Combines semantic + keyword using RRF (default) |
+| `semantic` | Vector similarity search only |
+| `keyword` | Full-text keyword search only |
+
+The `semantic_weight` in `.bobbin/config.toml` controls the balance between semantic and keyword results in hybrid mode (default: 0.7, meaning 70% weight to semantic matches).
 
 ### `bobbin grep <PATTERN>`
 
@@ -229,7 +241,7 @@ cargo check
 - [x] CLI: `status` command
 
 ### Phase 2: Intelligence
-- [ ] Semantic + hybrid search
+- [x] Hybrid search (RRF combining semantic + keyword)
 - [ ] Git temporal coupling analysis
 - [ ] Related files suggestions
 - [ ] Additional language support (Go, Java, C++)

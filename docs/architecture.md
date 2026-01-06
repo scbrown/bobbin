@@ -227,14 +227,31 @@ coupling_depth = 1000
 coupling_threshold = 3
 ```
 
+## Hybrid Search (RRF)
+
+The hybrid search combines semantic (vector) and keyword (FTS) results using Reciprocal Rank Fusion:
+
+```
+RRF_score = semantic_weight / (k + semantic_rank) + keyword_weight / (k + keyword_rank)
+```
+
+Where:
+- `k = 60` (standard RRF constant)
+- `semantic_weight` from config (default 0.7)
+- `keyword_weight = 1 - semantic_weight`
+
+Results that appear in both searches get boosted scores and are marked as `[hybrid]` matches.
+
 ## CLI Commands
 
 | Command | Description |
 |---------|-------------|
 | `bobbin init` | Initialize bobbin in current repository |
 | `bobbin index` | Build/rebuild the search index |
-| `bobbin search <query>` | Semantic search for code |
-| `bobbin grep <pattern>` | Keyword/regex search |
+| `bobbin search <query>` | Hybrid search (combines semantic + keyword) |
+| `bobbin search --mode semantic` | Semantic-only vector search |
+| `bobbin search --mode keyword` | Keyword-only FTS search |
+| `bobbin grep <pattern>` | Keyword/regex search with highlighting |
 | `bobbin related <file>` | Find files related to a given file |
 | `bobbin status` | Show index statistics |
 
