@@ -83,11 +83,19 @@ bd close <id>         # Complete work
 
 ## Build Commands
 
+**Always use `just` instead of raw `cargo` commands.** The justfile is configured with quiet output by default to save context - you only see errors and warnings, not compilation progress.
+
 ```bash
-cargo build           # Build the project
-cargo test            # Run tests
-cargo check           # Type check without building
-cargo clippy          # Lint
+just build           # Build (quiet output)
+just test            # Run tests (quiet output)
+just check           # Type check (quiet output)
+just lint            # Lint with clippy (quiet output)
+```
+
+For verbose output when debugging build issues:
+```bash
+just build verbose=true
+just test verbose=true
 ```
 
 ## Context Budget Management

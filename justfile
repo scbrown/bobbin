@@ -3,28 +3,32 @@
 
 mod tambour 'tambour.just'
 
+# Quiet by default to save context; use verbose=true for full output
+verbose := "false"
+cargo_flags := if verbose == "true" { "" } else { "-q --message-format=short" }
+
 # Default recipe - show available commands
 default:
     @just --list
 
 # === Development ===
 
-# Build the project
+# Build the project (quiet by default, use verbose=true for full output)
 build:
-    cargo build
+    cargo build {{cargo_flags}}
 
-# Run tests
+# Run tests (quiet by default, use verbose=true for full output)
 test:
-    cargo test
+    cargo test {{cargo_flags}}
 
-# Type check without building
+# Type check without building (quiet by default, use verbose=true for full output)
 check:
-    cargo check
+    cargo check {{cargo_flags}}
 
-# Lint with clippy
+# Lint with clippy (quiet by default, use verbose=true for full output)
 lint:
-    cargo clippy
+    cargo clippy {{cargo_flags}}
 
 # Build and run
 run *args:
-    cargo run -- {{args}}
+    cargo run {{cargo_flags}} -- {{args}}
