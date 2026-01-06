@@ -4,6 +4,7 @@ use clap::Parser;
 mod cli;
 mod config;
 mod index;
+mod mcp;
 mod search;
 mod storage;
 mod types;
