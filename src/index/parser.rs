@@ -10,6 +10,9 @@ pub struct Parser {
     rust_parser: tree_sitter::Parser,
     typescript_parser: tree_sitter::Parser,
     python_parser: tree_sitter::Parser,
+    go_parser: tree_sitter::Parser,
+    java_parser: tree_sitter::Parser,
+    cpp_parser: tree_sitter::Parser,
     header_regex: Regex,
 }
 
@@ -20,6 +23,9 @@ impl Parser {
             rust_parser: create_parser(tree_sitter_rust::LANGUAGE.into())?,
             typescript_parser: create_parser(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())?,
             python_parser: create_parser(tree_sitter_python::LANGUAGE.into())?,
+            go_parser: create_parser(tree_sitter_go::LANGUAGE.into())?,
+            java_parser: create_parser(tree_sitter_java::LANGUAGE.into())?,
+            cpp_parser: create_parser(tree_sitter_cpp::LANGUAGE.into())?,
             header_regex: Regex::new(r"(?m)^(#{1,6})\s+(.+)$")?,
         })
     }
@@ -41,6 +47,9 @@ impl Parser {
             "rust" => &mut self.rust_parser,
             "typescript" | "tsx" => &mut self.typescript_parser,
             "python" => &mut self.python_parser,
+            "go" => &mut self.go_parser,
+            "java" => &mut self.java_parser,
+            "cpp" => &mut self.cpp_parser,
             _ => return Ok(self.chunk_by_lines(path, content)),
         };
 
@@ -207,21 +216,77 @@ impl Parser {
                 "class_definition" => Some(ChunkType::Class),
                 _ => None,
             },
+            "go" => match kind {
+                "function_declaration" => Some(ChunkType::Function),
+                "method_declaration" => Some(ChunkType::Method),
+                "type_declaration" => Some(ChunkType::Struct), // covers struct, interface
+                _ => None,
+            },
+            "java" => match kind {
+                "method_declaration" => Some(ChunkType::Method),
+                "constructor_declaration" => Some(ChunkType::Method),
+                "class_declaration" => Some(ChunkType::Class),
+                "interface_declaration" => Some(ChunkType::Interface),
+                "enum_declaration" => Some(ChunkType::Enum),
+                _ => None,
+            },
+            "cpp" => match kind {
+                "function_definition" => Some(ChunkType::Function),
+                "class_specifier" => Some(ChunkType::Class),
+                "struct_specifier" => Some(ChunkType::Struct),
+                "enum_specifier" => Some(ChunkType::Enum),
+                _ => None,
+            },
             _ => None,
         }
     }
 
     /// Extract the name of a semantic unit
     fn extract_name(&self, node: &Node, content: &str, language: &str) -> Option<String> {
-        let name_field = match language {
-            "rust" => "name",
-            "typescript" | "tsx" => "name",
-            "python" => "name",
-            _ => return None,
-        };
-
-        node.child_by_field_name(name_field)
-            .map(|n| content[n.byte_range()].to_string())
+        match language {
+            "rust" | "typescript" | "tsx" | "python" | "java" => {
+                node.child_by_field_name("name")
+                    .map(|n| content[n.byte_range()].to_string())
+            }
+            "go" => {
+                // Go functions use "name", methods use "name" too
+                // type_declaration has a nested type_spec with name
+                if node.kind() == "type_declaration" {
+                    // Find the type_spec child and get its name
+                    let mut cursor = node.walk();
+                    for child in node.children(&mut cursor) {
+                        if child.kind() == "type_spec" {
+                            return child
+                                .child_by_field_name("name")
+                                .map(|n| content[n.byte_range()].to_string());
+                        }
+                    }
+                    None
+                } else {
+                    node.child_by_field_name("name")
+                        .map(|n| content[n.byte_range()].to_string())
+                }
+            }
+            "cpp" => {
+                // C++ class/struct use "name", functions use "declarator"
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    return Some(content[name_node.byte_range()].to_string());
+                }
+                // For function_definition, the name is inside the declarator
+                if let Some(declarator) = node.child_by_field_name("declarator") {
+                    // The declarator can be a function_declarator, get its declarator field
+                    if let Some(inner) = declarator.child_by_field_name("declarator") {
+                        return Some(content[inner.byte_range()].to_string());
+                    }
+                    // Or the declarator itself might be the identifier
+                    if declarator.kind() == "identifier" {
+                        return Some(content[declarator.byte_range()].to_string());
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
     }
 
     /// Fall back to line-based chunking for unknown languages
@@ -416,6 +481,151 @@ class Dog:
     }
 
     #[test]
+    fn test_parse_go_function() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+package main
+
+func hello() {
+    fmt.Println("Hello, world!")
+}
+"#;
+        let path = PathBuf::from("test.go");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert!(chunks
+            .iter()
+            .any(|c| c.chunk_type == ChunkType::Function && c.name == Some("hello".to_string())));
+        assert!(chunks.iter().all(|c| c.language == "go"));
+    }
+
+    #[test]
+    fn test_parse_go_struct_and_method() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+package main
+
+type Point struct {
+    X float64
+    Y float64
+}
+
+func (p Point) Distance() float64 {
+    return math.Sqrt(p.X*p.X + p.Y*p.Y)
+}
+"#;
+        let path = PathBuf::from("test.go");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert!(chunks
+            .iter()
+            .any(|c| c.chunk_type == ChunkType::Struct && c.name == Some("Point".to_string())));
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Method
+            && c.name == Some("Distance".to_string())));
+    }
+
+    #[test]
+    fn test_parse_java_class() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+public class Greeter {
+    private String name;
+
+    public Greeter(String name) {
+        this.name = name;
+    }
+
+    public void greet() {
+        System.out.println("Hello, " + name);
+    }
+}
+"#;
+        let path = PathBuf::from("Greeter.java");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert!(chunks
+            .iter()
+            .any(|c| c.chunk_type == ChunkType::Class && c.name == Some("Greeter".to_string())));
+        // Constructor and method
+        assert!(chunks.iter().filter(|c| c.chunk_type == ChunkType::Method).count() >= 2);
+        assert!(chunks.iter().all(|c| c.language == "java"));
+    }
+
+    #[test]
+    fn test_parse_java_interface() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+public interface Runnable {
+    void run();
+}
+"#;
+        let path = PathBuf::from("Runnable.java");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Interface
+            && c.name == Some("Runnable".to_string())));
+    }
+
+    #[test]
+    fn test_parse_cpp_function() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+#include <iostream>
+
+void hello() {
+    std::cout << "Hello, world!" << std::endl;
+}
+"#;
+        let path = PathBuf::from("test.cpp");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert!(chunks
+            .iter()
+            .any(|c| c.chunk_type == ChunkType::Function && c.name == Some("hello".to_string())));
+        assert!(chunks.iter().all(|c| c.language == "cpp"));
+    }
+
+    #[test]
+    fn test_parse_cpp_class() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+class Point {
+public:
+    double x;
+    double y;
+
+    Point(double x, double y) : x(x), y(y) {}
+
+    double distance() {
+        return sqrt(x*x + y*y);
+    }
+};
+"#;
+        let path = PathBuf::from("test.cpp");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert!(chunks
+            .iter()
+            .any(|c| c.chunk_type == ChunkType::Class && c.name == Some("Point".to_string())));
+    }
+
+    #[test]
+    fn test_parse_cpp_struct() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+struct Vec3 {
+    float x, y, z;
+};
+"#;
+        let path = PathBuf::from("test.cpp");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        assert!(chunks
+            .iter()
+            .any(|c| c.chunk_type == ChunkType::Struct && c.name == Some("Vec3".to_string())));
+    }
+
+    #[test]
     fn test_unknown_language_fallback() {
         let mut parser = Parser::new().unwrap();
         let content = "line1\nline2\nline3\nline4\nline5";
@@ -450,6 +660,22 @@ class Dog:
             Some("javascript".to_string())
         );
         assert_eq!(detect_language(Path::new("foo.go")), Some("go".to_string()));
+        assert_eq!(
+            detect_language(Path::new("foo.java")),
+            Some("java".to_string())
+        );
+        assert_eq!(
+            detect_language(Path::new("foo.cpp")),
+            Some("cpp".to_string())
+        );
+        assert_eq!(
+            detect_language(Path::new("foo.cc")),
+            Some("cpp".to_string())
+        );
+        assert_eq!(
+            detect_language(Path::new("foo.hpp")),
+            Some("cpp".to_string())
+        );
         assert_eq!(detect_language(Path::new("foo.unknown")), None);
     }
 
