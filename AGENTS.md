@@ -6,28 +6,10 @@ Bobbin is a semantic code indexing tool written in Rust. It indexes codebases fo
 
 ## Session Management
 
-**At the start of each work session**, write a 3-word-or-less task summary to track what you're working on.
+**At the start of each work session**, set a 3-word-or-less task summary using `/note`:
 
-### CRITICAL: The session ID is a UUID, not a branch name
-
-The session ID looks like `64b57122-023c-415d-96ca-9d2228b85d90`. **DO NOT** use git branch names or issue IDs.
-
-### How to set the session note
-
-```bash
-# Get project path (converts /path/to/project to -path-to-project)
-PROJECT_PATH=$(pwd | sed 's|/|-|g')
-
-# Find the most recent transcript file (this contains the session UUID)
-SESSION_FILE=$(ls -t ~/.claude/projects/${PROJECT_PATH}/*.jsonl 2>/dev/null | head -1)
-
-# Extract UUID from filename
-SESSION_ID=$(basename "$SESSION_FILE" .jsonl)
-
-# Verify it looks like a UUID, then save the note
-echo "Session ID: $SESSION_ID"
-mkdir -p ~/.claude/session_notes
-echo "your task summary" > ~/.claude/session_notes/${SESSION_ID}.txt
+```
+/note fix parser bug
 ```
 
 Example summaries: "fix parser bug", "add tests", "refactor indexer"
