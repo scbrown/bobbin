@@ -6,6 +6,7 @@ Usage:
 Commands:
     context collect [--prompt FILE] [--issue ID] [--worktree PATH] [--verbose]
     events emit <event> [--issue ID] [--worktree PATH]
+    metrics collect [--storage PATH]
     daemon start|stop|status
     config validate
 """
@@ -107,6 +108,21 @@ def create_parser() -> argparse.ArgumentParser:
     collect_parser.add_argument("--main-repo", help="Main repository path")
     collect_parser.add_argument(
         "--verbose", "-v", action="store_true", help="Show provider execution details"
+    )
+
+    # metrics command
+    metrics_parser = subparsers.add_parser("metrics", help="Metrics collection")
+    metrics_subparsers = metrics_parser.add_subparsers(
+        dest="metrics_command", help="Metrics subcommands"
+    )
+
+    # metrics collect
+    metrics_collect_parser = metrics_subparsers.add_parser(
+        "collect", help="Collect metrics from event (plugin entry point)"
+    )
+    metrics_collect_parser.add_argument(
+        "--storage",
+        help="Path to metrics.jsonl file (default: .tambour/metrics.jsonl)",
     )
 
     return parser
@@ -302,6 +318,22 @@ def cmd_heartbeat(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_metrics_collect(args: argparse.Namespace) -> int:
+    """Handle 'metrics collect' command.
+
+    This is the plugin entry point for the metrics-collector plugin.
+    It collects metric data from environment variables (set by the event
+    dispatcher) and stores it to JSONL.
+    """
+    from tambour.metrics.collector import MetricsCollector
+
+    storage_path = Path(args.storage) if args.storage else None
+    collector = MetricsCollector(storage_path=storage_path)
+    collector.collect_and_store()
+    # Always return 0 to not block event dispatch
+    return 0
+
+
 def main() -> NoReturn:
     """Main entry point."""
     parser = create_parser()
@@ -335,6 +367,12 @@ def main() -> NoReturn:
             sys.exit(1)
     elif args.command == "heartbeat":
         sys.exit(cmd_heartbeat(args))
+    elif args.command == "metrics":
+        if args.metrics_command == "collect":
+            sys.exit(cmd_metrics_collect(args))
+        else:
+            parser.parse_args(["metrics", "--help"])
+            sys.exit(1)
     else:
         parser.print_help()
         sys.exit(1)

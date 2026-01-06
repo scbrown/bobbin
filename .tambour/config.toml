@@ -58,3 +58,10 @@ on = "branch.merged"
 run = "bobbin index --incremental \"$TAMBOUR_MAIN_REPO\""
 blocking = false
 timeout = 120
+
+# Metrics collector - captures tool use events for context intelligence
+[plugins.metrics-collector]
+on = ["tool.used", "tool.failed"]
+run = "python -m tambour.metrics collect"
+blocking = false
+timeout = 5
