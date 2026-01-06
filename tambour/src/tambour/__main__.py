@@ -4,6 +4,7 @@ Usage:
     python -m tambour <command> [options]
 
 Commands:
+    agent [--cli CLI] [--issue ID] [--label LABEL]
     context collect [--prompt FILE] [--issue ID] [--worktree PATH] [--verbose]
     events emit <event> [--issue ID] [--worktree PATH]
     metrics collect [--storage PATH]
@@ -41,6 +42,23 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # agent command
+    agent_parser = subparsers.add_parser(
+        "agent", help="Spawn an AI agent on a beads issue"
+    )
+    agent_parser.add_argument(
+        "--cli",
+        help="Agent CLI to use (claude/gemini). Defaults to config value.",
+    )
+    agent_parser.add_argument(
+        "--issue",
+        help="Specific issue ID to work on. If not specified, picks next ready task.",
+    )
+    agent_parser.add_argument(
+        "--label",
+        help="Filter ready tasks by label (only used when --issue not specified).",
+    )
 
     # events command
     events_parser = subparsers.add_parser("events", help="Event management")
@@ -274,6 +292,21 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def cmd_agent(args: argparse.Namespace) -> int:
+    """Handle 'agent' command."""
+    from tambour.agent import AgentSpawner
+    from tambour.config import Config
+
+    config = Config.load_or_default()
+    spawner = AgentSpawner(config)
+
+    return spawner.spawn(
+        cli=args.cli,
+        issue_id=args.issue,
+        label=args.label,
+    )
+
+
 def cmd_context_collect(args: argparse.Namespace) -> int:
     """Handle 'context collect' command."""
     from tambour.config import Config
@@ -489,7 +522,9 @@ def main() -> NoReturn:
         parser.print_help()
         sys.exit(0)
 
-    if args.command == "context":
+    if args.command == "agent":
+        sys.exit(cmd_agent(args))
+    elif args.command == "context":
         if args.context_command == "collect":
             sys.exit(cmd_context_collect(args))
         else:
