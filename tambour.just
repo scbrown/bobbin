@@ -6,6 +6,20 @@
 default:
     @just --list tambour
 
+# Setup tambour hooks for metrics collection
+setup:
+    ./tambour/scripts/setup-hooks.sh
+
+# Show metrics summary
+metrics *args:
+    #!/usr/bin/env bash
+    TAMBOUR_VENV="$(pwd)/tambour/.venv"
+    if [ ! -f "$TAMBOUR_VENV/bin/python" ]; then
+        echo "Error: Run 'just tambour setup' first"
+        exit 1
+    fi
+    cd "$(pwd)" && "$TAMBOUR_VENV/bin/python" -m tambour metrics {{ args }}
+
 # Spawn an agent on the next ready task
 agent cli="":
     ./scripts/start-agent.sh {{ if cli == "" { "" } else { "--agent-cli " + cli } }}

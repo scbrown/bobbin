@@ -6,15 +6,15 @@ Bobbin is a semantic code indexing tool written in Rust. It indexes codebases fo
 
 ## Session Management
 
-**For human users**: Set a session note using `/note <summary>` (3 words or less):
+**In worktrees**: Session notes are set **automatically** from the issue title when a Claude session starts in a worktree. No action needed.
+
+**In main repo**: Set a session note manually using `/note <summary>` (3 words or less):
 
 ```
 /note fix parser bug
 ```
 
 This note appears in the status line. Examples: "fix parser bug", "add tests", "refactor indexer"
-
-**Note**: Agents should NOT try to run `/note` - the skill relies on session context that isn't available to subagents.
 
 ## Agent Workflow
 
