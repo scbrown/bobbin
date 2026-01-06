@@ -11,9 +11,9 @@ use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
     Annotated, CallToolResult, Content, GetPromptRequestParam, GetPromptResult,
-    Implementation, ListPromptsResult, ListResourcesResult, PaginatedRequestParam,
-    Prompt, PromptMessage, ProtocolVersion, RawResource, ReadResourceRequestParam,
-    ReadResourceResult, ResourceContents, Role, ServerCapabilities, ServerInfo,
+    Implementation, ListPromptsResult, ListResourcesResult, PaginatedRequestParam, Prompt,
+    PromptMessage, PromptMessageRole, ProtocolVersion, RawResource, ReadResourceRequestParam,
+    ReadResourceResult, ResourceContents, ServerCapabilities, ServerInfo,
 };
 use rmcp::service::RequestContext;
 use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler};
@@ -356,7 +356,7 @@ impl BobbinMcpServer {
                 let model_dir = Config::model_cache_dir()
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-                let mut embedder = Embedder::load(&model_dir, &config.embedding.model)
+                let embedder = Embedder::load(&model_dir, &config.embedding.model)
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
                 let vector_store = VectorStore::open(&lance_path)
@@ -676,6 +676,7 @@ impl ServerHandler for BobbinMcpServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
         Ok(ListResourcesResult {
+            meta: None,
             resources: vec![Annotated::new(
                 RawResource::new("bobbin://index/stats", "Index Statistics"),
                 None,
@@ -711,8 +712,10 @@ impl ServerHandler for BobbinMcpServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, McpError> {
         Ok(ListPromptsResult {
+            meta: None,
             prompts: vec![Prompt::new(
                 "explore_codebase",
+                Some("Guided exploration of the codebase with focused prompts for understanding architecture, entry points, dependencies, and tests"),
                 Some(vec![rmcp::model::PromptArgument {
                     name: "focus".to_string(),
                     title: Some("Focus Area".to_string()),
@@ -752,10 +755,7 @@ impl ServerHandler for BobbinMcpServer {
 
         Ok(GetPromptResult {
             description: Some(format!("Explore codebase with focus on: {}", focus)),
-            messages: vec![PromptMessage {
-                role: Role::User,
-                content: Content::text(prompt_text),
-            }],
+            messages: vec![PromptMessage::new_text(PromptMessageRole::User, prompt_text)],
         })
     }
 }
