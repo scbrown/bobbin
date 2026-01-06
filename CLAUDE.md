@@ -4,6 +4,20 @@
 
 Bobbin is a semantic code indexing tool written in Rust. It indexes codebases for semantic search using embeddings stored in LanceDB.
 
+## Session Management
+
+**At the start of each work session**, write a 3-word-or-less task summary to track what you're working on:
+
+```bash
+SESSION_ID="<current-session-id>"  # Available from statusLine JSON input
+mkdir -p ~/.claude/session_notes
+echo "your task summary" > ~/.claude/session_notes/$SESSION_ID.txt
+```
+
+Example summaries: "fix parser bug", "add tests", "refactor indexer", "statusline setup"
+
+This note appears in the status line to help track session context.
+
 ## Agent Workflow
 
 This project uses [beads](https://github.com/steveyegge/beads) for issue tracking and **tambour** as an agent harness for worktree isolation.
