@@ -4,6 +4,7 @@ mod index;
 mod init;
 mod related;
 mod search;
+mod serve;
 mod status;
 
 use anyhow::Result;
@@ -52,6 +53,9 @@ enum Commands {
 
     /// Show index status and statistics
     Status(status::StatusArgs),
+
+    /// Start MCP server for AI agent integration
+    Serve(serve::ServeArgs),
 }
 
 impl Cli {
@@ -70,6 +74,7 @@ impl Cli {
             Commands::Related(args) => related::run(args, output).await,
             Commands::History(args) => history::run(args, output).await,
             Commands::Status(args) => status::run(args, output).await,
+            Commands::Serve(args) => serve::run(args, output).await,
         }
     }
 }
