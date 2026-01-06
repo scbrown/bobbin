@@ -1,9 +1,20 @@
 use anyhow::{Context, Result};
+use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
 use crate::types::FileCoupling;
+
+/// A single entry in a file's commit history
+#[derive(Debug, Clone)]
+pub struct FileHistoryEntry {
+    pub date: String,
+    pub author: String,
+    pub message: String,
+    pub issues: Vec<String>,
+    pub timestamp: i64,
+}
 
 /// Analyzes git history to find temporal coupling between files
 pub struct GitAnalyzer {
@@ -165,6 +176,117 @@ impl GitAnalyzer {
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
+
+    /// Get commit history for a specific file
+    pub fn get_file_history(&self, file_path: &str, limit: usize) -> Result<Vec<FileHistoryEntry>> {
+        // Format: hash|timestamp|author|subject
+        let output = Command::new("git")
+            .args([
+                "log",
+                "--pretty=format:%H|%ct|%an|%s",
+                &format!("-{}", limit),
+                "--follow",
+                "--",
+                file_path,
+            ])
+            .current_dir(&self.repo_root)
+            .output()
+            .context("Failed to get file history")?;
+
+        let log = String::from_utf8_lossy(&output.stdout);
+        let entries = parse_file_history(&log);
+
+        Ok(entries)
+    }
+}
+
+/// Parse file history log into entries
+fn parse_file_history(log: &str) -> Vec<FileHistoryEntry> {
+    let mut entries = Vec::new();
+
+    // Match issue IDs like "bobbin-123", "bobbin-xyz", "JIRA-456", "GH-789", "#123"
+    // Support both numeric IDs (JIRA-123) and alphanumeric IDs (bobbin-abc)
+    let issue_regex = Regex::new(r"(?i)([a-z]+-[a-z0-9]+|#\d+)").unwrap();
+
+    for line in log.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // Format: hash|timestamp|author|subject
+        let parts: Vec<&str> = line.splitn(4, '|').collect();
+        if parts.len() < 4 {
+            continue;
+        }
+
+        let timestamp = parts[1].parse::<i64>().unwrap_or(0);
+        let author = parts[2].to_string();
+        let message = parts[3].to_string();
+
+        // Extract issue IDs from commit message
+        let issues: Vec<String> = issue_regex
+            .find_iter(&message)
+            .map(|m| m.as_str().to_string())
+            .collect();
+
+        // Format date as YYYY-MM-DD
+        let date = format_timestamp(timestamp);
+
+        entries.push(FileHistoryEntry {
+            date,
+            author,
+            message,
+            issues,
+            timestamp,
+        });
+    }
+
+    entries
+}
+
+/// Format unix timestamp as YYYY-MM-DD
+fn format_timestamp(timestamp: i64) -> String {
+    // Simple date formatting without external crate
+    let secs = timestamp;
+    let days = secs / 86400;
+
+    // Calculate year, month, day from days since epoch
+    // This is a simplified calculation
+    let mut year = 1970;
+    let mut remaining_days = days;
+
+    loop {
+        let days_in_year = if is_leap_year(year) { 366 } else { 365 };
+        if remaining_days < days_in_year {
+            break;
+        }
+        remaining_days -= days_in_year;
+        year += 1;
+    }
+
+    let days_in_months: [i64; 12] = if is_leap_year(year) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+
+    let mut month = 1;
+    for days_in_month in days_in_months.iter() {
+        if remaining_days < *days_in_month {
+            break;
+        }
+        remaining_days -= *days_in_month;
+        month += 1;
+    }
+
+    let day = remaining_days + 1;
+
+    format!("{:04}-{:02}-{:02}", year, month, day)
+}
+
+fn is_leap_year(year: i64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
 
 /// Parse git log output into commits with their files
@@ -272,5 +394,43 @@ mod tests {
         let score3 = calculate_coupling_score(10, max_co_changes, old, now);
         // freq = 1.0, recency = 1/(1+1) = 0.5 -> 0.7 + 0.15 = 0.85
         assert!((score3 - 0.85).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_file_history() {
+        let log = "abc123|1704067200|Alice|Initial commit\ndef456|1704153600|Bob|Fix bug (bobbin-123)";
+        let entries = parse_file_history(log);
+
+        assert_eq!(entries.len(), 2);
+
+        // First entry
+        assert_eq!(entries[0].author, "Alice");
+        assert_eq!(entries[0].message, "Initial commit");
+        assert_eq!(entries[0].timestamp, 1704067200);
+        assert!(entries[0].issues.is_empty());
+
+        // Second entry with issue reference
+        assert_eq!(entries[1].author, "Bob");
+        assert_eq!(entries[1].message, "Fix bug (bobbin-123)");
+        assert_eq!(entries[1].timestamp, 1704153600);
+        assert_eq!(entries[1].issues, vec!["bobbin-123"]);
+    }
+
+    #[test]
+    fn test_parse_file_history_multiple_issues() {
+        let log = "abc123|1704067200|Dev|Fixes #42 and JIRA-99, also bobbin-xyz";
+        let entries = parse_file_history(log);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].issues, vec!["#42", "JIRA-99", "bobbin-xyz"]);
+    }
+
+    #[test]
+    fn test_format_timestamp() {
+        // 2024-01-01 00:00:00 UTC = 1704067200
+        assert_eq!(format_timestamp(1704067200), "2024-01-01");
+
+        // 1970-01-01 00:00:00 UTC = 0
+        assert_eq!(format_timestamp(0), "1970-01-01");
     }
 }

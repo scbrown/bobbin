@@ -1,4 +1,5 @@
 mod grep;
+mod history;
 mod index;
 mod init;
 mod related;
@@ -46,6 +47,9 @@ enum Commands {
     /// Find files related to a given file
     Related(related::RelatedArgs),
 
+    /// Show commit history for a file
+    History(history::HistoryArgs),
+
     /// Show index status and statistics
     Status(status::StatusArgs),
 }
@@ -64,6 +68,7 @@ impl Cli {
             Commands::Search(args) => search::run(args, output).await,
             Commands::Grep(args) => grep::run(args, output).await,
             Commands::Related(args) => related::run(args, output).await,
+            Commands::History(args) => history::run(args, output).await,
             Commands::Status(args) => status::run(args, output).await,
         }
     }
