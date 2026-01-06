@@ -242,12 +242,12 @@ cargo check
 
 ### Phase 2: Intelligence
 - [x] Hybrid search (RRF combining semantic + keyword)
-- [ ] Git temporal coupling analysis
-- [ ] Related files suggestions
-- [ ] Additional language support (Go, Java, C++)
+- [x] Git temporal coupling analysis
+- [x] Related files suggestions
+- [x] Additional language support (Go, Java, C++)
 
 ### Phase 3: Polish
-- [ ] MCP server integration
+- [x] MCP server integration
 - [ ] Watch mode / daemon
 - [ ] Multi-repo support
 - [ ] Performance optimizations
