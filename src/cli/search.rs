@@ -7,9 +7,9 @@ use std::path::PathBuf;
 use super::OutputConfig;
 use crate::config::Config;
 use crate::index::Embedder;
-use crate::search::SemanticSearch;
+use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{MetadataStore, VectorStore};
-use crate::types::{ChunkType, SearchResult};
+use crate::types::{ChunkType, MatchType, SearchResult};
 
 #[derive(Args)]
 pub struct SearchArgs {
@@ -24,15 +24,32 @@ pub struct SearchArgs {
     #[arg(long, short = 'n', default_value = "10")]
     limit: usize,
 
+    /// Search mode: hybrid (default), semantic, or keyword
+    #[arg(long, short = 'm', default_value = "hybrid")]
+    mode: SearchMode,
+
     /// Directory to search in (defaults to current directory)
     #[arg(default_value = ".")]
     path: PathBuf,
+}
+
+/// Search mode for the query
+#[derive(Debug, Clone, Copy, Default, clap::ValueEnum)]
+pub enum SearchMode {
+    /// Combine semantic and keyword search using RRF
+    #[default]
+    Hybrid,
+    /// Vector similarity search only
+    Semantic,
+    /// Full-text keyword search only
+    Keyword,
 }
 
 /// JSON output format for search results
 #[derive(Serialize)]
 struct SearchOutput {
     query: String,
+    mode: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     r#type: Option<String>,
     limit: usize,
@@ -49,6 +66,8 @@ struct SearchResultOutput {
     start_line: u32,
     end_line: u32,
     score: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    match_type: Option<String>,
     language: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     content_preview: Option<String>,
@@ -105,28 +124,8 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         return Ok(());
     }
 
-    // Check model consistency
+    // Open metadata store
     let metadata_store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
-
-    let current_model = config.embedding.model.as_str();
-    let stored_model = metadata_store.get_meta("embedding_model")?;
-
-    if let Some(stored) = stored_model {
-        if stored != current_model {
-            bail!(
-                "Configured embedding model ({}) differs from indexed model ({}). Run `bobbin index` to re-index.",
-                current_model,
-                stored
-            );
-        }
-    }
-
-    // Load the embedder
-    let embedder =
-        Embedder::load(&model_dir, current_model).context("Failed to load embedding model")?;
-
-    // Create semantic search engine
-    let mut search = SemanticSearch::new(embedder, vector_store);
 
     // Perform search (request more results if filtering by type)
     let search_limit = if type_filter.is_some() {
@@ -135,10 +134,56 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         args.limit
     };
 
-    let results = search
-        .search(&args.query, search_limit)
-        .await
-        .context("Search failed")?;
+    // Execute search based on mode
+    let results = match args.mode {
+        SearchMode::Keyword => {
+            // Keyword-only search using FTS
+            metadata_store
+                .search_fts(&args.query, search_limit)
+                .context("Keyword search failed")?
+        }
+        SearchMode::Semantic | SearchMode::Hybrid => {
+            // Both semantic and hybrid modes require the embedder
+            let current_model = config.embedding.model.as_str();
+            let stored_model = metadata_store.get_meta("embedding_model")?;
+
+            if let Some(stored) = stored_model {
+                if stored != current_model {
+                    bail!(
+                        "Configured embedding model ({}) differs from indexed model ({}). Run `bobbin index` to re-index.",
+                        current_model,
+                        stored
+                    );
+                }
+            }
+
+            let embedder = Embedder::load(&model_dir, current_model)
+                .context("Failed to load embedding model")?;
+
+            match args.mode {
+                SearchMode::Semantic => {
+                    let mut search = SemanticSearch::new(embedder, vector_store);
+                    search
+                        .search(&args.query, search_limit)
+                        .await
+                        .context("Semantic search failed")?
+                }
+                SearchMode::Hybrid => {
+                    let mut search = HybridSearch::new(
+                        embedder,
+                        vector_store,
+                        &metadata_store,
+                        config.search.semantic_weight,
+                    );
+                    search
+                        .search(&args.query, search_limit)
+                        .await
+                        .context("Hybrid search failed")?
+                }
+                SearchMode::Keyword => unreachable!(),
+            }
+        }
+    };
 
     // Filter by chunk type if specified
     let filtered_results: Vec<SearchResult> = if let Some(ref chunk_type) = type_filter {
@@ -153,9 +198,9 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
 
     // Output results
     if output.json {
-        print_json_output(&args.query, &args.r#type, args.limit, &filtered_results)?;
+        print_json_output(&args.query, args.mode, &args.r#type, args.limit, &filtered_results)?;
     } else if !output.quiet {
-        print_human_output(&args.query, &filtered_results, output.verbose);
+        print_human_output(&args.query, args.mode, &filtered_results, output.verbose);
     }
 
     Ok(())
@@ -185,12 +230,20 @@ fn parse_chunk_type(s: &str) -> Result<ChunkType> {
 /// Print results in JSON format
 fn print_json_output(
     query: &str,
+    mode: SearchMode,
     type_filter: &Option<String>,
     limit: usize,
     results: &[SearchResult],
 ) -> Result<()> {
+    let mode_str = match mode {
+        SearchMode::Hybrid => "hybrid",
+        SearchMode::Semantic => "semantic",
+        SearchMode::Keyword => "keyword",
+    };
+
     let output = SearchOutput {
         query: query.to_string(),
+        mode: mode_str.to_string(),
         r#type: type_filter.clone(),
         limit,
         count: results.len(),
@@ -203,6 +256,11 @@ fn print_json_output(
                 start_line: r.chunk.start_line,
                 end_line: r.chunk.end_line,
                 score: r.score,
+                match_type: r.match_type.map(|mt| match mt {
+                    MatchType::Semantic => "semantic".to_string(),
+                    MatchType::Keyword => "keyword".to_string(),
+                    MatchType::Hybrid => "hybrid".to_string(),
+                }),
                 language: r.chunk.language.clone(),
                 content_preview: Some(truncate_content(&r.chunk.content, 200)),
             })
@@ -214,23 +272,29 @@ fn print_json_output(
 }
 
 /// Print results in human-readable format
-fn print_human_output(query: &str, results: &[SearchResult], verbose: bool) {
+fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], verbose: bool) {
     if results.is_empty() {
         println!("{} No results found for: {}", "!".yellow(), query.cyan());
         return;
     }
 
+    let mode_str = match mode {
+        SearchMode::Hybrid => "hybrid",
+        SearchMode::Semantic => "semantic",
+        SearchMode::Keyword => "keyword",
+    };
+
     println!(
-        "{} Found {} results for: {}",
+        "{} Found {} results for: {} ({})",
         "✓".green(),
         results.len(),
-        query.cyan()
+        query.cyan(),
+        mode_str.dimmed()
     );
     println!();
 
     for (i, result) in results.iter().enumerate() {
         let chunk = &result.chunk;
-        let score_pct = (result.score * 100.0) as u32;
 
         // Header line with file path and location
         let name_display = chunk
@@ -247,14 +311,22 @@ fn print_human_output(query: &str, results: &[SearchResult], verbose: bool) {
             name_display
         );
 
-        // Details line
+        // Details line with match type for hybrid mode
+        let match_info = match (mode, result.match_type) {
+            (SearchMode::Hybrid, Some(MatchType::Hybrid)) => " [hybrid]".yellow().to_string(),
+            (SearchMode::Hybrid, Some(MatchType::Semantic)) => " [semantic]".dimmed().to_string(),
+            (SearchMode::Hybrid, Some(MatchType::Keyword)) => " [keyword]".dimmed().to_string(),
+            _ => String::new(),
+        };
+
         println!(
-            "   {} {} · lines {}-{} · {}% match",
+            "   {} {} · lines {}-{} · score {:.4}{}",
             chunk.chunk_type.to_string().magenta(),
             chunk.language.dimmed(),
             chunk.start_line,
             chunk.end_line,
-            score_pct
+            result.score,
+            match_info
         );
 
         // Content preview (if verbose or for short content)
@@ -368,6 +440,7 @@ mod tests {
 
         let output = SearchOutput {
             query: "test query".to_string(),
+            mode: "hybrid".to_string(),
             r#type: Some("function".to_string()),
             limit: 10,
             count: 1,
@@ -380,6 +453,11 @@ mod tests {
                     start_line: r.chunk.start_line,
                     end_line: r.chunk.end_line,
                     score: r.score,
+                    match_type: r.match_type.map(|mt| match mt {
+                        MatchType::Semantic => "semantic".to_string(),
+                        MatchType::Keyword => "keyword".to_string(),
+                        MatchType::Hybrid => "hybrid".to_string(),
+                    }),
                     language: r.chunk.language.clone(),
                     content_preview: Some(truncate_content(&r.chunk.content, 200)),
                 })
@@ -388,8 +466,10 @@ mod tests {
 
         let json = serde_json::to_string(&output).unwrap();
         assert!(json.contains("\"query\":\"test query\""));
+        assert!(json.contains("\"mode\":\"hybrid\""));
         assert!(json.contains("\"file_path\":\"src/main.rs\""));
         assert!(json.contains("\"chunk_type\":\"function\""));
         assert!(json.contains("\"score\":0.95"));
+        assert!(json.contains("\"match_type\":\"semantic\""));
     }
 }
