@@ -67,7 +67,7 @@ hex = "0.4"
 glob = "0.3"
 
 # MCP Server
-rmcp = { version = "0.8", features = ["server", "transport-io"] }
+rmcp = { version = "0.12", features = ["server", "transport-io"] }
 schemars = "1.0"
 
 [dev-dependencies]
