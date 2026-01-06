@@ -16,6 +16,9 @@ classifiers = [
 ]
 dependencies = []
 
+[project.scripts]
+tambour = "tambour.__main__:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest",
