@@ -168,6 +168,33 @@ Any implementation hints, gotchas, or constraints discovered.
 
 The `scripts/` directory and `justfile` contain **tambour** - an agent harness for beads. This code lives here temporarily but will eventually become its own module/project.
 
+### Running Tambour Tests
+
+**DO NOT use system Python or try to install pytest globally.** macOS requires a virtual environment.
+
+```bash
+cd tambour
+
+# If .venv doesn't exist, create it first:
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# If .venv exists, just activate and run:
+source .venv/bin/activate
+python -m pytest tests/ -v
+```
+
+**One-liner (always works):**
+```bash
+cd tambour && source .venv/bin/activate && python -m pytest tests/ -v
+```
+
+**Common mistakes to avoid:**
+- `python -m pytest` won't work - use `python3` or activate the venv first
+- `pip install pytest` will fail with "externally-managed-environment" error
+- Always activate the venv before running tests
+
 ### Tambour Tenets
 
 1. **Tambour enables workflows, it doesn't impose them.**
