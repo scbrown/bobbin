@@ -7,6 +7,13 @@ Commands:
     context collect [--prompt FILE] [--issue ID] [--worktree PATH] [--verbose]
     events emit <event> [--issue ID] [--worktree PATH]
     metrics collect [--storage PATH]
+    metrics show [--window DAYS]
+    metrics hot-files [--threshold N] [--window DAYS] [--limit N]
+    metrics file <path>
+    metrics session <session-id>
+    metrics complexity [--threshold N]
+    metrics clear [--older-than DAYS] [--dry-run]
+    metrics refresh [--window DAYS]
     daemon start|stop|status
     config validate
 """
@@ -123,6 +130,145 @@ def create_parser() -> argparse.ArgumentParser:
     metrics_collect_parser.add_argument(
         "--storage",
         help="Path to metrics.jsonl file (default: .tambour/metrics.jsonl)",
+    )
+
+    # metrics show
+    metrics_show_parser = metrics_subparsers.add_parser(
+        "show", help="Display metrics summary"
+    )
+    metrics_show_parser.add_argument(
+        "--window",
+        type=int,
+        default=7,
+        help="Time window in days (default: 7)",
+    )
+    metrics_show_parser.add_argument(
+        "--storage",
+        help="Path to metrics.jsonl file",
+    )
+
+    # metrics hot-files
+    metrics_hot_files_parser = metrics_subparsers.add_parser(
+        "hot-files", help="List files by read count"
+    )
+    metrics_hot_files_parser.add_argument(
+        "--threshold",
+        "-t",
+        type=int,
+        default=5,
+        help="Minimum read count to include (default: 5)",
+    )
+    metrics_hot_files_parser.add_argument(
+        "--window",
+        type=int,
+        default=7,
+        help="Time window in days (default: 7)",
+    )
+    metrics_hot_files_parser.add_argument(
+        "--limit",
+        "-n",
+        type=int,
+        default=20,
+        help="Maximum number of files to show (default: 20, 0 for unlimited)",
+    )
+    metrics_hot_files_parser.add_argument(
+        "--storage",
+        help="Path to metrics.jsonl file",
+    )
+
+    # metrics file
+    metrics_file_parser = metrics_subparsers.add_parser(
+        "file", help="Show details for a specific file"
+    )
+    metrics_file_parser.add_argument(
+        "path",
+        help="File path to show metrics for",
+    )
+    metrics_file_parser.add_argument(
+        "--window",
+        type=int,
+        default=7,
+        help="Time window in days (default: 7)",
+    )
+    metrics_file_parser.add_argument(
+        "--storage",
+        help="Path to metrics.jsonl file",
+    )
+
+    # metrics session
+    metrics_session_parser = metrics_subparsers.add_parser(
+        "session", help="Show details for a specific session"
+    )
+    metrics_session_parser.add_argument(
+        "session_id",
+        help="Session ID to show metrics for",
+    )
+    metrics_session_parser.add_argument(
+        "--window",
+        type=int,
+        default=7,
+        help="Time window in days (default: 7)",
+    )
+    metrics_session_parser.add_argument(
+        "--storage",
+        help="Path to metrics.jsonl file",
+    )
+
+    # metrics complexity
+    metrics_complexity_parser = metrics_subparsers.add_parser(
+        "complexity", help="Show files with complexity signals"
+    )
+    metrics_complexity_parser.add_argument(
+        "--threshold",
+        "-t",
+        type=float,
+        default=3.0,
+        help="Re-read rate threshold (default: 3.0)",
+    )
+    metrics_complexity_parser.add_argument(
+        "--window",
+        type=int,
+        default=7,
+        help="Time window in days (default: 7)",
+    )
+    metrics_complexity_parser.add_argument(
+        "--storage",
+        help="Path to metrics.jsonl file",
+    )
+
+    # metrics clear
+    metrics_clear_parser = metrics_subparsers.add_parser(
+        "clear", help="Remove old events from metrics"
+    )
+    metrics_clear_parser.add_argument(
+        "--older-than",
+        type=int,
+        default=30,
+        help="Remove events older than N days (default: 30)",
+    )
+    metrics_clear_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be removed without actually removing",
+    )
+    metrics_clear_parser.add_argument(
+        "--storage",
+        help="Path to metrics.jsonl file",
+    )
+
+    # metrics refresh
+    metrics_refresh_parser = metrics_subparsers.add_parser(
+        "refresh", help="Force refresh of cached aggregations"
+    )
+    metrics_refresh_parser.add_argument(
+        "--window",
+        type=int,
+        default=7,
+        help="Time window in days (default: 7)",
+    )
+    metrics_refresh_parser.add_argument(
+        "--storage",
+        help="Path to metrics.jsonl file",
     )
 
     return parser
@@ -370,6 +516,34 @@ def main() -> NoReturn:
     elif args.command == "metrics":
         if args.metrics_command == "collect":
             sys.exit(cmd_metrics_collect(args))
+        elif args.metrics_command == "show":
+            from tambour.metrics.cli import cmd_metrics_show
+
+            sys.exit(cmd_metrics_show(args))
+        elif args.metrics_command == "hot-files":
+            from tambour.metrics.cli import cmd_metrics_hot_files
+
+            sys.exit(cmd_metrics_hot_files(args))
+        elif args.metrics_command == "file":
+            from tambour.metrics.cli import cmd_metrics_file
+
+            sys.exit(cmd_metrics_file(args))
+        elif args.metrics_command == "session":
+            from tambour.metrics.cli import cmd_metrics_session
+
+            sys.exit(cmd_metrics_session(args))
+        elif args.metrics_command == "complexity":
+            from tambour.metrics.cli import cmd_metrics_complexity
+
+            sys.exit(cmd_metrics_complexity(args))
+        elif args.metrics_command == "clear":
+            from tambour.metrics.cli import cmd_metrics_clear
+
+            sys.exit(cmd_metrics_clear(args))
+        elif args.metrics_command == "refresh":
+            from tambour.metrics.cli import cmd_metrics_refresh
+
+            sys.exit(cmd_metrics_refresh(args))
         else:
             parser.parse_args(["metrics", "--help"])
             sys.exit(1)
