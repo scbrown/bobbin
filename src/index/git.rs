@@ -124,6 +124,8 @@ impl GitAnalyzer {
     }
 
     /// Get files changed in a specific commit
+    // TODO(bobbin-6vq): For incremental indexing
+    #[allow(dead_code)]
     pub fn get_commit_files(&self, commit_hash: &str) -> Result<Vec<String>> {
         let output = Command::new("git")
             .args([
@@ -146,6 +148,8 @@ impl GitAnalyzer {
     }
 
     /// Get list of files that have changed since the last index
+    // TODO(bobbin-6vq): For incremental indexing
+    #[allow(dead_code)]
     pub fn get_changed_files(&self, since_commit: Option<&str>) -> Result<Vec<String>> {
         let args = match since_commit {
             Some(commit) => vec!["diff", "--name-only", commit, "HEAD"],
@@ -167,6 +171,8 @@ impl GitAnalyzer {
     }
 
     /// Get the current HEAD commit hash
+    // TODO(bobbin-6vq): For incremental indexing
+    #[allow(dead_code)]
     pub fn get_head_commit(&self) -> Result<String> {
         let output = Command::new("git")
             .args(["rev-parse", "HEAD"])

@@ -122,6 +122,8 @@ impl MetadataStore {
     }
 
     /// Insert a chunk
+    // TODO(bobbin-6vq): For granular chunk insertion
+    #[allow(dead_code)]
     pub fn insert_chunk(&self, chunk: &Chunk, file_id: i64) -> Result<()> {
         self.conn.execute(
             r#"INSERT INTO chunks (id, file_id, chunk_type, name, start_line, end_line, content, vector_id)
@@ -222,6 +224,8 @@ impl MetadataStore {
     }
 
     /// Get file ID by path
+    // TODO(bobbin-6vq): For file lookup operations
+    #[allow(dead_code)]
     pub fn get_file_id(&self, file_path: &str) -> Result<Option<i64>> {
         let result = self
             .conn
@@ -381,6 +385,8 @@ impl MetadataStore {
     }
 
     /// Rollback a transaction
+    // TODO(bobbin-6vq): For transactional error recovery
+    #[allow(dead_code)]
     pub fn rollback(&self) -> Result<()> {
         self.conn.execute("ROLLBACK", [])?;
         Ok(())
@@ -409,6 +415,8 @@ impl MetadataStore {
     }
 
     /// Get chunks for a specific file
+    // TODO(bobbin-6vq): For file-level chunk retrieval
+    #[allow(dead_code)]
     pub fn get_file_chunks(&self, file_path: &str) -> Result<Vec<Chunk>> {
         let mut stmt = self.conn.prepare(
             r#"SELECT c.id, c.chunk_type, c.name, c.start_line, c.end_line, c.content, f.path, f.language
@@ -437,6 +445,8 @@ impl MetadataStore {
     }
 
     /// Get the database path
+    // TODO(bobbin-6vq): For debugging and status display
+    #[allow(dead_code)]
     pub fn path(&self) -> Option<String> {
         self.conn.path().map(|p| p.to_owned())
     }

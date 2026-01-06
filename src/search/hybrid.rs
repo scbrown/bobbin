@@ -4,10 +4,13 @@ use std::collections::HashMap;
 use crate::types::{MatchType, SearchResult};
 
 /// Combines semantic and keyword search results
+// TODO(bobbin-6vq.7): Integrate with `bobbin search` command
+#[allow(dead_code)]
 pub struct HybridSearch;
 
 impl HybridSearch {
     /// Combine semantic and keyword results using reciprocal rank fusion
+    #[allow(dead_code)]
     pub fn combine(
         semantic_results: Vec<SearchResult>,
         keyword_results: Vec<SearchResult>,

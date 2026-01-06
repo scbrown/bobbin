@@ -10,6 +10,8 @@ use tokenizers::Tokenizer;
 pub struct ModelConfig {
     pub name: String,
     pub repo: String,
+    // TODO(bobbin-6vq): Used by dimension() for model introspection
+    #[allow(dead_code)]
     pub dim: usize,
     pub max_seq: usize,
     pub onnx_path: String,
@@ -201,20 +203,28 @@ impl Embedder {
     }
 
     /// Get the embedding dimension
+    // TODO(bobbin-6vq): For model introspection
+    #[allow(dead_code)]
     pub fn dimension(&self) -> usize {
         self.config.dim
     }
 
     /// Get the model name
+    // TODO(bobbin-6vq): For model introspection
+    #[allow(dead_code)]
     pub fn model_name(&self) -> &str {
         &self.config.name
     }
 }
 
 /// Thread-safe wrapper for the embedder
+// TODO(bobbin-6vq): For concurrent embedding operations
+#[allow(dead_code)]
 pub type SharedEmbedder = Arc<Embedder>;
 
 /// Download the embedding model if not present
+// TODO(bobbin-6vq): For automatic model download
+#[allow(dead_code)]
 pub async fn ensure_model(cache_dir: &Path, model_name: &str) -> Result<PathBuf> {
     let config = ModelConfig::get(model_name)?;
     let model_dir = cache_dir.join(&config.name);
