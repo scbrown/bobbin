@@ -76,3 +76,50 @@ wip:
 # Show issue details
 show issue:
     bd show {{issue}}
+
+# Create a spinoff issue (for discovered bugs, improvements, or subtasks)
+# Usage: just tambour spinoff "Title" [--type bug] [--priority P1] [--labels label1,label2] [--blocks issue-id]
+spinoff title *args:
+    #!/usr/bin/env bash
+    set -e
+
+    # Parse arguments
+    TYPE="task"
+    PRIORITY="P2"
+    LABELS=""
+    BLOCKS=""
+    DESCRIPTION=""
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --type) TYPE="$2"; shift 2 ;;
+            --priority) PRIORITY="$2"; shift 2 ;;
+            --labels) LABELS="$2"; shift 2 ;;
+            --blocks) BLOCKS="$2"; shift 2 ;;
+            --description) DESCRIPTION="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    # Build the bd create command
+    CMD="bd create \"{{title}}\" --type $TYPE --priority $PRIORITY"
+
+    if [[ -n "$LABELS" ]]; then
+        CMD="$CMD --labels $LABELS"
+    fi
+
+    if [[ -n "$DESCRIPTION" ]]; then
+        CMD="$CMD --description \"$DESCRIPTION\""
+    fi
+
+    # Create the issue and capture ID
+    ISSUE_ID=$(eval "$CMD --silent")
+    echo "Created issue: $ISSUE_ID"
+
+    # Add blocker dependency if specified
+    if [[ -n "$BLOCKS" ]]; then
+        bd dep add "$BLOCKS" --blocked-by "$ISSUE_ID"
+        echo "Added as blocker for: $BLOCKS"
+    fi
+
+    bd show "$ISSUE_ID"
