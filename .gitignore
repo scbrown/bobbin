@@ -15,6 +15,9 @@ Thumbs.db
 # Bobbin index data
 .bobbin/
 
+# Tambour local metrics
+.tambour/
+
 # Python
 __pycache__/
 *.py[cod]
