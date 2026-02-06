@@ -14,8 +14,8 @@ impl<'a> KeywordSearch<'a> {
         Self { vector_store }
     }
 
-    /// Search for code matching a keyword pattern
-    pub async fn search(&mut self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        self.vector_store.search_fts(query, limit).await
+    /// Search for code matching a keyword pattern, optionally filtered by repo
+    pub async fn search(&mut self, query: &str, limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
+        self.vector_store.search_fts(query, limit, repo).await
     }
 }

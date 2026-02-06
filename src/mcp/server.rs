@@ -65,7 +65,7 @@ impl BobbinMcpServer {
     /// Get index statistics as a JSON string
     async fn get_stats_json(&self) -> Result<String> {
         let store = self.open_vector_store().await?;
-        let stats = store.get_stats().await?;
+        let stats = store.get_stats(None).await?;
         Ok(serde_json::to_string_pretty(&stats)?)
     }
 
@@ -321,7 +321,7 @@ impl BobbinMcpServer {
         let mut vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let stats = vector_store.get_stats().await
+        let stats = vector_store.get_stats(None).await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         if stats.total_chunks == 0 {
             return Ok(CallToolResult::success(vec![Content::text(
@@ -335,9 +335,11 @@ impl BobbinMcpServer {
             limit
         };
 
+        let repo_filter = req.repo.as_deref();
+
         let results: Vec<SearchResult> = match mode {
             "keyword" => vector_store
-                .search_fts(&req.query, search_limit)
+                .search_fts(&req.query, search_limit, repo_filter)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?,
 
@@ -351,7 +353,7 @@ impl BobbinMcpServer {
                 if mode == "semantic" {
                     let mut search = SemanticSearch::new(embedder, vector_store);
                     search
-                        .search(&req.query, search_limit)
+                        .search(&req.query, search_limit, repo_filter)
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?
                 } else {
@@ -361,7 +363,7 @@ impl BobbinMcpServer {
                         config.search.semantic_weight,
                     );
                     search
-                        .search(&req.query, search_limit)
+                        .search(&req.query, search_limit, repo_filter)
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?
                 }
@@ -428,7 +430,7 @@ impl BobbinMcpServer {
         let mut vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let stats = vector_store.get_stats().await
+        let stats = vector_store.get_stats(None).await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         if stats.total_chunks == 0 {
             return Ok(CallToolResult::success(vec![Content::text(
@@ -463,7 +465,7 @@ impl BobbinMcpServer {
         };
 
         let results = vector_store
-            .search_fts(&fts_query, search_limit)
+            .search_fts(&fts_query, search_limit, req.repo.as_deref())
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 

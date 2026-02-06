@@ -242,15 +242,22 @@ impl VectorStore {
     }
 
     /// Search for similar vectors using approximate nearest neighbor search
-    pub async fn search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
+    /// Optionally filter by repo name
+    pub async fn search(&self, query_embedding: &[f32], limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
         let table = match &self.table {
             Some(t) => t,
             None => return Ok(vec![]),
         };
 
-        let results = table
+        let mut query = table
             .vector_search(query_embedding.to_vec())
-            .context("Failed to create vector search")?
+            .context("Failed to create vector search")?;
+
+        if let Some(repo_name) = repo {
+            query = query.only_if(format!("repo = '{}'", repo_name.replace('\'', "''")));
+        }
+
+        let results = query
             .limit(limit)
             .execute()
             .await
@@ -265,7 +272,8 @@ impl VectorStore {
     }
 
     /// Full-text search on content and chunk_name
-    pub async fn search_fts(&mut self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+    /// Optionally filter by repo name
+    pub async fn search_fts(&mut self, query: &str, limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
         // Ensure FTS index exists (must be called before borrowing self.table)
         self.ensure_fts_index().await?;
 
@@ -274,9 +282,15 @@ impl VectorStore {
             None => return Ok(vec![]),
         };
 
-        let results = table
+        let mut q = table
             .query()
-            .full_text_search(FullTextSearchQuery::new(query.to_string()))
+            .full_text_search(FullTextSearchQuery::new(query.to_string()));
+
+        if let Some(repo_name) = repo {
+            q = q.only_if(format!("repo = '{}'", repo_name.replace('\'', "''")));
+        }
+
+        let results = q
             .limit(limit)
             .execute()
             .await
@@ -586,16 +600,22 @@ impl VectorStore {
         Ok(stored_hash != current_hash)
     }
 
-    /// Get all indexed file paths
-    pub async fn get_all_file_paths(&self) -> Result<Vec<String>> {
+    /// Get all indexed file paths, optionally filtered by repo
+    pub async fn get_all_file_paths(&self, repo: Option<&str>) -> Result<Vec<String>> {
         let table = match &self.table {
             Some(t) => t,
             None => return Ok(vec![]),
         };
 
-        let results = table
+        let mut q = table
             .query()
-            .select(lancedb::query::Select::Columns(vec!["file_path".to_string()]))
+            .select(lancedb::query::Select::Columns(vec!["file_path".to_string()]));
+
+        if let Some(repo_name) = repo {
+            q = q.only_if(format!("repo = '{}'", repo_name.replace('\'', "''")));
+        }
+
+        let results = q
             .execute()
             .await
             .context("Failed to query file paths")?;
@@ -620,6 +640,44 @@ impl VectorStore {
         }
 
         Ok(paths.into_iter().collect())
+    }
+
+    /// Get all unique repo names in the index
+    pub async fn get_all_repos(&self) -> Result<Vec<String>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let results = table
+            .query()
+            .select(lancedb::query::Select::Columns(vec!["repo".to_string()]))
+            .execute()
+            .await
+            .context("Failed to query repos")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect repos")?;
+
+        let mut repos = std::collections::HashSet::new();
+        for batch in &batches {
+            let repo_col = batch
+                .column_by_name("repo")
+                .context("Missing repo column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("repo column has wrong type")?;
+
+            for i in 0..batch.num_rows() {
+                repos.insert(repo_col.value(i).to_string());
+            }
+        }
+
+        let mut repo_list: Vec<String> = repos.into_iter().collect();
+        repo_list.sort();
+        Ok(repo_list)
     }
 
     /// Get file metadata from a chunk record
@@ -675,8 +733,8 @@ impl VectorStore {
         }))
     }
 
-    /// Get index statistics
-    pub async fn get_stats(&self) -> Result<IndexStats> {
+    /// Get index statistics, optionally filtered by repo
+    pub async fn get_stats(&self, repo: Option<&str>) -> Result<IndexStats> {
         let table = match &self.table {
             Some(t) => t,
             None => {
@@ -691,16 +749,24 @@ impl VectorStore {
             }
         };
 
-        let total_chunks = table.count_rows(None).await.unwrap_or(0) as u64;
+        let repo_filter = repo.map(|r| format!("repo = '{}'", r.replace('\'', "''")));
+
+        let total_chunks = table.count_rows(repo_filter.clone()).await.unwrap_or(0) as u64;
 
         // Query for stats by selecting relevant columns
-        let results = table
+        let mut q = table
             .query()
             .select(lancedb::query::Select::Columns(vec![
                 "file_path".to_string(),
                 "language".to_string(),
                 "indexed_at".to_string(),
-            ]))
+            ]));
+
+        if let Some(ref filter) = repo_filter {
+            q = q.only_if(filter.clone());
+        }
+
+        let results = q
             .execute()
             .await
             .context("Failed to query stats")?;
@@ -868,7 +934,7 @@ mod tests {
             .await
             .unwrap();
 
-        let results = store.search(&sample_embedding(), 10).await.unwrap();
+        let results = store.search(&sample_embedding(), 10, None).await.unwrap();
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].chunk.id, "chunk1");
@@ -966,7 +1032,7 @@ mod tests {
 
         assert_eq!(store.count().await.unwrap(), 1);
 
-        let results = store.search(&sample_embedding(), 10).await.unwrap();
+        let results = store.search(&sample_embedding(), 10, None).await.unwrap();
         assert_eq!(results[0].chunk.name, Some("updated".to_string()));
     }
 
@@ -982,7 +1048,7 @@ mod tests {
             .await
             .unwrap();
 
-        let results = store.search(&sample_embedding(), 10).await.unwrap();
+        let results = store.search(&sample_embedding(), 10, None).await.unwrap();
         assert!(results.is_empty());
 
         store.delete(&["nonexistent".to_string()]).await.unwrap();
@@ -1007,7 +1073,7 @@ mod tests {
             let store = VectorStore::open(&path).await.unwrap();
             assert_eq!(store.count().await.unwrap(), 1);
 
-            let results = store.search(&sample_embedding(), 10).await.unwrap();
+            let results = store.search(&sample_embedding(), 10, None).await.unwrap();
             assert_eq!(results[0].chunk.name, Some("persistent".to_string()));
         }
     }
@@ -1085,7 +1151,7 @@ mod tests {
             .await
             .unwrap();
 
-        let stats = store.get_stats().await.unwrap();
+        let stats = store.get_stats(None).await.unwrap();
         assert_eq!(stats.total_files, 2);
         assert_eq!(stats.total_chunks, 3);
 
@@ -1120,5 +1186,74 @@ mod tests {
 
         let no_file = store.get_file("nonexistent.rs").await.unwrap();
         assert!(no_file.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_multi_repo_search() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        // Insert chunks into two different repos
+        let chunk_a = Chunk {
+            id: "repo_a_chunk1".to_string(),
+            file_path: "src/main.rs".to_string(),
+            chunk_type: ChunkType::Function,
+            name: Some("main_a".to_string()),
+            start_line: 1,
+            end_line: 10,
+            content: "fn main_a() {}".to_string(),
+            language: "rust".to_string(),
+        };
+        let chunk_b = Chunk {
+            id: "repo_b_chunk1".to_string(),
+            file_path: "src/main.rs".to_string(),
+            chunk_type: ChunkType::Function,
+            name: Some("main_b".to_string()),
+            start_line: 1,
+            end_line: 10,
+            content: "fn main_b() {}".to_string(),
+            language: "rust".to_string(),
+        };
+
+        store
+            .insert(&[chunk_a], &[sample_embedding()], "repo_a", "hash_a", "100")
+            .await
+            .unwrap();
+        store
+            .insert(&[chunk_b], &[sample_embedding()], "repo_b", "hash_b", "200")
+            .await
+            .unwrap();
+
+        // Search all repos
+        let all_results = store.search(&sample_embedding(), 10, None).await.unwrap();
+        assert_eq!(all_results.len(), 2);
+
+        // Search specific repo
+        let repo_a_results = store.search(&sample_embedding(), 10, Some("repo_a")).await.unwrap();
+        assert_eq!(repo_a_results.len(), 1);
+        assert_eq!(repo_a_results[0].chunk.name, Some("main_a".to_string()));
+
+        let repo_b_results = store.search(&sample_embedding(), 10, Some("repo_b")).await.unwrap();
+        assert_eq!(repo_b_results.len(), 1);
+        assert_eq!(repo_b_results[0].chunk.name, Some("main_b".to_string()));
+
+        // Get all repos
+        let repos = store.get_all_repos().await.unwrap();
+        assert_eq!(repos.len(), 2);
+        assert!(repos.contains(&"repo_a".to_string()));
+        assert!(repos.contains(&"repo_b".to_string()));
+
+        // Get stats filtered by repo
+        let stats_a = store.get_stats(Some("repo_a")).await.unwrap();
+        assert_eq!(stats_a.total_chunks, 1);
+
+        let stats_all = store.get_stats(None).await.unwrap();
+        assert_eq!(stats_all.total_chunks, 2);
+
+        // Get file paths filtered by repo
+        let paths_a = store.get_all_file_paths(Some("repo_a")).await.unwrap();
+        assert_eq!(paths_a.len(), 1);
     }
 }

@@ -28,6 +28,10 @@ pub struct SearchArgs {
     #[arg(long, short = 'm', default_value = "hybrid")]
     mode: SearchMode,
 
+    /// Filter results to a specific repository
+    #[arg(long, short = 'r')]
+    repo: Option<String>,
+
     /// Directory to search in (defaults to current directory)
     #[arg(default_value = ".")]
     path: PathBuf,
@@ -127,10 +131,12 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         args.limit
     };
 
+    let repo_filter = args.repo.as_deref();
+
     let results = match args.mode {
         SearchMode::Keyword => {
             vector_store
-                .search_fts(&args.query, search_limit)
+                .search_fts(&args.query, search_limit, repo_filter)
                 .await
                 .context("Keyword search failed")?
         }
@@ -155,7 +161,7 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
                 SearchMode::Semantic => {
                     let mut search = SemanticSearch::new(embedder, vector_store);
                     search
-                        .search(&args.query, search_limit)
+                        .search(&args.query, search_limit, repo_filter)
                         .await
                         .context("Semantic search failed")?
                 }
@@ -166,7 +172,7 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
                         config.search.semantic_weight,
                     );
                     search
-                        .search(&args.query, search_limit)
+                        .search(&args.query, search_limit, repo_filter)
                         .await
                         .context("Hybrid search failed")?
                 }

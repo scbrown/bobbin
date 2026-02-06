@@ -35,6 +35,10 @@ pub struct GrepArgs {
     #[arg(long, short = 'C', default_value = "0")]
     context: usize,
 
+    /// Filter results to a specific repository
+    #[arg(long, short = 'r')]
+    repo: Option<String>,
+
     /// Directory to search in (defaults to current directory)
     #[arg(default_value = ".")]
     path: PathBuf,
@@ -120,7 +124,7 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
         .context("Failed to open vector store")?;
 
     // Check if index exists
-    let stats = vector_store.get_stats().await?;
+    let stats = vector_store.get_stats(None).await?;
     if stats.total_chunks == 0 {
         if output.json {
             println!(
@@ -154,7 +158,7 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
 
     // Perform FTS search via LanceDB
     let results = vector_store
-        .search_fts(&fts_query, search_limit)
+        .search_fts(&fts_query, search_limit, args.repo.as_deref())
         .await
         .context("FTS search failed")?;
 

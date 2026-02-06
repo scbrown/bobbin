@@ -16,6 +16,10 @@ pub struct StatusArgs {
     #[arg(long)]
     detailed: bool,
 
+    /// Show stats for a specific repository only
+    #[arg(long, short = 'r')]
+    repo: Option<String>,
+
     /// Directory to check status in (defaults to current directory)
     #[arg(default_value = ".")]
     path: PathBuf,
@@ -25,6 +29,8 @@ pub struct StatusArgs {
 struct StatusOutput {
     status: String,
     path: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    repos: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stats: Option<IndexStats>,
 }
@@ -43,6 +49,7 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
             let json_output = StatusOutput {
                 status: "not_initialized".to_string(),
                 path: repo_root.display().to_string(),
+                repos: vec![],
                 stats: None,
             };
             println!("{}", serde_json::to_string_pretty(&json_output)?);
@@ -63,12 +70,14 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
         .await
         .context("Failed to open vector store")?;
 
-    let stats = vector_store.get_stats().await?;
+    let repos = vector_store.get_all_repos().await?;
+    let stats = vector_store.get_stats(args.repo.as_deref()).await?;
 
     if output.json {
         let json_output = StatusOutput {
             status: "ready".to_string(),
             path: data_dir.display().to_string(),
+            repos,
             stats: Some(stats),
         };
         println!("{}", serde_json::to_string_pretty(&json_output)?);
@@ -76,6 +85,14 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
         println!("{} Bobbin status for {}", "✓".green(), repo_root.display());
         println!();
         println!("  Status:       {}", "Ready".green());
+
+        if repos.len() > 1 || (repos.len() == 1 && repos[0] != "default") {
+            println!("  Repositories: {}", repos.join(", ").cyan());
+        }
+        if let Some(ref repo) = args.repo {
+            println!("  Showing:      {}", repo.cyan());
+        }
+
         println!("  Total files:  {}", stats.total_files.to_string().cyan());
         println!("  Total chunks: {}", stats.total_chunks.to_string().cyan());
 

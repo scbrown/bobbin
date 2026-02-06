@@ -26,17 +26,17 @@ impl HybridSearch {
         }
     }
 
-    /// Perform hybrid search combining semantic and keyword results
-    pub async fn search(&mut self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+    /// Perform hybrid search combining semantic and keyword results, optionally filtered by repo
+    pub async fn search(&mut self, query: &str, limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
         // Request more results from each source to have a good pool for fusion
         let fetch_limit = limit * 2;
 
         // Run semantic search
         let query_embedding = self.embedder.embed(query)?;
-        let semantic_results = self.vector_store.search(&query_embedding, fetch_limit).await?;
+        let semantic_results = self.vector_store.search(&query_embedding, fetch_limit, repo).await?;
 
         // Run keyword search via LanceDB FTS
-        let keyword_results = self.vector_store.search_fts(query, fetch_limit).await?;
+        let keyword_results = self.vector_store.search_fts(query, fetch_limit, repo).await?;
 
         // Combine using RRF
         Self::combine(

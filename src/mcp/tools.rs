@@ -22,6 +22,10 @@ pub struct SearchRequest {
     /// Search mode: hybrid (default), semantic, or keyword
     #[schemars(description = "Search mode: 'hybrid' (combines semantic+keyword, default), 'semantic' (vector similarity), or 'keyword' (full-text)")]
     pub mode: Option<String>,
+
+    /// Filter to a specific repository (searches all repos if omitted)
+    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    pub repo: Option<String>,
 }
 
 /// Response for semantic search
@@ -69,6 +73,10 @@ pub struct GrepRequest {
     /// Maximum number of results (default: 10)
     #[schemars(description = "Maximum number of results to return (default: 10)")]
     pub limit: Option<usize>,
+
+    /// Filter to a specific repository (searches all repos if omitted)
+    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    pub repo: Option<String>,
 }
 
 /// Response for grep search

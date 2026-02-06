@@ -25,7 +25,15 @@ pub struct IndexArgs {
     #[arg(long)]
     force: bool,
 
-    /// Directory to index (defaults to current directory)
+    /// Repository name for multi-repo indexing (default: "default")
+    #[arg(long)]
+    repo: Option<String>,
+
+    /// Source directory to index files from (defaults to path)
+    #[arg(long)]
+    source: Option<PathBuf>,
+
+    /// Directory containing .bobbin/ config (defaults to current directory)
     #[arg(default_value = ".")]
     path: PathBuf,
 }
@@ -70,6 +78,17 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     }
 
     let config = Config::load(&config_path).with_context(|| "Failed to load configuration")?;
+
+    let repo_name = args.repo.as_deref().unwrap_or("default");
+
+    // Source directory: --source overrides the default (which is the bobbin home path)
+    let source_root = if let Some(ref source) = args.source {
+        source
+            .canonicalize()
+            .with_context(|| format!("Invalid source path: {}", source.display()))?
+    } else {
+        repo_root.clone()
+    };
 
     let db_path = Config::db_path(&repo_root);
     let lance_path = Config::lance_path(&repo_root);
@@ -122,18 +141,18 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         Embedder::load(&model_dir, current_model).context("Failed to load embedding model")?;
     let mut parser = Parser::new().context("Failed to initialize parser")?;
 
-    // Get existing indexed files from LanceDB
+    // Get existing indexed files from LanceDB (filtered by repo)
     let existing_files: HashSet<String> = if args.force {
         HashSet::new()
     } else {
         vector_store
-            .get_all_file_paths()
+            .get_all_file_paths(Some(repo_name))
             .await?
             .into_iter()
             .collect()
     };
 
-    let files_to_index = collect_files(&repo_root, &config)?;
+    let files_to_index = collect_files(&source_root, &config)?;
 
     if output.verbose && !output.quiet && !output.json {
         println!("  Found {} files matching patterns", files_to_index.len());
@@ -143,7 +162,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let current_files: HashSet<String> = files_to_index
         .iter()
         .map(|p| {
-            p.strip_prefix(&repo_root)
+            p.strip_prefix(&source_root)
                 .unwrap_or(p)
                 .to_string_lossy()
                 .to_string()
@@ -165,7 +184,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     for file_path in &files_to_index {
         let rel_path = file_path
-            .strip_prefix(&repo_root)
+            .strip_prefix(&source_root)
             .unwrap_or(file_path)
             .to_string_lossy()
             .to_string();
@@ -228,7 +247,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     for file_path in &files_needing_index {
         let rel_path = file_path
-            .strip_prefix(&repo_root)
+            .strip_prefix(&source_root)
             .unwrap_or(file_path)
             .to_string_lossy()
             .to_string();
@@ -283,6 +302,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 &mut pending_results,
                 &mut vector_store,
                 &mut embed,
+                repo_name,
             )
             .await?;
 
@@ -301,6 +321,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             &mut pending_results,
             &mut vector_store,
             &mut embed,
+            repo_name,
         )
         .await?;
 
@@ -322,7 +343,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             println!("  Analyzing git coupling...");
         }
 
-        match crate::index::git::GitAnalyzer::new(&repo_root) {
+        match crate::index::git::GitAnalyzer::new(&source_root) {
             Ok(analyzer) => {
                 match analyzer
                     .analyze_coupling(config.git.coupling_depth, config.git.coupling_threshold)
@@ -355,7 +376,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let elapsed = start_time.elapsed();
 
     if output.json {
-        let stats = vector_store.get_stats().await?;
+        let stats = vector_store.get_stats(Some(repo_name)).await?;
         let json_output = IndexOutput {
             status: "indexed".to_string(),
             files_indexed: indexed_files,
@@ -391,7 +412,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
 
         if output.verbose {
-            let stats = vector_store.get_stats().await?;
+            let stats = vector_store.get_stats(Some(repo_name)).await?;
             println!("\nIndex statistics:");
             println!("  Total files:  {}", stats.total_files);
             println!("  Total chunks: {}", stats.total_chunks);
@@ -468,6 +489,7 @@ async fn process_batch(
     results: &mut Vec<FileIndexResult>,
     vector_store: &mut VectorStore,
     embed: &mut Embedder,
+    repo: &str,
 ) -> Result<(usize, usize)> {
     if results.is_empty() {
         return Ok((0, 0));
@@ -495,7 +517,7 @@ async fn process_batch(
             .insert(
                 &result.chunks,
                 &embeddings,
-                "default",
+                repo,
                 &result.hash,
                 &now,
             )
