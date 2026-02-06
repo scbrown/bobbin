@@ -81,6 +81,9 @@ impl BobbinMcpServer {
             "impl" => Ok(ChunkType::Impl),
             "trait" => Ok(ChunkType::Trait),
             "doc" | "documentation" => Ok(ChunkType::Doc),
+            "section" => Ok(ChunkType::Section),
+            "table" => Ok(ChunkType::Table),
+            "code_block" | "codeblock" => Ok(ChunkType::CodeBlock),
             "other" => Ok(ChunkType::Other),
             _ => anyhow::bail!("Unknown chunk type '{}'", s),
         }

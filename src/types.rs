@@ -27,6 +27,9 @@ pub enum ChunkType {
     Impl,
     Trait,
     Doc,
+    Section,
+    Table,
+    CodeBlock,
     Other,
 }
 
@@ -43,6 +46,9 @@ impl std::fmt::Display for ChunkType {
             ChunkType::Impl => write!(f, "impl"),
             ChunkType::Trait => write!(f, "trait"),
             ChunkType::Doc => write!(f, "doc"),
+            ChunkType::Section => write!(f, "section"),
+            ChunkType::Table => write!(f, "table"),
+            ChunkType::CodeBlock => write!(f, "code_block"),
             ChunkType::Other => write!(f, "other"),
         }
     }

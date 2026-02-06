@@ -1,5 +1,5 @@
 use anyhow::Result;
-use regex::Regex;
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser as CmarkParser, Tag, TagEnd};
 use std::path::Path;
 use tree_sitter::{Language, Node};
 
@@ -13,7 +13,6 @@ pub struct Parser {
     go_parser: tree_sitter::Parser,
     java_parser: tree_sitter::Parser,
     cpp_parser: tree_sitter::Parser,
-    header_regex: Regex,
 }
 
 impl Parser {
@@ -26,7 +25,6 @@ impl Parser {
             go_parser: create_parser(tree_sitter_go::LANGUAGE.into())?,
             java_parser: create_parser(tree_sitter_java::LANGUAGE.into())?,
             cpp_parser: create_parser(tree_sitter_cpp::LANGUAGE.into())?,
-            header_regex: Regex::new(r"(?m)^(#{1,6})\s+(.+)$")?,
         })
     }
 
@@ -70,85 +68,249 @@ impl Parser {
         Ok(chunks)
     }
 
-    /// Extract markdown chunks based on headers
+    /// Extract markdown chunks using pulldown-cmark for semantic parsing.
+    ///
+    /// Strategy:
+    /// 1. Extract YAML frontmatter as a Doc chunk if present
+    /// 2. Walk pulldown-cmark events to identify headings, tables, and code blocks
+    /// 3. Split content at heading boundaries into Section chunks
+    /// 4. Emit standalone Table and CodeBlock chunks for those elements
+    ///    while also including them in the parent section's content
     fn chunk_markdown(&self, path: &Path, content: &str) -> Vec<Chunk> {
         let mut chunks = Vec::new();
-        let matches: Vec<_> = self.header_regex.find_iter(content).collect();
+        let file_path = path.to_string_lossy().to_string();
 
-        if matches.is_empty() {
-            return self.chunk_by_lines(path, content);
+        // 1. Extract YAML frontmatter (--- delimited)
+        let (frontmatter, body, body_start_line) = extract_frontmatter(content);
+
+        if let Some(fm) = frontmatter {
+            let fm_end_line = body_start_line.saturating_sub(1).max(1);
+            chunks.push(Chunk {
+                id: generate_chunk_id(path, 1, fm_end_line as u32),
+                file_path: file_path.clone(),
+                chunk_type: ChunkType::Doc,
+                name: Some("Frontmatter".to_string()),
+                start_line: 1,
+                end_line: fm_end_line as u32,
+                content: fm,
+                language: "markdown".to_string(),
+            });
         }
 
-        // Handle preamble (content before first header)
-        if matches[0].start() > 0 {
-            let pre_content = &content[0..matches[0].start()];
-            if !pre_content.trim().is_empty() {
-                let end_line = byte_offset_to_line(content, matches[0].start());
+        // 2. Parse markdown body with pulldown-cmark
+        let opts = Options::ENABLE_TABLES
+            | Options::ENABLE_STRIKETHROUGH
+            | Options::ENABLE_HEADING_ATTRIBUTES;
+        let parser = CmarkParser::new_ext(body, opts);
+
+        // Collect events with byte offsets into body
+        let events: Vec<(Event, std::ops::Range<usize>)> = parser.into_offset_iter().collect();
+
+        if events.is_empty() {
+            if chunks.is_empty() {
+                return self.chunk_by_lines(path, content);
+            }
+            return chunks;
+        }
+
+        // 3. Find heading boundaries and standalone blocks
+        let mut sections: Vec<MarkdownSection> = Vec::new();
+        let mut standalone_blocks: Vec<StandaloneBlock> = Vec::new();
+        let mut header_stack: Vec<(usize, String)> = Vec::new();
+
+        let mut i = 0;
+        while i < events.len() {
+            match &events[i].0 {
+                Event::Start(Tag::Heading { level, .. }) => {
+                    let heading_level = heading_level_to_usize(level);
+                    let section_start = events[i].1.start;
+
+                    // Collect heading text
+                    let mut title = String::new();
+                    i += 1;
+                    while i < events.len() {
+                        match &events[i].0 {
+                            Event::End(TagEnd::Heading(_)) => break,
+                            Event::Text(t) | Event::Code(t) => title.push_str(t),
+                            _ => {}
+                        }
+                        i += 1;
+                    }
+
+                    // Update header stack
+                    while let Some((last_level, _)) = header_stack.last() {
+                        if *last_level >= heading_level {
+                            header_stack.pop();
+                        } else {
+                            break;
+                        }
+                    }
+                    header_stack.push((heading_level, title.trim().to_string()));
+
+                    let full_name = header_stack
+                        .iter()
+                        .map(|(_, t)| t.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" > ");
+
+                    sections.push(MarkdownSection {
+                        name: full_name,
+                        body_offset: section_start,
+                    });
+                }
+                Event::Start(Tag::Table(_)) => {
+                    let table_start = events[i].1.start;
+                    let mut table_end = events[i].1.end;
+                    i += 1;
+                    while i < events.len() {
+                        match &events[i].0 {
+                            Event::End(TagEnd::Table) => {
+                                table_end = events[i].1.end;
+                                break;
+                            }
+                            _ => {}
+                        }
+                        i += 1;
+                    }
+                    standalone_blocks.push(StandaloneBlock {
+                        chunk_type: ChunkType::Table,
+                        body_offset_start: table_start,
+                        body_offset_end: table_end,
+                        name: None,
+                    });
+                }
+                Event::Start(Tag::CodeBlock(kind)) => {
+                    let cb_start = events[i].1.start;
+                    let mut cb_end = events[i].1.end;
+                    let lang_tag = match kind {
+                        pulldown_cmark::CodeBlockKind::Fenced(info) => {
+                            let s = info.split_whitespace().next().unwrap_or("");
+                            if s.is_empty() { None } else { Some(s.to_string()) }
+                        }
+                        pulldown_cmark::CodeBlockKind::Indented => None,
+                    };
+                    i += 1;
+                    while i < events.len() {
+                        match &events[i].0 {
+                            Event::End(TagEnd::CodeBlock) => {
+                                cb_end = events[i].1.end;
+                                break;
+                            }
+                            _ => {}
+                        }
+                        i += 1;
+                    }
+                    standalone_blocks.push(StandaloneBlock {
+                        chunk_type: ChunkType::CodeBlock,
+                        body_offset_start: cb_start,
+                        body_offset_end: cb_end,
+                        name: lang_tag,
+                    });
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+
+        // 4. Emit section chunks at heading boundaries
+        let line_offset = body_start_line.saturating_sub(1);
+
+        if sections.is_empty() {
+            // No headings found — check for preamble content
+            let trimmed = body.trim();
+            if !trimmed.is_empty() {
+                let start_line = (line_offset + 1) as u32;
+                let end_line = (line_offset + body.lines().count()) as u32;
                 chunks.push(Chunk {
-                    id: generate_chunk_id(path, 1, end_line),
-                    file_path: path.to_string_lossy().to_string(),
+                    id: generate_chunk_id(path, start_line, end_line),
+                    file_path: file_path.clone(),
                     chunk_type: ChunkType::Doc,
                     name: Some("Preamble".to_string()),
-                    start_line: 1,
+                    start_line,
                     end_line,
-                    content: pre_content.to_string(),
+                    content: body.to_string(),
+                    language: "markdown".to_string(),
+                });
+            }
+        } else {
+            // Preamble before first heading
+            if sections[0].body_offset > 0 {
+                let pre = &body[..sections[0].body_offset];
+                if !pre.trim().is_empty() {
+                    let start_line = (line_offset + 1) as u32;
+                    let end_line = (line_offset + byte_offset_to_line_in(body, sections[0].body_offset)) as u32;
+                    chunks.push(Chunk {
+                        id: generate_chunk_id(path, start_line, end_line),
+                        file_path: file_path.clone(),
+                        chunk_type: ChunkType::Doc,
+                        name: Some("Preamble".to_string()),
+                        start_line,
+                        end_line,
+                        content: pre.to_string(),
+                        language: "markdown".to_string(),
+                    });
+                }
+            }
+
+            // Section chunks
+            for si in 0..sections.len() {
+                let sec = &sections[si];
+                let sec_start = sec.body_offset;
+                let sec_end = if si + 1 < sections.len() {
+                    sections[si + 1].body_offset
+                } else {
+                    body.len()
+                };
+                let section_content = &body[sec_start..sec_end];
+
+                let start_line = (line_offset + byte_offset_to_line_in(body, sec_start)) as u32;
+                let end_line = (line_offset + byte_offset_to_line_in(body, sec_end)) as u32;
+
+                chunks.push(Chunk {
+                    id: generate_chunk_id(path, start_line, end_line),
+                    file_path: file_path.clone(),
+                    chunk_type: ChunkType::Section,
+                    name: Some(sec.name.clone()),
+                    start_line,
+                    end_line,
+                    content: section_content.to_string(),
                     language: "markdown".to_string(),
                 });
             }
         }
 
-        // Stack of (level, title)
-        let mut header_stack: Vec<(usize, String)> = Vec::new();
+        // 5. Emit standalone table and code_block chunks
+        for block in &standalone_blocks {
+            let block_content = &body[block.body_offset_start..block.body_offset_end];
+            let start_line = (line_offset + byte_offset_to_line_in(body, block.body_offset_start)) as u32;
+            let end_line = (line_offset + byte_offset_to_line_in(body, block.body_offset_end)) as u32;
 
-        for i in 0..matches.len() {
-            let m = matches[i];
-            let start = m.start();
-            let end = if i + 1 < matches.len() {
-                matches[i + 1].start()
-            } else {
-                content.len()
-            };
-
-            let chunk_content = &content[start..end];
-            let start_line = byte_offset_to_line(content, start);
-            let end_line = byte_offset_to_line(content, end);
-
-            // Extract header level and title
-            let captures = self
-                .header_regex
-                .captures(&content[start..m.end()])
-                .unwrap();
-            let hashes = captures.get(1).unwrap().as_str();
-            let raw_title = captures.get(2).unwrap().as_str().trim().to_string();
-            let level = hashes.len();
-
-            // Update stack: pop headers that are same level or deeper
-            while let Some((last_level, _)) = header_stack.last() {
-                if *last_level >= level {
-                    header_stack.pop();
-                } else {
-                    break;
+            let name = match block.chunk_type {
+                ChunkType::Table => {
+                    // Try to use preceding section heading
+                    let parent_section = sections.iter().rev().find(|s| s.body_offset <= block.body_offset_start);
+                    parent_section.map(|s| format!("{} (table)", s.name))
                 }
-            }
-            header_stack.push((level, raw_title));
-
-            // Construct full name
-            let full_name = header_stack
-                .iter()
-                .map(|(_, t)| t.as_str())
-                .collect::<Vec<_>>()
-                .join(" > ");
+                ChunkType::CodeBlock => {
+                    block.name.as_ref().map(|lang| format!("code: {}", lang))
+                }
+                _ => None,
+            };
 
             chunks.push(Chunk {
                 id: generate_chunk_id(path, start_line, end_line),
-                file_path: path.to_string_lossy().to_string(),
-                chunk_type: ChunkType::Doc,
-                name: Some(full_name),
+                file_path: file_path.clone(),
+                chunk_type: block.chunk_type,
+                name,
                 start_line,
                 end_line,
-                content: chunk_content.to_string(),
+                content: block_content.to_string(),
                 language: "markdown".to_string(),
             });
+        }
+
+        if chunks.is_empty() {
+            return self.chunk_by_lines(path, content);
         }
 
         chunks
@@ -323,6 +485,72 @@ impl Parser {
     }
 }
 
+/// A heading-delimited section in a markdown document
+struct MarkdownSection {
+    name: String,
+    body_offset: usize,
+}
+
+/// A standalone block (table or code block) extracted from markdown
+struct StandaloneBlock {
+    chunk_type: ChunkType,
+    body_offset_start: usize,
+    body_offset_end: usize,
+    name: Option<String>,
+}
+
+fn heading_level_to_usize(level: &HeadingLevel) -> usize {
+    match level {
+        HeadingLevel::H1 => 1,
+        HeadingLevel::H2 => 2,
+        HeadingLevel::H3 => 3,
+        HeadingLevel::H4 => 4,
+        HeadingLevel::H5 => 5,
+        HeadingLevel::H6 => 6,
+    }
+}
+
+/// Extract YAML frontmatter from markdown content.
+/// Returns (frontmatter_content, body, body_start_line).
+fn extract_frontmatter(content: &str) -> (Option<String>, &str, usize) {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return (None, content, 1);
+    }
+
+    // Find the leading whitespace/newlines before ---
+    let leading = content.len() - trimmed.len();
+    let after_first_fence = leading + 3;
+
+    // Find closing ---
+    if let Some(close_pos) = trimmed[3..].find("\n---") {
+        let fm_end = after_first_fence + close_pos;
+        let fm_content = content[after_first_fence..fm_end].trim().to_string();
+
+        // Body starts after closing --- and its newline
+        let body_start = fm_end + 4; // skip \n---
+        let body_start = if body_start < content.len() && content.as_bytes()[body_start] == b'\n' {
+            body_start + 1
+        } else {
+            body_start
+        };
+
+        let body_start_line = content[..body_start].lines().count() + 1;
+        let body = &content[body_start..];
+        (Some(fm_content), body, body_start_line)
+    } else {
+        (None, content, 1)
+    }
+}
+
+/// Convert a byte offset in a string to a 1-based line number
+fn byte_offset_to_line_in(content: &str, offset: usize) -> usize {
+    if offset >= content.len() {
+        return content.lines().count().max(1);
+    }
+    content[..offset].chars().filter(|&c| c == '\n').count() + 1
+}
+
 fn create_parser(language: Language) -> Result<tree_sitter::Parser> {
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(&language)?;
@@ -353,12 +581,6 @@ fn generate_chunk_id(path: &Path, start_line: u32, end_line: u32) -> String {
     hex::encode(&hash[..8])
 }
 
-fn byte_offset_to_line(content: &str, offset: usize) -> u32 {
-    if offset >= content.len() {
-        return content.lines().count() as u32;
-    }
-    content[..offset].chars().filter(|&c| c == '\n').count() as u32 + 1
-}
 
 #[cfg(test)]
 mod tests {
@@ -736,26 +958,17 @@ Content 2.
         let path = PathBuf::from("README.md");
         let chunks = parser.parse_file(&path, content).unwrap();
 
-        assert_eq!(chunks.len(), 4);
+        // Section chunks for each heading
+        let sections: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Section).collect();
+        assert_eq!(sections.len(), 4);
 
-        // Header 1 (Title + Preamble)
-        assert_eq!(chunks[0].chunk_type, ChunkType::Doc);
-        assert_eq!(chunks[0].name, Some("Title".to_string()));
-
-        // Header 2 (Section 1)
-        assert_eq!(chunks[1].chunk_type, ChunkType::Doc);
-        assert_eq!(chunks[1].name, Some("Title > Section 1".to_string()));
-
-        // Header 3 (Subsection 1.1)
-        assert_eq!(chunks[2].chunk_type, ChunkType::Doc);
+        assert_eq!(sections[0].name, Some("Title".to_string()));
+        assert_eq!(sections[1].name, Some("Title > Section 1".to_string()));
         assert_eq!(
-            chunks[2].name,
+            sections[2].name,
             Some("Title > Section 1 > Subsection 1.1".to_string())
         );
-
-        // Header 4 (Section 2)
-        assert_eq!(chunks[3].chunk_type, ChunkType::Doc);
-        assert_eq!(chunks[3].name, Some("Title > Section 2".to_string()));
+        assert_eq!(sections[3].name, Some("Title > Section 2".to_string()));
     }
 
     #[test]
@@ -769,9 +982,93 @@ Content.
         let path = PathBuf::from("README.md");
         let chunks = parser.parse_file(&path, content).unwrap();
 
-        assert_eq!(chunks.len(), 2);
+        let doc_chunks: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Doc).collect();
+        let section_chunks: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Section).collect();
 
-        assert_eq!(chunks[0].name, Some("Preamble".to_string()));
-        assert_eq!(chunks[1].name, Some("Title".to_string()));
+        assert_eq!(doc_chunks.len(), 1);
+        assert_eq!(doc_chunks[0].name, Some("Preamble".to_string()));
+
+        assert_eq!(section_chunks.len(), 1);
+        assert_eq!(section_chunks[0].name, Some("Title".to_string()));
+    }
+
+    #[test]
+    fn test_markdown_frontmatter() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"---
+title: Test Document
+author: Bobbin
+tags: [rust, search]
+---
+
+# Introduction
+
+Welcome to the document.
+"#;
+        let path = PathBuf::from("doc.md");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        // Should have frontmatter chunk
+        let fm: Vec<_> = chunks.iter().filter(|c| c.name == Some("Frontmatter".to_string())).collect();
+        assert_eq!(fm.len(), 1);
+        assert_eq!(fm[0].chunk_type, ChunkType::Doc);
+        assert!(fm[0].content.contains("title: Test Document"));
+
+        // And a section for the heading
+        let sections: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Section).collect();
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].name, Some("Introduction".to_string()));
+    }
+
+    #[test]
+    fn test_markdown_code_blocks() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"# Setup
+
+Install the package:
+
+```bash
+npm install bobbin
+```
+
+Then configure:
+
+```json
+{
+  "key": "value"
+}
+```
+"#;
+        let path = PathBuf::from("guide.md");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        let code_blocks: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::CodeBlock).collect();
+        assert_eq!(code_blocks.len(), 2);
+        assert_eq!(code_blocks[0].name, Some("code: bash".to_string()));
+        assert_eq!(code_blocks[1].name, Some("code: json".to_string()));
+        assert!(code_blocks[0].content.contains("npm install bobbin"));
+    }
+
+    #[test]
+    fn test_markdown_tables() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"# API Reference
+
+## Methods
+
+| Method | Description |
+|--------|-------------|
+| get    | Fetch data  |
+| set    | Store data  |
+
+More content here.
+"#;
+        let path = PathBuf::from("api.md");
+        let chunks = parser.parse_file(&path, content).unwrap();
+
+        let tables: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Table).collect();
+        assert_eq!(tables.len(), 1);
+        assert!(tables[0].content.contains("Method"));
+        assert!(tables[0].name.as_ref().unwrap().contains("table"));
     }
 }
