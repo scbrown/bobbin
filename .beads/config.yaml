@@ -29,8 +29,7 @@
 # actor: ""
 
 # Path to database (overridden by BEADS_DB or --db)
-# Use shared Gas Town database for federation
-db: "/home/claude/gt/.beads/"
+# db: ""
 
 # Auto-start daemon if not running (can also use BEADS_AUTO_START_DAEMON)
 # auto-start-daemon: true
