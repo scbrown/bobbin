@@ -28,16 +28,12 @@ use crate::types::{ChunkType, MatchType, SearchResult};
 /// MCP Server for Bobbin code search
 #[derive(Clone)]
 pub struct BobbinMcpServer {
-    /// Path to the repository root
     repo_root: PathBuf,
-    /// Tool router for MCP protocol
     tool_router: ToolRouter<Self>,
 }
 
 impl BobbinMcpServer {
-    /// Create a new MCP server for the given repository
     pub fn new(repo_root: PathBuf) -> Result<Self> {
-        // Check if bobbin is initialized
         let config_path = Config::config_path(&repo_root);
         if !config_path.exists() {
             anyhow::bail!(
@@ -52,20 +48,27 @@ impl BobbinMcpServer {
         })
     }
 
-    /// Open the metadata store (not held across awaits to avoid Send issues)
+    /// Open the metadata store (for coupling queries)
     fn open_metadata_store(&self) -> Result<MetadataStore> {
         let db_path = Config::db_path(&self.repo_root);
         MetadataStore::open(&db_path).context("Failed to open metadata store")
     }
 
+    /// Open the vector store
+    async fn open_vector_store(&self) -> Result<VectorStore> {
+        let lance_path = Config::lance_path(&self.repo_root);
+        VectorStore::open(&lance_path)
+            .await
+            .context("Failed to open vector store")
+    }
+
     /// Get index statistics as a JSON string
-    fn get_stats_json(&self) -> Result<String> {
-        let store = self.open_metadata_store()?;
-        let stats = store.get_stats()?;
+    async fn get_stats_json(&self) -> Result<String> {
+        let store = self.open_vector_store().await?;
+        let stats = store.get_stats().await?;
         Ok(serde_json::to_string_pretty(&stats)?)
     }
 
-    /// Parse chunk type from string
     fn parse_chunk_type(s: &str) -> Result<ChunkType> {
         match s.to_lowercase().as_str() {
             "function" | "func" | "fn" => Ok(ChunkType::Function),
@@ -83,7 +86,6 @@ impl BobbinMcpServer {
         }
     }
 
-    /// Truncate content to a maximum length
     fn truncate_content(content: &str, max_len: usize) -> String {
         if content.len() <= max_len {
             content.to_string()
@@ -93,7 +95,6 @@ impl BobbinMcpServer {
         }
     }
 
-    /// Convert SearchResult to SearchResultItem
     fn to_search_result_item(result: &SearchResult) -> SearchResultItem {
         SearchResultItem {
             file_path: result.chunk.file_path.clone(),
@@ -112,7 +113,6 @@ impl BobbinMcpServer {
         }
     }
 
-    /// Find matching lines in content
     fn find_matching_lines(
         content: &str,
         pattern: &str,
@@ -139,7 +139,6 @@ impl BobbinMcpServer {
                 });
             }
 
-            // Limit to 10 matching lines per chunk
             if results.len() >= 10 {
                 break;
             }
@@ -148,7 +147,6 @@ impl BobbinMcpServer {
         results
     }
 
-    /// Read file content with line range
     fn read_file_lines(
         &self,
         file: &str,
@@ -168,11 +166,9 @@ impl BobbinMcpServer {
         let lines: Vec<&str> = content.lines().collect();
         let total_lines = lines.len() as u32;
 
-        // Calculate actual range with context
         let actual_start = start.saturating_sub(context).max(1);
         let actual_end = (end + context).min(total_lines);
 
-        // Extract the lines (convert to 0-indexed)
         let start_idx = (actual_start - 1) as usize;
         let end_idx = actual_end as usize;
 
@@ -185,7 +181,6 @@ impl BobbinMcpServer {
         Ok((selected_lines, actual_start, actual_end))
     }
 
-    /// Detect language from file extension
     fn detect_language(file: &str) -> String {
         let ext = file.rsplit('.').next().unwrap_or("");
         match ext {
@@ -206,9 +201,8 @@ impl BobbinMcpServer {
         .to_string()
     }
 
-    /// Build prompt content for codebase exploration
-    fn build_explore_prompt(&self, focus: &str) -> Result<String> {
-        let stats_json = self.get_stats_json()?;
+    async fn build_explore_prompt(&self, focus: &str) -> Result<String> {
+        let stats_json = self.get_stats_json().await?;
 
         let prompt_text = match focus {
             "architecture" => format!(
@@ -314,7 +308,6 @@ impl BobbinMcpServer {
         let limit = req.limit.unwrap_or(10);
         let mode = req.mode.as_deref().unwrap_or("hybrid");
 
-        // Parse type filter
         let type_filter = if let Some(ref t) = req.r#type {
             Some(Self::parse_chunk_type(t).map_err(|e| McpError::internal_error(e.to_string(), None))?)
         } else {
@@ -325,13 +318,10 @@ impl BobbinMcpServer {
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        // Open store fresh for this request (avoids Send issues)
-        let store = self.open_metadata_store()
+        let mut vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        // Check if index exists
-        let stats = store
-            .get_stats()
+        let stats = vector_store.get_stats().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         if stats.total_chunks == 0 {
             return Ok(CallToolResult::success(vec![Content::text(
@@ -339,7 +329,6 @@ impl BobbinMcpServer {
             )]));
         }
 
-        // Request more results if filtering
         let search_limit = if type_filter.is_some() {
             limit * 3
         } else {
@@ -347,20 +336,16 @@ impl BobbinMcpServer {
         };
 
         let results: Vec<SearchResult> = match mode {
-            "keyword" => store
+            "keyword" => vector_store
                 .search_fts(&req.query, search_limit)
+                .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?,
 
             "semantic" | "hybrid" => {
-                let lance_path = Config::lance_path(&self.repo_root);
                 let model_dir = Config::model_cache_dir()
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
                 let embedder = Embedder::load(&model_dir, &config.embedding.model)
-                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-                let vector_store = VectorStore::open(&lance_path)
-                    .await
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
                 if mode == "semantic" {
@@ -370,27 +355,15 @@ impl BobbinMcpServer {
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?
                 } else {
-                    // For hybrid, we need to do semantic search first, then combine
-                    // We can't hold the store reference across await, so we do keyword search first
-                    let keyword_results = store
-                        .search_fts(&req.query, search_limit)
-                        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-                    // Now do semantic search
-                    let mut semantic_search = SemanticSearch::new(embedder, vector_store);
-                    let semantic_results = semantic_search
+                    let mut search = HybridSearch::new(
+                        embedder,
+                        vector_store,
+                        config.search.semantic_weight,
+                    );
+                    search
                         .search(&req.query, search_limit)
                         .await
-                        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-                    // Combine using RRF
-                    HybridSearch::combine(
-                        semantic_results,
-                        keyword_results,
-                        config.search.semantic_weight,
-                        search_limit,
-                    )
-                    .map_err(|e| McpError::internal_error(e.to_string(), None))?
+                        .map_err(|e| McpError::internal_error(e.to_string(), None))?
                 }
             }
 
@@ -402,7 +375,6 @@ impl BobbinMcpServer {
             }
         };
 
-        // Filter by chunk type
         let filtered: Vec<SearchResult> = if let Some(ref chunk_type) = type_filter {
             results
                 .into_iter()
@@ -433,14 +405,12 @@ impl BobbinMcpServer {
         let ignore_case = req.ignore_case.unwrap_or(false);
         let use_regex = req.regex.unwrap_or(false);
 
-        // Parse type filter
         let type_filter = if let Some(ref t) = req.r#type {
             Some(Self::parse_chunk_type(t).map_err(|e| McpError::internal_error(e.to_string(), None))?)
         } else {
             None
         };
 
-        // Build regex if needed
         let regex_pattern = if use_regex {
             let pattern = if ignore_case {
                 format!("(?i){}", req.pattern)
@@ -455,12 +425,10 @@ impl BobbinMcpServer {
             None
         };
 
-        let store = self.open_metadata_store()
+        let mut vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        // Check if index exists
-        let stats = store
-            .get_stats()
+        let stats = vector_store.get_stats().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         if stats.total_chunks == 0 {
             return Ok(CallToolResult::success(vec![Content::text(
@@ -468,9 +436,8 @@ impl BobbinMcpServer {
             )]));
         }
 
-        // FTS query
+        // Build FTS query
         let fts_query = if use_regex {
-            // Extract terms from regex for FTS
             let cleaned: String = req
                 .pattern
                 .chars()
@@ -495,11 +462,11 @@ impl BobbinMcpServer {
             limit
         };
 
-        let results = store
+        let results = vector_store
             .search_fts(&fts_query, search_limit)
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        // Apply filters
         let filtered: Vec<SearchResult> = results
             .into_iter()
             .filter(|r| {
@@ -568,12 +535,13 @@ impl BobbinMcpServer {
         let limit = req.limit.unwrap_or(10);
         let threshold = req.threshold.unwrap_or(0.0);
 
-        let store = self.open_metadata_store()
+        let vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        // Verify file exists in index
-        if store
+        // Verify file exists in index via LanceDB
+        if vector_store
             .get_file(&req.file)
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?
             .is_none()
         {
@@ -582,6 +550,10 @@ impl BobbinMcpServer {
                 None,
             ));
         }
+
+        // Coupling data is in SQLite
+        let store = self.open_metadata_store()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let couplings = store
             .get_coupling(&req.file, limit)
@@ -693,6 +665,7 @@ impl ServerHandler for BobbinMcpServer {
         if request.uri == "bobbin://index/stats" {
             let stats_json = self
                 .get_stats_json()
+                .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
             Ok(ReadResourceResult {
@@ -751,6 +724,7 @@ impl ServerHandler for BobbinMcpServer {
 
         let prompt_text = self
             .build_explore_prompt(focus)
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         Ok(GetPromptResult {
@@ -767,10 +741,8 @@ pub async fn run_server(repo_root: PathBuf) -> Result<()> {
 
     let server = BobbinMcpServer::new(repo_root)?;
 
-    // Serve on stdio transport
     let service = server.serve(stdio()).await?;
 
-    // Wait for the service to complete
     service.waiting().await?;
 
     Ok(())

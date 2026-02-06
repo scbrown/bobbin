@@ -74,13 +74,11 @@ struct SearchResultOutput {
 }
 
 pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
-    // Resolve the repository root
     let repo_root = args
         .path
         .canonicalize()
         .with_context(|| format!("Invalid path: {}", args.path.display()))?;
 
-    // Check if bobbin is initialized
     let config_path = Config::config_path(&repo_root);
     if !config_path.exists() {
         bail!(
@@ -89,10 +87,8 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         );
     }
 
-    // Load configuration
     let config = Config::load(&config_path).with_context(|| "Failed to load configuration")?;
 
-    // Parse the type filter if provided
     let type_filter = args
         .r#type
         .as_ref()
@@ -103,12 +99,10 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
     let db_path = Config::db_path(&repo_root);
     let model_dir = Config::model_cache_dir()?;
 
-    // Open vector store
-    let vector_store = VectorStore::open(&lance_path)
+    let mut vector_store = VectorStore::open(&lance_path)
         .await
         .context("Failed to open vector store")?;
 
-    // Check if index exists
     let count = vector_store.count().await?;
     if count == 0 {
         if output.json {
@@ -124,26 +118,23 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         return Ok(());
     }
 
-    // Open metadata store
+    // MetadataStore only used for model check
     let metadata_store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
 
-    // Perform search (request more results if filtering by type)
     let search_limit = if type_filter.is_some() {
-        args.limit * 3 // Request more to account for filtering
+        args.limit * 3
     } else {
         args.limit
     };
 
-    // Execute search based on mode
     let results = match args.mode {
         SearchMode::Keyword => {
-            // Keyword-only search using FTS
-            metadata_store
+            vector_store
                 .search_fts(&args.query, search_limit)
+                .await
                 .context("Keyword search failed")?
         }
         SearchMode::Semantic | SearchMode::Hybrid => {
-            // Both semantic and hybrid modes require the embedder
             let current_model = config.embedding.model.as_str();
             let stored_model = metadata_store.get_meta("embedding_model")?;
 
@@ -172,7 +163,6 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
                     let mut search = HybridSearch::new(
                         embedder,
                         vector_store,
-                        &metadata_store,
                         config.search.semantic_weight,
                     );
                     search
@@ -185,7 +175,6 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         }
     };
 
-    // Filter by chunk type if specified
     let filtered_results: Vec<SearchResult> = if let Some(ref chunk_type) = type_filter {
         results
             .into_iter()
@@ -196,7 +185,6 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         results.into_iter().take(args.limit).collect()
     };
 
-    // Output results
     if output.json {
         print_json_output(&args.query, args.mode, &args.r#type, args.limit, &filtered_results)?;
     } else if !output.quiet {
@@ -206,7 +194,6 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
     Ok(())
 }
 
-/// Parse a chunk type string into ChunkType enum
 fn parse_chunk_type(s: &str) -> Result<ChunkType> {
     match s.to_lowercase().as_str() {
         "function" | "func" | "fn" => Ok(ChunkType::Function),
@@ -227,7 +214,6 @@ fn parse_chunk_type(s: &str) -> Result<ChunkType> {
     }
 }
 
-/// Print results in JSON format
 fn print_json_output(
     query: &str,
     mode: SearchMode,
@@ -271,7 +257,6 @@ fn print_json_output(
     Ok(())
 }
 
-/// Print results in human-readable format
 fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], verbose: bool) {
     if results.is_empty() {
         println!("{} No results found for: {}", "!".yellow(), query.cyan());
@@ -296,7 +281,6 @@ fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], v
     for (i, result) in results.iter().enumerate() {
         let chunk = &result.chunk;
 
-        // Header line with file path and location
         let name_display = chunk
             .name
             .as_ref()
@@ -311,7 +295,6 @@ fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], v
             name_display
         );
 
-        // Details line with match type for hybrid mode
         let match_info = match (mode, result.match_type) {
             (SearchMode::Hybrid, Some(MatchType::Hybrid)) => " [hybrid]".yellow().to_string(),
             (SearchMode::Hybrid, Some(MatchType::Semantic)) => " [semantic]".dimmed().to_string(),
@@ -329,7 +312,6 @@ fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], v
             match_info
         );
 
-        // Content preview (if verbose or for short content)
         if verbose {
             let preview = truncate_content(&chunk.content, 300);
             for line in preview.lines().take(5) {
@@ -344,7 +326,6 @@ fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], v
     }
 }
 
-/// Truncate content to a maximum length, adding ellipsis if needed
 fn truncate_content(content: &str, max_len: usize) -> String {
     if content.len() <= max_len {
         content.to_string()
@@ -387,7 +368,7 @@ mod tests {
     fn test_parse_chunk_type_invalid() {
         assert!(parse_chunk_type("invalid").is_err());
         assert!(parse_chunk_type("").is_err());
-        assert!(parse_chunk_type("functon").is_err()); // typo
+        assert!(parse_chunk_type("functon").is_err());
     }
 
     #[test]
@@ -413,8 +394,7 @@ mod tests {
 
     #[test]
     fn test_truncate_content_unicode() {
-        // Unicode characters should be handled correctly
-        let content = "こんにちは世界"; // "Hello World" in Japanese
+        let content = "こんにちは世界";
         let result = truncate_content(content, 3);
         assert_eq!(result, "こんに...");
     }

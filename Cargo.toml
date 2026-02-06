@@ -31,18 +31,19 @@ tree-sitter-go = "0.23"
 tree-sitter-java = "0.23"
 tree-sitter-cpp = "0.23"
 
-# Vector database
+# Vector database (primary storage)
 lancedb = "0.17"
+lance-index = "0.23"
 arrow = { version = "53", default-features = false }
 arrow-array = "53"
 arrow-schema = "53"
 
-# SQLite with FTS
-rusqlite = { version = "0.33", features = ["bundled", "backup"] }
+# SQLite (coupling + meta only)
+rusqlite = { version = "0.33", features = ["bundled"] }
 
 # ONNX runtime for embeddings
-ort = { version = "2.0.0-rc.10", default-features = false, features = ["std", "ndarray", "download-binaries"] }
-ndarray = "0.16"
+ort = { version = "2.0.0-rc.11", default-features = false, features = ["std", "ndarray", "download-binaries", "tls-rustls"] }
+ndarray = "0.17"
 tokenizers = "0.21"
 
 # Error handling

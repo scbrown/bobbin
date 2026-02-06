@@ -5,23 +5,28 @@ use arrow::array::{
 };
 use arrow::datatypes::{DataType, Field, FieldRef, Schema, SchemaRef};
 use futures::TryStreamExt;
+use lance_index::scalar::FullTextSearchQuery;
+use lancedb::index::scalar::FtsIndexBuilder;
+use lancedb::index::Index;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::{connect, Connection, Table};
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::types::{Chunk, ChunkType, MatchType, SearchResult};
+use crate::types::{Chunk, ChunkType, FileMetadata, IndexStats, LanguageStats, MatchType, SearchResult};
 
-/// Table name for vector storage
-const TABLE_NAME: &str = "vectors";
+/// Table name for chunk storage
+const TABLE_NAME: &str = "chunks";
 
 /// Embedding dimension (all-MiniLM-L6-v2)
 const EMBEDDING_DIM: i32 = 384;
 
-/// Vector storage using LanceDB
+/// Unified chunk storage using LanceDB (vectors + metadata + FTS)
 pub struct VectorStore {
     conn: Connection,
     table: Option<Table>,
+    /// Whether FTS index has been created for this session
+    fts_indexed: bool,
 }
 
 impl VectorStore {
@@ -50,13 +55,17 @@ impl VectorStore {
                 conn.open_table(TABLE_NAME)
                     .execute()
                     .await
-                    .context("Failed to open vectors table")?,
+                    .context("Failed to open chunks table")?,
             )
         } else {
             None
         };
 
-        Ok(Self { conn, table })
+        Ok(Self {
+            conn,
+            table,
+            fts_indexed: false,
+        })
     }
 
     /// Get the inner field for the vector FixedSizeList
@@ -64,7 +73,7 @@ impl VectorStore {
         Arc::new(Field::new("item", DataType::Float32, true))
     }
 
-    /// Get the Arrow schema for vector records
+    /// Get the Arrow schema for chunk records
     fn schema() -> Schema {
         Schema::new(vec![
             Field::new("id", DataType::Utf8, false),
@@ -73,32 +82,43 @@ impl VectorStore {
                 DataType::FixedSizeList(Self::vector_field(), EMBEDDING_DIM),
                 false,
             ),
+            Field::new("repo", DataType::Utf8, false),
             Field::new("file_path", DataType::Utf8, false),
-            Field::new("chunk_name", DataType::Utf8, true),
+            Field::new("file_hash", DataType::Utf8, false),
+            Field::new("language", DataType::Utf8, false),
             Field::new("chunk_type", DataType::Utf8, false),
+            Field::new("chunk_name", DataType::Utf8, true),
             Field::new("start_line", DataType::UInt32, false),
             Field::new("end_line", DataType::UInt32, false),
             Field::new("content", DataType::Utf8, false),
-            Field::new("language", DataType::Utf8, false),
+            Field::new("indexed_at", DataType::Utf8, false),
         ])
     }
 
     /// Convert chunks and embeddings to a RecordBatch
-    fn to_record_batch(chunks: &[Chunk], embeddings: &[Vec<f32>]) -> Result<RecordBatch> {
+    fn to_record_batch(
+        chunks: &[Chunk],
+        embeddings: &[Vec<f32>],
+        repo: &str,
+        file_hash: &str,
+        indexed_at: &str,
+    ) -> Result<RecordBatch> {
         let schema = Arc::new(Self::schema());
 
-        // Collect all data
         let ids: Vec<&str> = chunks.iter().map(|c| c.id.as_str()).collect();
+        let repos: Vec<&str> = chunks.iter().map(|_| repo).collect();
         let file_paths: Vec<&str> = chunks.iter().map(|c| c.file_path.as_str()).collect();
-        let chunk_names: Vec<Option<&str>> = chunks.iter().map(|c| c.name.as_deref()).collect();
+        let file_hashes: Vec<&str> = chunks.iter().map(|_| file_hash).collect();
+        let languages: Vec<&str> = chunks.iter().map(|c| c.language.as_str()).collect();
         let chunk_types: Vec<&str> = chunks
             .iter()
             .map(|c| chunk_type_to_str(&c.chunk_type))
             .collect();
+        let chunk_names: Vec<Option<&str>> = chunks.iter().map(|c| c.name.as_deref()).collect();
         let start_lines: Vec<u32> = chunks.iter().map(|c| c.start_line).collect();
         let end_lines: Vec<u32> = chunks.iter().map(|c| c.end_line).collect();
         let contents: Vec<&str> = chunks.iter().map(|c| c.content.as_str()).collect();
-        let languages: Vec<&str> = chunks.iter().map(|c| c.language.as_str()).collect();
+        let indexed_ats: Vec<&str> = chunks.iter().map(|_| indexed_at).collect();
 
         // Flatten embeddings for FixedSizeList
         let flat_embeddings: Vec<f32> = embeddings.iter().flatten().copied().collect();
@@ -114,13 +134,16 @@ impl VectorStore {
         let columns: Vec<ArrayRef> = vec![
             Arc::new(StringArray::from(ids)),
             Arc::new(vector_array),
+            Arc::new(StringArray::from(repos)),
             Arc::new(StringArray::from(file_paths)),
-            Arc::new(StringArray::from(chunk_names)),
+            Arc::new(StringArray::from(file_hashes)),
+            Arc::new(StringArray::from(languages)),
             Arc::new(StringArray::from(chunk_types)),
+            Arc::new(StringArray::from(chunk_names)),
             Arc::new(UInt32Array::from(start_lines)),
             Arc::new(UInt32Array::from(end_lines)),
             Arc::new(StringArray::from(contents)),
-            Arc::new(StringArray::from(languages)),
+            Arc::new(StringArray::from(indexed_ats)),
         ];
 
         RecordBatch::try_new(schema, columns).context("Failed to create record batch")
@@ -137,7 +160,14 @@ impl VectorStore {
     }
 
     /// Insert chunks with their embeddings
-    pub async fn insert(&mut self, chunks: &[Chunk], embeddings: &[Vec<f32>]) -> Result<()> {
+    pub async fn insert(
+        &mut self,
+        chunks: &[Chunk],
+        embeddings: &[Vec<f32>],
+        repo: &str,
+        file_hash: &str,
+        indexed_at: &str,
+    ) -> Result<()> {
         if chunks.is_empty() {
             return Ok(());
         }
@@ -151,7 +181,7 @@ impl VectorStore {
         }
 
         let schema = Arc::new(Self::schema());
-        let batch = Self::to_record_batch(chunks, embeddings)?;
+        let batch = Self::to_record_batch(chunks, embeddings, repo, file_hash, indexed_at)?;
 
         match &self.table {
             Some(table) => {
@@ -165,7 +195,7 @@ impl VectorStore {
                     .add(reader)
                     .execute()
                     .await
-                    .context("Failed to add vectors")?;
+                    .context("Failed to add chunks")?;
             }
             None => {
                 // Create table with initial data
@@ -175,11 +205,39 @@ impl VectorStore {
                     .create_table(TABLE_NAME, reader)
                     .execute()
                     .await
-                    .context("Failed to create vectors table")?;
+                    .context("Failed to create chunks table")?;
                 self.table = Some(table);
             }
         }
 
+        // Invalidate FTS index since data changed
+        self.fts_indexed = false;
+
+        Ok(())
+    }
+
+    /// Ensure FTS index exists on content and chunk_name columns
+    pub async fn ensure_fts_index(&mut self) -> Result<()> {
+        if self.fts_indexed {
+            return Ok(());
+        }
+
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        // Create FTS index on content column
+        table
+            .create_index(
+                &["content", "chunk_name"],
+                Index::FTS(FtsIndexBuilder::default()),
+            )
+            .execute()
+            .await
+            .context("Failed to create FTS index")?;
+
+        self.fts_indexed = true;
         Ok(())
     }
 
@@ -187,7 +245,7 @@ impl VectorStore {
     pub async fn search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
         let table = match &self.table {
             Some(t) => t,
-            None => return Ok(vec![]), // No data yet
+            None => return Ok(vec![]),
         };
 
         let results = table
@@ -203,6 +261,37 @@ impl VectorStore {
             .await
             .context("Failed to collect search results")?;
 
+        Self::batches_to_results(&batches, MatchType::Semantic)
+    }
+
+    /// Full-text search on content and chunk_name
+    pub async fn search_fts(&mut self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        // Ensure FTS index exists (must be called before borrowing self.table)
+        self.ensure_fts_index().await?;
+
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let results = table
+            .query()
+            .full_text_search(FullTextSearchQuery::new(query.to_string()))
+            .limit(limit)
+            .execute()
+            .await
+            .context("Failed to execute FTS search")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect FTS results")?;
+
+        Self::batches_to_fts_results(&batches)
+    }
+
+    /// Convert RecordBatches to SearchResults (for vector search with _distance)
+    fn batches_to_results(batches: &[RecordBatch], match_type: MatchType) -> Result<Vec<SearchResult>> {
         let mut search_results = Vec::new();
 
         for batch in batches {
@@ -286,15 +375,108 @@ impl VectorStore {
                     language: languages.value(i).to_string(),
                 };
 
-                // Convert distance to similarity score (1 - distance for L2)
-                // Lower distance = more similar = higher score
                 let distance = distances.value(i);
                 let score = 1.0 / (1.0 + distance);
 
                 search_results.push(SearchResult {
                     chunk,
                     score,
-                    match_type: Some(MatchType::Semantic),
+                    match_type: Some(match_type),
+                });
+            }
+        }
+
+        Ok(search_results)
+    }
+
+    /// Convert RecordBatches to SearchResults (for FTS, using _score)
+    fn batches_to_fts_results(batches: &[RecordBatch]) -> Result<Vec<SearchResult>> {
+        let mut search_results = Vec::new();
+
+        for batch in batches {
+            let ids = batch
+                .column_by_name("id")
+                .context("Missing id column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("id column has wrong type")?;
+
+            let file_paths = batch
+                .column_by_name("file_path")
+                .context("Missing file_path column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("file_path column has wrong type")?;
+
+            let chunk_names = batch
+                .column_by_name("chunk_name")
+                .context("Missing chunk_name column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("chunk_name column has wrong type")?;
+
+            let chunk_types = batch
+                .column_by_name("chunk_type")
+                .context("Missing chunk_type column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("chunk_type column has wrong type")?;
+
+            let start_lines = batch
+                .column_by_name("start_line")
+                .context("Missing start_line column")?
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .context("start_line column has wrong type")?;
+
+            let end_lines = batch
+                .column_by_name("end_line")
+                .context("Missing end_line column")?
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .context("end_line column has wrong type")?;
+
+            let contents = batch
+                .column_by_name("content")
+                .context("Missing content column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("content column has wrong type")?;
+
+            let languages = batch
+                .column_by_name("language")
+                .context("Missing language column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("language column has wrong type")?;
+
+            // FTS returns _score (BM25 relevance score)
+            let scores = batch
+                .column_by_name("_score")
+                .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
+
+            for i in 0..batch.num_rows() {
+                let chunk = Chunk {
+                    id: ids.value(i).to_string(),
+                    file_path: file_paths.value(i).to_string(),
+                    chunk_type: str_to_chunk_type(chunk_types.value(i)),
+                    name: if chunk_names.is_null(i) {
+                        None
+                    } else {
+                        Some(chunk_names.value(i).to_string())
+                    },
+                    start_line: start_lines.value(i),
+                    end_line: end_lines.value(i),
+                    content: contents.value(i).to_string(),
+                    language: languages.value(i).to_string(),
+                };
+
+                let score = scores.map(|s| s.value(i)).unwrap_or(1.0);
+
+                search_results.push(SearchResult {
+                    chunk,
+                    score,
+                    match_type: Some(MatchType::Keyword),
                 });
             }
         }
@@ -306,15 +488,13 @@ impl VectorStore {
     pub async fn delete(&self, chunk_ids: &[String]) -> Result<()> {
         let table = match &self.table {
             Some(t) => t,
-            None => return Ok(()), // No data yet
+            None => return Ok(()),
         };
 
         if chunk_ids.is_empty() {
             return Ok(());
         }
 
-        // Build a filter expression for deletion
-        // LanceDB uses SQL-like filter expressions
         let escaped_ids: Vec<String> = chunk_ids
             .iter()
             .map(|id| format!("'{}'", id.replace('\'', "''")))
@@ -324,12 +504,12 @@ impl VectorStore {
         table
             .delete(&filter)
             .await
-            .context("Failed to delete vectors")?;
+            .context("Failed to delete chunks")?;
 
         Ok(())
     }
 
-    /// Get total vector count
+    /// Get total chunk count
     pub async fn count(&self) -> Result<u64> {
         let table = match &self.table {
             Some(t) => t,
@@ -339,12 +519,12 @@ impl VectorStore {
         let count = table
             .count_rows(None)
             .await
-            .context("Failed to count vectors")?;
+            .context("Failed to count chunks")?;
 
         Ok(count as u64)
     }
 
-    /// Delete all vectors for files matching the given paths
+    /// Delete all chunks for files matching the given paths
     pub async fn delete_by_file(&self, file_paths: &[String]) -> Result<()> {
         let table = match &self.table {
             Some(t) => t,
@@ -364,9 +544,223 @@ impl VectorStore {
         table
             .delete(&filter)
             .await
-            .context("Failed to delete vectors by file")?;
+            .context("Failed to delete chunks by file")?;
 
         Ok(())
+    }
+
+    /// Check if a file needs reindexing by comparing hash
+    pub async fn needs_reindex(&self, file_path: &str, current_hash: &str) -> Result<bool> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(true), // No data yet, needs indexing
+        };
+
+        // Query for any chunk from this file and check the file_hash
+        let filter = format!("file_path = '{}'", file_path.replace('\'', "''"));
+        let results = table
+            .query()
+            .only_if(filter)
+            .limit(1)
+            .execute()
+            .await
+            .context("Failed to query file hash")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect file hash results")?;
+
+        if batches.is_empty() || batches[0].num_rows() == 0 {
+            return Ok(true); // File not indexed yet
+        }
+
+        let file_hashes = batches[0]
+            .column_by_name("file_hash")
+            .context("Missing file_hash column")?
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .context("file_hash column has wrong type")?;
+
+        let stored_hash = file_hashes.value(0);
+        Ok(stored_hash != current_hash)
+    }
+
+    /// Get all indexed file paths
+    pub async fn get_all_file_paths(&self) -> Result<Vec<String>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let results = table
+            .query()
+            .select(lancedb::query::Select::Columns(vec!["file_path".to_string()]))
+            .execute()
+            .await
+            .context("Failed to query file paths")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect file paths")?;
+
+        let mut paths = std::collections::HashSet::new();
+        for batch in &batches {
+            let file_paths = batch
+                .column_by_name("file_path")
+                .context("Missing file_path column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("file_path column has wrong type")?;
+
+            for i in 0..batch.num_rows() {
+                paths.insert(file_paths.value(i).to_string());
+            }
+        }
+
+        Ok(paths.into_iter().collect())
+    }
+
+    /// Get file metadata from a chunk record
+    pub async fn get_file(&self, file_path: &str) -> Result<Option<FileMetadata>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        let filter = format!("file_path = '{}'", file_path.replace('\'', "''"));
+        let results = table
+            .query()
+            .only_if(filter)
+            .select(lancedb::query::Select::Columns(vec![
+                "file_path".to_string(),
+                "language".to_string(),
+                "file_hash".to_string(),
+                "indexed_at".to_string(),
+            ]))
+            .limit(1)
+            .execute()
+            .await
+            .context("Failed to query file metadata")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect file metadata")?;
+
+        if batches.is_empty() || batches[0].num_rows() == 0 {
+            return Ok(None);
+        }
+
+        let batch = &batches[0];
+        let file_paths = batch.column_by_name("file_path").unwrap()
+            .as_any().downcast_ref::<StringArray>().unwrap();
+        let languages = batch.column_by_name("language").unwrap()
+            .as_any().downcast_ref::<StringArray>().unwrap();
+        let file_hashes = batch.column_by_name("file_hash").unwrap()
+            .as_any().downcast_ref::<StringArray>().unwrap();
+        let indexed_ats = batch.column_by_name("indexed_at").unwrap()
+            .as_any().downcast_ref::<StringArray>().unwrap();
+
+        let indexed_at_str = indexed_ats.value(0);
+        let indexed_at = indexed_at_str.parse::<i64>().unwrap_or(0);
+
+        Ok(Some(FileMetadata {
+            path: file_paths.value(0).to_string(),
+            language: Some(languages.value(0).to_string()),
+            mtime: 0, // Not stored in LanceDB (derived from filesystem)
+            hash: file_hashes.value(0).to_string(),
+            indexed_at,
+        }))
+    }
+
+    /// Get index statistics
+    pub async fn get_stats(&self) -> Result<IndexStats> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => {
+                return Ok(IndexStats {
+                    total_files: 0,
+                    total_chunks: 0,
+                    total_embeddings: 0,
+                    languages: vec![],
+                    last_indexed: None,
+                    index_size_bytes: 0,
+                });
+            }
+        };
+
+        let total_chunks = table.count_rows(None).await.unwrap_or(0) as u64;
+
+        // Query for stats by selecting relevant columns
+        let results = table
+            .query()
+            .select(lancedb::query::Select::Columns(vec![
+                "file_path".to_string(),
+                "language".to_string(),
+                "indexed_at".to_string(),
+            ]))
+            .execute()
+            .await
+            .context("Failed to query stats")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect stats")?;
+
+        let mut file_set = std::collections::HashSet::new();
+        let mut lang_files: std::collections::HashMap<String, std::collections::HashSet<String>> =
+            std::collections::HashMap::new();
+        let mut lang_chunks: std::collections::HashMap<String, u64> =
+            std::collections::HashMap::new();
+        let mut last_indexed: Option<i64> = None;
+
+        for batch in &batches {
+            let file_paths = batch.column_by_name("file_path").unwrap()
+                .as_any().downcast_ref::<StringArray>().unwrap();
+            let languages = batch.column_by_name("language").unwrap()
+                .as_any().downcast_ref::<StringArray>().unwrap();
+            let indexed_ats = batch.column_by_name("indexed_at").unwrap()
+                .as_any().downcast_ref::<StringArray>().unwrap();
+
+            for i in 0..batch.num_rows() {
+                let fp = file_paths.value(i).to_string();
+                let lang = languages.value(i).to_string();
+                let ts = indexed_ats.value(i).parse::<i64>().unwrap_or(0);
+
+                file_set.insert(fp.clone());
+
+                lang_files
+                    .entry(lang.clone())
+                    .or_default()
+                    .insert(fp);
+                *lang_chunks.entry(lang).or_insert(0) += 1;
+
+                if last_indexed.is_none() || Some(ts) > last_indexed {
+                    last_indexed = Some(ts);
+                }
+            }
+        }
+
+        let languages: Vec<LanguageStats> = lang_files
+            .iter()
+            .map(|(lang, files)| LanguageStats {
+                language: lang.clone(),
+                file_count: files.len() as u64,
+                chunk_count: *lang_chunks.get(lang).unwrap_or(&0),
+            })
+            .collect();
+
+        Ok(IndexStats {
+            total_files: file_set.len() as u64,
+            total_chunks,
+            total_embeddings: total_chunks,
+            languages,
+            last_indexed,
+            index_size_bytes: 0, // LanceDB doesn't expose this easily
+        })
     }
 }
 
@@ -423,7 +817,6 @@ mod tests {
     }
 
     fn sample_embedding() -> Vec<f32> {
-        // Create a normalized 384-dim embedding
         let mut emb: Vec<f32> = (0..384).map(|i| (i as f32) / 384.0).collect();
         let norm: f32 = emb.iter().map(|x| x * x).sum::<f32>().sqrt();
         emb.iter_mut().for_each(|x| *x /= norm);
@@ -452,7 +845,10 @@ mod tests {
         ];
         let embeddings = vec![sample_embedding(), sample_embedding()];
 
-        store.insert(&chunks, &embeddings).await.unwrap();
+        store
+            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .await
+            .unwrap();
 
         assert_eq!(store.count().await.unwrap(), 2);
     }
@@ -467,7 +863,10 @@ mod tests {
         let chunks = vec![sample_chunk("chunk1", "process_data")];
         let embeddings = vec![sample_embedding()];
 
-        store.insert(&chunks, &embeddings).await.unwrap();
+        store
+            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .await
+            .unwrap();
 
         let results = store.search(&sample_embedding(), 10).await.unwrap();
 
@@ -491,7 +890,10 @@ mod tests {
         ];
         let embeddings = vec![sample_embedding(), sample_embedding()];
 
-        store.insert(&chunks, &embeddings).await.unwrap();
+        store
+            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .await
+            .unwrap();
         assert_eq!(store.count().await.unwrap(), 2);
 
         store.delete(&["chunk1".to_string()]).await.unwrap();
@@ -529,7 +931,10 @@ mod tests {
         ];
         let embeddings = vec![sample_embedding(), sample_embedding()];
 
-        store.insert(&chunks, &embeddings).await.unwrap();
+        store
+            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .await
+            .unwrap();
         assert_eq!(store.count().await.unwrap(), 2);
 
         store
@@ -546,14 +951,18 @@ mod tests {
 
         let mut store = VectorStore::open(&path).await.unwrap();
 
-        // Insert initial chunk
         let chunks = vec![sample_chunk("chunk1", "original")];
         let embeddings = vec![sample_embedding()];
-        store.insert(&chunks, &embeddings).await.unwrap();
+        store
+            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .await
+            .unwrap();
 
-        // Insert with same ID should replace
         let chunks = vec![sample_chunk("chunk1", "updated")];
-        store.insert(&chunks, &embeddings).await.unwrap();
+        store
+            .insert(&chunks, &embeddings, "default", "def456", "1234567891")
+            .await
+            .unwrap();
 
         assert_eq!(store.count().await.unwrap(), 1);
 
@@ -568,14 +977,14 @@ mod tests {
 
         let mut store = VectorStore::open(&path).await.unwrap();
 
-        // Empty insert should be fine
-        store.insert(&[], &[]).await.unwrap();
+        store
+            .insert(&[], &[], "default", "", "")
+            .await
+            .unwrap();
 
-        // Search on empty store should return empty
         let results = store.search(&sample_embedding(), 10).await.unwrap();
         assert!(results.is_empty());
 
-        // Delete on empty store should be fine
         store.delete(&["nonexistent".to_string()]).await.unwrap();
     }
 
@@ -584,15 +993,16 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("vectors");
 
-        // Insert data
         {
             let mut store = VectorStore::open(&path).await.unwrap();
             let chunks = vec![sample_chunk("chunk1", "persistent")];
             let embeddings = vec![sample_embedding()];
-            store.insert(&chunks, &embeddings).await.unwrap();
+            store
+                .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+                .await
+                .unwrap();
         }
 
-        // Reopen and verify
         {
             let store = VectorStore::open(&path).await.unwrap();
             assert_eq!(store.count().await.unwrap(), 1);
@@ -600,5 +1010,115 @@ mod tests {
             let results = store.search(&sample_embedding(), 10).await.unwrap();
             assert_eq!(results[0].chunk.name, Some("persistent".to_string()));
         }
+    }
+
+    #[tokio::test]
+    async fn test_needs_reindex() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        // No data yet - needs reindex
+        assert!(store.needs_reindex("src/main.rs", "abc123").await.unwrap());
+
+        let chunks = vec![sample_chunk("chunk1", "main")];
+        let embeddings = vec![sample_embedding()];
+        store
+            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .await
+            .unwrap();
+
+        // Same hash - no reindex needed
+        assert!(!store.needs_reindex("src/main.rs", "abc123").await.unwrap());
+
+        // Different hash - needs reindex
+        assert!(store.needs_reindex("src/main.rs", "different").await.unwrap());
+
+        // Different file - needs reindex
+        assert!(store.needs_reindex("src/other.rs", "abc123").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_get_stats() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let chunks = vec![
+            Chunk {
+                id: "chunk1".to_string(),
+                file_path: "src/main.rs".to_string(),
+                chunk_type: ChunkType::Function,
+                name: Some("main".to_string()),
+                start_line: 1,
+                end_line: 10,
+                content: "fn main() {}".to_string(),
+                language: "rust".to_string(),
+            },
+            Chunk {
+                id: "chunk2".to_string(),
+                file_path: "src/main.rs".to_string(),
+                chunk_type: ChunkType::Function,
+                name: Some("helper".to_string()),
+                start_line: 12,
+                end_line: 20,
+                content: "fn helper() {}".to_string(),
+                language: "rust".to_string(),
+            },
+            Chunk {
+                id: "chunk3".to_string(),
+                file_path: "src/script.py".to_string(),
+                chunk_type: ChunkType::Function,
+                name: Some("run".to_string()),
+                start_line: 1,
+                end_line: 5,
+                content: "def run(): pass".to_string(),
+                language: "python".to_string(),
+            },
+        ];
+        let embeddings = vec![sample_embedding(), sample_embedding(), sample_embedding()];
+
+        store
+            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .await
+            .unwrap();
+
+        let stats = store.get_stats().await.unwrap();
+        assert_eq!(stats.total_files, 2);
+        assert_eq!(stats.total_chunks, 3);
+
+        let rust_stats = stats.languages.iter().find(|l| l.language == "rust").unwrap();
+        assert_eq!(rust_stats.file_count, 1);
+        assert_eq!(rust_stats.chunk_count, 2);
+
+        let python_stats = stats.languages.iter().find(|l| l.language == "python").unwrap();
+        assert_eq!(python_stats.file_count, 1);
+        assert_eq!(python_stats.chunk_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let chunks = vec![sample_chunk("chunk1", "main")];
+        let embeddings = vec![sample_embedding()];
+        store
+            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .await
+            .unwrap();
+
+        let file = store.get_file("src/main.rs").await.unwrap();
+        assert!(file.is_some());
+        let file = file.unwrap();
+        assert_eq!(file.path, "src/main.rs");
+        assert_eq!(file.hash, "abc123");
+
+        let no_file = store.get_file("nonexistent.rs").await.unwrap();
+        assert!(no_file.is_none());
     }
 }

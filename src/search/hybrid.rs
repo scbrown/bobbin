@@ -2,29 +2,26 @@ use anyhow::Result;
 use std::collections::HashMap;
 
 use crate::index::Embedder;
-use crate::storage::{MetadataStore, VectorStore};
+use crate::storage::VectorStore;
 use crate::types::{MatchType, SearchResult};
 
 /// Combines semantic and keyword search results using Reciprocal Rank Fusion (RRF)
-pub struct HybridSearch<'a> {
+pub struct HybridSearch {
     embedder: Embedder,
     vector_store: VectorStore,
-    metadata_store: &'a MetadataStore,
     semantic_weight: f32,
 }
 
-impl<'a> HybridSearch<'a> {
+impl HybridSearch {
     /// Create a new hybrid search engine
     pub fn new(
         embedder: Embedder,
         vector_store: VectorStore,
-        metadata_store: &'a MetadataStore,
         semantic_weight: f32,
     ) -> Self {
         Self {
             embedder,
             vector_store,
-            metadata_store,
             semantic_weight,
         }
     }
@@ -38,8 +35,8 @@ impl<'a> HybridSearch<'a> {
         let query_embedding = self.embedder.embed(query)?;
         let semantic_results = self.vector_store.search(&query_embedding, fetch_limit).await?;
 
-        // Run keyword search
-        let keyword_results = self.metadata_store.search_fts(query, fetch_limit)?;
+        // Run keyword search via LanceDB FTS
+        let keyword_results = self.vector_store.search_fts(query, fetch_limit).await?;
 
         // Combine using RRF
         Self::combine(
@@ -92,7 +89,6 @@ impl<'a> HybridSearch<'a> {
             .map(|(mut result, score)| {
                 result.score = score;
                 if result.match_type.is_none() {
-                    // Result only appeared in semantic search
                     result.match_type = Some(MatchType::Semantic);
                 }
                 result

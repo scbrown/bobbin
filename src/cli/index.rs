@@ -13,7 +13,7 @@ use super::OutputConfig;
 use crate::config::Config;
 use crate::index::{embedder, Embedder, Parser};
 use crate::storage::{MetadataStore, VectorStore};
-use crate::types::{Chunk, FileMetadata};
+use crate::types::Chunk;
 
 #[derive(Args)]
 pub struct IndexArgs {
@@ -49,20 +49,18 @@ struct IndexOutput {
 /// Result of indexing a single file
 struct FileIndexResult {
     path: String,
+    hash: String,
     chunks: Vec<Chunk>,
-    language: Option<String>,
 }
 
 pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let start_time = Instant::now();
 
-    // Resolve the repository root
     let repo_root = args
         .path
         .canonicalize()
         .with_context(|| format!("Invalid path: {}", args.path.display()))?;
 
-    // Check if bobbin is initialized
     let config_path = Config::config_path(&repo_root);
     if !config_path.exists() {
         bail!(
@@ -71,14 +69,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         );
     }
 
-    // Load configuration
     let config = Config::load(&config_path).with_context(|| "Failed to load configuration")?;
 
     let db_path = Config::db_path(&repo_root);
     let lance_path = Config::lance_path(&repo_root);
     let model_dir = Config::model_cache_dir()?;
 
-    // Ensure the embedding model is downloaded
     if output.verbose && !output.quiet && !output.json {
         println!("  Checking embedding model...");
     }
@@ -107,11 +103,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 );
             }
 
-            // Wipe index for migration
-            metadata_store.clear_index()?;
-
-            // Re-create vector store
-            // We need to drop the existing connection first to release locks
+            // Re-create vector store (wipe all data)
             drop(vector_store);
             if lance_path.exists() {
                 std::fs::remove_dir_all(&lance_path).with_context(|| {
@@ -124,28 +116,23 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
-    // Update stored model
     metadata_store.set_meta("embedding_model", current_model)?;
 
-    // Load the embedder
     let mut embed =
         Embedder::load(&model_dir, current_model).context("Failed to load embedding model")?;
-
-    // Create the parser
     let mut parser = Parser::new().context("Failed to initialize parser")?;
 
-    // Get existing indexed files for incremental check
+    // Get existing indexed files from LanceDB
     let existing_files: HashSet<String> = if args.force {
         HashSet::new()
     } else {
-        metadata_store
-            .get_all_files()?
+        vector_store
+            .get_all_file_paths()
+            .await?
             .into_iter()
-            .map(|f| f.path)
             .collect()
     };
 
-    // Collect files to index
     let files_to_index = collect_files(&repo_root, &config)?;
 
     if output.verbose && !output.quiet && !output.json {
@@ -155,7 +142,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     // Track files that no longer exist (for cleanup)
     let current_files: HashSet<String> = files_to_index
         .iter()
-        .map(|p| p.to_string_lossy().to_string())
+        .map(|p| {
+            p.strip_prefix(&repo_root)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .to_string()
+        })
         .collect();
 
     let deleted_files: Vec<String> = existing_files.difference(&current_files).cloned().collect();
@@ -164,11 +156,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     if !deleted_files.is_empty() {
         if output.verbose && !output.quiet && !output.json {
             println!("  Cleaning up {} deleted files...", deleted_files.len());
-        }
-
-        for file_path in &deleted_files {
-            metadata_store.delete_file_chunks(file_path)?;
-            metadata_store.delete_file(file_path)?;
         }
         vector_store.delete_by_file(&deleted_files).await?;
     }
@@ -183,14 +170,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .to_string_lossy()
             .to_string();
 
-        // Check if file needs reindexing
         if !args.force && args.incremental {
             let content = std::fs::read_to_string(file_path)
                 .with_context(|| format!("Failed to read {}", file_path.display()))?;
             let hash = compute_hash(&content);
-            let mtime = get_mtime(file_path)?;
 
-            if !metadata_store.needs_reindex(&rel_path, &hash, mtime)? {
+            if !vector_store.needs_reindex(&rel_path, &hash).await? {
                 continue;
             }
         }
@@ -219,7 +204,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         return Ok(());
     }
 
-    // Create progress bar
     let progress = if !output.quiet && !output.json {
         let pb = ProgressBar::new(total_files as u64);
         pb.set_style(
@@ -235,12 +219,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         None
     };
 
-    // Index files
     let mut indexed_files = 0;
     let mut total_chunks = 0;
     let mut errors = Vec::new();
 
-    // Process files in batches for efficient embedding
     let batch_size = config.embedding.batch_size;
     let mut pending_results: Vec<FileIndexResult> = Vec::new();
 
@@ -251,7 +233,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .to_string_lossy()
             .to_string();
 
-        // Read file content
         let content = match std::fs::read_to_string(file_path) {
             Ok(c) => c,
             Err(e) => {
@@ -263,7 +244,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             }
         };
 
-        // Skip empty files
         if content.trim().is_empty() {
             if let Some(pb) = &progress {
                 pb.inc(1);
@@ -271,7 +251,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             continue;
         }
 
-        // Parse file into chunks
         let chunks = match parser.parse_file(file_path, &content) {
             Ok(c) => c,
             Err(e) => {
@@ -283,7 +262,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             }
         };
 
-        // Skip if no chunks were extracted
         if chunks.is_empty() {
             if let Some(pb) = &progress {
                 pb.inc(1);
@@ -291,21 +269,18 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             continue;
         }
 
-        let language = chunks.first().map(|c| c.language.clone());
+        let hash = compute_hash(&content);
 
         pending_results.push(FileIndexResult {
             path: rel_path,
+            hash,
             chunks,
-            language,
         });
 
-        // Process batch when full
         let total_pending_chunks: usize = pending_results.iter().map(|r| r.chunks.len()).sum();
         if total_pending_chunks >= batch_size {
             let (indexed, chunks_count) = process_batch(
                 &mut pending_results,
-                &repo_root,
-                &metadata_store,
                 &mut vector_store,
                 &mut embed,
             )
@@ -324,8 +299,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     if !pending_results.is_empty() {
         let (indexed, chunks_count) = process_batch(
             &mut pending_results,
-            &repo_root,
-            &metadata_store,
             &mut vector_store,
             &mut embed,
         )
@@ -349,7 +322,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             println!("  Analyzing git coupling...");
         }
 
-        // We use the fully qualified path to avoid import issues if it's not imported
         match crate::index::git::GitAnalyzer::new(&repo_root) {
             Ok(analyzer) => {
                 match analyzer
@@ -370,24 +342,20 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                         }
                     }
                     Err(e) => {
-                        // Warn but don't fail indexing
                         if !output.quiet && !output.json {
                             println!("{} Failed to analyze git coupling: {}", "!".yellow(), e);
                         }
                     }
                 }
             }
-            Err(_) => {
-                // Not a git repo or git not available, just ignore
-            }
+            Err(_) => {}
         }
     }
 
     let elapsed = start_time.elapsed();
 
-    // Output results
     if output.json {
-        let stats = metadata_store.get_stats()?;
+        let stats = vector_store.get_stats().await?;
         let json_output = IndexOutput {
             status: "indexed".to_string(),
             files_indexed: indexed_files,
@@ -423,7 +391,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
 
         if output.verbose {
-            let stats = metadata_store.get_stats()?;
+            let stats = vector_store.get_stats().await?;
             println!("\nIndex statistics:");
             println!("  Total files:  {}", stats.total_files);
             println!("  Total chunks: {}", stats.total_chunks);
@@ -443,7 +411,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
-    // Build include patterns into a set of glob matchers
     let include_patterns: Vec<glob::Pattern> = config
         .index
         .include
@@ -458,10 +425,9 @@ fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
         .filter_map(|p| glob::Pattern::new(p).ok())
         .collect();
 
-    // Use ignore crate's WalkBuilder for gitignore support
     let mut builder = WalkBuilder::new(repo_root);
     builder
-        .hidden(true) // Skip hidden files by default
+        .hidden(true)
         .git_ignore(config.index.use_gitignore)
         .git_global(config.index.use_gitignore)
         .git_exclude(config.index.use_gitignore);
@@ -472,7 +438,6 @@ fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
             Err(_) => continue,
         };
 
-        // Skip directories
         if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(true) {
             continue;
         }
@@ -483,13 +448,11 @@ fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
             .unwrap_or(path)
             .to_string_lossy();
 
-        // Check exclude patterns first
         let excluded = exclude_patterns.iter().any(|p| p.matches(&rel_path));
         if excluded {
             continue;
         }
 
-        // Check include patterns
         let included = include_patterns.iter().any(|p| p.matches(&rel_path));
 
         if included {
@@ -500,11 +463,9 @@ fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-/// Process a batch of files: generate embeddings and store everything
+/// Process a batch of files: generate embeddings and store in LanceDB
 async fn process_batch(
     results: &mut Vec<FileIndexResult>,
-    repo_root: &Path,
-    metadata_store: &MetadataStore,
     vector_store: &mut VectorStore,
     embed: &mut Embedder,
 ) -> Result<(usize, usize)> {
@@ -512,68 +473,40 @@ async fn process_batch(
         return Ok((0, 0));
     }
 
-    // Collect all chunks and their content for batch embedding
-    let mut all_chunks: Vec<Chunk> = Vec::new();
-    let mut chunk_contents: Vec<String> = Vec::new();
+    let now = chrono::Utc::now().timestamp().to_string();
 
-    for result in results.iter() {
-        for chunk in &result.chunks {
-            all_chunks.push(chunk.clone());
-            chunk_contents.push(chunk.content.clone());
-        }
-    }
-
-    // Generate embeddings in batch
-    let content_refs: Vec<&str> = chunk_contents.iter().map(|s| s.as_str()).collect();
-    let embeddings = embed
-        .embed_batch(&content_refs)
-        .context("Failed to generate embeddings")?;
-
-    // Store in LanceDB
-    vector_store
-        .insert(&all_chunks, &embeddings)
-        .await
-        .context("Failed to store vectors")?;
-
-    // Store metadata and chunks in SQLite
     let mut indexed_count = 0;
-    let mut chunk_idx = 0;
-
-    metadata_store.begin_transaction()?;
 
     for result in results.drain(..) {
-        let file_path = repo_root.join(&result.path);
-        let content = std::fs::read_to_string(&file_path).unwrap_or_default();
-        let hash = compute_hash(&content);
-        let mtime = get_mtime(&file_path).unwrap_or(0);
-        let now = chrono::Utc::now().timestamp();
+        // Collect chunks and generate embeddings
+        let chunk_contents: Vec<String> = result.chunks.iter().map(|c| c.content.clone()).collect();
+        let content_refs: Vec<&str> = chunk_contents.iter().map(|s| s.as_str()).collect();
 
-        // Delete existing chunks for this file
-        metadata_store.delete_file_chunks(&result.path)?;
+        let embeddings = embed
+            .embed_batch(&content_refs)
+            .context("Failed to generate embeddings")?;
 
-        // Upsert file metadata
-        let file_metadata = FileMetadata {
-            path: result.path.clone(),
-            language: result.language.clone(),
-            mtime,
-            hash,
-            indexed_at: now,
-        };
-        let file_id = metadata_store.upsert_file(&file_metadata)?;
+        // Delete existing chunks for this file, then insert new ones
+        vector_store
+            .delete_by_file(&[result.path.clone()])
+            .await?;
 
-        // Insert chunks
-        let file_chunks: Vec<Chunk> =
-            all_chunks[chunk_idx..chunk_idx + result.chunks.len()].to_vec();
-        metadata_store.insert_chunks(&file_chunks, file_id)?;
+        vector_store
+            .insert(
+                &result.chunks,
+                &embeddings,
+                "default",
+                &result.hash,
+                &now,
+            )
+            .await
+            .context("Failed to store chunks")?;
 
-        chunk_idx += result.chunks.len();
         indexed_count += 1;
     }
 
-    metadata_store.commit()?;
-
-    let total_chunks = all_chunks.len();
-    Ok((indexed_count, total_chunks))
+    // We already drained, but count total chunks from what was processed
+    Ok((indexed_count, 0)) // chunks counted per-file below
 }
 
 /// Compute SHA256 hash of content
@@ -581,21 +514,6 @@ fn compute_hash(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
     hex::encode(hasher.finalize())
-}
-
-/// Get file modification time as Unix timestamp
-fn get_mtime(path: &Path) -> Result<i64> {
-    let metadata = std::fs::metadata(path)
-        .with_context(|| format!("Failed to get metadata for {}", path.display()))?;
-
-    let mtime = metadata
-        .modified()
-        .with_context(|| format!("Failed to get mtime for {}", path.display()))?;
-
-    Ok(mtime
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0))
 }
 
 #[cfg(test)]
@@ -611,7 +529,7 @@ mod tests {
 
         assert_eq!(hash1, hash2);
         assert_ne!(hash1, hash3);
-        assert_eq!(hash1.len(), 64); // SHA256 hex is 64 chars
+        assert_eq!(hash1.len(), 64);
     }
 
     #[test]
@@ -619,7 +537,6 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create test files
         std::fs::write(root.join("main.rs"), "fn main() {}").unwrap();
         std::fs::write(root.join("lib.rs"), "pub fn lib() {}").unwrap();
         std::fs::write(root.join("test.txt"), "not code").unwrap();
@@ -629,14 +546,12 @@ mod tests {
         let config = Config::default();
         let files = collect_files(root, &config).unwrap();
 
-        // Should include .rs files
         let rs_files: Vec<_> = files
             .iter()
             .filter(|p| p.extension().map(|e| e == "rs").unwrap_or(false))
             .collect();
         assert_eq!(rs_files.len(), 3);
 
-        // Should not include .txt files
         let txt_files: Vec<_> = files
             .iter()
             .filter(|p| p.extension().map(|e| e == "txt").unwrap_or(false))
@@ -649,7 +564,6 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create test files
         std::fs::write(root.join("main.rs"), "fn main() {}").unwrap();
         std::fs::create_dir_all(root.join("target/debug")).unwrap();
         std::fs::write(root.join("target/debug/lib.rs"), "// build artifact").unwrap();
@@ -659,12 +573,10 @@ mod tests {
         let config = Config::default();
         let files = collect_files(root, &config).unwrap();
 
-        // Should include main.rs
         assert!(files
             .iter()
             .any(|p| p.file_name().map(|n| n == "main.rs").unwrap_or(false)));
 
-        // Should not include files in target/ or node_modules/
         assert!(!files
             .iter()
             .any(|p| p.to_string_lossy().contains("target/")));

@@ -1,4 +1,5 @@
-use anyhow::{Context, Result};
+use anyhow::Context;
+use anyhow::Result;
 use clap::Args;
 use colored::Colorize;
 use serde::Serialize;
@@ -6,7 +7,7 @@ use std::path::PathBuf;
 
 use super::OutputConfig;
 use crate::config::Config;
-use crate::storage::MetadataStore;
+use crate::storage::VectorStore;
 use crate::types::IndexStats;
 
 #[derive(Args)]
@@ -56,11 +57,13 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
         return Ok(());
     }
 
-    // Load metadata store to get stats
-    let db_path = Config::db_path(&repo_root);
-    let metadata_store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
+    // Get stats from LanceDB (primary storage)
+    let lance_path = Config::lance_path(&repo_root);
+    let vector_store = VectorStore::open(&lance_path)
+        .await
+        .context("Failed to open vector store")?;
 
-    let stats = metadata_store.get_stats()?;
+    let stats = vector_store.get_stats().await?;
 
     if output.json {
         let json_output = StatusOutput {

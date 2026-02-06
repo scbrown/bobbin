@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use super::OutputConfig;
 use crate::config::Config;
-use crate::storage::MetadataStore;
+use crate::storage::VectorStore;
 use crate::types::{ChunkType, SearchResult};
 
 #[derive(Args)]
@@ -113,12 +113,14 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
         None
     };
 
-    // Open metadata store
-    let db_path = Config::db_path(&repo_root);
-    let metadata_store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
+    // Open vector store
+    let lance_path = Config::lance_path(&repo_root);
+    let mut vector_store = VectorStore::open(&lance_path)
+        .await
+        .context("Failed to open vector store")?;
 
     // Check if index exists
-    let stats = metadata_store.get_stats()?;
+    let stats = vector_store.get_stats().await?;
     if stats.total_chunks == 0 {
         if output.json {
             println!(
@@ -134,7 +136,7 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
     }
 
     // Build FTS query - handle case sensitivity for FTS
-    // FTS5 is case-insensitive by default, so for case-sensitive we post-filter
+    // LanceDB FTS (tantivy) is case-insensitive by default, so for case-sensitive we post-filter
     let fts_query = if args.regex {
         // For regex mode, use the pattern as a simple FTS query to get candidates
         // We'll filter by regex afterward
@@ -150,9 +152,10 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
         args.limit
     };
 
-    // Perform FTS search
-    let results = metadata_store
+    // Perform FTS search via LanceDB
+    let results = vector_store
         .search_fts(&fts_query, search_limit)
+        .await
         .context("FTS search failed")?;
 
     // Apply filters
@@ -230,7 +233,7 @@ fn extract_fts_terms(pattern: &str) -> String {
         // If no extractable terms, use the original pattern
         pattern.to_string()
     } else {
-        // Join with OR for FTS5
+        // Join with OR for FTS
         words.join(" OR ")
     }
 }
@@ -472,21 +475,19 @@ fn highlight_match(line: &str, pattern: &str, regex: Option<&Regex>, ignore_case
 }
 
 /// Normalize BM25 score to 0-1 range
-/// SQLite FTS5 BM25 returns negative scores where more negative = better match
+/// LanceDB/tantivy BM25 returns positive scores where higher = better match
 fn normalize_bm25_score(bm25_score: f32) -> f32 {
-    // BM25 from SQLite FTS5 returns negative scores
-    // More negative = better match (e.g., -20 is better than -5)
+    // BM25 from LanceDB/tantivy returns positive scores
+    // Higher = better match (e.g., 20 is better than 5)
     // Convert to 0-1 scale where higher = better
     //
-    // We use the negative score directly: more negative → higher output
-    // Typical scores range from 0 to around -30
-    let abs_score = bm25_score.abs();
-    if abs_score < 0.001 {
-        0.5 // Neutral/no match
+    // Typical scores range from 0 to around 30
+    if bm25_score < 0.001 {
+        0.0
     } else {
-        // sigmoid-like mapping: more negative input → higher output
-        // -30 → ~0.97, -10 → ~0.77, -5 → ~0.62, -1 → ~0.35
-        1.0 - (1.0 / (1.0 + abs_score / 5.0))
+        // sigmoid-like mapping: higher input → higher output
+        // 30 → ~0.86, 10 → ~0.67, 5 → ~0.50, 1 → ~0.17
+        1.0 - (1.0 / (1.0 + bm25_score / 5.0))
     }
 }
 
@@ -548,24 +549,23 @@ mod tests {
 
     #[test]
     fn test_normalize_bm25_score() {
-        // BM25 scores are negative where more negative = better match
+        // LanceDB/tantivy BM25 scores are positive where higher = better match
         // Our normalization converts to 0-1 where higher = better
-        // So -20.0 (better match) should result in higher score than -5.0
-        let score1 = normalize_bm25_score(-20.0);
-        let score2 = normalize_bm25_score(-5.0);
+        let score1 = normalize_bm25_score(20.0);
+        let score2 = normalize_bm25_score(5.0);
         // Both should be in valid range
         assert!(score1 > 0.0 && score1 <= 1.0);
         assert!(score2 > 0.0 && score2 <= 1.0);
-        // More negative BM25 = better match = higher normalized score
+        // Higher BM25 = better match = higher normalized score
         assert!(
             score1 > score2,
-            "score1={} should be greater than score2={} because -20 is more negative",
+            "score1={} should be greater than score2={} because 20 > 5",
             score1,
             score2
         );
 
-        // Zero/near-zero score should be 0.5 (neutral)
-        assert!((normalize_bm25_score(0.0) - 0.5).abs() < 0.01);
+        // Zero/near-zero score should be 0.0
+        assert!(normalize_bm25_score(0.0) < 0.01);
     }
 
     #[test]

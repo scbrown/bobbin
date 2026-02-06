@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use super::OutputConfig;
 use crate::config::Config;
-use crate::storage::MetadataStore;
+use crate::storage::{MetadataStore, VectorStore};
 
 #[derive(Args)]
 pub struct RelatedArgs {
@@ -36,7 +36,6 @@ struct RelatedFile {
 }
 
 pub async fn run(args: RelatedArgs, output: OutputConfig) -> Result<()> {
-    // 1. Resolve path and repo root
     let file_path = args
         .file
         .canonicalize()
@@ -44,19 +43,24 @@ pub async fn run(args: RelatedArgs, output: OutputConfig) -> Result<()> {
 
     let repo_root = find_repo_root(&file_path)?;
     let db_path = Config::db_path(&repo_root);
+    let lance_path = Config::lance_path(&repo_root);
 
-    // 2. Open metadata store
+    // Use VectorStore to verify file exists in index
+    let vector_store = VectorStore::open(&lance_path)
+        .await
+        .context("Failed to open vector store")?;
+
+    // Use MetadataStore for coupling data
     let store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
 
-    // 3. Resolve relative path for query
     let rel_path = file_path
         .strip_prefix(&repo_root)
         .context("File is not inside the repository")?
         .to_string_lossy()
         .to_string();
 
-    // Verify file exists in index
-    if store.get_file(&rel_path)?.is_none() {
+    // Verify file exists in index via LanceDB
+    if vector_store.get_file(&rel_path).await?.is_none() {
         if output.json {
             println!(
                 "{}",
@@ -71,14 +75,12 @@ pub async fn run(args: RelatedArgs, output: OutputConfig) -> Result<()> {
         return Ok(());
     }
 
-    // 4. Query coupling
     let couplings = store.get_coupling(&rel_path, args.limit)?;
 
     let related: Vec<RelatedFile> = couplings
         .into_iter()
         .filter(|c| c.score >= args.threshold)
         .map(|c| {
-            // coupling contains both files, figure out which is the "other" one
             let other_path = if c.file_a == rel_path {
                 c.file_b
             } else {
@@ -93,7 +95,6 @@ pub async fn run(args: RelatedArgs, output: OutputConfig) -> Result<()> {
         })
         .collect();
 
-    // 5. Output results
     if output.json {
         let json_output = RelatedOutput {
             file: rel_path,

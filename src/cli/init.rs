@@ -74,7 +74,7 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
         println!("  Creating config: {}", config_path.display());
     }
 
-    // Initialize SQLite database with schema
+    // Initialize SQLite database (coupling + meta only)
     if args.force && db_path.exists() {
         std::fs::remove_file(&db_path).with_context(|| {
             format!("Failed to remove existing database: {}", db_path.display())
@@ -88,10 +88,10 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
     })?;
 
     if output.verbose && !output.quiet && !output.json {
-        println!("  Creating database: {}", db_path.display());
+        println!("  Creating metadata store: {}", db_path.display());
     }
 
-    // Initialize LanceDB vector store
+    // Initialize LanceDB (primary storage)
     if args.force && lance_path.exists() {
         std::fs::remove_dir_all(&lance_path).with_context(|| {
             format!(
