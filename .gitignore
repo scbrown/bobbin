@@ -26,3 +26,9 @@ __pycache__/
 dist/
 build/
 .venv/
+
+# Gas Town (added by gt)
+.runtime/
+.claude/
+.logs/
+.beads/
