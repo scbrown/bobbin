@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use super::OutputConfig;
-use crate::config::Config;
+use crate::config::{Config, ContextualEmbeddingConfig};
 use crate::index::{embedder, Embedder, Parser};
 use crate::storage::{MetadataStore, VectorStore};
 use crate::types::Chunk;
@@ -59,6 +59,8 @@ struct FileIndexResult {
     path: String,
     hash: String,
     chunks: Vec<Chunk>,
+    /// Context-enriched text for each chunk (None = use chunk content directly)
+    contexts: Vec<Option<String>>,
 }
 
 pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
@@ -290,10 +292,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
         let hash = compute_hash(&content);
 
+        // Compute contextual embeddings for enabled languages
+        let contexts = build_context_windows(&chunks, &content, &config.embedding.context);
+
         pending_results.push(FileIndexResult {
             path: rel_path,
             hash,
             chunks,
+            contexts,
         });
 
         let total_pending_chunks: usize = pending_results.iter().map(|r| r.chunks.len()).sum();
@@ -500,12 +506,19 @@ async fn process_batch(
     let mut indexed_count = 0;
 
     for result in results.drain(..) {
-        // Collect chunks and generate embeddings
-        let chunk_contents: Vec<String> = result.chunks.iter().map(|c| c.content.clone()).collect();
-        let content_refs: Vec<&str> = chunk_contents.iter().map(|s| s.as_str()).collect();
+        // Build text to embed: use full_context when available, fall back to content
+        let embed_texts: Vec<String> = result
+            .contexts
+            .iter()
+            .zip(result.chunks.iter())
+            .map(|(ctx, chunk)| {
+                ctx.as_ref().cloned().unwrap_or_else(|| chunk.content.clone())
+            })
+            .collect();
+        let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
 
         let embeddings = embed
-            .embed_batch(&content_refs)
+            .embed_batch(&embed_refs)
             .context("Failed to generate embeddings")?;
 
         // Delete existing chunks for this file, then insert new ones
@@ -517,6 +530,7 @@ async fn process_batch(
             .insert(
                 &result.chunks,
                 &embeddings,
+                &result.contexts,
                 repo,
                 &result.hash,
                 &now,
@@ -531,6 +545,65 @@ async fn process_batch(
     Ok((indexed_count, 0)) // chunks counted per-file below
 }
 
+/// Build context windows for chunks based on contextual embedding config.
+///
+/// For chunks in enabled languages, extracts N lines before and after the chunk
+/// from the file content to create enriched embedding text. Returns `None` for
+/// chunks where contextual embedding is disabled (they'll be embedded with their
+/// content directly).
+fn build_context_windows(
+    chunks: &[Chunk],
+    file_content: &str,
+    config: &ContextualEmbeddingConfig,
+) -> Vec<Option<String>> {
+    if config.context_lines == 0 || config.enabled_languages.is_empty() {
+        return vec![None; chunks.len()];
+    }
+
+    let file_lines: Vec<&str> = file_content.lines().collect();
+    let n = config.context_lines;
+
+    chunks
+        .iter()
+        .map(|chunk| {
+            if !config.enabled_languages.contains(&chunk.language) {
+                return None;
+            }
+
+            // start_line and end_line are 1-based
+            let start = chunk.start_line as usize;
+            let end = chunk.end_line as usize;
+
+            let ctx_start = start.saturating_sub(n).max(1);
+            let ctx_end = (end + n).min(file_lines.len());
+
+            // Extract context lines (converting from 1-based to 0-based index)
+            let prefix_lines = &file_lines[(ctx_start - 1)..(start - 1).min(file_lines.len())];
+            let suffix_lines = if end < file_lines.len() {
+                &file_lines[end..ctx_end]
+            } else {
+                &[]
+            };
+
+            // Only produce full_context if it actually adds surrounding lines
+            if prefix_lines.is_empty() && suffix_lines.is_empty() {
+                return None;
+            }
+
+            let mut parts = Vec::new();
+            if !prefix_lines.is_empty() {
+                parts.push(prefix_lines.join("\n"));
+            }
+            parts.push(chunk.content.clone());
+            if !suffix_lines.is_empty() {
+                parts.push(suffix_lines.join("\n"));
+            }
+
+            Some(parts.join("\n"))
+        })
+        .collect()
+}
+
 /// Compute SHA256 hash of content
 fn compute_hash(content: &str) -> String {
     let mut hasher = Sha256::new();
@@ -541,6 +614,7 @@ fn compute_hash(content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::ChunkType;
     use tempfile::tempdir;
 
     #[test]
@@ -552,6 +626,107 @@ mod tests {
         assert_eq!(hash1, hash2);
         assert_ne!(hash1, hash3);
         assert_eq!(hash1.len(), 64);
+    }
+
+    #[test]
+    fn test_build_context_windows_enabled_language() {
+        let file_content = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10";
+        let chunks = vec![Chunk {
+            id: "c1".to_string(),
+            file_path: "doc.md".to_string(),
+            chunk_type: ChunkType::Section,
+            name: Some("Section".to_string()),
+            start_line: 4,
+            end_line: 6,
+            content: "line4\nline5\nline6".to_string(),
+            language: "markdown".to_string(),
+        }];
+        let config = ContextualEmbeddingConfig {
+            context_lines: 2,
+            enabled_languages: vec!["markdown".to_string()],
+        };
+
+        let contexts = build_context_windows(&chunks, file_content, &config);
+        assert_eq!(contexts.len(), 1);
+        let ctx = contexts[0].as_ref().unwrap();
+        // Should include lines 2-3 (prefix), 4-6 (content), 7-8 (suffix)
+        assert!(ctx.contains("line2"));
+        assert!(ctx.contains("line3"));
+        assert!(ctx.contains("line4"));
+        assert!(ctx.contains("line5"));
+        assert!(ctx.contains("line6"));
+        assert!(ctx.contains("line7"));
+        assert!(ctx.contains("line8"));
+        assert!(!ctx.contains("line1"));
+        assert!(!ctx.contains("line9"));
+    }
+
+    #[test]
+    fn test_build_context_windows_disabled_language() {
+        let file_content = "line1\nline2\nline3\nline4\nline5";
+        let chunks = vec![Chunk {
+            id: "c1".to_string(),
+            file_path: "main.rs".to_string(),
+            chunk_type: ChunkType::Function,
+            name: Some("main".to_string()),
+            start_line: 2,
+            end_line: 4,
+            content: "line2\nline3\nline4".to_string(),
+            language: "rust".to_string(),
+        }];
+        let config = ContextualEmbeddingConfig {
+            context_lines: 2,
+            enabled_languages: vec!["markdown".to_string()],
+        };
+
+        let contexts = build_context_windows(&chunks, file_content, &config);
+        assert_eq!(contexts.len(), 1);
+        assert!(contexts[0].is_none()); // Rust not enabled
+    }
+
+    #[test]
+    fn test_build_context_windows_at_file_boundaries() {
+        let file_content = "line1\nline2\nline3";
+        let chunks = vec![Chunk {
+            id: "c1".to_string(),
+            file_path: "doc.md".to_string(),
+            chunk_type: ChunkType::Section,
+            name: Some("All".to_string()),
+            start_line: 1,
+            end_line: 3,
+            content: "line1\nline2\nline3".to_string(),
+            language: "markdown".to_string(),
+        }];
+        let config = ContextualEmbeddingConfig {
+            context_lines: 5,
+            enabled_languages: vec!["markdown".to_string()],
+        };
+
+        let contexts = build_context_windows(&chunks, file_content, &config);
+        // No surrounding lines available, should return None
+        assert!(contexts[0].is_none());
+    }
+
+    #[test]
+    fn test_build_context_windows_zero_lines() {
+        let file_content = "line1\nline2\nline3";
+        let chunks = vec![Chunk {
+            id: "c1".to_string(),
+            file_path: "doc.md".to_string(),
+            chunk_type: ChunkType::Section,
+            name: Some("S".to_string()),
+            start_line: 2,
+            end_line: 2,
+            content: "line2".to_string(),
+            language: "markdown".to_string(),
+        }];
+        let config = ContextualEmbeddingConfig {
+            context_lines: 0,
+            enabled_languages: vec!["markdown".to_string()],
+        };
+
+        let contexts = build_context_windows(&chunks, file_content, &config);
+        assert!(contexts[0].is_none()); // context_lines=0 disables
     }
 
     #[test]

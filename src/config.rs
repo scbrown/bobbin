@@ -58,6 +58,8 @@ pub struct EmbeddingConfig {
     pub model: String,
     /// Batch size for embedding generation
     pub batch_size: usize,
+    /// Contextual embedding settings
+    pub context: ContextualEmbeddingConfig,
 }
 
 impl Default for EmbeddingConfig {
@@ -65,6 +67,30 @@ impl Default for EmbeddingConfig {
         Self {
             model: "all-MiniLM-L6-v2".into(),
             batch_size: 32,
+            context: ContextualEmbeddingConfig::default(),
+        }
+    }
+}
+
+/// Configuration for contextual embeddings
+///
+/// When enabled for a language, chunks are embedded with surrounding context
+/// (N lines before/after) for better retrieval quality. The original chunk
+/// content is stored for display; the enriched text is stored in full_context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ContextualEmbeddingConfig {
+    /// Number of context lines to include before and after a chunk
+    pub context_lines: usize,
+    /// Languages where contextual embedding is enabled
+    pub enabled_languages: Vec<String>,
+}
+
+impl Default for ContextualEmbeddingConfig {
+    fn default() -> Self {
+        Self {
+            context_lines: 5,
+            enabled_languages: vec!["markdown".into()],
         }
     }
 }

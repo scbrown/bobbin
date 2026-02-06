@@ -91,14 +91,19 @@ impl VectorStore {
             Field::new("start_line", DataType::UInt32, false),
             Field::new("end_line", DataType::UInt32, false),
             Field::new("content", DataType::Utf8, false),
+            Field::new("full_context", DataType::Utf8, true),
             Field::new("indexed_at", DataType::Utf8, false),
         ])
     }
 
     /// Convert chunks and embeddings to a RecordBatch
+    ///
+    /// `full_contexts` contains the context-enriched text used for embedding.
+    /// `None` entries mean the chunk was embedded using its content directly.
     fn to_record_batch(
         chunks: &[Chunk],
         embeddings: &[Vec<f32>],
+        full_contexts: &[Option<String>],
         repo: &str,
         file_hash: &str,
         indexed_at: &str,
@@ -118,6 +123,10 @@ impl VectorStore {
         let start_lines: Vec<u32> = chunks.iter().map(|c| c.start_line).collect();
         let end_lines: Vec<u32> = chunks.iter().map(|c| c.end_line).collect();
         let contents: Vec<&str> = chunks.iter().map(|c| c.content.as_str()).collect();
+        let full_context_refs: Vec<Option<&str>> = full_contexts
+            .iter()
+            .map(|c| c.as_deref())
+            .collect();
         let indexed_ats: Vec<&str> = chunks.iter().map(|_| indexed_at).collect();
 
         // Flatten embeddings for FixedSizeList
@@ -143,6 +152,7 @@ impl VectorStore {
             Arc::new(UInt32Array::from(start_lines)),
             Arc::new(UInt32Array::from(end_lines)),
             Arc::new(StringArray::from(contents)),
+            Arc::new(StringArray::from(full_context_refs)),
             Arc::new(StringArray::from(indexed_ats)),
         ];
 
@@ -160,10 +170,14 @@ impl VectorStore {
     }
 
     /// Insert chunks with their embeddings
+    ///
+    /// `full_contexts` contains the context-enriched text used for embedding.
+    /// `None` entries mean the chunk was embedded using its content directly.
     pub async fn insert(
         &mut self,
         chunks: &[Chunk],
         embeddings: &[Vec<f32>],
+        full_contexts: &[Option<String>],
         repo: &str,
         file_hash: &str,
         indexed_at: &str,
@@ -180,8 +194,16 @@ impl VectorStore {
             );
         }
 
+        if chunks.len() != full_contexts.len() {
+            anyhow::bail!(
+                "Chunks and full_contexts must have same length: {} vs {}",
+                chunks.len(),
+                full_contexts.len()
+            );
+        }
+
         let schema = Arc::new(Self::schema());
-        let batch = Self::to_record_batch(chunks, embeddings, repo, file_hash, indexed_at)?;
+        let batch = Self::to_record_batch(chunks, embeddings, full_contexts, repo, file_hash, indexed_at)?;
 
         match &self.table {
             Some(table) => {
@@ -227,10 +249,10 @@ impl VectorStore {
             None => return Ok(()),
         };
 
-        // Create FTS index on content column
+        // Create FTS index on content, chunk_name, and full_context columns
         table
             .create_index(
-                &["content", "chunk_name"],
+                &["content", "chunk_name", "full_context"],
                 Index::FTS(FtsIndexBuilder::default()),
             )
             .execute()
@@ -895,6 +917,10 @@ mod tests {
         emb
     }
 
+    fn no_contexts(n: usize) -> Vec<Option<String>> {
+        vec![None; n]
+    }
+
     #[tokio::test]
     async fn test_open_creates_store() {
         let dir = tempdir().unwrap();
@@ -918,7 +944,7 @@ mod tests {
         let embeddings = vec![sample_embedding(), sample_embedding()];
 
         store
-            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .insert(&chunks, &embeddings, &no_contexts(2), "default", "abc123", "1234567890")
             .await
             .unwrap();
 
@@ -936,7 +962,7 @@ mod tests {
         let embeddings = vec![sample_embedding()];
 
         store
-            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .insert(&chunks, &embeddings, &no_contexts(1), "default", "abc123", "1234567890")
             .await
             .unwrap();
 
@@ -963,7 +989,7 @@ mod tests {
         let embeddings = vec![sample_embedding(), sample_embedding()];
 
         store
-            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .insert(&chunks, &embeddings, &no_contexts(2), "default", "abc123", "1234567890")
             .await
             .unwrap();
         assert_eq!(store.count().await.unwrap(), 2);
@@ -1004,7 +1030,7 @@ mod tests {
         let embeddings = vec![sample_embedding(), sample_embedding()];
 
         store
-            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .insert(&chunks, &embeddings, &no_contexts(2), "default", "abc123", "1234567890")
             .await
             .unwrap();
         assert_eq!(store.count().await.unwrap(), 2);
@@ -1026,13 +1052,13 @@ mod tests {
         let chunks = vec![sample_chunk("chunk1", "original")];
         let embeddings = vec![sample_embedding()];
         store
-            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .insert(&chunks, &embeddings, &no_contexts(1), "default", "abc123", "1234567890")
             .await
             .unwrap();
 
         let chunks = vec![sample_chunk("chunk1", "updated")];
         store
-            .insert(&chunks, &embeddings, "default", "def456", "1234567891")
+            .insert(&chunks, &embeddings, &no_contexts(1), "default", "def456", "1234567891")
             .await
             .unwrap();
 
@@ -1050,7 +1076,7 @@ mod tests {
         let mut store = VectorStore::open(&path).await.unwrap();
 
         store
-            .insert(&[], &[], "default", "", "")
+            .insert(&[], &[], &[], "default", "", "")
             .await
             .unwrap();
 
@@ -1070,7 +1096,7 @@ mod tests {
             let chunks = vec![sample_chunk("chunk1", "persistent")];
             let embeddings = vec![sample_embedding()];
             store
-                .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+                .insert(&chunks, &embeddings, &no_contexts(1), "default", "abc123", "1234567890")
                 .await
                 .unwrap();
         }
@@ -1097,7 +1123,7 @@ mod tests {
         let chunks = vec![sample_chunk("chunk1", "main")];
         let embeddings = vec![sample_embedding()];
         store
-            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .insert(&chunks, &embeddings, &no_contexts(1), "default", "abc123", "1234567890")
             .await
             .unwrap();
 
@@ -1153,7 +1179,7 @@ mod tests {
         let embeddings = vec![sample_embedding(), sample_embedding(), sample_embedding()];
 
         store
-            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .insert(&chunks, &embeddings, &no_contexts(3), "default", "abc123", "1234567890")
             .await
             .unwrap();
 
@@ -1180,7 +1206,7 @@ mod tests {
         let chunks = vec![sample_chunk("chunk1", "main")];
         let embeddings = vec![sample_embedding()];
         store
-            .insert(&chunks, &embeddings, "default", "abc123", "1234567890")
+            .insert(&chunks, &embeddings, &no_contexts(1), "default", "abc123", "1234567890")
             .await
             .unwrap();
 
@@ -1224,11 +1250,11 @@ mod tests {
         };
 
         store
-            .insert(&[chunk_a], &[sample_embedding()], "repo_a", "hash_a", "100")
+            .insert(&[chunk_a], &[sample_embedding()], &no_contexts(1), "repo_a", "hash_a", "100")
             .await
             .unwrap();
         store
-            .insert(&[chunk_b], &[sample_embedding()], "repo_b", "hash_b", "200")
+            .insert(&[chunk_b], &[sample_embedding()], &no_contexts(1), "repo_b", "hash_b", "200")
             .await
             .unwrap();
 
@@ -1261,5 +1287,34 @@ mod tests {
         // Get file paths filtered by repo
         let paths_a = store.get_all_file_paths(Some("repo_a")).await.unwrap();
         assert_eq!(paths_a.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_insert_with_full_context() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let chunks = vec![
+            sample_chunk("chunk1", "main"),
+            sample_chunk("chunk2", "helper"),
+        ];
+        let embeddings = vec![sample_embedding(), sample_embedding()];
+        let contexts = vec![
+            Some("// context before\nfn main() { }\n// context after".to_string()),
+            None, // No context for this chunk
+        ];
+
+        store
+            .insert(&chunks, &embeddings, &contexts, "default", "abc123", "1234567890")
+            .await
+            .unwrap();
+
+        assert_eq!(store.count().await.unwrap(), 2);
+
+        // Verify chunks are searchable
+        let results = store.search(&sample_embedding(), 10, None).await.unwrap();
+        assert_eq!(results.len(), 2);
     }
 }
