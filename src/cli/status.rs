@@ -36,6 +36,11 @@ struct StatusOutput {
 }
 
 pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
+    // Thin-client mode: proxy through remote server
+    if let Some(ref server_url) = output.server {
+        return run_remote(args, output.clone(), server_url).await;
+    }
+
     let repo_root = args
         .path
         .canonicalize()
@@ -120,6 +125,77 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
         if args.detailed {
             println!("\n  Languages:");
             for lang in &stats.languages {
+                println!(
+                    "    {}: {} files, {} chunks",
+                    lang.language.blue(),
+                    lang.file_count,
+                    lang.chunk_count
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Run status via remote HTTP server (thin-client mode).
+async fn run_remote(args: StatusArgs, output: OutputConfig, server_url: &str) -> Result<()> {
+    use crate::http::client::Client;
+
+    let client = Client::new(server_url);
+    let resp = client.status().await?;
+
+    if output.json {
+        let json_output = StatusOutput {
+            status: resp.status,
+            path: server_url.to_string(),
+            repos: vec![],
+            stats: Some(IndexStats {
+                total_files: resp.index.total_files,
+                total_chunks: resp.index.total_chunks,
+                total_embeddings: resp.index.total_embeddings,
+                languages: resp
+                    .index
+                    .languages
+                    .iter()
+                    .map(|l| crate::types::LanguageStats {
+                        language: l.language.clone(),
+                        file_count: l.file_count,
+                        chunk_count: l.chunk_count,
+                    })
+                    .collect(),
+                last_indexed: resp.index.last_indexed,
+                index_size_bytes: resp.index.index_size_bytes,
+            }),
+        };
+        println!("{}", serde_json::to_string_pretty(&json_output)?);
+    } else if !output.quiet {
+        println!(
+            "{} Bobbin status via {}",
+            "✓".green(),
+            server_url
+        );
+        println!();
+        println!("  Status:       {}", resp.status.green());
+        println!(
+            "  Total files:  {}",
+            resp.index.total_files.to_string().cyan()
+        );
+        println!(
+            "  Total chunks: {}",
+            resp.index.total_chunks.to_string().cyan()
+        );
+
+        if let Some(ts) = resp.index.last_indexed {
+            let dt = chrono::DateTime::from_timestamp(ts, 0)
+                .map(|t| t.to_rfc3339())
+                .unwrap_or_else(|| "Unknown".to_string());
+            println!("  Last indexed: {}", dt);
+        }
+
+        if args.detailed {
+            println!("\n  Languages:");
+            for lang in &resp.index.languages {
                 println!(
                     "    {}: {} files, {} chunks",
                     lang.language.blue(),

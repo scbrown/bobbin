@@ -78,6 +78,11 @@ struct SearchResultOutput {
 }
 
 pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
+    // Thin-client mode: proxy through remote server
+    if let Some(ref server_url) = output.server {
+        return run_remote(args, output.clone(), server_url).await;
+    }
+
     let repo_root = args
         .path
         .canonicalize()
@@ -195,6 +200,121 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         print_json_output(&args.query, args.mode, &args.r#type, args.limit, &filtered_results)?;
     } else if !output.quiet {
         print_human_output(&args.query, args.mode, &filtered_results, output.verbose);
+    }
+
+    Ok(())
+}
+
+/// Run search via remote HTTP server (thin-client mode).
+async fn run_remote(args: SearchArgs, output: OutputConfig, server_url: &str) -> Result<()> {
+    use crate::http::client::Client;
+
+    let client = Client::new(server_url);
+
+    let mode_str = match args.mode {
+        SearchMode::Hybrid => "hybrid",
+        SearchMode::Semantic => "semantic",
+        SearchMode::Keyword => "keyword",
+    };
+
+    let resp = client
+        .search(
+            &args.query,
+            mode_str,
+            args.r#type.as_deref(),
+            args.limit,
+            args.repo.as_deref(),
+        )
+        .await?;
+
+    if output.json {
+        let json_output = SearchOutput {
+            query: resp.query,
+            mode: resp.mode,
+            r#type: args.r#type,
+            limit: args.limit,
+            count: resp.count,
+            results: resp
+                .results
+                .iter()
+                .map(|r| SearchResultOutput {
+                    file_path: r.file_path.clone(),
+                    name: r.name.clone(),
+                    chunk_type: r.chunk_type.clone(),
+                    start_line: r.start_line,
+                    end_line: r.end_line,
+                    score: r.score,
+                    match_type: r.match_type.clone(),
+                    language: r.language.clone(),
+                    content_preview: Some(r.content_preview.clone()),
+                })
+                .collect(),
+        };
+        println!("{}", serde_json::to_string_pretty(&json_output)?);
+    } else if !output.quiet {
+        if resp.results.is_empty() {
+            println!(
+                "{} No results found for: {} (via {})",
+                "!".yellow(),
+                args.query.cyan(),
+                server_url.dimmed()
+            );
+            return Ok(());
+        }
+
+        println!(
+            "{} Found {} results for: {} ({}, via {})",
+            "✓".green(),
+            resp.results.len(),
+            args.query.cyan(),
+            resp.mode.dimmed(),
+            server_url.dimmed()
+        );
+        println!();
+
+        for (i, result) in resp.results.iter().enumerate() {
+            let name_display = result
+                .name
+                .as_ref()
+                .map(|n| format!(" ({})", n.cyan()))
+                .unwrap_or_default();
+
+            println!(
+                "{}. {}:{}{}",
+                (i + 1).to_string().bold(),
+                result.file_path.blue(),
+                result.start_line,
+                name_display
+            );
+
+            let match_info = result
+                .match_type
+                .as_ref()
+                .map(|mt| format!(" [{}]", mt).dimmed().to_string())
+                .unwrap_or_default();
+
+            println!(
+                "   {} {} · lines {}-{} · score {:.4}{}",
+                result.chunk_type.magenta(),
+                result.language.dimmed(),
+                result.start_line,
+                result.end_line,
+                result.score,
+                match_info
+            );
+
+            if output.verbose {
+                let preview = truncate_content(&result.content_preview, 300);
+                for line in preview.lines().take(5) {
+                    println!("   {}", line.dimmed());
+                }
+                if result.content_preview.lines().count() > 5 {
+                    println!("   {}", "...".dimmed());
+                }
+            }
+
+            println!();
+        }
     }
 
     Ok(())
