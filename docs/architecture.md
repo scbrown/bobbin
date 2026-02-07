@@ -210,7 +210,7 @@ CREATE TABLE meta (
 
 ## Configuration
 
-Default configuration stored in `.bobbin/config.toml`:
+Default configuration stored in `.bobbin/config.toml`. See [Configuration Reference](configuration.md) for full details.
 
 ```toml
 [index]
@@ -262,6 +262,7 @@ Results that appear in both searches get boosted scores and are marked as `[hybr
 | `bobbin search --mode semantic` | Semantic-only vector search |
 | `bobbin search --mode keyword` | Keyword-only FTS search |
 | `bobbin search --repo <name>` | Search within a specific repository |
+| `bobbin context <query>` | Assemble task-relevant context from search + git coupling |
 | `bobbin grep <pattern>` | Keyword/regex search with highlighting |
 | `bobbin related <file>` | Find files related to a given file |
 | `bobbin history <file>` | Show commit history and churn statistics |
