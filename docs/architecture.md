@@ -2,12 +2,14 @@
 
 ## Overview
 
-Bobbin is a local-first code context engine built in Rust. It provides semantic and keyword search over codebases using:
+Bobbin is a local-first code context engine with Temporal RAG, built in Rust. It provides semantic and keyword search over codebases using:
 
-- **Tree-sitter** for structural code parsing
+- **Tree-sitter** for structural code parsing (Rust, TypeScript, Python, Go, Java, C++)
+- **pulldown-cmark** for semantic markdown parsing (sections, tables, code blocks, frontmatter)
 - **ONNX Runtime** for local embedding generation (all-MiniLM-L6-v2)
-- **LanceDB** for vector storage and similarity search
-- **SQLite** for metadata and full-text search
+- **LanceDB** for primary storage: chunks, vector embeddings, and full-text search
+- **SQLite** for temporal coupling data and global metadata
+- **rmcp** for MCP server integration with AI agents
 
 ## Module Structure
 
@@ -24,24 +26,31 @@ src/
 │   ├── search.rs     # Semantic search command
 │   ├── grep.rs       # Keyword/regex search command
 │   ├── related.rs    # Find related files command
-│   └── status.rs     # Index status and statistics
+│   ├── history.rs    # File commit history and churn statistics
+│   ├── status.rs     # Index status and statistics
+│   └── serve.rs      # Start MCP server
 │
 ├── index/            # Indexing engine
 │   ├── mod.rs        # Module exports
-│   ├── parser.rs     # Tree-sitter code parsing
+│   ├── parser.rs     # Tree-sitter + pulldown-cmark code parsing
 │   ├── embedder.rs   # ONNX embedding generation
 │   └── git.rs        # Git history analysis (temporal coupling)
 │
+├── mcp/              # MCP (Model Context Protocol) server
+│   ├── mod.rs        # Module exports
+│   ├── server.rs     # MCP server implementation
+│   └── tools.rs      # Tool request/response types (search, grep, related, read_chunk)
+│
 ├── search/           # Query engine
 │   ├── mod.rs        # Module exports
-│   ├── semantic.rs   # Vector similarity search
-│   ├── keyword.rs    # SQLite FTS search
+│   ├── semantic.rs   # Vector similarity search (LanceDB ANN)
+│   ├── keyword.rs    # Full-text search (LanceDB FTS)
 │   └── hybrid.rs     # Combined search with RRF
 │
 └── storage/          # Persistence layer
     ├── mod.rs        # Module exports
-    ├── lance.rs      # LanceDB vector operations
-    └── sqlite.rs     # SQLite metadata and FTS
+    ├── lance.rs      # LanceDB: chunks, vectors, FTS (primary storage)
+    └── sqlite.rs     # SQLite: temporal coupling + global metadata
 ```
 
 ## Data Flow
@@ -57,23 +66,22 @@ Repository Files
 └─────────────┘
       │
       ▼
-┌─────────────┐
-│ Tree-sitter │ → Extract semantic chunks (functions, classes, etc.)
-│   Parser    │
-└─────────────┘
+┌────────────────┐
+│ Tree-sitter /  │ → Extract semantic chunks (functions, classes, sections, etc.)
+│ pulldown-cmark │
+└────────────────┘
       │
       ▼
 ┌─────────────┐
 │  Embedder   │ → Generate 384-dim vectors via ONNX
-│   (ONNX)    │
+│   (ONNX)    │   (with optional contextual enrichment)
 └─────────────┘
       │
-      ├────────────────┬────────────────┐
-      ▼                ▼                ▼
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│  LanceDB    │  │   SQLite    │  │   SQLite    │
-│  (vectors)  │  │ (metadata)  │  │   (FTS)     │
-└─────────────┘  └─────────────┘  └─────────────┘
+      ▼
+┌─────────────┐
+│  LanceDB    │ → Store chunks, vectors, metadata, and FTS index
+│ (primary)   │
+└─────────────┘
 ```
 
 ### Query Pipeline
@@ -89,7 +97,7 @@ User Query
       ├────────────────────┐
       ▼                    ▼
 ┌─────────────┐      ┌─────────────┐
-│  LanceDB    │      │ SQLite FTS  │
+│  LanceDB    │      │ LanceDB FTS │
 │  (ANN)      │      │ (keyword)   │
 └─────────────┘      └─────────────┘
       │                    │
@@ -129,12 +137,16 @@ enum ChunkType {
     Function,   // Standalone functions
     Method,     // Class methods
     Class,      // Class definitions
-    Struct,     // Struct definitions (Rust)
+    Struct,     // Struct definitions (Rust, C++, Go)
     Enum,       // Enum definitions
-    Interface,  // Interface definitions (TS)
+    Interface,  // Interface definitions (TS, Java)
     Module,     // Module definitions
     Impl,       // Impl blocks (Rust)
     Trait,      // Trait definitions (Rust)
+    Doc,        // Documentation chunks (Markdown frontmatter, preamble)
+    Section,    // Heading-delimited sections (Markdown)
+    Table,      // Table elements (Markdown)
+    CodeBlock,  // Fenced code blocks (Markdown)
     Other,      // Fallback for line-based chunks
 }
 ```
@@ -151,56 +163,49 @@ struct SearchResult {
 
 ## Storage Schema
 
-### SQLite Tables
+### LanceDB (Primary Storage)
+
+All chunk data, embeddings, and full-text search live in LanceDB:
+
+```
+chunks table:
+  - id: string            # SHA256-based unique chunk ID
+  - vector: float[384]    # MiniLM embedding
+  - repo: string          # Repository name (for multi-repo support)
+  - file_path: string     # Relative file path
+  - file_hash: string     # Content hash for incremental indexing
+  - language: string      # Programming language
+  - chunk_type: string    # function, method, class, section, etc.
+  - chunk_name: string?   # Function/class/section name (nullable)
+  - start_line: uint32    # Starting line number
+  - end_line: uint32      # Ending line number
+  - content: string       # Original chunk content
+  - full_context: string? # Context-enriched text used for embedding (nullable)
+  - indexed_at: string    # Timestamp
+```
+
+LanceDB also maintains an FTS index on the `content` field for keyword search.
+
+### SQLite (Auxiliary)
+
+SQLite only stores temporal coupling data and global metadata:
 
 ```sql
--- Indexed files
-CREATE TABLE files (
-    id INTEGER PRIMARY KEY,
-    path TEXT UNIQUE NOT NULL,
-    language TEXT,
-    mtime INTEGER,
-    hash TEXT,
-    indexed_at INTEGER
-);
-
--- Semantic chunks
-CREATE TABLE chunks (
-    id TEXT PRIMARY KEY,
-    file_id INTEGER REFERENCES files(id),
-    chunk_type TEXT,
-    name TEXT,
-    start_line INTEGER,
-    end_line INTEGER,
-    content TEXT,
-    vector_id TEXT
-);
-
--- Full-text search (FTS5)
-CREATE VIRTUAL TABLE chunks_fts USING fts5(
-    content, name,
-    content='chunks'
-);
-
--- Temporal coupling (git forensics)
+-- Temporal coupling (git co-change relationships)
 CREATE TABLE coupling (
-    file_a INTEGER,
-    file_b INTEGER,
+    file_a TEXT NOT NULL,
+    file_b TEXT NOT NULL,
     score REAL,
     co_changes INTEGER,
     last_co_change INTEGER,
     PRIMARY KEY (file_a, file_b)
 );
-```
 
-### LanceDB Schema
-
-```
-vectors table:
-  - id: string        (matches chunks.id)
-  - vector: float[384] (MiniLM embedding)
-  - file_path: string
-  - chunk_name: string
+-- Global metadata
+CREATE TABLE meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 ```
 
 ## Configuration
@@ -209,13 +214,17 @@ Default configuration stored in `.bobbin/config.toml`:
 
 ```toml
 [index]
-include = ["**/*.rs", "**/*.ts", "**/*.py", "**/*.go", "**/*.md"]
-exclude = ["**/node_modules/**", "**/target/**"]
+include = ["**/*.rs", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.py", "**/*.go", "**/*.md"]
+exclude = ["**/node_modules/**", "**/target/**", "**/dist/**", "**/.git/**", "**/build/**", "**/__pycache__/**"]
 use_gitignore = true
 
 [embedding]
 model = "all-MiniLM-L6-v2"
 batch_size = 32
+
+[embedding.context]
+context_lines = 5
+enabled_languages = ["markdown"]
 
 [search]
 default_limit = 10
@@ -248,11 +257,15 @@ Results that appear in both searches get boosted scores and are marked as `[hybr
 |---------|-------------|
 | `bobbin init` | Initialize bobbin in current repository |
 | `bobbin index` | Build/rebuild the search index |
+| `bobbin index --repo <name>` | Index with multi-repo tagging |
 | `bobbin search <query>` | Hybrid search (combines semantic + keyword) |
 | `bobbin search --mode semantic` | Semantic-only vector search |
 | `bobbin search --mode keyword` | Keyword-only FTS search |
+| `bobbin search --repo <name>` | Search within a specific repository |
 | `bobbin grep <pattern>` | Keyword/regex search with highlighting |
 | `bobbin related <file>` | Find files related to a given file |
+| `bobbin history <file>` | Show commit history and churn statistics |
 | `bobbin status` | Show index statistics |
+| `bobbin serve` | Start MCP server for AI agent integration |
 
 Global flags: `--json`, `--quiet`, `--verbose`
