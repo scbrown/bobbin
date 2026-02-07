@@ -1,10 +1,13 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::index::Embedder;
 use crate::storage::{MetadataStore, VectorStore};
+
+/// Maximum transitive expansion depth to prevent runaway analysis.
+const MAX_DEPTH: u32 = 3;
 
 /// What signal produced this impact prediction
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,25 +75,87 @@ impl<'a> ImpactAnalyzer<'a> {
         }
     }
 
-    /// Analyze impact of changing the given target.
+    /// Analyze impact of changing the given target, with transitive expansion.
     ///
     /// `target` can be a file path (e.g. "src/auth.rs") or file:function syntax
     /// (e.g. "src/auth.rs:validate_token").
+    ///
+    /// `depth` controls transitive expansion: 1 = direct only, 2+ = expand
+    /// through results with score decay of 0.5 per level. Capped at 3.
     pub async fn analyze(
         &mut self,
         target: &str,
         config: &ImpactConfig,
+        depth: u32,
         repo: Option<&str>,
     ) -> Result<Vec<ImpactResult>> {
         if config.mode == ImpactMode::Deps {
             bail!("Dependency graph impact analysis is not yet available. This will be enabled when bobbin-graph lands.");
         }
 
-        // Resolve target: split file:function if present
+        let depth = depth.clamp(1, MAX_DEPTH);
+        let decay_factor: f32 = 0.5;
+
+        let mut all_results: HashMap<String, ImpactResult> = HashMap::new();
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut current_targets = vec![target.to_string()];
+
+        for level in 0..depth {
+            let decay = decay_factor.powi(level as i32);
+            let mut next_targets = Vec::new();
+
+            for t in &current_targets {
+                if !visited.insert(t.clone()) {
+                    continue;
+                }
+
+                let results = self.analyze_single(t, config, repo).await?;
+                for mut r in results {
+                    r.score *= decay;
+                    if r.score < config.threshold {
+                        continue;
+                    }
+                    next_targets.push(r.path.clone());
+                    all_results
+                        .entry(r.path.clone())
+                        .and_modify(|existing| {
+                            if r.score > existing.score {
+                                *existing = r.clone();
+                            }
+                        })
+                        .or_insert(r);
+                }
+            }
+
+            current_targets = next_targets;
+            if current_targets.is_empty() {
+                break;
+            }
+        }
+
+        let mut results: Vec<ImpactResult> = all_results.into_values().collect();
+
+        // Filter by threshold (decay may have pushed some below)
+        results.retain(|r| r.score >= config.threshold);
+
+        // Sort by score descending
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Limit
+        results.truncate(config.limit);
+
+        Ok(results)
+    }
+
+    /// Single-level (non-transitive) impact analysis for one target.
+    async fn analyze_single(
+        &mut self,
+        target: &str,
+        config: &ImpactConfig,
+        repo: Option<&str>,
+    ) -> Result<Vec<ImpactResult>> {
         let (file_path, function_name) = parse_target(target);
 
-        // Gather signals based on mode
-        // Map: file_path -> Vec<(signal, score, reason)>
         let mut signal_map: HashMap<String, Vec<(ImpactSignal, f32, String)>> = HashMap::new();
 
         if config.mode == ImpactMode::Coupling || config.mode == ImpactMode::Combined {
@@ -102,17 +167,9 @@ impl<'a> ImpactAnalyzer<'a> {
                 .await?;
         }
 
-        // Merge results
         let mut results = merge_signals(signal_map, config.mode);
 
-        // Filter by threshold
-        results.retain(|r| r.score >= config.threshold);
-
-        // Sort by score descending
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Limit
-        results.truncate(config.limit);
 
         Ok(results)
     }
@@ -451,5 +508,134 @@ mod tests {
         let c_result = results.iter().find(|r| r.path == "src/c.rs").unwrap();
         assert!((c_result.score - 0.7).abs() < f32::EPSILON);
         assert!(matches!(c_result.signal, ImpactSignal::Combined));
+    }
+
+    #[test]
+    fn test_max_depth_cap() {
+        // Depth should be clamped to MAX_DEPTH (3)
+        let clamped = 10u32.clamp(1, MAX_DEPTH);
+        assert_eq!(clamped, 3);
+
+        let clamped = 0u32.clamp(1, MAX_DEPTH);
+        assert_eq!(clamped, 1);
+
+        let clamped = 2u32.clamp(1, MAX_DEPTH);
+        assert_eq!(clamped, 2);
+    }
+
+    #[test]
+    fn test_decay_factor_math() {
+        let decay_factor: f32 = 0.5;
+
+        // Level 0 (depth 1): decay = 0.5^0 = 1.0
+        assert!((decay_factor.powi(0) - 1.0).abs() < f32::EPSILON);
+
+        // Level 1 (depth 2): decay = 0.5^1 = 0.5
+        assert!((decay_factor.powi(1) - 0.5).abs() < f32::EPSILON);
+
+        // Level 2 (depth 3): decay = 0.5^2 = 0.25
+        assert!((decay_factor.powi(2) - 0.25).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_transitive_visited_set_prevents_cycles() {
+        // Simulate the cycle prevention logic from analyze()
+        let mut visited: HashSet<String> = HashSet::new();
+
+        // First visit succeeds
+        assert!(visited.insert("src/a.rs".to_string()));
+
+        // Second visit of same target is rejected
+        assert!(!visited.insert("src/a.rs".to_string()));
+
+        // Different target succeeds
+        assert!(visited.insert("src/b.rs".to_string()));
+    }
+
+    #[test]
+    fn test_transitive_highest_score_kept() {
+        // Simulate the all_results map logic: when a file appears at
+        // multiple depths, keep the highest score
+        let mut all_results: HashMap<String, ImpactResult> = HashMap::new();
+
+        // Depth 2 result: score 0.4 (0.8 * 0.5 decay)
+        let r1 = ImpactResult {
+            path: "src/c.rs".to_string(),
+            signal: ImpactSignal::Coupling { co_changes: 5 },
+            score: 0.4,
+            reason: "transitive via b.rs".to_string(),
+        };
+        all_results.insert(r1.path.clone(), r1);
+
+        // Same file found at depth 1 with higher score: 0.7
+        let r2 = ImpactResult {
+            path: "src/c.rs".to_string(),
+            signal: ImpactSignal::Semantic { similarity: 0.7 },
+            score: 0.7,
+            reason: "direct semantic".to_string(),
+        };
+        all_results
+            .entry(r2.path.clone())
+            .and_modify(|existing| {
+                if r2.score > existing.score {
+                    *existing = r2.clone();
+                }
+            })
+            .or_insert(r2);
+
+        let result = &all_results["src/c.rs"];
+        assert!((result.score - 0.7).abs() < f32::EPSILON);
+        assert!(matches!(result.signal, ImpactSignal::Semantic { .. }));
+    }
+
+    #[test]
+    fn test_transitive_lower_score_not_replaced() {
+        // When a file appears at a deeper level with lower score, the
+        // existing higher score should be kept
+        let mut all_results: HashMap<String, ImpactResult> = HashMap::new();
+
+        // Depth 1 result: score 0.9
+        let r1 = ImpactResult {
+            path: "src/c.rs".to_string(),
+            signal: ImpactSignal::Coupling { co_changes: 10 },
+            score: 0.9,
+            reason: "direct coupling".to_string(),
+        };
+        all_results.insert(r1.path.clone(), r1);
+
+        // Same file at depth 2 with lower decayed score: 0.3
+        let r2 = ImpactResult {
+            path: "src/c.rs".to_string(),
+            signal: ImpactSignal::Semantic { similarity: 0.6 },
+            score: 0.3,
+            reason: "transitive semantic".to_string(),
+        };
+        all_results
+            .entry(r2.path.clone())
+            .and_modify(|existing| {
+                if r2.score > existing.score {
+                    *existing = r2.clone();
+                }
+            })
+            .or_insert(r2);
+
+        let result = &all_results["src/c.rs"];
+        assert!((result.score - 0.9).abs() < f32::EPSILON);
+        assert!(matches!(result.signal, ImpactSignal::Coupling { .. }));
+    }
+
+    #[test]
+    fn test_transitive_decay_filters_below_threshold() {
+        // Results that decay below threshold should be skipped
+        let threshold = 0.1;
+        let decay: f32 = 0.5; // depth 2
+
+        // Score 0.15 * 0.5 = 0.075 — below threshold
+        let decayed_score = 0.15 * decay;
+        assert!(decayed_score < threshold);
+
+        // Score 0.3 * 0.5 = 0.15 — above threshold
+        let decayed_score = 0.3 * decay;
+        assert!(decayed_score >= threshold);
     }
 }
