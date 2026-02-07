@@ -176,30 +176,19 @@ The `scripts/` directory and `justfile` contain **tambour** - an agent harness f
 
 ### Running Tambour Tests
 
-**DO NOT use system Python or try to install pytest globally.** macOS requires a virtual environment.
-
+The venv is auto-created on first use. Just run:
 ```bash
-cd tambour
-
-# If .venv doesn't exist, create it first:
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-
-# If .venv exists, just activate and run:
-source .venv/bin/activate
-python -m pytest tests/ -v
+just tambour test           # Run all tambour tests (quiet)
+just tambour test -v        # Verbose output
+just tambour test -k name   # Filter by test name
 ```
 
-**One-liner (always works):**
+To manually set up or refresh the venv:
 ```bash
-cd tambour && source .venv/bin/activate && python -m pytest tests/ -v
+just tambour setup
 ```
 
-**Common mistakes to avoid:**
-- `python -m pytest` won't work - use `python3` or activate the venv first
-- `pip install pytest` will fail with "externally-managed-environment" error
-- Always activate the venv before running tests
+The venv lives at `.venv/` in the repo root. Tambour source is auto-discovered from the Gas Town rig structure or `$TAMBOUR_DIR` env var.
 
 ### Tambour Tenets
 

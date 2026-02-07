@@ -6,19 +6,27 @@
 default:
     @just --list tambour
 
-# Setup tambour hooks for metrics collection
+# Ensure tambour venv exists (auto-setup on first use)
+[private]
+ensure-venv:
+    #!/usr/bin/env bash
+    if [ ! -f ".venv/bin/python" ] || [ ! -f ".tambour-source" ]; then
+        ./scripts/ensure-tambour-venv.sh
+    fi
+
+# Setup tambour venv and hooks
 setup:
-    ./tambour/scripts/setup-hooks.sh
+    ./scripts/ensure-tambour-venv.sh
+
+# Run tambour Python tests
+test *args: ensure-venv
+    #!/usr/bin/env bash
+    TAMBOUR_SRC=$(cat .tambour-source)
+    .venv/bin/python -m pytest "$TAMBOUR_SRC/tests" {{ args }}
 
 # Show metrics summary
-metrics *args:
-    #!/usr/bin/env bash
-    TAMBOUR_VENV="$(pwd)/tambour/.venv"
-    if [ ! -f "$TAMBOUR_VENV/bin/python" ]; then
-        echo "Error: Run 'just tambour setup' first"
-        exit 1
-    fi
-    cd "$(pwd)" && "$TAMBOUR_VENV/bin/python" -m tambour metrics {{ args }}
+metrics *args: ensure-venv
+    .venv/bin/python -m tambour metrics {{ args }}
 
 # Spawn an agent on the next ready task
 agent cli="":
@@ -53,14 +61,8 @@ finish-keep issue:
     ./scripts/finish-agent.sh {{issue}}
 
 # Abort/cancel an agent (unclaim, remove worktree, delete branch)
-abort issue:
-    #!/usr/bin/env bash
-    TAMBOUR_VENV="$(pwd)/tambour/.venv"
-    if [ ! -f "$TAMBOUR_VENV/bin/python" ]; then
-        echo "Error: Run 'just tambour setup' first"
-        exit 1
-    fi
-    "$TAMBOUR_VENV/bin/python" -m tambour abort "{{issue}}"
+abort issue: ensure-venv
+    .venv/bin/python -m tambour abort "{{issue}}"
 
 # Cleanup a stuck task (retry finish/merge for closed/broken tasks)
 cleanup issue:
