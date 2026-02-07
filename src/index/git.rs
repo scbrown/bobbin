@@ -183,6 +183,30 @@ impl GitAnalyzer {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
+    /// Get commit counts per file for the entire repo in one pass.
+    /// Returns a map of file path -> number of commits touching that file.
+    pub fn get_file_churn(
+        &self,
+        since: Option<&str>,
+    ) -> Result<HashMap<String, u32>> {
+        let since_val = since.unwrap_or("1 year ago");
+        let output = Command::new("git")
+            .args(["log", "--name-only", "--format=", &format!("--since={}", since_val)])
+            .current_dir(&self.repo_root)
+            .output()
+            .context("Failed to get file churn from git log")?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut churn: HashMap<String, u32> = HashMap::new();
+        for line in stdout.lines() {
+            let line = line.trim();
+            if !line.is_empty() {
+                *churn.entry(line.to_string()).or_insert(0) += 1;
+            }
+        }
+        Ok(churn)
+    }
+
     /// Get commit history for a specific file
     pub fn get_file_history(&self, file_path: &str, limit: usize) -> Result<Vec<FileHistoryEntry>> {
         // Format: hash|timestamp|author|subject
@@ -438,5 +462,76 @@ mod tests {
 
         // 1970-01-01 00:00:00 UTC = 0
         assert_eq!(format_timestamp(0), "1970-01-01");
+    }
+
+    /// Helper: create a temp git repo and return the path
+    fn setup_test_repo() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path();
+        Command::new("git").args(["init"]).current_dir(path).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(path).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test"]).current_dir(path).output().unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_get_file_churn_counts() {
+        let dir = setup_test_repo();
+        let path = dir.path();
+
+        // Create file and commit it 3 times
+        std::fs::write(path.join("a.rs"), "v1").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "c1"]).current_dir(path).output().unwrap();
+
+        std::fs::write(path.join("a.rs"), "v2").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "c2"]).current_dir(path).output().unwrap();
+
+        std::fs::write(path.join("b.rs"), "v1").unwrap();
+        std::fs::write(path.join("a.rs"), "v3").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "c3"]).current_dir(path).output().unwrap();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let churn = analyzer.get_file_churn(None).unwrap();
+
+        assert_eq!(churn.get("a.rs"), Some(&3));
+        assert_eq!(churn.get("b.rs"), Some(&1));
+    }
+
+    #[test]
+    fn test_get_file_churn_since_filter() {
+        let dir = setup_test_repo();
+        let path = dir.path();
+
+        // Create a commit
+        std::fs::write(path.join("old.rs"), "v1").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "old commit"]).current_dir(path).output().unwrap();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+
+        // "1 second ago" should still include the commit we just made
+        let churn = analyzer.get_file_churn(Some("1 year ago")).unwrap();
+        assert!(churn.contains_key("old.rs"));
+
+        // "1 second" in the future effectively means nothing is older
+        // A very restrictive since should return empty or same
+        let churn_future = analyzer.get_file_churn(Some("2099-01-01")).unwrap();
+        assert!(churn_future.is_empty());
+    }
+
+    #[test]
+    fn test_get_file_churn_empty_repo() {
+        let dir = setup_test_repo();
+        let path = dir.path();
+
+        // Make an initial empty commit so HEAD exists
+        Command::new("git").args(["commit", "--allow-empty", "-m", "init"]).current_dir(path).output().unwrap();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let churn = analyzer.get_file_churn(None).unwrap();
+        assert!(churn.is_empty());
     }
 }
