@@ -24,6 +24,7 @@ use crate::index::Embedder;
 use crate::search::context::{ContentMode, ContextAssembler, ContextConfig, FileRelevance};
 use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{MetadataStore, VectorStore};
+use crate::analysis::refs::RefAnalyzer;
 use crate::types::{ChunkType, MatchType, SearchResult};
 
 /// MCP Server for Bobbin code search
@@ -682,6 +683,88 @@ impl BobbinMcpServer {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
+    /// Find symbol references
+    #[tool(description = "Find the definition and all usages of a symbol by name. Returns the definition location (file, line, signature) and all usage sites across the codebase. Best for: 'where is parse_config defined?', 'who calls handle_request?', 'find all uses of Config struct'.")]
+    async fn find_refs(
+        &self,
+        Parameters(req): Parameters<FindRefsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let limit = req.limit.unwrap_or(20);
+
+        let mut vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let mut analyzer = RefAnalyzer::new(&mut vector_store);
+        let refs = analyzer
+            .find_refs(&req.symbol, req.r#type.as_deref(), limit, req.repo.as_deref())
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let response = FindRefsResponse {
+            symbol: req.symbol,
+            definition: refs.definition.map(|d| SymbolDefinitionOutput {
+                name: d.name,
+                chunk_type: d.chunk_type.to_string(),
+                file_path: d.file_path,
+                start_line: d.start_line,
+                end_line: d.end_line,
+                signature: d.signature,
+            }),
+            usage_count: refs.usages.len(),
+            usages: refs
+                .usages
+                .iter()
+                .map(|u| SymbolUsageOutput {
+                    file_path: u.file_path.clone(),
+                    line: u.line,
+                    context: u.context.clone(),
+                })
+                .collect(),
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// List symbols in a file
+    #[tool(description = "List all symbols (functions, structs, traits, etc.) defined in a file. Returns each symbol's name, type, line range, and signature. Best for: 'what functions are in main.rs?', 'list all structs in config.rs', 'show me the API of this module'.")]
+    async fn list_symbols(
+        &self,
+        Parameters(req): Parameters<ListSymbolsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let analyzer = RefAnalyzer::new(&mut vector_store);
+        let file_symbols = analyzer
+            .list_symbols(&req.file, req.repo.as_deref())
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let response = ListSymbolsResponse {
+            file: file_symbols.path,
+            count: file_symbols.symbols.len(),
+            symbols: file_symbols
+                .symbols
+                .iter()
+                .map(|s| SymbolItemOutput {
+                    name: s.name.clone(),
+                    chunk_type: s.chunk_type.to_string(),
+                    start_line: s.start_line,
+                    end_line: s.end_line,
+                    signature: s.signature.clone(),
+                })
+                .collect(),
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
     /// Read a specific code chunk
     #[tool(description = "Read a specific section of code from a file. Specify the file path and line range. Optionally include context lines before and after.")]
     async fn read_chunk(
@@ -730,7 +813,8 @@ impl ServerHandler for BobbinMcpServer {
             },
             instructions: Some(
                 "Bobbin is a semantic code search engine. Use the search tool for natural language queries, \
-                grep for exact pattern matching, related for finding coupled files, and read_chunk to \
+                grep for exact pattern matching, find_refs to find symbol definitions and usages, \
+                list_symbols to see all symbols in a file, related for finding coupled files, and read_chunk to \
                 view specific code sections. Start with `bobbin://index/stats` to see the index status."
                     .to_string(),
             ),

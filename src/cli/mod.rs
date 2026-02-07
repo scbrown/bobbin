@@ -5,6 +5,7 @@ mod grep;
 mod history;
 mod index;
 mod init;
+mod refs;
 mod related;
 mod search;
 mod serve;
@@ -59,6 +60,9 @@ enum Commands {
     /// Keyword/regex search
     Grep(grep::GrepArgs),
 
+    /// Find symbol references and list file symbols
+    Refs(refs::RefsArgs),
+
     /// Find files related to a given file
     Related(related::RelatedArgs),
 
@@ -94,6 +98,7 @@ impl Cli {
             Commands::Context(args) => context::run(args, output).await,
             Commands::Deps(args) => deps::run(args, output).await,
             Commands::Grep(args) => grep::run(args, output).await,
+            Commands::Refs(args) => refs::run(args, output).await,
             Commands::Related(args) => related::run(args, output).await,
             Commands::History(args) => history::run(args, output).await,
             Commands::Status(args) => status::run(args, output).await,
