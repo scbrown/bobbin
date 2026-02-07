@@ -10,6 +10,7 @@ pub struct Config {
     pub embedding: EmbeddingConfig,
     pub search: SearchConfig,
     pub git: GitConfig,
+    pub dependencies: DependenciesConfig,
 }
 
 /// Configuration for indexing behavior
@@ -199,6 +200,20 @@ impl Default for GitConfig {
     }
 }
 
+/// Configuration for import dependency extraction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DependenciesConfig {
+    /// Enable import extraction and resolution during indexing
+    pub enabled: bool,
+}
+
+impl Default for DependenciesConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 impl Config {
     /// Load configuration from a TOML file
     pub fn load(path: &Path) -> Result<Self> {
@@ -354,6 +369,34 @@ max_seq_len = 512
             api_key: None,
         };
         assert!(api.resolve_api_key().is_none());
+    }
+
+    #[test]
+    fn test_dependencies_config_default_enabled() {
+        let config = Config::default();
+        assert!(config.dependencies.enabled);
+    }
+
+    #[test]
+    fn test_dependencies_config_disabled() {
+        let toml_str = r#"
+[dependencies]
+enabled = false
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(!config.dependencies.enabled);
+    }
+
+    #[test]
+    fn test_legacy_config_without_dependencies_section() {
+        // Config without [dependencies] should default to enabled
+        let toml_str = r#"
+[embedding]
+model = "all-MiniLM-L6-v2"
+batch_size = 32
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.dependencies.enabled);
     }
 
     #[test]
