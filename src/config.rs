@@ -247,3 +247,132 @@ impl Config {
         Ok(project_dirs.cache_dir().join("models"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config_backward_compatible() {
+        let config = EmbeddingConfig::default();
+        assert_eq!(config.backend, EmbeddingBackend::Onnx);
+        assert_eq!(config.model, "all-MiniLM-L6-v2");
+        assert_eq!(config.batch_size, 32);
+        assert!(config.dimensions.is_none());
+        assert!(config.api.is_none());
+        assert!(config.custom_model.is_none());
+    }
+
+    #[test]
+    fn test_parse_legacy_config() {
+        // Old-style config without backend field should still work
+        let toml_str = r#"
+[embedding]
+model = "all-MiniLM-L6-v2"
+batch_size = 32
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.embedding.backend, EmbeddingBackend::Onnx);
+        assert_eq!(config.embedding.model, "all-MiniLM-L6-v2");
+    }
+
+    #[test]
+    fn test_parse_openai_api_config() {
+        let toml_str = r#"
+[embedding]
+backend = "openai-api"
+model = "nomic-embed-text"
+dimensions = 768
+
+[embedding.api]
+url = "http://localhost:11434/v1/embeddings"
+api_key = "test-key"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.embedding.backend, EmbeddingBackend::OpenaiApi);
+        assert_eq!(config.embedding.model, "nomic-embed-text");
+        assert_eq!(config.embedding.dimensions, Some(768));
+        let api = config.embedding.api.unwrap();
+        assert_eq!(api.url, "http://localhost:11434/v1/embeddings");
+        assert_eq!(api.api_key, Some("test-key".to_string()));
+    }
+
+    #[test]
+    fn test_parse_custom_onnx_config() {
+        let toml_str = r#"
+[embedding]
+model = "custom"
+dimensions = 1024
+
+[embedding.custom_model]
+model_path = "/path/to/model.onnx"
+tokenizer_path = "/path/to/tokenizer.json"
+max_seq_len = 512
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.embedding.backend, EmbeddingBackend::Onnx);
+        assert_eq!(config.embedding.dimensions, Some(1024));
+        let custom = config.embedding.custom_model.unwrap();
+        assert_eq!(custom.model_path, "/path/to/model.onnx");
+        assert_eq!(custom.tokenizer_path, "/path/to/tokenizer.json");
+        assert_eq!(custom.max_seq_len, Some(512));
+    }
+
+    #[test]
+    fn test_api_key_resolve_literal() {
+        let api = ApiEmbeddingConfig {
+            url: "http://example.com".to_string(),
+            api_key: Some("literal-key".to_string()),
+        };
+        assert_eq!(api.resolve_api_key(), Some("literal-key".to_string()));
+    }
+
+    #[test]
+    fn test_api_key_resolve_env() {
+        std::env::set_var("TEST_BOBBIN_API_KEY", "env-value");
+        let api = ApiEmbeddingConfig {
+            url: "http://example.com".to_string(),
+            api_key: Some("env:TEST_BOBBIN_API_KEY".to_string()),
+        };
+        assert_eq!(api.resolve_api_key(), Some("env-value".to_string()));
+        std::env::remove_var("TEST_BOBBIN_API_KEY");
+    }
+
+    #[test]
+    fn test_api_key_resolve_empty() {
+        let api = ApiEmbeddingConfig {
+            url: "http://example.com".to_string(),
+            api_key: Some("".to_string()),
+        };
+        assert!(api.resolve_api_key().is_none());
+    }
+
+    #[test]
+    fn test_api_key_resolve_none() {
+        let api = ApiEmbeddingConfig {
+            url: "http://example.com".to_string(),
+            api_key: None,
+        };
+        assert!(api.resolve_api_key().is_none());
+    }
+
+    #[test]
+    fn test_backend_serde_roundtrip() {
+        let config = EmbeddingConfig {
+            backend: EmbeddingBackend::OpenaiApi,
+            model: "test".to_string(),
+            batch_size: 16,
+            dimensions: Some(768),
+            api: Some(ApiEmbeddingConfig {
+                url: "http://localhost:8080/v1/embeddings".to_string(),
+                api_key: None,
+            }),
+            custom_model: None,
+            context: ContextualEmbeddingConfig::default(),
+        };
+        let serialized = toml::to_string_pretty(&config).unwrap();
+        let deserialized: EmbeddingConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.backend, EmbeddingBackend::OpenaiApi);
+        assert_eq!(deserialized.dimensions, Some(768));
+    }
+}
