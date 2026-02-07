@@ -61,7 +61,7 @@ pub async fn run(args: DepsArgs, output: OutputConfig) -> Result<()> {
     let show_dependents = args.reverse || args.both;
 
     let imports = if show_imports {
-        Some(store.get_imports(&rel_path)?)
+        Some(store.get_dependencies(&rel_path)?)
     } else {
         None
     };
@@ -78,8 +78,8 @@ pub async fn run(args: DepsArgs, output: OutputConfig) -> Result<()> {
             imports: imports.map(|imps| {
                 imps.into_iter()
                     .map(|e| DepEntry {
-                        specifier: e.import_specifier,
-                        resolved_path: e.resolved_path,
+                        specifier: e.import_statement,
+                        resolved_path: if e.resolved { Some(e.file_b) } else { None },
                         source_file: None,
                     })
                     .collect()
@@ -87,9 +87,9 @@ pub async fn run(args: DepsArgs, output: OutputConfig) -> Result<()> {
             dependents: dependents.map(|deps| {
                 deps.into_iter()
                     .map(|e| DepEntry {
-                        specifier: e.import_specifier,
+                        specifier: e.import_statement,
                         resolved_path: None,
-                        source_file: Some(e.source_file),
+                        source_file: Some(e.file_a),
                     })
                     .collect()
             }),
@@ -103,10 +103,10 @@ pub async fn run(args: DepsArgs, output: OutputConfig) -> Result<()> {
                     println!("  No imports found");
                 } else {
                     for imp in imps {
-                        if let Some(ref resolved) = imp.resolved_path {
-                            println!("  {} → {}", imp.import_specifier, resolved.green());
+                        if imp.resolved {
+                            println!("  {} → {}", imp.import_statement, imp.file_b.green());
                         } else {
-                            println!("  {} {}", imp.import_specifier, "(unresolved)".dimmed());
+                            println!("  {} {}", imp.import_statement, "(unresolved)".dimmed());
                         }
                     }
                 }
@@ -124,7 +124,7 @@ pub async fn run(args: DepsArgs, output: OutputConfig) -> Result<()> {
                     println!("  No dependents found");
                 } else {
                     for dep in deps {
-                        println!("  {} (via {})", dep.source_file.green(), dep.import_specifier.dimmed());
+                        println!("  {} (via {})", dep.file_a.green(), dep.import_statement.dimmed());
                     }
                 }
             }

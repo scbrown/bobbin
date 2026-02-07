@@ -10,6 +10,7 @@ pub struct Config {
     pub embedding: EmbeddingConfig,
     pub search: SearchConfig,
     pub git: GitConfig,
+    pub dependencies: DependencyConfig,
 }
 
 /// Configuration for indexing behavior
@@ -173,6 +174,25 @@ impl Default for SearchConfig {
         Self {
             default_limit: 10,
             semantic_weight: 0.7,
+        }
+    }
+}
+
+/// Configuration for dependency analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DependencyConfig {
+    /// Enable dependency extraction and storage
+    pub enabled: bool,
+    /// Enable import path resolution
+    pub resolve_imports: bool,
+}
+
+impl Default for DependencyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            resolve_imports: true,
         }
     }
 }
