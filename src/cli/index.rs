@@ -49,6 +49,12 @@ struct IndexOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     total_chunks: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    imports_total: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    imports_resolved: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    imports_unresolved: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     elapsed_ms: Option<u128>,
     #[serde(skip_serializing_if = "Option::is_none")]
     errors: Option<usize>,
@@ -182,6 +188,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             println!("  Cleaning up {} deleted files...", deleted_files.len());
         }
         vector_store.delete_by_file(&deleted_files).await?;
+        // Also clear import dependencies for deleted files
+        if config.dependencies.enabled {
+            metadata_store.clear_dependencies_for_files(&deleted_files)?;
+        }
     }
 
     // Filter files that need indexing
@@ -218,6 +228,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 deleted_files: deleted_files.len(),
                 total_files: None,
                 total_chunks: None,
+                imports_total: None,
+                imports_resolved: None,
+                imports_unresolved: None,
                 elapsed_ms: None,
                 errors: None,
             };
@@ -287,12 +300,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             }
         };
 
-        // Extract imports from this file
-        let file_imports = parser.extract_imports(file_path, &content);
-        for mut imp in file_imports {
-            // Normalize source path to relative
-            imp.source_file = rel_path.clone();
-            all_imports.push(imp);
+        // Extract imports from this file (if dependency tracking enabled)
+        if config.dependencies.enabled {
+            let file_imports = parser.extract_imports(file_path, &content);
+            for mut imp in file_imports {
+                // Normalize source path to relative
+                imp.source_file = rel_path.clone();
+                all_imports.push(imp);
+            }
         }
 
         if chunks.is_empty() {
@@ -392,7 +407,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     }
 
     // Analyze and store import dependencies
-    if !all_imports.is_empty() {
+    let mut dep_count: usize = 0;
+    let mut resolved_count: usize = 0;
+    if config.dependencies.enabled && !all_imports.is_empty() {
         if output.verbose && !output.quiet && !output.json {
             println!("  Resolving {} import edges...", all_imports.len());
         }
@@ -411,8 +428,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
         metadata_store.begin_transaction()?;
         metadata_store.clear_dependencies_for_files(&reindexed_files)?;
-        let mut dep_count = 0;
-        let mut resolved_count = 0;
         for edge in &all_imports {
             if metadata_store.upsert_dependency(edge).is_ok() {
                 dep_count += 1;
@@ -433,6 +448,17 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     let elapsed = start_time.elapsed();
 
+    // Build import stats for output (only if deps were processed)
+    let (imports_total, imports_resolved, imports_unresolved) = if dep_count > 0 {
+        (
+            Some(dep_count),
+            Some(resolved_count),
+            Some(dep_count - resolved_count),
+        )
+    } else {
+        (None, None, None)
+    };
+
     if output.json {
         let stats = vector_store.get_stats(Some(repo_name)).await?;
         let json_output = IndexOutput {
@@ -442,6 +468,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             deleted_files: deleted_files.len(),
             total_files: Some(stats.total_files),
             total_chunks: Some(stats.total_chunks),
+            imports_total,
+            imports_resolved,
+            imports_unresolved,
             elapsed_ms: Some(elapsed.as_millis()),
             errors: Some(errors.len()),
         };
@@ -454,6 +483,15 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             total_chunks,
             elapsed.as_secs_f64()
         );
+
+        if dep_count > 0 {
+            println!(
+                "  Imports: {} total, {} resolved, {} unresolved",
+                dep_count,
+                resolved_count,
+                dep_count - resolved_count
+            );
+        }
 
         if !deleted_files.is_empty() {
             println!("  Cleaned up {} deleted files", deleted_files.len());
