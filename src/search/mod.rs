@@ -1,6 +1,7 @@
 pub mod context;
 pub mod hybrid;
 pub mod keyword;
+pub mod review;
 pub mod semantic;
 
 // Context assembler types used by cli/context.rs and mcp/server.rs directly

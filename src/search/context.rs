@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::index::Embedder;
 use crate::storage::{MetadataStore, VectorStore};
-use crate::types::{ChunkType, MatchType};
+use crate::types::{Chunk, ChunkType, MatchType};
 
 /// Configuration for context assembly
 pub struct ContextConfig {
@@ -88,6 +88,34 @@ pub enum FileRelevance {
     Coupled,
 }
 
+/// How a seed chunk was discovered
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case", tag = "type")]
+pub enum SeedSource {
+    /// Found via hybrid search (semantic + keyword)
+    Search {
+        match_type: MatchType,
+    },
+    /// Found via git diff overlap
+    Diff {
+        status: String,
+        added_lines: usize,
+        removed_lines: usize,
+    },
+}
+
+/// An externally-provided seed for context assembly.
+///
+/// Wraps a `Chunk` with a relevance score and provenance information.
+/// Both search-based and diff-based workflows produce `SeedChunk`s
+/// that feed into `ContextAssembler::assemble_from_seeds()`.
+#[derive(Debug, Clone, Serialize)]
+pub struct SeedChunk {
+    pub chunk: Chunk,
+    pub score: f32,
+    pub source: SeedSource,
+}
+
 /// Assembles task-relevant context from search and git history
 pub struct ContextAssembler {
     embedder: Embedder,
@@ -139,20 +167,97 @@ impl ContextAssembler {
         }
     }
 
-    /// Assemble a context bundle for the given query
+    /// Assemble a context bundle for the given query using hybrid search.
+    ///
+    /// This is the standard entry point: runs hybrid search to find seeds,
+    /// then expands via coupling and applies budget constraints.
     pub async fn assemble(mut self, query: &str, repo: Option<&str>) -> Result<ContextBundle> {
         // Phase 1: Seed via hybrid search
         let seed_results = self.run_hybrid_search(query, repo).await?;
 
-        // Collect unique files from seed results
-        let seed_files: HashSet<String> = seed_results.iter().map(|r| r.file_path.clone()).collect();
+        // Convert internal SeedResults to public SeedChunks
+        let seeds: Vec<SeedChunk> = seed_results
+            .into_iter()
+            .map(|r| SeedChunk {
+                chunk: Chunk {
+                    id: r.chunk_id,
+                    file_path: r.file_path,
+                    language: r.language,
+                    name: r.name,
+                    chunk_type: r.chunk_type,
+                    start_line: r.start_line,
+                    end_line: r.end_line,
+                    content: r.content,
+                },
+                score: r.score,
+                source: SeedSource::Search {
+                    match_type: r.match_type.unwrap_or(MatchType::Hybrid),
+                },
+            })
+            .collect();
+
+        self.assemble_from_seeds(query, seeds, repo).await
+    }
+
+    /// Assemble a context bundle from externally-provided seed chunks.
+    ///
+    /// This is the generalized entry point that accepts pre-computed seeds
+    /// (from search, diff analysis, or any other source) and runs coupling
+    /// expansion + budget assembly on them.
+    pub async fn assemble_from_seeds(
+        mut self,
+        query: &str,
+        seeds: Vec<SeedChunk>,
+        repo: Option<&str>,
+    ) -> Result<ContextBundle> {
+        // Collect unique files from seeds
+        let seed_files: HashSet<String> =
+            seeds.iter().map(|s| s.chunk.file_path.clone()).collect();
+
+        // Convert SeedChunks to internal SeedResults for assembly
+        let seed_results: Vec<SeedResult> = seeds
+            .into_iter()
+            .map(|s| {
+                let match_type = match &s.source {
+                    SeedSource::Search { match_type } => Some(*match_type),
+                    SeedSource::Diff { .. } => None,
+                };
+                SeedResult {
+                    chunk_id: s.chunk.id,
+                    file_path: s.chunk.file_path,
+                    language: s.chunk.language,
+                    name: s.chunk.name,
+                    chunk_type: s.chunk.chunk_type,
+                    start_line: s.chunk.start_line,
+                    end_line: s.chunk.end_line,
+                    content: s.chunk.content,
+                    score: s.score,
+                    match_type,
+                }
+            })
+            .collect();
 
         // Phase 2: Expand via temporal coupling
+        let coupled_chunks = self
+            .expand_coupling(&seed_files, repo)
+            .await?;
+
+        // Phase 3: Assemble with budget
+        assemble_bundle(query, &self.config, seed_results, coupled_chunks)
+    }
+
+    /// Expand seed files via temporal coupling relationships.
+    async fn expand_coupling(
+        &mut self,
+        seed_files: &HashSet<String>,
+        repo: Option<&str>,
+    ) -> Result<Vec<CoupledChunkInfo>> {
         let mut coupled_chunks: Vec<CoupledChunkInfo> = Vec::new();
+
         if self.config.depth > 0 {
             let mut seen_coupled_files: HashSet<String> = HashSet::new();
 
-            for seed_file in &seed_files {
+            for seed_file in seed_files {
                 let couplings =
                     self.metadata_store
                         .get_coupling(seed_file, self.config.max_coupled)?;
@@ -169,7 +274,9 @@ impl ContextAssembler {
                     };
 
                     // Skip files already in seed results or already fetched
-                    if seed_files.contains(other_file) || seen_coupled_files.contains(other_file) {
+                    if seed_files.contains(other_file)
+                        || seen_coupled_files.contains(other_file)
+                    {
                         continue;
                     }
                     seen_coupled_files.insert(other_file.to_string());
@@ -197,8 +304,7 @@ impl ContextAssembler {
             }
         }
 
-        // Phase 3: Assemble with budget
-        assemble_bundle(query, &self.config, seed_results, coupled_chunks)
+        Ok(coupled_chunks)
     }
 
     /// Run hybrid search manually to avoid ownership issues with HybridSearch
