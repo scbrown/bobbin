@@ -13,7 +13,7 @@ use super::OutputConfig;
 use crate::config::{Config, ContextualEmbeddingConfig};
 use crate::index::{embedder, resolver, Embedder, Parser};
 use crate::storage::{MetadataStore, VectorStore};
-use crate::types::{Chunk, ImportEdge};
+use crate::types::{Chunk, ImportDependency, ImportEdge};
 
 #[derive(Args)]
 pub struct IndexArgs {
@@ -190,7 +190,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         vector_store.delete_by_file(&deleted_files).await?;
         // Also clear import dependencies for deleted files
         if config.dependencies.enabled {
-            metadata_store.clear_dependencies_for_files(&deleted_files)?;
+            for file in &deleted_files {
+                metadata_store.clear_file_dependencies(file)?;
+            }
         }
     }
 
@@ -427,11 +429,28 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .collect();
 
         metadata_store.begin_transaction()?;
-        metadata_store.clear_dependencies_for_files(&reindexed_files)?;
+        for file in &reindexed_files {
+            metadata_store.clear_file_dependencies(file)?;
+        }
+        let mut dep_count = 0;
+        let mut resolved_count = 0;
         for edge in &all_imports {
-            if metadata_store.upsert_dependency(edge).is_ok() {
+            let resolved = edge.resolved_path.is_some();
+            let dep = ImportDependency {
+                file_a: edge.source_file.clone(),
+                file_b: if let Some(ref rp) = edge.resolved_path {
+                    rp.clone()
+                } else {
+                    format!("unresolved:{}", edge.import_specifier)
+                },
+                dep_type: "import".to_string(),
+                import_statement: edge.import_specifier.clone(),
+                symbol: None,
+                resolved,
+            };
+            if metadata_store.upsert_dependency(&dep).is_ok() {
                 dep_count += 1;
-                if edge.resolved_path.is_some() {
+                if resolved {
                     resolved_count += 1;
                 }
             }

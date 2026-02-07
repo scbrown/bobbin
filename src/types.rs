@@ -103,7 +103,7 @@ pub struct RawImport {
     pub dep_type: String,
 }
 
-/// An import/dependency edge between two files
+/// An import/dependency edge between two files (used during parsing/resolution)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportEdge {
     /// The file that contains the import statement
@@ -114,6 +114,23 @@ pub struct ImportEdge {
     pub resolved_path: Option<String>,
     /// The language of the source file
     pub language: String,
+}
+
+/// A stored import dependency edge between two files
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportDependency {
+    /// Importer (source file)
+    pub file_a: String,
+    /// Imported (target file or "unresolved:<path>")
+    pub file_b: String,
+    /// Dependency type: "use", "import", "require", "from", "include"
+    pub dep_type: String,
+    /// Raw import statement text
+    pub import_statement: String,
+    /// What's imported (nullable)
+    pub symbol: Option<String>,
+    /// True if file_b is a real file path
+    pub resolved: bool,
 }
 
 /// Statistics about the index

@@ -10,7 +10,7 @@ pub struct Config {
     pub embedding: EmbeddingConfig,
     pub search: SearchConfig,
     pub git: GitConfig,
-    pub dependencies: DependenciesConfig,
+    pub dependencies: DependencyConfig,
 }
 
 /// Configuration for indexing behavior
@@ -178,6 +178,25 @@ impl Default for SearchConfig {
     }
 }
 
+/// Configuration for dependency analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DependencyConfig {
+    /// Enable dependency extraction and storage
+    pub enabled: bool,
+    /// Enable import path resolution
+    pub resolve_imports: bool,
+}
+
+impl Default for DependencyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            resolve_imports: true,
+        }
+    }
+}
+
 /// Configuration for git analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -200,19 +219,6 @@ impl Default for GitConfig {
     }
 }
 
-/// Configuration for import dependency extraction
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct DependenciesConfig {
-    /// Enable import extraction and resolution during indexing
-    pub enabled: bool,
-}
-
-impl Default for DependenciesConfig {
-    fn default() -> Self {
-        Self { enabled: true }
-    }
-}
 
 impl Config {
     /// Load configuration from a TOML file

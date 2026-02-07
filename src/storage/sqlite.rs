@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension};
 use std::path::Path;
 
-use crate::types::{FileCoupling, ImportEdge};
+use crate::types::{FileCoupling, ImportDependency};
 
 /// Git coupling and metadata storage using SQLite
 ///
@@ -49,17 +49,19 @@ impl MetadataStore {
 
             -- Import/dependency graph edges
             CREATE TABLE IF NOT EXISTS dependencies (
-                source_file TEXT NOT NULL,
-                import_specifier TEXT NOT NULL,
-                resolved_path TEXT,
-                language TEXT NOT NULL,
-                PRIMARY KEY (source_file, import_specifier)
+                file_a TEXT NOT NULL,
+                file_b TEXT NOT NULL,
+                dep_type TEXT NOT NULL,
+                import_statement TEXT,
+                symbol TEXT,
+                resolved BOOLEAN DEFAULT 0,
+                PRIMARY KEY (file_a, file_b, dep_type)
             );
 
             -- Indexes
             CREATE INDEX IF NOT EXISTS idx_coupling_score ON coupling(score DESC);
-            CREATE INDEX IF NOT EXISTS idx_deps_source ON dependencies(source_file);
-            CREATE INDEX IF NOT EXISTS idx_deps_resolved ON dependencies(resolved_path);
+            CREATE INDEX IF NOT EXISTS idx_deps_source ON dependencies(file_a);
+            CREATE INDEX IF NOT EXISTS idx_deps_target ON dependencies(file_b);
         "#,
         )?;
 
@@ -139,40 +141,45 @@ impl MetadataStore {
         Ok(())
     }
 
-    /// Insert an import edge
-    pub fn upsert_dependency(&self, edge: &ImportEdge) -> Result<()> {
+    /// Insert or update a dependency edge
+    pub fn upsert_dependency(&self, dep: &ImportDependency) -> Result<()> {
         self.conn.execute(
-            r#"INSERT INTO dependencies (source_file, import_specifier, resolved_path, language)
-               VALUES (?1, ?2, ?3, ?4)
-               ON CONFLICT(source_file, import_specifier) DO UPDATE SET
-                   resolved_path = excluded.resolved_path,
-                   language = excluded.language"#,
+            r#"INSERT INTO dependencies (file_a, file_b, dep_type, import_statement, symbol, resolved)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+               ON CONFLICT(file_a, file_b, dep_type) DO UPDATE SET
+                   import_statement = excluded.import_statement,
+                   symbol = excluded.symbol,
+                   resolved = excluded.resolved"#,
             (
-                &edge.source_file,
-                &edge.import_specifier,
-                &edge.resolved_path,
-                &edge.language,
+                &dep.file_a,
+                &dep.file_b,
+                &dep.dep_type,
+                &dep.import_statement,
+                &dep.symbol,
+                dep.resolved,
             ),
         )?;
         Ok(())
     }
 
-    /// Get imports from a file (what does this file depend on?)
-    pub fn get_imports(&self, file_path: &str) -> Result<Vec<ImportEdge>> {
+    /// Get dependencies from a file (what does this file import?)
+    pub fn get_dependencies(&self, file_path: &str) -> Result<Vec<ImportDependency>> {
         let mut stmt = self.conn.prepare(
-            r#"SELECT source_file, import_specifier, resolved_path, language
+            r#"SELECT file_a, file_b, dep_type, import_statement, symbol, resolved
                FROM dependencies
-               WHERE source_file = ?1
-               ORDER BY import_specifier"#,
+               WHERE file_a = ?1
+               ORDER BY file_b"#,
         )?;
 
         let results = stmt
             .query_map([file_path], |row| {
-                Ok(ImportEdge {
-                    source_file: row.get(0)?,
-                    import_specifier: row.get(1)?,
-                    resolved_path: row.get(2)?,
-                    language: row.get(3)?,
+                Ok(ImportDependency {
+                    file_a: row.get(0)?,
+                    file_b: row.get(1)?,
+                    dep_type: row.get(2)?,
+                    import_statement: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                    symbol: row.get(4)?,
+                    resolved: row.get(5)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -181,21 +188,23 @@ impl MetadataStore {
     }
 
     /// Get reverse dependencies (what files import this file?)
-    pub fn get_dependents(&self, file_path: &str) -> Result<Vec<ImportEdge>> {
+    pub fn get_dependents(&self, file_path: &str) -> Result<Vec<ImportDependency>> {
         let mut stmt = self.conn.prepare(
-            r#"SELECT source_file, import_specifier, resolved_path, language
+            r#"SELECT file_a, file_b, dep_type, import_statement, symbol, resolved
                FROM dependencies
-               WHERE resolved_path = ?1
-               ORDER BY source_file"#,
+               WHERE file_b = ?1
+               ORDER BY file_a"#,
         )?;
 
         let results = stmt
             .query_map([file_path], |row| {
-                Ok(ImportEdge {
-                    source_file: row.get(0)?,
-                    import_specifier: row.get(1)?,
-                    resolved_path: row.get(2)?,
-                    language: row.get(3)?,
+                Ok(ImportDependency {
+                    file_a: row.get(0)?,
+                    file_b: row.get(1)?,
+                    dep_type: row.get(2)?,
+                    import_statement: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                    symbol: row.get(4)?,
+                    resolved: row.get(5)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -203,18 +212,18 @@ impl MetadataStore {
         Ok(results)
     }
 
-    /// Clear all dependency data for a set of files
-    pub fn clear_dependencies_for_files(&self, files: &[String]) -> Result<()> {
-        if files.is_empty() {
-            return Ok(());
-        }
-        let placeholders: Vec<String> = (1..=files.len()).map(|i| format!("?{}", i)).collect();
-        let sql = format!(
-            "DELETE FROM dependencies WHERE source_file IN ({})",
-            placeholders.join(", ")
-        );
-        let params: Vec<&dyn rusqlite::types::ToSql> = files.iter().map(|f| f as &dyn rusqlite::types::ToSql).collect();
-        self.conn.execute(&sql, params.as_slice())?;
+    /// Clear all dependency data
+    pub fn clear_dependencies(&self) -> Result<()> {
+        self.conn.execute("DELETE FROM dependencies", [])?;
+        Ok(())
+    }
+
+    /// Clear all dependency data for a single file (for re-indexing)
+    pub fn clear_file_dependencies(&self, file_path: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM dependencies WHERE file_a = ?1",
+            [file_path],
+        )?;
         Ok(())
     }
 
@@ -224,7 +233,7 @@ impl MetadataStore {
             .conn
             .query_row("SELECT COUNT(*) FROM dependencies", [], |row| row.get(0))?;
         let resolved: u64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM dependencies WHERE resolved_path IS NOT NULL",
+            "SELECT COUNT(*) FROM dependencies WHERE resolved = 1",
             [],
             |row| row.get(0),
         )?;
@@ -366,18 +375,22 @@ mod tests {
     fn test_dependencies_insert_and_query() {
         let (store, _dir) = create_test_store();
 
-        let edge = ImportEdge {
-            source_file: "src/main.rs".to_string(),
-            import_specifier: "crate::types::Chunk".to_string(),
-            resolved_path: Some("src/types.rs".to_string()),
-            language: "rust".to_string(),
+        let dep = ImportDependency {
+            file_a: "src/main.rs".to_string(),
+            file_b: "src/types.rs".to_string(),
+            dep_type: "use".to_string(),
+            import_statement: "use crate::types::Chunk;".to_string(),
+            symbol: Some("Chunk".to_string()),
+            resolved: true,
         };
-        store.upsert_dependency(&edge).unwrap();
+        store.upsert_dependency(&dep).unwrap();
 
-        let imports = store.get_imports("src/main.rs").unwrap();
-        assert_eq!(imports.len(), 1);
-        assert_eq!(imports[0].import_specifier, "crate::types::Chunk");
-        assert_eq!(imports[0].resolved_path, Some("src/types.rs".to_string()));
+        let deps = store.get_dependencies("src/main.rs").unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].file_b, "src/types.rs");
+        assert_eq!(deps[0].dep_type, "use");
+        assert_eq!(deps[0].symbol, Some("Chunk".to_string()));
+        assert!(deps[0].resolved);
     }
 
     #[test]
@@ -385,19 +398,23 @@ mod tests {
         let (store, _dir) = create_test_store();
 
         store
-            .upsert_dependency(&ImportEdge {
-                source_file: "src/main.rs".to_string(),
-                import_specifier: "crate::types".to_string(),
-                resolved_path: Some("src/types.rs".to_string()),
-                language: "rust".to_string(),
+            .upsert_dependency(&ImportDependency {
+                file_a: "src/main.rs".to_string(),
+                file_b: "src/types.rs".to_string(),
+                dep_type: "use".to_string(),
+                import_statement: "use crate::types;".to_string(),
+                symbol: None,
+                resolved: true,
             })
             .unwrap();
         store
-            .upsert_dependency(&ImportEdge {
-                source_file: "src/cli/search.rs".to_string(),
-                import_specifier: "crate::types::SearchResult".to_string(),
-                resolved_path: Some("src/types.rs".to_string()),
-                language: "rust".to_string(),
+            .upsert_dependency(&ImportDependency {
+                file_a: "src/cli/search.rs".to_string(),
+                file_b: "src/types.rs".to_string(),
+                dep_type: "use".to_string(),
+                import_statement: "use crate::types::SearchResult;".to_string(),
+                symbol: Some("SearchResult".to_string()),
+                resolved: true,
             })
             .unwrap();
 
@@ -406,33 +423,87 @@ mod tests {
     }
 
     #[test]
-    fn test_dependencies_clear_for_files() {
+    fn test_dependencies_clear_file() {
         let (store, _dir) = create_test_store();
 
         store
-            .upsert_dependency(&ImportEdge {
-                source_file: "src/a.rs".to_string(),
-                import_specifier: "crate::b".to_string(),
-                resolved_path: Some("src/b.rs".to_string()),
-                language: "rust".to_string(),
+            .upsert_dependency(&ImportDependency {
+                file_a: "src/a.rs".to_string(),
+                file_b: "src/b.rs".to_string(),
+                dep_type: "use".to_string(),
+                import_statement: "use crate::b;".to_string(),
+                symbol: None,
+                resolved: true,
             })
             .unwrap();
         store
-            .upsert_dependency(&ImportEdge {
-                source_file: "src/c.rs".to_string(),
-                import_specifier: "crate::b".to_string(),
-                resolved_path: Some("src/b.rs".to_string()),
-                language: "rust".to_string(),
+            .upsert_dependency(&ImportDependency {
+                file_a: "src/c.rs".to_string(),
+                file_b: "src/b.rs".to_string(),
+                dep_type: "use".to_string(),
+                import_statement: "use crate::b;".to_string(),
+                symbol: None,
+                resolved: true,
             })
             .unwrap();
 
         // Clear only a.rs deps
+        store.clear_file_dependencies("src/a.rs").unwrap();
+
+        assert_eq!(store.get_dependencies("src/a.rs").unwrap().len(), 0);
+        assert_eq!(store.get_dependencies("src/c.rs").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_dependencies_clear_all() {
+        let (store, _dir) = create_test_store();
+
         store
-            .clear_dependencies_for_files(&["src/a.rs".to_string()])
+            .upsert_dependency(&ImportDependency {
+                file_a: "src/a.rs".to_string(),
+                file_b: "src/b.rs".to_string(),
+                dep_type: "use".to_string(),
+                import_statement: "use crate::b;".to_string(),
+                symbol: None,
+                resolved: true,
+            })
             .unwrap();
 
-        assert_eq!(store.get_imports("src/a.rs").unwrap().len(), 0);
-        assert_eq!(store.get_imports("src/c.rs").unwrap().len(), 1);
+        store.clear_dependencies().unwrap();
+        assert_eq!(store.get_dependencies("src/a.rs").unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_dependency_upsert() {
+        let (store, _dir) = create_test_store();
+
+        store
+            .upsert_dependency(&ImportDependency {
+                file_a: "src/a.rs".to_string(),
+                file_b: "unresolved:crate::b".to_string(),
+                dep_type: "use".to_string(),
+                import_statement: "use crate::b;".to_string(),
+                symbol: None,
+                resolved: false,
+            })
+            .unwrap();
+
+        // Upsert with resolved path
+        store
+            .upsert_dependency(&ImportDependency {
+                file_a: "src/a.rs".to_string(),
+                file_b: "unresolved:crate::b".to_string(),
+                dep_type: "use".to_string(),
+                import_statement: "use crate::b;".to_string(),
+                symbol: Some("b".to_string()),
+                resolved: true,
+            })
+            .unwrap();
+
+        let deps = store.get_dependencies("src/a.rs").unwrap();
+        assert_eq!(deps.len(), 1);
+        assert!(deps[0].resolved);
+        assert_eq!(deps[0].symbol, Some("b".to_string()));
     }
 
     #[test]
@@ -440,19 +511,23 @@ mod tests {
         let (store, _dir) = create_test_store();
 
         store
-            .upsert_dependency(&ImportEdge {
-                source_file: "src/a.rs".to_string(),
-                import_specifier: "crate::b".to_string(),
-                resolved_path: Some("src/b.rs".to_string()),
-                language: "rust".to_string(),
+            .upsert_dependency(&ImportDependency {
+                file_a: "src/a.rs".to_string(),
+                file_b: "src/b.rs".to_string(),
+                dep_type: "use".to_string(),
+                import_statement: "use crate::b;".to_string(),
+                symbol: None,
+                resolved: true,
             })
             .unwrap();
         store
-            .upsert_dependency(&ImportEdge {
-                source_file: "src/a.rs".to_string(),
-                import_specifier: "anyhow::Result".to_string(),
-                resolved_path: None,
-                language: "rust".to_string(),
+            .upsert_dependency(&ImportDependency {
+                file_a: "src/a.rs".to_string(),
+                file_b: "unresolved:anyhow::Result".to_string(),
+                dep_type: "use".to_string(),
+                import_statement: "use anyhow::Result;".to_string(),
+                symbol: Some("Result".to_string()),
+                resolved: false,
             })
             .unwrap();
 
