@@ -139,20 +139,39 @@ EOF
         local tree_sha=$(echo -e "100644 blob $blob_sha\tlock.json" | git mktree)
         local commit_sha=$(git commit-tree "$tree_sha" -m "merge lock: $holder")
 
+        local push_stderr
+        push_stderr=$(mktemp)
+        trap 'rm -f "$push_stderr"; release_merge_lock "$ISSUE_ID"' EXIT
+
         while [ $(date +%s) -lt $deadline ]; do
-            if git push origin "$commit_sha:$LOCK_REF" 2>/dev/null; then
+            if git push origin "$commit_sha:$LOCK_REF" 2>"$push_stderr"; then
                 echo "Acquired merge lock for $holder"
                 LOCK_ACQUIRED=true
+                rm -f "$push_stderr"
+                trap 'release_merge_lock "$ISSUE_ID"' EXIT
                 return 0
             fi
 
-            # Check who holds it
+            # Distinguish lock contention from real push errors
+            # Lock contention: ref already exists → rejected/non-fast-forward
+            # Real errors: pre-push hook failures, auth issues, network problems
+            if ! grep -qiE '\[rejected\]|non-fast-forward|fetch first|stale info' "$push_stderr" 2>/dev/null; then
+                echo "ERROR: Push failed (not lock contention):"
+                cat "$push_stderr" >&2
+                rm -f "$push_stderr"
+                trap 'release_merge_lock "$ISSUE_ID"' EXIT
+                return 1
+            fi
+
+            # It's lock contention - check who holds it
             git fetch origin "$LOCK_REF" 2>/dev/null || true
             local current_holder=$(git cat-file -p FETCH_HEAD 2>/dev/null | grep '"holder"' | cut -d'"' -f4 || echo "unknown")
             echo "Waiting for merge lock (held by $current_holder)..."
             sleep $LOCK_POLL_INTERVAL
         done
 
+        rm -f "$push_stderr"
+        trap 'release_merge_lock "$ISSUE_ID"' EXIT
         echo "ERROR: Timeout waiting for merge lock after ${LOCK_TIMEOUT}s"
         return 1
     }
@@ -160,11 +179,15 @@ EOF
     release_merge_lock() {
         local holder="$1"
         if [ "$LOCK_ACQUIRED" = true ]; then
-            if git push origin --delete "$LOCK_REF" 2>/dev/null; then
+            local release_stderr
+            release_stderr=$(mktemp)
+            if git push origin --delete "$LOCK_REF" 2>"$release_stderr"; then
                 echo "Released merge lock for $holder"
             else
-                echo "Warning: Could not release merge lock"
+                echo "Warning: Could not release merge lock:"
+                cat "$release_stderr" >&2
             fi
+            rm -f "$release_stderr"
             LOCK_ACQUIRED=false
         fi
     }
