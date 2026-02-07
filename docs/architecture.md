@@ -2,7 +2,7 @@
 
 ## Overview
 
-Bobbin is a local-first code context engine with Temporal RAG, built in Rust. It provides semantic and keyword search over codebases using:
+Bobbin is a local-first code context engine built in Rust. It provides semantic and keyword search over codebases using:
 
 - **Tree-sitter** for structural code parsing (Rust, TypeScript, Python, Go, Java, C++)
 - **pulldown-cmark** for semantic markdown parsing (sections, tables, code blocks, frontmatter)

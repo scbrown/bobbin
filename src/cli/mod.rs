@@ -13,7 +13,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "bobbin")]
-#[command(about = "Local-first code context engine with Temporal RAG")]
+#[command(about = "Local-first code context engine")]
 #[command(version)]
 pub struct Cli {
     #[command(subcommand)]

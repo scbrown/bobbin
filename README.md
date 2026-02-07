@@ -1,6 +1,6 @@
 # Bobbin
 
-A local-first code context engine with Temporal RAG. Bobbin indexes your codebase for semantic search using embeddings stored in LanceDB, with temporal coupling analysis via SQLite.
+A local-first code context engine. Bobbin indexes your codebase for semantic search using embeddings stored in LanceDB, with temporal coupling analysis via SQLite.
 
 ## Features
 
