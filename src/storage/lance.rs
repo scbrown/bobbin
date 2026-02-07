@@ -947,6 +947,74 @@ impl VectorStore {
         Ok(chunks)
     }
 
+    /// Get all chunks whose chunk_name matches the given name, optionally filtered by repo
+    pub async fn get_chunks_by_name(
+        &self,
+        name: &str,
+        repo: Option<&str>,
+    ) -> Result<Vec<Chunk>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let mut filter = format!("chunk_name = '{}'", name.replace('\'', "''"));
+        if let Some(repo_name) = repo {
+            filter.push_str(&format!(" AND repo = '{}'", repo_name.replace('\'', "''")));
+        }
+
+        let results = table
+            .query()
+            .only_if(filter)
+            .execute()
+            .await
+            .context("Failed to query chunks by name")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect chunks by name")?;
+
+        let mut chunks = Vec::new();
+        for batch in &batches {
+            let ids = batch.column_by_name("id").context("Missing id column")?
+                .as_any().downcast_ref::<StringArray>().context("id column has wrong type")?;
+            let file_paths = batch.column_by_name("file_path").context("Missing file_path column")?
+                .as_any().downcast_ref::<StringArray>().context("file_path column has wrong type")?;
+            let chunk_names = batch.column_by_name("chunk_name").context("Missing chunk_name column")?
+                .as_any().downcast_ref::<StringArray>().context("chunk_name column has wrong type")?;
+            let chunk_types = batch.column_by_name("chunk_type").context("Missing chunk_type column")?
+                .as_any().downcast_ref::<StringArray>().context("chunk_type column has wrong type")?;
+            let start_lines = batch.column_by_name("start_line").context("Missing start_line column")?
+                .as_any().downcast_ref::<UInt32Array>().context("start_line column has wrong type")?;
+            let end_lines = batch.column_by_name("end_line").context("Missing end_line column")?
+                .as_any().downcast_ref::<UInt32Array>().context("end_line column has wrong type")?;
+            let contents = batch.column_by_name("content").context("Missing content column")?
+                .as_any().downcast_ref::<StringArray>().context("content column has wrong type")?;
+            let languages = batch.column_by_name("language").context("Missing language column")?
+                .as_any().downcast_ref::<StringArray>().context("language column has wrong type")?;
+
+            for i in 0..batch.num_rows() {
+                chunks.push(Chunk {
+                    id: ids.value(i).to_string(),
+                    file_path: file_paths.value(i).to_string(),
+                    chunk_type: str_to_chunk_type(chunk_types.value(i)),
+                    name: if chunk_names.is_null(i) {
+                        None
+                    } else {
+                        Some(chunk_names.value(i).to_string())
+                    },
+                    start_line: start_lines.value(i),
+                    end_line: end_lines.value(i),
+                    content: contents.value(i).to_string(),
+                    language: languages.value(i).to_string(),
+                });
+            }
+        }
+
+        Ok(chunks)
+    }
+
     /// Get index statistics, optionally filtered by repo
     pub async fn get_stats(&self, repo: Option<&str>) -> Result<IndexStats> {
         let table = match &self.table {
