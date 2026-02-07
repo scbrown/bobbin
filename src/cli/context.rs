@@ -125,8 +125,8 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
-    let embedder =
-        Embedder::load(&model_dir, current_model).context("Failed to load embedding model")?;
+    let embedder = Embedder::from_config(&config.embedding, &model_dir)
+        .context("Failed to load embedding model")?;
 
     // Determine content mode
     let content_mode = match args.content {

@@ -351,7 +351,7 @@ impl BobbinMcpServer {
                 let model_dir = Config::model_cache_dir()
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-                let embedder = Embedder::load(&model_dir, &config.embedding.model)
+                let embedder = Embedder::from_config(&config.embedding, &model_dir)
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
                 if mode == "semantic" {
@@ -559,7 +559,7 @@ impl BobbinMcpServer {
         let model_dir = Config::model_cache_dir()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let embedder = Embedder::load(&model_dir, &config.embedding.model)
+        let embedder = Embedder::from_config(&config.embedding, &model_dir)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let context_config = ContextConfig {

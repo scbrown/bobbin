@@ -18,13 +18,15 @@ use crate::types::{Chunk, ChunkType, FileMetadata, IndexStats, LanguageStats, Ma
 /// Table name for chunk storage
 const TABLE_NAME: &str = "chunks";
 
-/// Embedding dimension (all-MiniLM-L6-v2)
-const EMBEDDING_DIM: i32 = 384;
+/// Default embedding dimension (for backward compatibility)
+const DEFAULT_EMBEDDING_DIM: i32 = 384;
 
 /// Unified chunk storage using LanceDB (vectors + metadata + FTS)
 pub struct VectorStore {
     conn: Connection,
     table: Option<Table>,
+    /// Embedding dimension used by this store
+    embedding_dim: i32,
     /// Whether FTS index has been created for this session
     fts_indexed: bool,
 }
@@ -32,6 +34,11 @@ pub struct VectorStore {
 impl VectorStore {
     /// Open or create a vector store at the given path
     pub async fn open(path: &Path) -> Result<Self> {
+        Self::open_with_dim(path, DEFAULT_EMBEDDING_DIM).await
+    }
+
+    /// Open or create a vector store with a specific embedding dimension
+    pub async fn open_with_dim(path: &Path, embedding_dim: i32) -> Result<Self> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -64,8 +71,14 @@ impl VectorStore {
         Ok(Self {
             conn,
             table,
+            embedding_dim,
             fts_indexed: false,
         })
+    }
+
+    /// Get the embedding dimension of this store
+    pub fn embedding_dim(&self) -> i32 {
+        self.embedding_dim
     }
 
     /// Get the inner field for the vector FixedSizeList
@@ -74,12 +87,12 @@ impl VectorStore {
     }
 
     /// Get the Arrow schema for chunk records
-    fn schema() -> Schema {
+    fn schema(&self) -> Schema {
         Schema::new(vec![
             Field::new("id", DataType::Utf8, false),
             Field::new(
                 "vector",
-                DataType::FixedSizeList(Self::vector_field(), EMBEDDING_DIM),
+                DataType::FixedSizeList(Self::vector_field(), self.embedding_dim),
                 false,
             ),
             Field::new("repo", DataType::Utf8, false),
@@ -101,6 +114,7 @@ impl VectorStore {
     /// `full_contexts` contains the context-enriched text used for embedding.
     /// `None` entries mean the chunk was embedded using its content directly.
     fn to_record_batch(
+        &self,
         chunks: &[Chunk],
         embeddings: &[Vec<f32>],
         full_contexts: &[Option<String>],
@@ -108,7 +122,7 @@ impl VectorStore {
         file_hash: &str,
         indexed_at: &str,
     ) -> Result<RecordBatch> {
-        let schema = Arc::new(Self::schema());
+        let schema = Arc::new(self.schema());
 
         let ids: Vec<&str> = chunks.iter().map(|c| c.id.as_str()).collect();
         let repos: Vec<&str> = chunks.iter().map(|_| repo).collect();
@@ -134,7 +148,7 @@ impl VectorStore {
         let embedding_values: ArrayRef = Arc::new(Float32Array::from(flat_embeddings));
         let vector_array = FixedSizeListArray::try_new(
             Self::vector_field(),
-            EMBEDDING_DIM,
+            self.embedding_dim,
             embedding_values,
             None,
         )
@@ -202,8 +216,8 @@ impl VectorStore {
             );
         }
 
-        let schema = Arc::new(Self::schema());
-        let batch = Self::to_record_batch(chunks, embeddings, full_contexts, repo, file_hash, indexed_at)?;
+        let schema = Arc::new(self.schema());
+        let batch = self.to_record_batch(chunks, embeddings, full_contexts, repo, file_hash, indexed_at)?;
 
         match &self.table {
             Some(table) => {

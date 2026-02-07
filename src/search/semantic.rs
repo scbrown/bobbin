@@ -22,7 +22,7 @@ impl SemanticSearch {
     /// Search for semantically similar code, optionally filtered by repo
     pub async fn search(&mut self, query: &str, limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
         // Embed the query
-        let query_embedding = self.embedder.embed(query)?;
+        let query_embedding = self.embedder.embed(query).await?;
 
         // Search the vector store
         let mut results = self.vector_store.search(&query_embedding, limit, repo).await?;

@@ -32,7 +32,7 @@ impl HybridSearch {
         let fetch_limit = limit * 2;
 
         // Run semantic search
-        let query_embedding = self.embedder.embed(query)?;
+        let query_embedding = self.embedder.embed(query).await?;
         let semantic_results = self.vector_store.search(&query_embedding, fetch_limit, repo).await?;
 
         // Run keyword search via LanceDB FTS

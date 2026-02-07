@@ -1,3 +1,4 @@
+mod benchmark;
 mod context;
 mod grep;
 mod history;
@@ -60,6 +61,9 @@ enum Commands {
 
     /// Start MCP server for AI agent integration
     Serve(serve::ServeArgs),
+
+    /// Benchmark embedding models for comparison
+    Benchmark(benchmark::BenchmarkArgs),
 }
 
 impl Cli {
@@ -80,6 +84,7 @@ impl Cli {
             Commands::History(args) => history::run(args, output).await,
             Commands::Status(args) => status::run(args, output).await,
             Commands::Serve(args) => serve::run(args, output).await,
+            Commands::Benchmark(args) => benchmark::run(args, output).await,
         }
     }
 }
