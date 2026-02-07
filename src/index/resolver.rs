@@ -93,17 +93,20 @@ fn try_rust_path(base: &str, path_part: &str, indexed_files: &HashSet<String>) -
 }
 
 /// TypeScript: `./foo/bar` → `foo/bar.ts`, `foo/bar/index.ts`, etc.
+/// Also handles `@/foo` alias → `src/foo`
 fn resolve_typescript(specifier: &str, source_file: &str, indexed_files: &HashSet<String>) -> Option<String> {
-    // Only resolve relative imports
-    if !specifier.starts_with('.') {
+    let normalized = if specifier.starts_with("./") || specifier.starts_with("../") {
+        // Relative import — resolve from source file's directory
+        let source_dir = Path::new(source_file).parent().unwrap_or(Path::new(""));
+        let resolved = source_dir.join(specifier);
+        normalize_path(&resolved)
+    } else if let Some(rest) = specifier.strip_prefix("@/") {
+        // Common alias: @/ → src/
+        format!("src/{}", rest)
+    } else {
+        // Bare module name (e.g., "react") → external, mark unresolved
         return None;
-    }
-
-    let source_dir = Path::new(source_file).parent().unwrap_or(Path::new(""));
-
-    // Normalize the relative path
-    let resolved = source_dir.join(specifier);
-    let normalized = normalize_path(&resolved);
+    };
 
     let extensions = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs"];
     let index_files = ["/index.ts", "/index.tsx", "/index.js", "/index.jsx"];
@@ -188,8 +191,11 @@ fn try_python_path(base: &str, path_part: &str, indexed_files: &HashSet<String>)
 /// Go: package imports map to directory paths, not individual files.
 /// We resolve to the first file found in the matching directory.
 fn resolve_go(specifier: &str, indexed_files: &HashSet<String>) -> Option<String> {
-    // Standard library and external packages won't resolve
-    // Only resolve local packages (those that match indexed paths)
+    // Standard library imports have no dots in the path (e.g., "fmt", "os", "net/http")
+    if !specifier.contains('.') {
+        return None;
+    }
+
     let last_segment = specifier.rsplit('/').next()?;
 
     // Look for any .go file in a directory matching the import path suffix
@@ -207,6 +213,15 @@ fn resolve_go(specifier: &str, indexed_files: &HashSet<String>) -> Option<String
 
 /// Java: `java.util.List` — only resolve project-local classes
 fn resolve_java(specifier: &str, indexed_files: &HashSet<String>) -> Option<String> {
+    // Standard library and common framework packages → unresolved
+    if specifier.starts_with("java.")
+        || specifier.starts_with("javax.")
+        || specifier.starts_with("sun.")
+        || specifier.starts_with("com.sun.")
+    {
+        return None;
+    }
+
     // Convert dots to path separators
     let path = specifier.replace('.', "/");
 
@@ -338,5 +353,153 @@ mod tests {
         let files = make_files(&["com/example/Foo.java"]);
         let result = resolve_java("com.example.Foo", &files);
         assert_eq!(result, Some("com/example/Foo.java".to_string()));
+    }
+
+    // --- External/stdlib unresolved tests ---
+
+    #[test]
+    fn test_resolve_rust_external_crate_unresolved() {
+        let files = make_files(&["src/main.rs", "src/types.rs"]);
+        let result = resolve_rust("serde::Serialize", "src/main.rs", &files);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_typescript_bare_module_unresolved() {
+        let files = make_files(&["src/index.ts"]);
+        let result = resolve_typescript("react", "src/index.ts", &files);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_typescript_alias() {
+        let files = make_files(&["src/utils/helpers.ts"]);
+        let result = resolve_typescript("@/utils/helpers", "src/components/App.tsx", &files);
+        assert_eq!(result, Some("src/utils/helpers.ts".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_typescript_alias_index() {
+        let files = make_files(&["src/utils/index.ts"]);
+        let result = resolve_typescript("@/utils", "src/components/App.tsx", &files);
+        assert_eq!(result, Some("src/utils/index.ts".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_python_double_dot_relative() {
+        let files = make_files(&["pkg/models.py", "pkg/sub/core.py"]);
+        let result = resolve_python("..models", "pkg/sub/core.py", &files);
+        assert_eq!(result, Some("pkg/models.py".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_python_stdlib_unresolved() {
+        let files = make_files(&["main.py"]);
+        // stdlib imports like "os" won't have matching files
+        let result = resolve_python("os", "main.py", &files);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_go_local_package() {
+        let files = make_files(&["internal/auth/auth.go", "cmd/server/main.go"]);
+        let result = resolve_go("github.com/example/project/internal/auth", &files);
+        assert_eq!(result, Some("internal/auth/auth.go".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_go_stdlib_unresolved() {
+        let files = make_files(&["main.go"]);
+        let result = resolve_go("fmt", &files);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_go_stdlib_nested_unresolved() {
+        let files = make_files(&["main.go"]);
+        let result = resolve_go("net/http", &files);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_java_stdlib_unresolved() {
+        let files = make_files(&["src/main/java/com/example/App.java"]);
+        let result = resolve_java("java.util.List", &files);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_java_javax_unresolved() {
+        let files = make_files(&["src/main/java/com/example/App.java"]);
+        let result = resolve_java("javax.servlet.http.HttpServlet", &files);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_java_maven_convention() {
+        let files = make_files(&["src/main/java/com/example/App.java"]);
+        let result = resolve_java("com.example.App", &files);
+        assert_eq!(result, Some("src/main/java/com/example/App.java".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_cpp_system_header_unresolved() {
+        // System headers won't exist in indexed files
+        let files = make_files(&["src/main.cpp", "include/mylib.h"]);
+        let result = resolve_cpp("iostream", "src/main.cpp", &files);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_cpp_relative_to_source() {
+        let files = make_files(&["src/util.h", "src/main.cpp"]);
+        let result = resolve_cpp("util.h", "src/main.cpp", &files);
+        assert_eq!(result, Some("src/util.h".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_rust_super_import() {
+        let files = make_files(&["src/index/mod.rs", "src/types.rs"]);
+        let result = resolve_rust("super::types", "src/index/mod.rs", &files);
+        assert_eq!(result, Some("src/types.rs".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_rust_self_import() {
+        let files = make_files(&["src/index/parser.rs", "src/index/resolver.rs"]);
+        let result = resolve_rust("self::parser", "src/index/mod.rs", &files);
+        assert_eq!(result, Some("src/index/parser.rs".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_only_indexed_files() {
+        // Resolver should NOT resolve to files not in the index
+        let files = make_files(&["src/main.rs"]);
+        let result = resolve_rust("crate::types::Chunk", "src/main.rs", &files);
+        assert_eq!(result, None); // src/types.rs not in indexed_files
+    }
+
+    #[test]
+    fn test_resolve_imports_batch() {
+        let indexed = make_files(&["src/types.rs", "src/index/parser.rs"]);
+        let mut edges = vec![
+            ImportEdge {
+                source_file: "src/main.rs".to_string(),
+                import_specifier: "crate::types".to_string(),
+                resolved_path: None,
+                language: "rust".to_string(),
+            },
+            ImportEdge {
+                source_file: "src/main.rs".to_string(),
+                import_specifier: "anyhow::Result".to_string(),
+                resolved_path: None,
+                language: "rust".to_string(),
+            },
+        ];
+
+        resolve_imports(&mut edges, &indexed, Path::new("/repo"));
+
+        assert_eq!(edges[0].resolved_path, Some("src/types.rs".to_string()));
+        assert_eq!(edges[1].resolved_path, None); // external
     }
 }
