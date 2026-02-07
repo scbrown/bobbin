@@ -56,14 +56,42 @@ impl ModelConfig {
 }
 ```
 
-### Config changes
+### Config changes (`.bobbin/config.toml`)
 
-Add optional model config overrides:
+Extend the `[embedding]` section to support full model configuration:
+
 ```toml
 [embedding]
-model = "all-MiniLM-L6-v2"  # or path to local model
-# batch_size = 32  # existing
-# dimension = 384  # optional override, auto-detected if omitted
+model = "all-MiniLM-L6-v2"    # Built-in name, HuggingFace ID, or local path
+batch_size = 32                 # existing
+
+# Optional overrides (auto-detected from model if omitted):
+# dimension = 384              # embedding dimension
+# max_sequence_length = 256    # max input tokens
+
+# For custom local models:
+# model = "/path/to/my-model"
+# dimension = 768              # required for custom models if auto-detect fails
+
+# For HuggingFace models not in the built-in registry:
+# model = "BAAI/bge-large-en-v1.5"
+# dimension = 1024
+```
+
+The config should support three model sources:
+1. **Built-in name** (e.g., `"all-MiniLM-L6-v2"`) - auto-downloads, all properties known
+2. **Local path** (e.g., `"/home/user/models/custom"`) - must contain `onnx/model.onnx` + `tokenizer.json`
+3. **HuggingFace ID** (e.g., `"BAAI/bge-large-en-v1.5"`) - auto-downloads from HF, dimension auto-detected or specified
+
+Update `EmbeddingConfig` in `src/config.rs`:
+```rust
+pub struct EmbeddingConfig {
+    pub model: String,
+    pub batch_size: usize,
+    pub context: ContextualEmbeddingConfig,
+    pub dimension: Option<usize>,          // NEW: optional override
+    pub max_sequence_length: Option<usize>, // NEW: optional override
+}
 ```
 
 ### Model download for new built-ins
