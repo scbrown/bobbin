@@ -1,39 +1,105 @@
+[![Crates.io](https://img.shields.io/crates/v/bobbin.svg)](https://crates.io/crates/bobbin)
+[![docs.rs](https://img.shields.io/docsrs/bobbin)](https://docs.rs/bobbin)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 # Bobbin
 
-**Local-first code context engine.** Index your codebase, search it semantically, and understand which files evolve together -- all running locally with no API keys or cloud services.
+**Local-first code context engine.** Semantic search, keyword search, and git coupling analysis — all running on your machine. No API keys. No cloud. Sub-100ms queries.
 
-Bobbin parses your code with Tree-sitter, generates embeddings with ONNX, and stores everything in LanceDB. It combines vector similarity search with keyword search via Reciprocal Rank Fusion, and uses git history to surface files that frequently change together. The result: fast, accurate code retrieval that understands structure and evolution.
+> *Your codebase has structure, history, and meaning. Bobbin indexes all three.*
+
+## See It In Action
+
+```
+$ bobbin search "authentication middleware"
+✓ Found 8 results for: authentication middleware (hybrid)
+
+1. src/auth/middleware.rs:14 (verify_token)
+   function rust · lines 14-47 · score 0.8923 [hybrid]
+
+2. src/auth/session.rs:88 (create_session)
+   function rust · lines 88-121 · score 0.8541 [semantic]
+
+3. src/handlers/login.rs:31 (handle_login)
+   function rust · lines 31-62 · score 0.7892 [keyword]
+```
+
+```
+$ bobbin context "fix the login bug"
+✓ Context for: fix the login bug
+  6 files, 14 chunks (487/500 lines)
+
+--- src/auth/middleware.rs [direct, score: 0.8923] ---
+  verify_token (function), lines 14-47
+--- src/handlers/login.rs [direct, score: 0.7892] ---
+  handle_login (function), lines 31-62
+--- src/auth/session.rs [coupled via src/auth/middleware.rs] ---
+  create_session (function), lines 88-121
+```
+
+```
+$ bobbin related src/auth/middleware.rs
+Related to src/auth/middleware.rs:
+1. src/auth/session.rs (score: 0.85) - Co-changed 23 times
+2. src/handlers/login.rs (score: 0.72) - Co-changed 18 times
+3. tests/auth_test.rs (score: 0.68) - Co-changed 15 times
+```
+
+## Why Bobbin?
+
+|  | **ripgrep** | **Sourcegraph** | **Bobbin** |
+|--|:-----------:|:---------------:|:----------:|
+| Keyword search          | ✅ | ✅ | ✅ |
+| Semantic search         | ❌ | ✅ | ✅ |
+| Git coupling analysis   | ❌ | ❌ | ✅ |
+| Task-aware context      | ❌ | ❌ | ✅ |
+| MCP server (AI agents)  | ❌ | ❌ | ✅ |
+| Runs 100% locally       | ✅ | ❌ | ✅ |
+| No API keys required    | ✅ | ❌ | ✅ |
+| Sub-100ms queries       | ✅ | ❌ | ✅ |
 
 ## Features
 
-- **Structure-aware parsing** -- Tree-sitter for Rust, TypeScript, Python, Go, Java, C++; pulldown-cmark for Markdown
-- **Hybrid search** -- Semantic + keyword results fused via RRF for best-of-both-worlds retrieval
-- **Git-aware context** -- Temporal coupling analysis reveals which files change together
-- **Context assembly** -- `bobbin context` builds task-aware bundles from search + git coupling
-- **MCP server** -- Expose search to Claude Code, Cursor, and other AI agents
-- **Local and fast** -- ONNX embeddings, LanceDB storage, sub-100ms queries, no network required
+🔍 **Hybrid Search** — Semantic + keyword results fused via [Reciprocal Rank Fusion](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf). Ask in natural language or grep by pattern.
+
+🌳 **Structure-Aware Parsing** — Tree-sitter extracts functions, classes, structs, traits, and more from 7 languages. Markdown parsed into sections, tables, and code blocks.
+
+🔗 **Git Temporal Coupling** — Analyzes commit history to find files that change together. `bobbin related src/auth.rs` reveals hidden dependencies no import graph can see.
+
+📦 **Task-Aware Context** — `bobbin context "fix the login bug"` builds a budget-controlled bundle from search results + coupled files. Feed it straight to an AI agent.
+
+🤖 **MCP Server** — `bobbin serve` exposes 5 tools to Claude Code, Cursor, and any MCP-compatible agent.
+
+🌐 **Multi-Repo** — Index multiple repositories into one database. Search across all or filter by name.
+
+⚡ **Fast & Private** — ONNX embeddings (all-MiniLM-L6-v2), LanceDB vector storage, SQLite for coupling. Everything on your machine.
 
 ## Quick Start
 
-```bash
-bobbin init                                # Initialize in your repo
-bobbin index                               # Index your codebase
-bobbin search "authentication middleware"   # Semantic search
-bobbin context "fix the login bug"         # Task-aware context bundle
-bobbin related src/auth.rs                 # Files that change together
-```
-
-## Installation
+**1. Install**
 
 ```bash
 cargo install bobbin
 ```
 
-Or [build from source](CONTRIBUTING.md).
+**2. Index your codebase**
 
-## AI Agent Integration
+```bash
+cd your-project
+bobbin init && bobbin index
+```
 
-Bobbin ships an MCP server so AI agents can search your codebase directly:
+**3. Search**
+
+```bash
+bobbin search "error handling"         # Semantic + keyword hybrid
+bobbin context "fix the login bug"     # Task-aware context bundle
+bobbin related src/auth.rs             # Git coupling analysis
+```
+
+## 🤖 AI Agent Integration
+
+Bobbin ships an MCP server that gives AI agents direct access to your codebase:
 
 ```bash
 bobbin serve
@@ -52,29 +118,34 @@ Add to your Claude Code or Cursor MCP config:
 }
 ```
 
-This exposes five tools: `search`, `grep`, `context`, `related`, and `read_chunk`.
+Exposes five tools: `search`, `grep`, `context`, `related`, and `read_chunk`.
 
-## Multi-Repo Support
+## Supported Languages
 
-Index multiple repositories into a single database, then search across all of them or filter by name:
+| Language   | Parser        | Extracted Units |
+|------------|---------------|-----------------|
+| Rust       | Tree-sitter   | functions, impl blocks, structs, enums, traits, modules |
+| TypeScript | Tree-sitter   | functions, methods, classes, interfaces |
+| Python     | Tree-sitter   | functions, classes |
+| Go         | Tree-sitter   | functions, methods, type declarations |
+| Java       | Tree-sitter   | methods, constructors, classes, interfaces, enums |
+| C++        | Tree-sitter   | functions, classes, structs, enums |
+| Markdown   | pulldown-cmark| sections, tables, code blocks, YAML frontmatter |
 
-```bash
-bobbin index --repo frontend --source ../frontend
-bobbin index --repo backend  --source ../backend
-bobbin search "auth handler" --repo backend
-bobbin context "login flow"                        # Searches all repos
-```
+Other file types use line-based chunking with overlap.
 
 ## Documentation
 
-| | |
-|---|---|
-| **[CLI Reference](docs/commands.md)** | All commands, flags, and examples |
-| **[Configuration](docs/configuration.md)** | `.bobbin/config.toml` reference |
-| **[Architecture](docs/architecture.md)** | System design, data flow, storage schema |
-| **[Roadmap](docs/roadmap.md)** | Development phases and planned features |
-| **[Contributing](CONTRIBUTING.md)** | Build, test, and development setup |
+📖 **[CLI Reference](docs/commands.md)** — All 12 commands, flags, and examples
+
+⚙️ **[Configuration](docs/configuration.md)** — `.bobbin/config.toml` reference
+
+🏗️ **[Architecture](docs/architecture.md)** — System design, data flow, storage schema
+
+🗺️ **[Roadmap](docs/roadmap.md)** — Development phases and planned features
+
+🤝 **[Contributing](CONTRIBUTING.md)** — Build, test, and development setup
 
 ## License
 
-MIT
+[MIT](LICENSE)
