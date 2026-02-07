@@ -223,6 +223,85 @@ pub struct RelatedFile {
     pub co_changes: u32,
 }
 
+/// Request for finding symbol references
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct FindRefsRequest {
+    /// Symbol name to find references for
+    #[schemars(description = "Exact symbol name to find references for (e.g., 'parse_config', 'Config', 'handle_request')")]
+    pub symbol: String,
+
+    /// Filter by symbol type (function, struct, trait, etc.)
+    #[schemars(description = "Filter by symbol type: function, method, class, struct, enum, interface, module, impl, trait")]
+    pub r#type: Option<String>,
+
+    /// Maximum number of usage results (default: 20)
+    #[schemars(description = "Maximum number of usage results to return (default: 20)")]
+    pub limit: Option<usize>,
+
+    /// Filter to a specific repository
+    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    pub repo: Option<String>,
+}
+
+/// Response for finding symbol references
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct FindRefsResponse {
+    pub symbol: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub definition: Option<SymbolDefinitionOutput>,
+    pub usage_count: usize,
+    pub usages: Vec<SymbolUsageOutput>,
+}
+
+/// A symbol definition in the response
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SymbolDefinitionOutput {
+    pub name: String,
+    pub chunk_type: String,
+    pub file_path: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub signature: String,
+}
+
+/// A symbol usage in the response
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SymbolUsageOutput {
+    pub file_path: String,
+    pub line: u32,
+    pub context: String,
+}
+
+/// Request for listing symbols in a file
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListSymbolsRequest {
+    /// File path (relative to repo root) to list symbols for
+    #[schemars(description = "File path (relative to repo root) to list symbols for (e.g., 'src/main.rs', 'lib/config.ts')")]
+    pub file: String,
+
+    /// Filter to a specific repository
+    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    pub repo: Option<String>,
+}
+
+/// Response for listing symbols in a file
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ListSymbolsResponse {
+    pub file: String,
+    pub count: usize,
+    pub symbols: Vec<SymbolItemOutput>,
+}
+
+/// A symbol in the list symbols response
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SymbolItemOutput {
+    pub name: String,
+    pub chunk_type: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub signature: String,
+}
+
 /// Request for reading a specific code chunk
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReadChunkRequest {
