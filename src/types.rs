@@ -92,6 +92,19 @@ pub struct FileCoupling {
     pub last_co_change: i64,
 }
 
+/// An import/dependency edge between two files
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportEdge {
+    /// The file that contains the import statement
+    pub source_file: String,
+    /// The raw import specifier as written in source
+    pub import_specifier: String,
+    /// The resolved file path (if resolution succeeded)
+    pub resolved_path: Option<String>,
+    /// The language of the source file
+    pub language: String,
+}
+
 /// Statistics about the index
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexStats {

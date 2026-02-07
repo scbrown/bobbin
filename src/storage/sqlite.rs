@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension};
 use std::path::Path;
 
-use crate::types::FileCoupling;
+use crate::types::{FileCoupling, ImportEdge};
 
 /// Git coupling and metadata storage using SQLite
 ///
@@ -47,8 +47,19 @@ impl MetadataStore {
                 value TEXT
             );
 
+            -- Import/dependency graph edges
+            CREATE TABLE IF NOT EXISTS dependencies (
+                source_file TEXT NOT NULL,
+                import_specifier TEXT NOT NULL,
+                resolved_path TEXT,
+                language TEXT NOT NULL,
+                PRIMARY KEY (source_file, import_specifier)
+            );
+
             -- Indexes
             CREATE INDEX IF NOT EXISTS idx_coupling_score ON coupling(score DESC);
+            CREATE INDEX IF NOT EXISTS idx_deps_source ON dependencies(source_file);
+            CREATE INDEX IF NOT EXISTS idx_deps_resolved ON dependencies(resolved_path);
         "#,
         )?;
 
@@ -126,6 +137,98 @@ impl MetadataStore {
             [key, value],
         )?;
         Ok(())
+    }
+
+    /// Insert an import edge
+    pub fn upsert_dependency(&self, edge: &ImportEdge) -> Result<()> {
+        self.conn.execute(
+            r#"INSERT INTO dependencies (source_file, import_specifier, resolved_path, language)
+               VALUES (?1, ?2, ?3, ?4)
+               ON CONFLICT(source_file, import_specifier) DO UPDATE SET
+                   resolved_path = excluded.resolved_path,
+                   language = excluded.language"#,
+            (
+                &edge.source_file,
+                &edge.import_specifier,
+                &edge.resolved_path,
+                &edge.language,
+            ),
+        )?;
+        Ok(())
+    }
+
+    /// Get imports from a file (what does this file depend on?)
+    pub fn get_imports(&self, file_path: &str) -> Result<Vec<ImportEdge>> {
+        let mut stmt = self.conn.prepare(
+            r#"SELECT source_file, import_specifier, resolved_path, language
+               FROM dependencies
+               WHERE source_file = ?1
+               ORDER BY import_specifier"#,
+        )?;
+
+        let results = stmt
+            .query_map([file_path], |row| {
+                Ok(ImportEdge {
+                    source_file: row.get(0)?,
+                    import_specifier: row.get(1)?,
+                    resolved_path: row.get(2)?,
+                    language: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(results)
+    }
+
+    /// Get reverse dependencies (what files import this file?)
+    pub fn get_dependents(&self, file_path: &str) -> Result<Vec<ImportEdge>> {
+        let mut stmt = self.conn.prepare(
+            r#"SELECT source_file, import_specifier, resolved_path, language
+               FROM dependencies
+               WHERE resolved_path = ?1
+               ORDER BY source_file"#,
+        )?;
+
+        let results = stmt
+            .query_map([file_path], |row| {
+                Ok(ImportEdge {
+                    source_file: row.get(0)?,
+                    import_specifier: row.get(1)?,
+                    resolved_path: row.get(2)?,
+                    language: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(results)
+    }
+
+    /// Clear all dependency data for a set of files
+    pub fn clear_dependencies_for_files(&self, files: &[String]) -> Result<()> {
+        if files.is_empty() {
+            return Ok(());
+        }
+        let placeholders: Vec<String> = (1..=files.len()).map(|i| format!("?{}", i)).collect();
+        let sql = format!(
+            "DELETE FROM dependencies WHERE source_file IN ({})",
+            placeholders.join(", ")
+        );
+        let params: Vec<&dyn rusqlite::types::ToSql> = files.iter().map(|f| f as &dyn rusqlite::types::ToSql).collect();
+        self.conn.execute(&sql, params.as_slice())?;
+        Ok(())
+    }
+
+    /// Get dependency statistics
+    pub fn get_dependency_stats(&self) -> Result<(u64, u64)> {
+        let total_edges: u64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM dependencies", [], |row| row.get(0))?;
+        let resolved: u64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM dependencies WHERE resolved_path IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok((total_edges, resolved))
     }
 
     /// Clear all coupling data
@@ -257,5 +360,104 @@ mod tests {
         store.commit().unwrap();
 
         assert_eq!(store.get_coupling("a.rs", 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_dependencies_insert_and_query() {
+        let (store, _dir) = create_test_store();
+
+        let edge = ImportEdge {
+            source_file: "src/main.rs".to_string(),
+            import_specifier: "crate::types::Chunk".to_string(),
+            resolved_path: Some("src/types.rs".to_string()),
+            language: "rust".to_string(),
+        };
+        store.upsert_dependency(&edge).unwrap();
+
+        let imports = store.get_imports("src/main.rs").unwrap();
+        assert_eq!(imports.len(), 1);
+        assert_eq!(imports[0].import_specifier, "crate::types::Chunk");
+        assert_eq!(imports[0].resolved_path, Some("src/types.rs".to_string()));
+    }
+
+    #[test]
+    fn test_dependencies_reverse_lookup() {
+        let (store, _dir) = create_test_store();
+
+        store
+            .upsert_dependency(&ImportEdge {
+                source_file: "src/main.rs".to_string(),
+                import_specifier: "crate::types".to_string(),
+                resolved_path: Some("src/types.rs".to_string()),
+                language: "rust".to_string(),
+            })
+            .unwrap();
+        store
+            .upsert_dependency(&ImportEdge {
+                source_file: "src/cli/search.rs".to_string(),
+                import_specifier: "crate::types::SearchResult".to_string(),
+                resolved_path: Some("src/types.rs".to_string()),
+                language: "rust".to_string(),
+            })
+            .unwrap();
+
+        let dependents = store.get_dependents("src/types.rs").unwrap();
+        assert_eq!(dependents.len(), 2);
+    }
+
+    #[test]
+    fn test_dependencies_clear_for_files() {
+        let (store, _dir) = create_test_store();
+
+        store
+            .upsert_dependency(&ImportEdge {
+                source_file: "src/a.rs".to_string(),
+                import_specifier: "crate::b".to_string(),
+                resolved_path: Some("src/b.rs".to_string()),
+                language: "rust".to_string(),
+            })
+            .unwrap();
+        store
+            .upsert_dependency(&ImportEdge {
+                source_file: "src/c.rs".to_string(),
+                import_specifier: "crate::b".to_string(),
+                resolved_path: Some("src/b.rs".to_string()),
+                language: "rust".to_string(),
+            })
+            .unwrap();
+
+        // Clear only a.rs deps
+        store
+            .clear_dependencies_for_files(&["src/a.rs".to_string()])
+            .unwrap();
+
+        assert_eq!(store.get_imports("src/a.rs").unwrap().len(), 0);
+        assert_eq!(store.get_imports("src/c.rs").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_dependency_stats() {
+        let (store, _dir) = create_test_store();
+
+        store
+            .upsert_dependency(&ImportEdge {
+                source_file: "src/a.rs".to_string(),
+                import_specifier: "crate::b".to_string(),
+                resolved_path: Some("src/b.rs".to_string()),
+                language: "rust".to_string(),
+            })
+            .unwrap();
+        store
+            .upsert_dependency(&ImportEdge {
+                source_file: "src/a.rs".to_string(),
+                import_specifier: "anyhow::Result".to_string(),
+                resolved_path: None,
+                language: "rust".to_string(),
+            })
+            .unwrap();
+
+        let (total, resolved) = store.get_dependency_stats().unwrap();
+        assert_eq!(total, 2);
+        assert_eq!(resolved, 1);
     }
 }

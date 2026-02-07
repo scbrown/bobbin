@@ -1,4 +1,5 @@
 mod context;
+mod deps;
 mod grep;
 mod history;
 mod index;
@@ -46,6 +47,9 @@ enum Commands {
     /// Assemble task-relevant context from search and git history
     Context(context::ContextArgs),
 
+    /// Show import dependencies for a file
+    Deps(deps::DepsArgs),
+
     /// Keyword/regex search
     Grep(grep::GrepArgs),
 
@@ -75,6 +79,7 @@ impl Cli {
             Commands::Index(args) => index::run(args, output).await,
             Commands::Search(args) => search::run(args, output).await,
             Commands::Context(args) => context::run(args, output).await,
+            Commands::Deps(args) => deps::run(args, output).await,
             Commands::Grep(args) => grep::run(args, output).await,
             Commands::Related(args) => related::run(args, output).await,
             Commands::History(args) => history::run(args, output).await,
