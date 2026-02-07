@@ -364,6 +364,7 @@ async fn reindex_files(
         let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
         let embeddings = embed
             .embed_batch(&embed_refs)
+            .await
             .context("Failed to generate embeddings")?;
 
         vector_store.delete_by_file(&[rel_path.clone()]).await?;
