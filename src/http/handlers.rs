@@ -460,7 +460,7 @@ async fn run_incremental_index(
         vector_store.delete_by_file(&[rel_path.clone()]).await?;
 
         let texts: Vec<&str> = chunks.iter().map(|c| c.content.as_str()).collect();
-        let embeddings = embedder.embed_batch(&texts)?;
+        let embeddings = embedder.embed_batch(&texts).await?;
         let contexts: Vec<Option<String>> = vec![None; chunks.len()];
         let now = chrono::Utc::now().to_rfc3339();
 
