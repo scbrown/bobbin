@@ -3,7 +3,7 @@ use pulldown_cmark::{Event, HeadingLevel, Options, Parser as CmarkParser, Tag, T
 use std::path::Path;
 use tree_sitter::{Language, Node};
 
-use crate::types::{Chunk, ChunkType};
+use crate::types::{Chunk, ChunkType, ImportEdge};
 
 /// Parses source code using tree-sitter to extract semantic chunks
 pub struct Parser {
@@ -66,6 +66,40 @@ impl Parser {
         }
 
         Ok(chunks)
+    }
+
+    /// Extract import statements from a file using tree-sitter
+    pub fn extract_imports(&mut self, path: &Path, content: &str) -> Vec<ImportEdge> {
+        let language = detect_language(path);
+
+        let Some(lang) = language.as_deref() else {
+            return Vec::new();
+        };
+
+        // Markdown and unknown languages don't have imports
+        if lang == "markdown" {
+            return Vec::new();
+        }
+
+        let parser = match lang {
+            "rust" => &mut self.rust_parser,
+            "typescript" | "tsx" => &mut self.typescript_parser,
+            "python" => &mut self.python_parser,
+            "go" => &mut self.go_parser,
+            "java" => &mut self.java_parser,
+            "cpp" => &mut self.cpp_parser,
+            _ => return Vec::new(),
+        };
+
+        let Some(tree) = parser.parse(content, None) else {
+            return Vec::new();
+        };
+
+        let file_path = path.to_string_lossy().to_string();
+        let root = tree.root_node();
+        let mut imports = Vec::new();
+        collect_imports(&root, content, &file_path, lang, &mut imports);
+        imports
     }
 
     /// Extract markdown chunks using pulldown-cmark for semantic parsing.
@@ -574,6 +608,211 @@ fn detect_language(path: &Path) -> Option<String> {
     }
 }
 
+/// Walk a tree-sitter AST and collect import specifiers
+fn collect_imports(
+    node: &Node,
+    content: &str,
+    file_path: &str,
+    language: &str,
+    imports: &mut Vec<ImportEdge>,
+) {
+    match language {
+        "rust" => collect_rust_imports(node, content, file_path, imports),
+        "typescript" | "tsx" => collect_ts_imports(node, content, file_path, language, imports),
+        "python" => collect_python_imports(node, content, file_path, imports),
+        "go" => collect_go_imports(node, content, file_path, imports),
+        "java" => collect_java_imports(node, content, file_path, imports),
+        "cpp" => collect_cpp_imports(node, content, file_path, imports),
+        _ => {}
+    }
+}
+
+fn collect_rust_imports(node: &Node, content: &str, file_path: &str, imports: &mut Vec<ImportEdge>) {
+    // Rust: use_declaration nodes (e.g., `use std::path::Path;`, `use crate::types::Chunk;`)
+    // Also: extern_crate_item, mod_item with path
+    if node.kind() == "use_declaration" {
+        // The argument child holds the path (e.g., `std::path::Path`)
+        if let Some(arg) = node.child_by_field_name("argument") {
+            let specifier = content[arg.byte_range()].to_string();
+            imports.push(ImportEdge {
+                source_file: file_path.to_string(),
+                import_specifier: specifier,
+                resolved_path: None,
+                language: "rust".to_string(),
+            });
+        }
+    } else if node.kind() == "extern_crate_declaration" {
+        if let Some(name) = node.child_by_field_name("name") {
+            let specifier = content[name.byte_range()].to_string();
+            imports.push(ImportEdge {
+                source_file: file_path.to_string(),
+                import_specifier: specifier,
+                resolved_path: None,
+                language: "rust".to_string(),
+            });
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_rust_imports(&child, content, file_path, imports);
+    }
+}
+
+fn collect_ts_imports(node: &Node, content: &str, file_path: &str, language: &str, imports: &mut Vec<ImportEdge>) {
+    // TypeScript/JavaScript: import_statement nodes
+    // e.g., `import { Foo } from './bar'`, `import * as x from 'lib'`
+    // Also: require() calls, dynamic import()
+    if node.kind() == "import_statement" {
+        if let Some(source) = node.child_by_field_name("source") {
+            let raw = content[source.byte_range()].to_string();
+            // Strip surrounding quotes
+            let specifier = raw.trim_matches(|c| c == '\'' || c == '"').to_string();
+            imports.push(ImportEdge {
+                source_file: file_path.to_string(),
+                import_specifier: specifier,
+                resolved_path: None,
+                language: language.to_string(),
+            });
+        }
+    } else if node.kind() == "export_statement" {
+        // Re-exports: `export { Foo } from './bar'`
+        if let Some(source) = node.child_by_field_name("source") {
+            let raw = content[source.byte_range()].to_string();
+            let specifier = raw.trim_matches(|c| c == '\'' || c == '"').to_string();
+            imports.push(ImportEdge {
+                source_file: file_path.to_string(),
+                import_specifier: specifier,
+                resolved_path: None,
+                language: language.to_string(),
+            });
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_ts_imports(&child, content, file_path, language, imports);
+    }
+}
+
+fn collect_python_imports(node: &Node, content: &str, file_path: &str, imports: &mut Vec<ImportEdge>) {
+    // Python: import_statement, import_from_statement
+    // e.g., `import os`, `from pathlib import Path`, `from . import utils`
+    if node.kind() == "import_statement" {
+        // `import foo, bar` — each dotted_name is a module
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "dotted_name" || child.kind() == "aliased_import" {
+                let name_node = if child.kind() == "aliased_import" {
+                    child.child_by_field_name("name")
+                } else {
+                    Some(child)
+                };
+                if let Some(n) = name_node {
+                    let specifier = content[n.byte_range()].to_string();
+                    imports.push(ImportEdge {
+                        source_file: file_path.to_string(),
+                        import_specifier: specifier,
+                        resolved_path: None,
+                        language: "python".to_string(),
+                    });
+                }
+            }
+        }
+    } else if node.kind() == "import_from_statement" {
+        // `from foo.bar import Baz` — module_name is `foo.bar`
+        if let Some(module) = node.child_by_field_name("module_name") {
+            let specifier = content[module.byte_range()].to_string();
+            imports.push(ImportEdge {
+                source_file: file_path.to_string(),
+                import_specifier: specifier,
+                resolved_path: None,
+                language: "python".to_string(),
+            });
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_python_imports(&child, content, file_path, imports);
+    }
+}
+
+fn collect_go_imports(node: &Node, content: &str, file_path: &str, imports: &mut Vec<ImportEdge>) {
+    // Go: import_declaration with import_spec children
+    // e.g., `import "fmt"`, `import ("fmt"; "os")`
+    if node.kind() == "import_spec" {
+        if let Some(path_node) = node.child_by_field_name("path") {
+            let raw = content[path_node.byte_range()].to_string();
+            let specifier = raw.trim_matches('"').to_string();
+            imports.push(ImportEdge {
+                source_file: file_path.to_string(),
+                import_specifier: specifier,
+                resolved_path: None,
+                language: "go".to_string(),
+            });
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_go_imports(&child, content, file_path, imports);
+    }
+}
+
+fn collect_java_imports(node: &Node, content: &str, file_path: &str, imports: &mut Vec<ImportEdge>) {
+    // Java: import_declaration
+    // e.g., `import java.util.List;`, `import static org.junit.Assert.*;`
+    if node.kind() == "import_declaration" {
+        // Get the full import text, strip `import `, `static `, and trailing `;`
+        let text = content[node.byte_range()].to_string();
+        let specifier = text
+            .trim_start_matches("import")
+            .trim()
+            .trim_start_matches("static")
+            .trim()
+            .trim_end_matches(';')
+            .trim()
+            .to_string();
+        imports.push(ImportEdge {
+            source_file: file_path.to_string(),
+            import_specifier: specifier,
+            resolved_path: None,
+            language: "java".to_string(),
+        });
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_java_imports(&child, content, file_path, imports);
+    }
+}
+
+fn collect_cpp_imports(node: &Node, content: &str, file_path: &str, imports: &mut Vec<ImportEdge>) {
+    // C/C++: preproc_include
+    // e.g., `#include <iostream>`, `#include "myheader.h"`
+    if node.kind() == "preproc_include" {
+        if let Some(path_node) = node.child_by_field_name("path") {
+            let raw = content[path_node.byte_range()].to_string();
+            // Strip <> or ""
+            let specifier = raw
+                .trim_matches(|c| c == '<' || c == '>' || c == '"')
+                .to_string();
+            imports.push(ImportEdge {
+                source_file: file_path.to_string(),
+                import_specifier: specifier,
+                resolved_path: None,
+                language: "cpp".to_string(),
+            });
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_cpp_imports(&child, content, file_path, imports);
+    }
+}
+
 fn generate_chunk_id(path: &Path, start_line: u32, end_line: u32) -> String {
     use sha2::{Digest, Sha256};
     let input = format!("{}:{}:{}", path.display(), start_line, end_line);
@@ -1047,6 +1286,139 @@ Then configure:
         assert_eq!(code_blocks[0].name, Some("code: bash".to_string()));
         assert_eq!(code_blocks[1].name, Some("code: json".to_string()));
         assert!(code_blocks[0].content.contains("npm install bobbin"));
+    }
+
+    // ---- Import extraction tests ----
+
+    #[test]
+    fn test_extract_rust_imports() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+use std::path::Path;
+use crate::types::Chunk;
+use anyhow::Result;
+
+fn main() {}
+"#;
+        let path = PathBuf::from("test.rs");
+        let imports = parser.extract_imports(&path, content);
+
+        assert_eq!(imports.len(), 3);
+        assert!(imports.iter().any(|i| i.import_specifier == "std::path::Path"));
+        assert!(imports.iter().any(|i| i.import_specifier == "crate::types::Chunk"));
+        assert!(imports.iter().any(|i| i.import_specifier == "anyhow::Result"));
+        assert!(imports.iter().all(|i| i.language == "rust"));
+    }
+
+    #[test]
+    fn test_extract_typescript_imports() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+import { Foo } from './bar';
+import * as React from 'react';
+import defaultExport from '../utils';
+
+export { Thing } from './thing';
+
+function hello() {}
+"#;
+        let path = PathBuf::from("test.ts");
+        let imports = parser.extract_imports(&path, content);
+
+        assert_eq!(imports.len(), 4);
+        assert!(imports.iter().any(|i| i.import_specifier == "./bar"));
+        assert!(imports.iter().any(|i| i.import_specifier == "react"));
+        assert!(imports.iter().any(|i| i.import_specifier == "../utils"));
+        assert!(imports.iter().any(|i| i.import_specifier == "./thing"));
+    }
+
+    #[test]
+    fn test_extract_python_imports() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+import os
+import sys
+from pathlib import Path
+from . import utils
+
+def main():
+    pass
+"#;
+        let path = PathBuf::from("test.py");
+        let imports = parser.extract_imports(&path, content);
+
+        assert!(imports.iter().any(|i| i.import_specifier == "os"));
+        assert!(imports.iter().any(|i| i.import_specifier == "sys"));
+        assert!(imports.iter().any(|i| i.import_specifier == "pathlib"));
+        assert!(imports.iter().all(|i| i.language == "python"));
+    }
+
+    #[test]
+    fn test_extract_go_imports() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+package main
+
+import (
+    "fmt"
+    "os"
+)
+
+func main() {}
+"#;
+        let path = PathBuf::from("test.go");
+        let imports = parser.extract_imports(&path, content);
+
+        assert_eq!(imports.len(), 2);
+        assert!(imports.iter().any(|i| i.import_specifier == "fmt"));
+        assert!(imports.iter().any(|i| i.import_specifier == "os"));
+    }
+
+    #[test]
+    fn test_extract_java_imports() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+import java.util.List;
+import java.io.File;
+
+public class Main {
+    public static void main(String[] args) {}
+}
+"#;
+        let path = PathBuf::from("Main.java");
+        let imports = parser.extract_imports(&path, content);
+
+        assert_eq!(imports.len(), 2);
+        assert!(imports.iter().any(|i| i.import_specifier == "java.util.List"));
+        assert!(imports.iter().any(|i| i.import_specifier == "java.io.File"));
+    }
+
+    #[test]
+    fn test_extract_cpp_includes() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+#include <iostream>
+#include "myheader.h"
+
+void hello() {
+    std::cout << "Hello" << std::endl;
+}
+"#;
+        let path = PathBuf::from("test.cpp");
+        let imports = parser.extract_imports(&path, content);
+
+        assert_eq!(imports.len(), 2);
+        assert!(imports.iter().any(|i| i.import_specifier == "iostream"));
+        assert!(imports.iter().any(|i| i.import_specifier == "myheader.h"));
+    }
+
+    #[test]
+    fn test_extract_no_imports_markdown() {
+        let mut parser = Parser::new().unwrap();
+        let content = "# Title\n\nSome content.";
+        let path = PathBuf::from("README.md");
+        let imports = parser.extract_imports(&path, content);
+        assert!(imports.is_empty());
     }
 
     #[test]

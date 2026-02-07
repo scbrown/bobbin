@@ -11,9 +11,9 @@ use std::time::Instant;
 
 use super::OutputConfig;
 use crate::config::{Config, ContextualEmbeddingConfig};
-use crate::index::{embedder, Embedder, Parser};
+use crate::index::{embedder, resolver, Embedder, Parser};
 use crate::storage::{MetadataStore, VectorStore};
-use crate::types::Chunk;
+use crate::types::{Chunk, ImportEdge};
 
 #[derive(Args)]
 pub struct IndexArgs {
@@ -246,6 +246,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     let batch_size = config.embedding.batch_size;
     let mut pending_results: Vec<FileIndexResult> = Vec::new();
+    let mut all_imports: Vec<ImportEdge> = Vec::new();
 
     for file_path in &files_needing_index {
         let rel_path = file_path
@@ -282,6 +283,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 continue;
             }
         };
+
+        // Extract imports from this file
+        let file_imports = parser.extract_imports(file_path, &content);
+        for mut imp in file_imports {
+            // Normalize source path to relative
+            imp.source_file = rel_path.clone();
+            all_imports.push(imp);
+        }
 
         if chunks.is_empty() {
             if let Some(pb) = &progress {
@@ -376,6 +385,46 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 }
             }
             Err(_) => {}
+        }
+    }
+
+    // Analyze and store import dependencies
+    if !all_imports.is_empty() {
+        if output.verbose && !output.quiet && !output.json {
+            println!("  Resolving {} import edges...", all_imports.len());
+        }
+
+        // Build set of all indexed file paths for resolution
+        let all_indexed: HashSet<String> = current_files.clone();
+        resolver::resolve_imports(&mut all_imports, &all_indexed, &source_root);
+
+        // Clear old dependencies for re-indexed files and store new ones
+        let reindexed_files: Vec<String> = all_imports
+            .iter()
+            .map(|e| e.source_file.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        metadata_store.begin_transaction()?;
+        metadata_store.clear_dependencies_for_files(&reindexed_files)?;
+        let mut dep_count = 0;
+        let mut resolved_count = 0;
+        for edge in &all_imports {
+            if metadata_store.upsert_dependency(edge).is_ok() {
+                dep_count += 1;
+                if edge.resolved_path.is_some() {
+                    resolved_count += 1;
+                }
+            }
+        }
+        metadata_store.commit()?;
+
+        if output.verbose && !output.quiet && !output.json {
+            println!(
+                "  Stored {} dependency edges ({} resolved)",
+                dep_count, resolved_count
+            );
         }
     }
 
