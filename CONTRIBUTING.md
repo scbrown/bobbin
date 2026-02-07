@@ -85,3 +85,19 @@ We use `pytest` for testing.
 
 - Follow PEP 8 guidelines.
 - Ensure type hints are used.
+
+## Feature Integration Checklist
+
+When adding new features to bobbin (new search signals, data sources, chunk types, or storage capabilities), review whether the `bobbin context` command should incorporate the new signal.
+
+The `context` command is the "everything relevant in one shot" command. It combines hybrid search + temporal coupling to assemble task-aware context bundles. New retrieval signals should flow into it.
+
+**Before merging a new feature, check:**
+
+- [ ] Does this feature produce a new retrieval signal? (e.g., dependency graph, complexity scores)
+- [ ] If yes, should `context` use it during assembly? Update `src/search/context.rs`
+- [ ] Does this change chunk types or storage schema? Update context output types if needed
+- [ ] Does the MCP `context` tool need updating? Check `src/mcp/server.rs`
+- [ ] Are there new CLI flags that `context` should also expose?
+
+**Task specs for the context command live in `docs/tasks/context-*.md`.**

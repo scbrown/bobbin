@@ -63,6 +63,12 @@ Manual completion (if not using tambour harness):
 bd close <id>         # Complete work
 ```
 
+## Development Guidelines
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, build commands, and the **Feature Integration Checklist** (important: review the `context` command when adding new features).
+
+Task specs for planned work live in `docs/tasks/`.
+
 ## Build Commands
 
 **Always use `just` instead of raw `cargo` commands.** The justfile is configured with quiet output by default to save context - you only see errors and warnings, not compilation progress.
