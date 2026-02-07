@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
@@ -14,6 +15,53 @@ pub struct FileHistoryEntry {
     pub message: String,
     pub issues: Vec<String>,
     pub timestamp: i64,
+}
+
+/// Specifies which diff to analyze
+#[derive(Debug, Clone)]
+pub enum DiffSpec {
+    /// Unstaged working tree changes
+    Unstaged,
+    /// Staged (cached) changes only
+    Staged,
+    /// Compare a branch against its merge base with the current branch
+    Branch(String),
+    /// A commit range, e.g. "HEAD~3..HEAD"
+    Range(String),
+}
+
+/// Status of a file in a diff
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiffStatus {
+    Added,
+    Modified,
+    Deleted,
+    Renamed,
+}
+
+impl std::fmt::Display for DiffStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DiffStatus::Added => write!(f, "added"),
+            DiffStatus::Modified => write!(f, "modified"),
+            DiffStatus::Deleted => write!(f, "deleted"),
+            DiffStatus::Renamed => write!(f, "renamed"),
+        }
+    }
+}
+
+/// A file and its changed line ranges from a git diff
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiffFile {
+    /// File path (relative to repo root)
+    pub path: String,
+    /// Line numbers of added lines in the new version
+    pub added_lines: Vec<u32>,
+    /// Line numbers of removed lines in the old version
+    pub removed_lines: Vec<u32>,
+    /// Whether the file was added, modified, deleted, or renamed
+    pub status: DiffStatus,
 }
 
 /// Analyzes git history to find temporal coupling between files
@@ -207,6 +255,86 @@ impl GitAnalyzer {
         Ok(churn)
     }
 
+    /// Extract changed files with line-level detail from a git diff.
+    ///
+    /// Parses the unified diff output to determine which files changed
+    /// and exactly which lines were added or removed.
+    pub fn get_diff_files(&self, spec: &DiffSpec) -> Result<Vec<DiffFile>> {
+        // Step 1: Get the list of files and their statuses via --name-status
+        let name_status_args = match spec {
+            DiffSpec::Unstaged => vec!["diff", "--name-status"],
+            DiffSpec::Staged => vec!["diff", "--cached", "--name-status"],
+            DiffSpec::Branch(branch) => {
+                // Find the merge base between the branch and HEAD
+                let merge_base_output = Command::new("git")
+                    .args(["merge-base", "HEAD", branch])
+                    .current_dir(&self.repo_root)
+                    .output()
+                    .context("Failed to find merge base")?;
+                let merge_base = String::from_utf8_lossy(&merge_base_output.stdout)
+                    .trim()
+                    .to_string();
+                if merge_base.is_empty() {
+                    anyhow::bail!(
+                        "Could not find merge base between HEAD and '{}'",
+                        branch
+                    );
+                }
+                return self.get_diff_files(&DiffSpec::Range(format!("{}..{}", merge_base, branch)));
+            }
+            DiffSpec::Range(range) => vec!["diff", "--name-status", range.as_str()],
+        };
+
+        let status_output = Command::new("git")
+            .args(&name_status_args)
+            .current_dir(&self.repo_root)
+            .output()
+            .context("Failed to get diff name-status")?;
+
+        let status_text = String::from_utf8_lossy(&status_output.stdout);
+        let file_statuses = parse_name_status(&status_text);
+
+        if file_statuses.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Step 2: Get the unified diff with line numbers
+        let diff_args: Vec<&str> = match spec {
+            DiffSpec::Unstaged => vec!["diff", "-U0"],
+            DiffSpec::Staged => vec!["diff", "--cached", "-U0"],
+            DiffSpec::Range(range) => vec!["diff", "-U0", range.as_str()],
+            DiffSpec::Branch(_) => unreachable!("Branch is converted to Range above"),
+        };
+
+        let diff_output = Command::new("git")
+            .args(&diff_args)
+            .current_dir(&self.repo_root)
+            .output()
+            .context("Failed to get unified diff")?;
+
+        let diff_text = String::from_utf8_lossy(&diff_output.stdout);
+        let line_changes = parse_unified_diff(&diff_text);
+
+        // Step 3: Combine status info with line-level changes
+        let mut results: Vec<DiffFile> = Vec::new();
+        for (path, status) in &file_statuses {
+            let (added, removed) = line_changes
+                .get(path.as_str())
+                .cloned()
+                .unwrap_or_default();
+
+            results.push(DiffFile {
+                path: path.clone(),
+                added_lines: added,
+                removed_lines: removed,
+                status: *status,
+            });
+        }
+
+        results.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(results)
+    }
+
     /// Get commit history for a specific file
     pub fn get_file_history(&self, file_path: &str, limit: usize) -> Result<Vec<FileHistoryEntry>> {
         // Format: hash|timestamp|author|subject
@@ -356,6 +484,136 @@ fn parse_git_log(log: &str) -> Vec<(i64, Vec<String>)> {
     }
 
     commits
+}
+
+/// Parse `git diff --name-status` output into (path, DiffStatus) pairs.
+///
+/// Format per line: `<status>\t<path>` or `R<score>\t<old>\t<new>` for renames.
+fn parse_name_status(output: &str) -> Vec<(String, DiffStatus)> {
+    let mut results = Vec::new();
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        let status_char = parts[0].chars().next().unwrap_or('M');
+        let status = match status_char {
+            'A' => DiffStatus::Added,
+            'D' => DiffStatus::Deleted,
+            'R' => DiffStatus::Renamed,
+            _ => DiffStatus::Modified, // M, C, T, U all treated as modified
+        };
+        // For renames, use the new path (parts[2])
+        let path = if status_char == 'R' && parts.len() >= 3 {
+            parts[2].to_string()
+        } else {
+            parts[1].to_string()
+        };
+        results.push((path, status));
+    }
+    results
+}
+
+/// Parse unified diff output to extract per-file added/removed line numbers.
+///
+/// Looks for `--- a/<path>` / `+++ b/<path>` headers and `@@ -old,count +new,count @@` hunks.
+/// Returns a map from file path to (added_lines, removed_lines).
+fn parse_unified_diff(diff: &str) -> HashMap<String, (Vec<u32>, Vec<u32>)> {
+    let mut results: HashMap<String, (Vec<u32>, Vec<u32>)> = HashMap::new();
+    let mut current_file: Option<String> = None;
+
+    for line in diff.lines() {
+        if line.starts_with("+++ b/") {
+            current_file = Some(line[6..].to_string());
+        } else if line.starts_with("+++ /dev/null") {
+            // Deleted file — lines tracked under the old name from --- header
+            current_file = None;
+        } else if line.starts_with("--- a/") && current_file.is_none() {
+            // For deleted files, we'll use this as the path
+            // (current_file stays None, but we set up an entry for removed lines)
+        } else if line.starts_with("@@ ") {
+            if let Some(ref file) = current_file {
+                let entry = results.entry(file.clone()).or_default();
+                parse_hunk_header(line, &mut entry.0, &mut entry.1);
+            } else {
+                // Deleted file: parse removed lines only. Extract path from --- header.
+                // We won't have added lines for deleted files.
+            }
+        } else if line.starts_with("diff --git") {
+            // Reset for next file
+            current_file = None;
+        }
+    }
+
+    // Handle deleted files: re-parse looking for --- a/ headers paired with +++ /dev/null
+    let mut deleted_file: Option<String> = None;
+    for line in diff.lines() {
+        if line.starts_with("--- a/") {
+            deleted_file = Some(line[6..].to_string());
+        } else if line.starts_with("+++ /dev/null") {
+            // confirmed deletion — keep deleted_file
+        } else if line.starts_with("+++ b/") {
+            deleted_file = None; // not a deletion
+        } else if line.starts_with("@@ ") {
+            if let Some(ref file) = deleted_file {
+                let entry = results.entry(file.clone()).or_default();
+                parse_hunk_header(line, &mut entry.0, &mut entry.1);
+            }
+        } else if line.starts_with("diff --git") {
+            deleted_file = None;
+        }
+    }
+
+    results
+}
+
+/// Parse a single `@@ -old_start[,old_count] +new_start[,new_count] @@` hunk header.
+///
+/// Populates `added_lines` with the new-side line range and `removed_lines` with the old-side range.
+fn parse_hunk_header(line: &str, added_lines: &mut Vec<u32>, removed_lines: &mut Vec<u32>) {
+    // Format: @@ -<old_start>[,<old_count>] +<new_start>[,<new_count>] @@
+    let Some(at_end) = line.find(" @@") else {
+        return;
+    };
+    let header = &line[3..at_end]; // skip leading "@@ "
+
+    let parts: Vec<&str> = header.split_whitespace().collect();
+    if parts.len() < 2 {
+        return;
+    }
+
+    // Parse old range: -start[,count]
+    if let Some(old_spec) = parts[0].strip_prefix('-') {
+        let (start, count) = parse_range_spec(old_spec);
+        for i in 0..count {
+            removed_lines.push(start + i);
+        }
+    }
+
+    // Parse new range: +start[,count]
+    if let Some(new_spec) = parts[1].strip_prefix('+') {
+        let (start, count) = parse_range_spec(new_spec);
+        for i in 0..count {
+            added_lines.push(start + i);
+        }
+    }
+}
+
+/// Parse a range spec like "42" (1 line at 42) or "42,5" (5 lines starting at 42).
+/// A count of 0 means no lines (pure addition or deletion on the other side).
+fn parse_range_spec(spec: &str) -> (u32, u32) {
+    if let Some((start_str, count_str)) = spec.split_once(',') {
+        let start = start_str.parse::<u32>().unwrap_or(0);
+        let count = count_str.parse::<u32>().unwrap_or(1);
+        (start, count)
+    } else {
+        let start = spec.parse::<u32>().unwrap_or(0);
+        (start, 1)
+    }
 }
 
 /// Calculate coupling score based on frequency and recency
@@ -520,6 +778,298 @@ mod tests {
         // A very restrictive since should return empty or same
         let churn_future = analyzer.get_file_churn(Some("2099-01-01")).unwrap();
         assert!(churn_future.is_empty());
+    }
+
+    #[test]
+    fn test_parse_name_status() {
+        let output = "M\tsrc/main.rs\nA\tsrc/new.rs\nD\told.rs\nR100\tsrc/old.rs\tsrc/renamed.rs\n";
+        let results = parse_name_status(output);
+
+        assert_eq!(results.len(), 4);
+        assert_eq!(results[0], ("src/main.rs".to_string(), DiffStatus::Modified));
+        assert_eq!(results[1], ("src/new.rs".to_string(), DiffStatus::Added));
+        assert_eq!(results[2], ("old.rs".to_string(), DiffStatus::Deleted));
+        assert_eq!(results[3], ("src/renamed.rs".to_string(), DiffStatus::Renamed));
+    }
+
+    #[test]
+    fn test_parse_name_status_empty() {
+        let results = parse_name_status("");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_parse_hunk_header_simple() {
+        let mut added = Vec::new();
+        let mut removed = Vec::new();
+        parse_hunk_header("@@ -10,3 +20,5 @@ fn foo()", &mut added, &mut removed);
+
+        assert_eq!(removed, vec![10, 11, 12]);
+        assert_eq!(added, vec![20, 21, 22, 23, 24]);
+    }
+
+    #[test]
+    fn test_parse_hunk_header_single_line() {
+        let mut added = Vec::new();
+        let mut removed = Vec::new();
+        parse_hunk_header("@@ -5 +5 @@", &mut added, &mut removed);
+
+        assert_eq!(removed, vec![5]);
+        assert_eq!(added, vec![5]);
+    }
+
+    #[test]
+    fn test_parse_hunk_header_pure_addition() {
+        let mut added = Vec::new();
+        let mut removed = Vec::new();
+        // count 0 on old side means pure addition
+        parse_hunk_header("@@ -10,0 +11,2 @@", &mut added, &mut removed);
+
+        assert!(removed.is_empty());
+        assert_eq!(added, vec![11, 12]);
+    }
+
+    #[test]
+    fn test_parse_hunk_header_pure_deletion() {
+        let mut added = Vec::new();
+        let mut removed = Vec::new();
+        // count 0 on new side means pure deletion
+        parse_hunk_header("@@ -10,2 +9,0 @@", &mut added, &mut removed);
+
+        assert_eq!(removed, vec![10, 11]);
+        assert!(added.is_empty());
+    }
+
+    #[test]
+    fn test_parse_range_spec() {
+        assert_eq!(parse_range_spec("42"), (42, 1));
+        assert_eq!(parse_range_spec("42,5"), (42, 5));
+        assert_eq!(parse_range_spec("0,0"), (0, 0));
+        assert_eq!(parse_range_spec("1,0"), (1, 0));
+    }
+
+    #[test]
+    fn test_parse_unified_diff_modification() {
+        let diff = "\
+diff --git a/src/main.rs b/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -10,2 +10,3 @@ fn main() {
+@@ -25,1 +26,1 @@ fn helper()
+";
+        let changes = parse_unified_diff(diff);
+        let (added, removed) = changes.get("src/main.rs").unwrap();
+
+        // First hunk: removed 2 lines at 10, added 3 lines at 10
+        // Second hunk: removed 1 line at 25, added 1 line at 26
+        assert_eq!(*removed, vec![10, 11, 25]);
+        assert_eq!(*added, vec![10, 11, 12, 26]);
+    }
+
+    #[test]
+    fn test_parse_unified_diff_new_file() {
+        let diff = "\
+diff --git a/new.rs b/new.rs
+--- /dev/null
++++ b/new.rs
+@@ -0,0 +1,5 @@
+";
+        let changes = parse_unified_diff(diff);
+        let (added, removed) = changes.get("new.rs").unwrap();
+
+        assert_eq!(*added, vec![1, 2, 3, 4, 5]);
+        assert!(removed.is_empty());
+    }
+
+    #[test]
+    fn test_parse_unified_diff_multiple_files() {
+        let diff = "\
+diff --git a/a.rs b/a.rs
+--- a/a.rs
++++ b/a.rs
+@@ -1,1 +1,2 @@
+diff --git a/b.rs b/b.rs
+--- a/b.rs
++++ b/b.rs
+@@ -5,3 +5,1 @@
+";
+        let changes = parse_unified_diff(diff);
+
+        let (a_added, a_removed) = changes.get("a.rs").unwrap();
+        assert_eq!(*a_removed, vec![1]);
+        assert_eq!(*a_added, vec![1, 2]);
+
+        let (b_added, b_removed) = changes.get("b.rs").unwrap();
+        assert_eq!(*b_removed, vec![5, 6, 7]);
+        assert_eq!(*b_added, vec![5]);
+    }
+
+    #[test]
+    fn test_diff_status_display() {
+        assert_eq!(format!("{}", DiffStatus::Added), "added");
+        assert_eq!(format!("{}", DiffStatus::Modified), "modified");
+        assert_eq!(format!("{}", DiffStatus::Deleted), "deleted");
+        assert_eq!(format!("{}", DiffStatus::Renamed), "renamed");
+    }
+
+    #[test]
+    fn test_get_diff_files_unstaged() {
+        let dir = setup_test_repo();
+        let path = dir.path();
+
+        // Create initial file and commit
+        std::fs::write(path.join("a.rs"), "line1\nline2\nline3\n").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+
+        // Modify the file (unstaged)
+        std::fs::write(path.join("a.rs"), "line1\nchanged\nline3\n").unwrap();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let files = analyzer.get_diff_files(&DiffSpec::Unstaged).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "a.rs");
+        assert_eq!(files[0].status, DiffStatus::Modified);
+        assert!(!files[0].added_lines.is_empty() || !files[0].removed_lines.is_empty());
+    }
+
+    #[test]
+    fn test_get_diff_files_staged() {
+        let dir = setup_test_repo();
+        let path = dir.path();
+
+        // Create initial file and commit
+        std::fs::write(path.join("a.rs"), "line1\nline2\n").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+
+        // Modify and stage
+        std::fs::write(path.join("a.rs"), "line1\nline2\nline3\n").unwrap();
+        Command::new("git").args(["add", "a.rs"]).current_dir(path).output().unwrap();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let files = analyzer.get_diff_files(&DiffSpec::Staged).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "a.rs");
+        assert_eq!(files[0].status, DiffStatus::Modified);
+    }
+
+    #[test]
+    fn test_get_diff_files_new_file() {
+        let dir = setup_test_repo();
+        let path = dir.path();
+
+        // Initial commit
+        std::fs::write(path.join("existing.rs"), "content").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+
+        // Add a new file and stage
+        std::fs::write(path.join("new.rs"), "new content\n").unwrap();
+        Command::new("git").args(["add", "new.rs"]).current_dir(path).output().unwrap();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let files = analyzer.get_diff_files(&DiffSpec::Staged).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "new.rs");
+        assert_eq!(files[0].status, DiffStatus::Added);
+        assert!(!files[0].added_lines.is_empty());
+    }
+
+    #[test]
+    fn test_get_diff_files_deleted_file() {
+        let dir = setup_test_repo();
+        let path = dir.path();
+
+        // Create and commit a file
+        std::fs::write(path.join("to_delete.rs"), "line1\nline2\n").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+
+        // Delete and stage
+        std::fs::remove_file(path.join("to_delete.rs")).unwrap();
+        Command::new("git").args(["add", "to_delete.rs"]).current_dir(path).output().unwrap();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let files = analyzer.get_diff_files(&DiffSpec::Staged).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "to_delete.rs");
+        assert_eq!(files[0].status, DiffStatus::Deleted);
+    }
+
+    #[test]
+    fn test_get_diff_files_range() {
+        let dir = setup_test_repo();
+        let path = dir.path();
+
+        // Initial commit
+        std::fs::write(path.join("a.rs"), "v1").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "c1"]).current_dir(path).output().unwrap();
+
+        // Second commit
+        std::fs::write(path.join("a.rs"), "v2").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "c2"]).current_dir(path).output().unwrap();
+
+        // Third commit with new file
+        std::fs::write(path.join("b.rs"), "new").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "c3"]).current_dir(path).output().unwrap();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let files = analyzer.get_diff_files(&DiffSpec::Range("HEAD~2..HEAD".to_string())).unwrap();
+
+        // Should see changes from the last 2 commits
+        assert!(files.len() >= 1);
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+        assert!(paths.contains(&"a.rs") || paths.contains(&"b.rs"));
+    }
+
+    #[test]
+    fn test_get_diff_files_empty_diff() {
+        let dir = setup_test_repo();
+        let path = dir.path();
+
+        // Commit a file
+        std::fs::write(path.join("a.rs"), "content").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+
+        // No changes — unstaged diff should be empty
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let files = analyzer.get_diff_files(&DiffSpec::Unstaged).unwrap();
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_get_diff_files_multiple_changes() {
+        let dir = setup_test_repo();
+        let path = dir.path();
+
+        // Initial commit with two files
+        std::fs::write(path.join("a.rs"), "a-v1\n").unwrap();
+        std::fs::write(path.join("b.rs"), "b-v1\n").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+
+        // Modify both files (unstaged)
+        std::fs::write(path.join("a.rs"), "a-v2\n").unwrap();
+        std::fs::write(path.join("b.rs"), "b-v2\n").unwrap();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let files = analyzer.get_diff_files(&DiffSpec::Unstaged).unwrap();
+
+        assert_eq!(files.len(), 2);
+        // Results are sorted by path
+        assert_eq!(files[0].path, "a.rs");
+        assert_eq!(files[1].path, "b.rs");
+        assert_eq!(files[0].status, DiffStatus::Modified);
+        assert_eq!(files[1].status, DiffStatus::Modified);
     }
 
     #[test]
