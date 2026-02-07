@@ -333,3 +333,37 @@ pub struct ReadChunkResponse {
     pub content: String,
     pub language: String,
 }
+
+/// Request for identifying code hotspots
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct HotspotsRequest {
+    /// Time window for churn analysis (e.g. "6 months ago", "1 year ago")
+    #[schemars(description = "Time window for churn analysis (default: '1 year ago'). Examples: '6 months ago', '3 months ago', '2 years ago'")]
+    pub since: Option<String>,
+
+    /// Maximum number of hotspots to return (default: 20)
+    #[schemars(description = "Maximum number of hotspots to return (default: 20)")]
+    pub limit: Option<usize>,
+
+    /// Minimum hotspot score threshold (0.0-1.0, default: 0.0)
+    #[schemars(description = "Minimum hotspot score threshold (0.0-1.0, default: 0.0). Higher values filter to only the most critical hotspots.")]
+    pub threshold: Option<f32>,
+}
+
+/// Response for code hotspots
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct HotspotsResponse {
+    pub count: usize,
+    pub since: String,
+    pub hotspots: Vec<HotspotItem>,
+}
+
+/// A single hotspot entry
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct HotspotItem {
+    pub file: String,
+    pub score: f32,
+    pub churn: u32,
+    pub complexity: f32,
+    pub language: String,
+}

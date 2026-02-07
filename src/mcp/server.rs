@@ -24,7 +24,9 @@ use crate::index::Embedder;
 use crate::search::context::{ContentMode, ContextAssembler, ContextConfig, FileRelevance};
 use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{MetadataStore, VectorStore};
+use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::refs::RefAnalyzer;
+use crate::index::GitAnalyzer;
 use crate::types::{ChunkType, MatchType, SearchResult};
 
 /// MCP Server for Bobbin code search
@@ -785,6 +787,90 @@ impl BobbinMcpServer {
             actual_end_line: actual_end,
             content,
             language: Self::detect_language(&req.file),
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Identify code hotspots
+    #[tool(description = "Identify code hotspots — files that are both frequently changed (high churn) and complex. Hotspots are the riskiest parts of a codebase: they change often and are hard to change safely. Score is the geometric mean of normalized churn and AST complexity. Best for: 'which files need refactoring?', 'find risky code', 'where are the maintenance bottlenecks?'.")]
+    async fn hotspots(
+        &self,
+        Parameters(req): Parameters<HotspotsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let since = req.since.as_deref().unwrap_or("1 year ago");
+        let limit = req.limit.unwrap_or(20);
+        let threshold = req.threshold.unwrap_or(0.0);
+
+        let git = GitAnalyzer::new(&self.repo_root)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let churn_map = git
+            .get_file_churn(Some(since))
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        if churn_map.is_empty() {
+            let response = HotspotsResponse {
+                count: 0,
+                since: since.to_string(),
+                hotspots: vec![],
+            };
+            let json = serde_json::to_string_pretty(&response)
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            return Ok(CallToolResult::success(vec![Content::text(json)]));
+        }
+
+        let mut analyzer = ComplexityAnalyzer::new()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let max_churn = churn_map.values().copied().max().unwrap_or(1) as f32;
+        let mut hotspots: Vec<HotspotItem> = Vec::new();
+
+        for (file_path, churn) in &churn_map {
+            let language = Self::detect_language(file_path);
+            if matches!(
+                language.as_str(),
+                "unknown" | "markdown" | "json" | "yaml" | "toml" | "c"
+            ) {
+                continue;
+            }
+
+            let abs_path = self.repo_root.join(file_path);
+            let content = match std::fs::read_to_string(&abs_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let complexity = match analyzer.analyze_file(file_path, &content, &language) {
+                Ok(fc) => fc.complexity,
+                Err(_) => continue,
+            };
+
+            let churn_norm = (*churn as f32) / max_churn;
+            let score = (churn_norm * complexity).sqrt();
+
+            if score >= threshold {
+                hotspots.push(HotspotItem {
+                    file: file_path.clone(),
+                    score,
+                    churn: *churn,
+                    complexity,
+                    language,
+                });
+            }
+        }
+
+        hotspots
+            .sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        hotspots.truncate(limit);
+
+        let response = HotspotsResponse {
+            count: hotspots.len(),
+            since: since.to_string(),
+            hotspots,
         };
 
         let json = serde_json::to_string_pretty(&response)
