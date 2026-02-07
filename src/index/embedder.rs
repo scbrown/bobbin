@@ -568,6 +568,11 @@ pub async fn ensure_model_for_config(
     }
 }
 
+/// List all built-in model names
+pub fn builtin_model_names() -> &'static [&'static str] {
+    &["all-MiniLM-L6-v2", "bge-small-en-v1.5", "gte-small"]
+}
+
 /// Download a file from a URL to a local path
 async fn download_file(url: &str, path: &Path) -> Result<()> {
     use tokio::io::AsyncWriteExt;
@@ -594,4 +599,156 @@ async fn download_file(url: &str, path: &Path) -> Result<()> {
         .with_context(|| format!("Failed to write to {}", path.display()))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{ApiEmbeddingConfig, CustomModelConfig};
+
+    #[test]
+    fn test_model_config_builtin_models() {
+        let minilm = ModelConfig::get("all-MiniLM-L6-v2").unwrap();
+        assert_eq!(minilm.dim, 384);
+        assert_eq!(minilm.max_seq, 256);
+
+        let bge = ModelConfig::get("bge-small-en-v1.5").unwrap();
+        assert_eq!(bge.dim, 384);
+        assert_eq!(bge.max_seq, 512);
+
+        let gte = ModelConfig::get("gte-small").unwrap();
+        assert_eq!(gte.dim, 384);
+        assert_eq!(gte.max_seq, 512);
+    }
+
+    #[test]
+    fn test_model_config_unknown_model() {
+        assert!(ModelConfig::get("nonexistent-model").is_err());
+    }
+
+    #[test]
+    fn test_model_config_is_builtin() {
+        assert!(ModelConfig::is_builtin("all-MiniLM-L6-v2"));
+        assert!(ModelConfig::is_builtin("bge-small-en-v1.5"));
+        assert!(ModelConfig::is_builtin("gte-small"));
+        assert!(!ModelConfig::is_builtin("custom-model"));
+        assert!(!ModelConfig::is_builtin(""));
+    }
+
+    #[test]
+    fn test_builtin_model_names() {
+        let names = builtin_model_names();
+        assert_eq!(names.len(), 3);
+        assert!(names.contains(&"all-MiniLM-L6-v2"));
+        assert!(names.contains(&"bge-small-en-v1.5"));
+        assert!(names.contains(&"gte-small"));
+    }
+
+    #[test]
+    fn test_resolve_dimension_builtin() {
+        let config = EmbeddingConfig::default();
+        assert_eq!(resolve_dimension(&config).unwrap(), 384);
+    }
+
+    #[test]
+    fn test_resolve_dimension_explicit() {
+        let config = EmbeddingConfig {
+            dimensions: Some(768),
+            ..Default::default()
+        };
+        assert_eq!(resolve_dimension(&config).unwrap(), 768);
+    }
+
+    #[test]
+    fn test_resolve_dimension_api_requires_explicit() {
+        let config = EmbeddingConfig {
+            backend: EmbeddingBackend::OpenaiApi,
+            model: "test".to_string(),
+            dimensions: None,
+            api: Some(ApiEmbeddingConfig {
+                url: "http://localhost:8080".to_string(),
+                api_key: None,
+            }),
+            ..Default::default()
+        };
+        assert!(resolve_dimension(&config).is_err());
+    }
+
+    #[test]
+    fn test_resolve_dimension_custom_onnx_requires_explicit() {
+        let config = EmbeddingConfig {
+            model: "custom".to_string(),
+            dimensions: None,
+            custom_model: Some(CustomModelConfig {
+                model_path: "/path/to/model.onnx".to_string(),
+                tokenizer_path: "/path/to/tokenizer.json".to_string(),
+                max_seq_len: None,
+            }),
+            ..Default::default()
+        };
+        assert!(resolve_dimension(&config).is_err());
+    }
+
+    #[test]
+    fn test_resolve_dimension_api_with_explicit() {
+        let config = EmbeddingConfig {
+            backend: EmbeddingBackend::OpenaiApi,
+            model: "test".to_string(),
+            dimensions: Some(1536),
+            api: Some(ApiEmbeddingConfig {
+                url: "http://localhost:8080".to_string(),
+                api_key: None,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(resolve_dimension(&config).unwrap(), 1536);
+    }
+
+    #[test]
+    fn test_embedder_from_config_api_missing_config() {
+        let config = EmbeddingConfig {
+            backend: EmbeddingBackend::OpenaiApi,
+            model: "test".to_string(),
+            dimensions: Some(768),
+            api: None,
+            ..Default::default()
+        };
+        let cache_dir = std::path::PathBuf::from("/tmp/nonexistent");
+        assert!(Embedder::from_config(&config, &cache_dir).is_err());
+    }
+
+    #[test]
+    fn test_embedder_from_config_api_missing_dimensions() {
+        let config = EmbeddingConfig {
+            backend: EmbeddingBackend::OpenaiApi,
+            model: "test".to_string(),
+            dimensions: None,
+            api: Some(ApiEmbeddingConfig {
+                url: "http://localhost:8080".to_string(),
+                api_key: None,
+            }),
+            ..Default::default()
+        };
+        let cache_dir = std::path::PathBuf::from("/tmp/nonexistent");
+        assert!(Embedder::from_config(&config, &cache_dir).is_err());
+    }
+
+    #[test]
+    fn test_embedder_from_config_api_success() {
+        let config = EmbeddingConfig {
+            backend: EmbeddingBackend::OpenaiApi,
+            model: "test-model".to_string(),
+            dimensions: Some(768),
+            api: Some(ApiEmbeddingConfig {
+                url: "http://localhost:8080/v1/embeddings".to_string(),
+                api_key: Some("test-key".to_string()),
+            }),
+            ..Default::default()
+        };
+        let cache_dir = std::path::PathBuf::from("/tmp/nonexistent");
+        let embedder = Embedder::from_config(&config, &cache_dir).unwrap();
+        assert_eq!(embedder.dimension(), 768);
+        assert_eq!(embedder.model_name(), "test-model");
+        assert_eq!(embedder.backend_type(), "openai-api");
+    }
 }

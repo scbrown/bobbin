@@ -1524,4 +1524,31 @@ mod tests {
         let results = store.search(&sample_embedding(), 10, None).await.unwrap();
         assert_eq!(results.len(), 2);
     }
+
+    #[tokio::test]
+    async fn test_custom_embedding_dimension() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        // Open with custom 768-dim instead of default 384
+        let mut store = VectorStore::open_with_dim(&path, 768).await.unwrap();
+        assert_eq!(store.embedding_dim(), 768);
+
+        let chunks = vec![sample_chunk("chunk1", "main")];
+        // Create a 768-dim embedding
+        let mut emb: Vec<f32> = (0..768).map(|i| (i as f32) / 768.0).collect();
+        let norm: f32 = emb.iter().map(|x| x * x).sum::<f32>().sqrt();
+        emb.iter_mut().for_each(|x| *x /= norm);
+
+        store
+            .insert(&chunks, &[emb.clone()], &no_contexts(1), "default", "abc123", "1234567890")
+            .await
+            .unwrap();
+
+        assert_eq!(store.count().await.unwrap(), 1);
+
+        let results = store.search(&emb, 10, None).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].chunk.name, Some("main".to_string()));
+    }
 }
