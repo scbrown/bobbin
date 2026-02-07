@@ -3,6 +3,7 @@ use clap::Parser;
 
 mod cli;
 mod config;
+mod http;
 mod index;
 mod mcp;
 mod search;
