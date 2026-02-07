@@ -99,13 +99,16 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     if output.verbose && !output.quiet && !output.json {
         println!("  Checking embedding model...");
     }
-    embedder::ensure_model(&model_dir, &config.embedding.model)
+    embedder::ensure_model_for_config(&model_dir, &config.embedding)
         .await
         .context("Failed to ensure embedding model is available")?;
 
+    // Determine embedding dimension
+    let embedding_dim = embedder::resolve_dimension(&config.embedding)?;
+
     // Open storage
     let metadata_store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
-    let mut vector_store = VectorStore::open(&lance_path)
+    let mut vector_store = VectorStore::open_with_dim(&lance_path, embedding_dim as i32)
         .await
         .context("Failed to open vector store")?;
 
@@ -131,7 +134,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                     format!("Failed to remove vector store at {}", lance_path.display())
                 })?;
             }
-            vector_store = VectorStore::open(&lance_path)
+            vector_store = VectorStore::open_with_dim(&lance_path, embedding_dim as i32)
                 .await
                 .context("Failed to re-open vector store")?;
         }
@@ -139,8 +142,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     metadata_store.set_meta("embedding_model", current_model)?;
 
-    let mut embed =
-        Embedder::load(&model_dir, current_model).context("Failed to load embedding model")?;
+    let mut embed = Embedder::from_config(&config.embedding, &model_dir)
+        .context("Failed to load embedding model")?;
     let mut parser = Parser::new().context("Failed to initialize parser")?;
 
     // Get existing indexed files from LanceDB (filtered by repo)
@@ -568,6 +571,7 @@ async fn process_batch(
 
         let embeddings = embed
             .embed_batch(&embed_refs)
+            .await
             .context("Failed to generate embeddings")?;
 
         // Delete existing chunks for this file, then insert new ones

@@ -154,7 +154,7 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
                 }
             }
 
-            let embedder = Embedder::load(&model_dir, current_model)
+            let embedder = Embedder::from_config(&config.embedding, &model_dir)
                 .context("Failed to load embedding model")?;
 
             match args.mode {

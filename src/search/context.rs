@@ -209,7 +209,7 @@ impl ContextAssembler {
     ) -> Result<Vec<SeedResult>> {
         let fetch_limit = self.config.search_limit * 2;
 
-        let query_embedding = self.embedder.embed(query)?;
+        let query_embedding = self.embedder.embed(query).await?;
         let semantic_results = self
             .vector_store
             .search(&query_embedding, fetch_limit, repo)

@@ -54,19 +54,82 @@ impl Default for IndexConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct EmbeddingConfig {
-    /// Model name or path to ONNX file
+    /// Embedding backend: "onnx" (default) or "openai-api"
+    pub backend: EmbeddingBackend,
+    /// Model name (built-in ONNX model name or API model identifier)
     pub model: String,
     /// Batch size for embedding generation
     pub batch_size: usize,
+    /// Embedding dimensions (auto-detected for built-in ONNX models, required for custom/API)
+    pub dimensions: Option<usize>,
+    /// OpenAI-compatible API settings (required when backend = "openai-api")
+    pub api: Option<ApiEmbeddingConfig>,
+    /// Custom local ONNX model settings (optional, for non-built-in models)
+    pub custom_model: Option<CustomModelConfig>,
     /// Contextual embedding settings
     pub context: ContextualEmbeddingConfig,
+}
+
+/// Embedding backend type
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum EmbeddingBackend {
+    /// Local ONNX runtime inference
+    Onnx,
+    /// OpenAI-compatible embedding API (works with Ollama, vLLM, LiteLLM, etc.)
+    OpenaiApi,
+}
+
+impl Default for EmbeddingBackend {
+    fn default() -> Self {
+        Self::Onnx
+    }
+}
+
+/// Configuration for OpenAI-compatible embedding API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiEmbeddingConfig {
+    /// API endpoint URL (e.g. "http://localhost:11434/v1/embeddings")
+    pub url: String,
+    /// API key — literal value or "env:VAR_NAME" to read from environment
+    pub api_key: Option<String>,
+}
+
+impl ApiEmbeddingConfig {
+    /// Resolve the API key, supporting "env:VAR_NAME" syntax
+    pub fn resolve_api_key(&self) -> Option<String> {
+        self.api_key.as_ref().and_then(|key| {
+            if let Some(var_name) = key.strip_prefix("env:") {
+                std::env::var(var_name).ok()
+            } else if key.is_empty() {
+                None
+            } else {
+                Some(key.clone())
+            }
+        })
+    }
+}
+
+/// Configuration for custom local ONNX models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomModelConfig {
+    /// Path to ONNX model file
+    pub model_path: String,
+    /// Path to tokenizer.json file
+    pub tokenizer_path: String,
+    /// Maximum sequence length (default: 512)
+    pub max_seq_len: Option<usize>,
 }
 
 impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
+            backend: EmbeddingBackend::default(),
             model: "all-MiniLM-L6-v2".into(),
             batch_size: 32,
+            dimensions: None,
+            api: None,
+            custom_model: None,
             context: ContextualEmbeddingConfig::default(),
         }
     }
