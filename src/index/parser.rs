@@ -3,7 +3,7 @@ use pulldown_cmark::{Event, HeadingLevel, Options, Parser as CmarkParser, Tag, T
 use std::path::Path;
 use tree_sitter::{Language, Node};
 
-use crate::types::{Chunk, ChunkType, ImportEdge};
+use crate::types::{Chunk, ChunkType, ImportEdge, RawImport};
 
 /// Parses source code using tree-sitter to extract semantic chunks
 pub struct Parser {
@@ -99,6 +99,41 @@ impl Parser {
         let root = tree.root_node();
         let mut imports = Vec::new();
         collect_imports(&root, content, &file_path, lang, &mut imports);
+        imports
+    }
+
+    /// Extract raw import statements from a file using tree-sitter.
+    ///
+    /// Returns `RawImport` structs with the verbatim statement text, extracted
+    /// import path, and categorized dep_type for all 6 language families.
+    pub fn extract_raw_imports(&mut self, path: &Path, content: &str) -> Vec<RawImport> {
+        let language = detect_language(path);
+
+        let Some(lang) = language.as_deref() else {
+            return Vec::new();
+        };
+
+        if lang == "markdown" {
+            return Vec::new();
+        }
+
+        let parser = match lang {
+            "rust" => &mut self.rust_parser,
+            "typescript" | "tsx" => &mut self.typescript_parser,
+            "python" => &mut self.python_parser,
+            "go" => &mut self.go_parser,
+            "java" => &mut self.java_parser,
+            "cpp" => &mut self.cpp_parser,
+            _ => return Vec::new(),
+        };
+
+        let Some(tree) = parser.parse(content, None) else {
+            return Vec::new();
+        };
+
+        let root = tree.root_node();
+        let mut imports = Vec::new();
+        collect_raw_imports(&root, content, lang, &mut imports);
         imports
     }
 
@@ -813,6 +848,212 @@ fn collect_cpp_imports(node: &Node, content: &str, file_path: &str, imports: &mu
     }
 }
 
+/// Walk a tree-sitter AST and collect raw import statements with statement text, path, and dep_type
+fn collect_raw_imports(
+    node: &Node,
+    content: &str,
+    language: &str,
+    imports: &mut Vec<RawImport>,
+) {
+    match language {
+        "rust" => collect_raw_rust_imports(node, content, imports),
+        "typescript" | "tsx" => collect_raw_ts_imports(node, content, imports),
+        "python" => collect_raw_python_imports(node, content, imports),
+        "go" => collect_raw_go_imports(node, content, imports),
+        "java" => collect_raw_java_imports(node, content, imports),
+        "cpp" => collect_raw_cpp_imports(node, content, imports),
+        _ => {}
+    }
+}
+
+fn collect_raw_rust_imports(node: &Node, content: &str, imports: &mut Vec<RawImport>) {
+    if node.kind() == "use_declaration" {
+        let statement = content[node.byte_range()].to_string();
+        if let Some(arg) = node.child_by_field_name("argument") {
+            let path = content[arg.byte_range()].to_string();
+            imports.push(RawImport {
+                statement,
+                path,
+                dep_type: "use".to_string(),
+            });
+        }
+    } else if node.kind() == "extern_crate_declaration" {
+        let statement = content[node.byte_range()].to_string();
+        if let Some(name) = node.child_by_field_name("name") {
+            let path = content[name.byte_range()].to_string();
+            imports.push(RawImport {
+                statement,
+                path,
+                dep_type: "use".to_string(),
+            });
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_raw_rust_imports(&child, content, imports);
+    }
+}
+
+fn collect_raw_ts_imports(node: &Node, content: &str, imports: &mut Vec<RawImport>) {
+    if node.kind() == "import_statement" {
+        let statement = content[node.byte_range()].to_string();
+        if let Some(source) = node.child_by_field_name("source") {
+            let raw = content[source.byte_range()].to_string();
+            let path = raw.trim_matches(|c| c == '\'' || c == '"').to_string();
+            imports.push(RawImport {
+                statement,
+                path,
+                dep_type: "import".to_string(),
+            });
+        }
+    } else if node.kind() == "export_statement" {
+        if let Some(source) = node.child_by_field_name("source") {
+            let statement = content[node.byte_range()].to_string();
+            let raw = content[source.byte_range()].to_string();
+            let path = raw.trim_matches(|c| c == '\'' || c == '"').to_string();
+            imports.push(RawImport {
+                statement,
+                path,
+                dep_type: "import".to_string(),
+            });
+        }
+    } else if node.kind() == "call_expression" {
+        // Detect require() calls: `const x = require('foo')`
+        if let Some(func) = node.child_by_field_name("function") {
+            if content[func.byte_range()] == *"require" {
+                if let Some(args) = node.child_by_field_name("arguments") {
+                    // First child of argument_list after "(" is the string argument
+                    let mut cursor = args.walk();
+                    for arg in args.children(&mut cursor) {
+                        if arg.kind() == "string" {
+                            let statement = content[node.byte_range()].to_string();
+                            let raw = content[arg.byte_range()].to_string();
+                            let path = raw.trim_matches(|c| c == '\'' || c == '"').to_string();
+                            imports.push(RawImport {
+                                statement,
+                                path,
+                                dep_type: "require".to_string(),
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_raw_ts_imports(&child, content, imports);
+    }
+}
+
+fn collect_raw_python_imports(node: &Node, content: &str, imports: &mut Vec<RawImport>) {
+    if node.kind() == "import_statement" {
+        let statement = content[node.byte_range()].to_string();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "dotted_name" || child.kind() == "aliased_import" {
+                let name_node = if child.kind() == "aliased_import" {
+                    child.child_by_field_name("name")
+                } else {
+                    Some(child)
+                };
+                if let Some(n) = name_node {
+                    let path = content[n.byte_range()].to_string();
+                    imports.push(RawImport {
+                        statement: statement.clone(),
+                        path,
+                        dep_type: "import".to_string(),
+                    });
+                }
+            }
+        }
+    } else if node.kind() == "import_from_statement" {
+        let statement = content[node.byte_range()].to_string();
+        if let Some(module) = node.child_by_field_name("module_name") {
+            let path = content[module.byte_range()].to_string();
+            imports.push(RawImport {
+                statement,
+                path,
+                dep_type: "from".to_string(),
+            });
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_raw_python_imports(&child, content, imports);
+    }
+}
+
+fn collect_raw_go_imports(node: &Node, content: &str, imports: &mut Vec<RawImport>) {
+    if node.kind() == "import_spec" {
+        let statement = content[node.byte_range()].to_string();
+        if let Some(path_node) = node.child_by_field_name("path") {
+            let raw = content[path_node.byte_range()].to_string();
+            let path = raw.trim_matches('"').to_string();
+            imports.push(RawImport {
+                statement,
+                path,
+                dep_type: "import".to_string(),
+            });
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_raw_go_imports(&child, content, imports);
+    }
+}
+
+fn collect_raw_java_imports(node: &Node, content: &str, imports: &mut Vec<RawImport>) {
+    if node.kind() == "import_declaration" {
+        let statement = content[node.byte_range()].to_string();
+        let path = statement
+            .trim_start_matches("import")
+            .trim()
+            .trim_start_matches("static")
+            .trim()
+            .trim_end_matches(';')
+            .trim()
+            .to_string();
+        imports.push(RawImport {
+            statement,
+            path,
+            dep_type: "import".to_string(),
+        });
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_raw_java_imports(&child, content, imports);
+    }
+}
+
+fn collect_raw_cpp_imports(node: &Node, content: &str, imports: &mut Vec<RawImport>) {
+    if node.kind() == "preproc_include" {
+        let statement = content[node.byte_range()].to_string();
+        if let Some(path_node) = node.child_by_field_name("path") {
+            let raw = content[path_node.byte_range()].to_string();
+            let path = raw
+                .trim_matches(|c| c == '<' || c == '>' || c == '"')
+                .to_string();
+            imports.push(RawImport {
+                statement,
+                path,
+                dep_type: "include".to_string(),
+            });
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_raw_cpp_imports(&child, content, imports);
+    }
+}
+
 fn generate_chunk_id(path: &Path, start_line: u32, end_line: u32) -> String {
     use sha2::{Digest, Sha256};
     let input = format!("{}:{}:{}", path.display(), start_line, end_line);
@@ -1418,6 +1659,197 @@ void hello() {
         let content = "# Title\n\nSome content.";
         let path = PathBuf::from("README.md");
         let imports = parser.extract_imports(&path, content);
+        assert!(imports.is_empty());
+    }
+
+    // ---- Raw import extraction tests ----
+
+    #[test]
+    fn test_raw_imports_rust() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+use std::path::Path;
+use crate::types::Chunk;
+use anyhow::Result;
+
+fn main() {}
+"#;
+        let path = PathBuf::from("test.rs");
+        let imports = parser.extract_raw_imports(&path, content);
+
+        assert_eq!(imports.len(), 3);
+
+        let i = imports.iter().find(|i| i.path == "std::path::Path").unwrap();
+        assert_eq!(i.statement, "use std::path::Path;");
+        assert_eq!(i.dep_type, "use");
+
+        let i = imports.iter().find(|i| i.path == "crate::types::Chunk").unwrap();
+        assert_eq!(i.statement, "use crate::types::Chunk;");
+        assert_eq!(i.dep_type, "use");
+
+        let i = imports.iter().find(|i| i.path == "anyhow::Result").unwrap();
+        assert_eq!(i.dep_type, "use");
+    }
+
+    #[test]
+    fn test_raw_imports_typescript() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+import { Foo } from './bar';
+import * as React from 'react';
+
+export { Thing } from './thing';
+
+function hello() {}
+"#;
+        let path = PathBuf::from("test.ts");
+        let imports = parser.extract_raw_imports(&path, content);
+
+        assert_eq!(imports.len(), 3);
+
+        let i = imports.iter().find(|i| i.path == "./bar").unwrap();
+        assert!(i.statement.contains("import"));
+        assert_eq!(i.dep_type, "import");
+
+        let i = imports.iter().find(|i| i.path == "react").unwrap();
+        assert_eq!(i.dep_type, "import");
+
+        let i = imports.iter().find(|i| i.path == "./thing").unwrap();
+        assert!(i.statement.contains("export"));
+        assert_eq!(i.dep_type, "import");
+    }
+
+    #[test]
+    fn test_raw_imports_typescript_require() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+const fs = require('fs');
+const path = require('path');
+
+function hello() {}
+"#;
+        let path = PathBuf::from("test.ts");
+        let imports = parser.extract_raw_imports(&path, content);
+
+        assert_eq!(imports.len(), 2);
+        assert!(imports.iter().any(|i| i.path == "fs" && i.dep_type == "require"));
+        assert!(imports.iter().any(|i| i.path == "path" && i.dep_type == "require"));
+    }
+
+    #[test]
+    fn test_raw_imports_python() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+import os
+import sys
+from pathlib import Path
+from . import utils
+
+def main():
+    pass
+"#;
+        let path = PathBuf::from("test.py");
+        let imports = parser.extract_raw_imports(&path, content);
+
+        let i = imports.iter().find(|i| i.path == "os").unwrap();
+        assert_eq!(i.dep_type, "import");
+        assert!(i.statement.contains("import os"));
+
+        let i = imports.iter().find(|i| i.path == "pathlib").unwrap();
+        assert_eq!(i.dep_type, "from");
+        assert!(i.statement.contains("from pathlib import Path"));
+    }
+
+    #[test]
+    fn test_raw_imports_go() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+package main
+
+import (
+    "fmt"
+    "os"
+)
+
+func main() {}
+"#;
+        let path = PathBuf::from("test.go");
+        let imports = parser.extract_raw_imports(&path, content);
+
+        assert_eq!(imports.len(), 2);
+        assert!(imports.iter().any(|i| i.path == "fmt" && i.dep_type == "import"));
+        assert!(imports.iter().any(|i| i.path == "os" && i.dep_type == "import"));
+    }
+
+    #[test]
+    fn test_raw_imports_java() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+import java.util.List;
+import java.io.File;
+
+public class Main {
+    public static void main(String[] args) {}
+}
+"#;
+        let path = PathBuf::from("Main.java");
+        let imports = parser.extract_raw_imports(&path, content);
+
+        assert_eq!(imports.len(), 2);
+
+        let i = imports.iter().find(|i| i.path == "java.util.List").unwrap();
+        assert_eq!(i.dep_type, "import");
+        assert!(i.statement.contains("import java.util.List;"));
+
+        let i = imports.iter().find(|i| i.path == "java.io.File").unwrap();
+        assert_eq!(i.dep_type, "import");
+    }
+
+    #[test]
+    fn test_raw_imports_cpp() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+#include <iostream>
+#include "myheader.h"
+
+void hello() {
+    std::cout << "Hello" << std::endl;
+}
+"#;
+        let path = PathBuf::from("test.cpp");
+        let imports = parser.extract_raw_imports(&path, content);
+
+        assert_eq!(imports.len(), 2);
+
+        let i = imports.iter().find(|i| i.path == "iostream").unwrap();
+        assert_eq!(i.dep_type, "include");
+        assert!(i.statement.contains("#include"));
+
+        let i = imports.iter().find(|i| i.path == "myheader.h").unwrap();
+        assert_eq!(i.dep_type, "include");
+    }
+
+    #[test]
+    fn test_raw_imports_no_false_positives() {
+        let mut parser = Parser::new().unwrap();
+        // A function called "import" should not trigger import detection
+        let content = r#"
+function doStuff() {
+    const result = import_data();
+    return result;
+}
+"#;
+        let path = PathBuf::from("test.ts");
+        let imports = parser.extract_raw_imports(&path, content);
+        assert!(imports.is_empty());
+    }
+
+    #[test]
+    fn test_raw_imports_markdown_empty() {
+        let mut parser = Parser::new().unwrap();
+        let content = "# Title\n\nSome content.";
+        let path = PathBuf::from("README.md");
+        let imports = parser.extract_raw_imports(&path, content);
         assert!(imports.is_empty());
     }
 

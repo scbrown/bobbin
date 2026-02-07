@@ -92,6 +92,17 @@ pub struct FileCoupling {
     pub last_co_change: i64,
 }
 
+/// A raw import statement extracted from source code
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RawImport {
+    /// The full verbatim import statement text (e.g., "use crate::auth::middleware;")
+    pub statement: String,
+    /// The extracted import path (e.g., "crate::auth::middleware")
+    pub path: String,
+    /// The categorized import type: "use", "import", "require", "from", "include"
+    pub dep_type: String,
+}
+
 /// An import/dependency edge between two files
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportEdge {
