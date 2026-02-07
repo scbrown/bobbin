@@ -77,7 +77,7 @@ anyhow = "1"
 thiserror = "2"
 
 # HTTP client for model downloads
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
 # Utilities
 walkdir = "2"

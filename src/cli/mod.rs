@@ -33,6 +33,10 @@ pub struct Cli {
     /// Show detailed progress
     #[arg(long, global = true)]
     verbose: bool,
+
+    /// Use a remote bobbin HTTP server instead of local storage
+    #[arg(long, global = true, value_name = "URL")]
+    server: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -80,6 +84,7 @@ impl Cli {
             json: self.json,
             quiet: self.quiet,
             verbose: self.verbose,
+            server: self.server,
         };
 
         match self.command {
@@ -100,9 +105,11 @@ impl Cli {
 }
 
 /// Output configuration passed to all commands
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct OutputConfig {
     pub json: bool,
     pub quiet: bool,
     pub verbose: bool,
+    /// Remote server URL for thin-client mode
+    pub server: Option<String>,
 }

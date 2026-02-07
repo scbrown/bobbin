@@ -1,8 +1,9 @@
-//! HTTP server for Bobbin.
+//! HTTP server and client for Bobbin.
 //!
 //! Provides a REST API for code search and analysis, allowing centralized
 //! deployment with thin CLI clients and webhook-driven indexing.
 
+pub mod client;
 mod handlers;
 
 use std::net::SocketAddr;
