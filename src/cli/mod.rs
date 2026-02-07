@@ -1,4 +1,5 @@
 mod benchmark;
+mod completions;
 mod context;
 mod deps;
 mod grep;
@@ -84,6 +85,9 @@ enum Commands {
 
     /// Watch for file changes and re-index continuously
     Watch(watch::WatchArgs),
+
+    /// Generate shell completions
+    Completions(completions::CompletionsArgs),
 }
 
 impl Cli {
@@ -110,6 +114,10 @@ impl Cli {
             Commands::Serve(args) => serve::run(args, output).await,
             Commands::Benchmark(args) => benchmark::run(args, output).await,
             Commands::Watch(args) => watch::run(args, output).await,
+            Commands::Completions(args) => {
+                completions::run(args);
+                Ok(())
+            }
         }
     }
 }
