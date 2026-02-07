@@ -520,6 +520,68 @@ impl VectorStore {
         Ok(search_results)
     }
 
+    /// Get a single chunk by its ID
+    pub async fn get_chunk_by_id(&self, chunk_id: &str) -> Result<Option<Chunk>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        let filter = format!("id = '{}'", chunk_id.replace('\'', "''"));
+
+        let results = table
+            .query()
+            .only_if(filter)
+            .execute()
+            .await
+            .context("Failed to query chunk by ID")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect chunk by ID")?;
+
+        for batch in &batches {
+            if batch.num_rows() == 0 {
+                continue;
+            }
+
+            let ids = batch.column_by_name("id").context("Missing id column")?
+                .as_any().downcast_ref::<StringArray>().context("id column has wrong type")?;
+            let file_paths = batch.column_by_name("file_path").context("Missing file_path column")?
+                .as_any().downcast_ref::<StringArray>().context("file_path column has wrong type")?;
+            let chunk_names = batch.column_by_name("chunk_name").context("Missing chunk_name column")?
+                .as_any().downcast_ref::<StringArray>().context("chunk_name column has wrong type")?;
+            let chunk_types = batch.column_by_name("chunk_type").context("Missing chunk_type column")?
+                .as_any().downcast_ref::<StringArray>().context("chunk_type column has wrong type")?;
+            let start_lines = batch.column_by_name("start_line").context("Missing start_line column")?
+                .as_any().downcast_ref::<UInt32Array>().context("start_line column has wrong type")?;
+            let end_lines = batch.column_by_name("end_line").context("Missing end_line column")?
+                .as_any().downcast_ref::<UInt32Array>().context("end_line column has wrong type")?;
+            let contents = batch.column_by_name("content").context("Missing content column")?
+                .as_any().downcast_ref::<StringArray>().context("content column has wrong type")?;
+            let languages = batch.column_by_name("language").context("Missing language column")?
+                .as_any().downcast_ref::<StringArray>().context("language column has wrong type")?;
+
+            return Ok(Some(Chunk {
+                id: ids.value(0).to_string(),
+                file_path: file_paths.value(0).to_string(),
+                chunk_type: str_to_chunk_type(chunk_types.value(0)),
+                name: if chunk_names.is_null(0) {
+                    None
+                } else {
+                    Some(chunk_names.value(0).to_string())
+                },
+                start_line: start_lines.value(0),
+                end_line: end_lines.value(0),
+                content: contents.value(0).to_string(),
+                language: languages.value(0).to_string(),
+            }));
+        }
+
+        Ok(None)
+    }
+
     /// Delete vectors by chunk IDs
     pub async fn delete(&self, chunk_ids: &[String]) -> Result<()> {
         let table = match &self.table {
