@@ -7,6 +7,7 @@ mod related;
 mod search;
 mod serve;
 mod status;
+mod watch;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -60,6 +61,9 @@ enum Commands {
 
     /// Start MCP server for AI agent integration
     Serve(serve::ServeArgs),
+
+    /// Watch for file changes and re-index continuously
+    Watch(watch::WatchArgs),
 }
 
 impl Cli {
@@ -80,6 +84,7 @@ impl Cli {
             Commands::History(args) => history::run(args, output).await,
             Commands::Status(args) => status::run(args, output).await,
             Commands::Serve(args) => serve::run(args, output).await,
+            Commands::Watch(args) => watch::run(args, output).await,
         }
     }
 }
