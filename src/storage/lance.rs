@@ -755,6 +755,75 @@ impl VectorStore {
         }))
     }
 
+    /// Get all chunks for a specific file path, ordered by start_line
+    pub async fn get_chunks_for_file(
+        &self,
+        file_path: &str,
+        repo: Option<&str>,
+    ) -> Result<Vec<Chunk>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let mut filter = format!("file_path = '{}'", file_path.replace('\'', "''"));
+        if let Some(repo_name) = repo {
+            filter.push_str(&format!(" AND repo = '{}'", repo_name.replace('\'', "''")));
+        }
+
+        let results = table
+            .query()
+            .only_if(filter)
+            .execute()
+            .await
+            .context("Failed to query chunks for file")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect chunks for file")?;
+
+        let mut chunks = Vec::new();
+        for batch in &batches {
+            let ids = batch.column_by_name("id").context("Missing id column")?
+                .as_any().downcast_ref::<StringArray>().context("id column has wrong type")?;
+            let file_paths = batch.column_by_name("file_path").context("Missing file_path column")?
+                .as_any().downcast_ref::<StringArray>().context("file_path column has wrong type")?;
+            let chunk_names = batch.column_by_name("chunk_name").context("Missing chunk_name column")?
+                .as_any().downcast_ref::<StringArray>().context("chunk_name column has wrong type")?;
+            let chunk_types = batch.column_by_name("chunk_type").context("Missing chunk_type column")?
+                .as_any().downcast_ref::<StringArray>().context("chunk_type column has wrong type")?;
+            let start_lines = batch.column_by_name("start_line").context("Missing start_line column")?
+                .as_any().downcast_ref::<UInt32Array>().context("start_line column has wrong type")?;
+            let end_lines = batch.column_by_name("end_line").context("Missing end_line column")?
+                .as_any().downcast_ref::<UInt32Array>().context("end_line column has wrong type")?;
+            let contents = batch.column_by_name("content").context("Missing content column")?
+                .as_any().downcast_ref::<StringArray>().context("content column has wrong type")?;
+            let languages = batch.column_by_name("language").context("Missing language column")?
+                .as_any().downcast_ref::<StringArray>().context("language column has wrong type")?;
+
+            for i in 0..batch.num_rows() {
+                chunks.push(Chunk {
+                    id: ids.value(i).to_string(),
+                    file_path: file_paths.value(i).to_string(),
+                    chunk_type: str_to_chunk_type(chunk_types.value(i)),
+                    name: if chunk_names.is_null(i) {
+                        None
+                    } else {
+                        Some(chunk_names.value(i).to_string())
+                    },
+                    start_line: start_lines.value(i),
+                    end_line: end_lines.value(i),
+                    content: contents.value(i).to_string(),
+                    language: languages.value(i).to_string(),
+                });
+            }
+        }
+
+        chunks.sort_by_key(|c| c.start_line);
+        Ok(chunks)
+    }
+
     /// Get index statistics, optionally filtered by repo
     pub async fn get_stats(&self, repo: Option<&str>) -> Result<IndexStats> {
         let table = match &self.table {
@@ -1287,6 +1356,68 @@ mod tests {
         // Get file paths filtered by repo
         let paths_a = store.get_all_file_paths(Some("repo_a")).await.unwrap();
         assert_eq!(paths_a.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_chunks_for_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let chunks = vec![
+            Chunk {
+                id: "chunk1".to_string(),
+                file_path: "src/a.rs".to_string(),
+                chunk_type: ChunkType::Function,
+                name: Some("func_b".to_string()),
+                start_line: 20,
+                end_line: 30,
+                content: "fn func_b() {}".to_string(),
+                language: "rust".to_string(),
+            },
+            Chunk {
+                id: "chunk2".to_string(),
+                file_path: "src/a.rs".to_string(),
+                chunk_type: ChunkType::Function,
+                name: Some("func_a".to_string()),
+                start_line: 1,
+                end_line: 10,
+                content: "fn func_a() {}".to_string(),
+                language: "rust".to_string(),
+            },
+            Chunk {
+                id: "chunk3".to_string(),
+                file_path: "src/b.rs".to_string(),
+                chunk_type: ChunkType::Function,
+                name: Some("other".to_string()),
+                start_line: 1,
+                end_line: 5,
+                content: "fn other() {}".to_string(),
+                language: "rust".to_string(),
+            },
+        ];
+        let embeddings = vec![sample_embedding(), sample_embedding(), sample_embedding()];
+
+        store
+            .insert(&chunks, &embeddings, &no_contexts(3), "default", "abc123", "1234567890")
+            .await
+            .unwrap();
+
+        // Get chunks for src/a.rs - should return 2 chunks sorted by start_line
+        let result = store.get_chunks_for_file("src/a.rs", None).await.unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].start_line, 1); // func_a first
+        assert_eq!(result[1].start_line, 20); // func_b second
+
+        // Get chunks for src/b.rs - should return 1 chunk
+        let result = store.get_chunks_for_file("src/b.rs", None).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, Some("other".to_string()));
+
+        // Get chunks for unknown file - should return empty
+        let result = store.get_chunks_for_file("unknown.rs", None).await.unwrap();
+        assert!(result.is_empty());
     }
 
     #[tokio::test]

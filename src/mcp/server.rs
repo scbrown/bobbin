@@ -21,6 +21,7 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, S
 use super::tools::*;
 use crate::config::Config;
 use crate::index::Embedder;
+use crate::search::context::{ContentMode, ContextAssembler, ContextConfig, FileRelevance};
 use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{MetadataStore, VectorStore};
 use crate::types::{ChunkType, MatchType, SearchResult};
@@ -523,6 +524,95 @@ impl BobbinMcpServer {
                     ),
                 })
                 .collect(),
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Assemble task-relevant context
+    #[tool(description = "Assemble a comprehensive context bundle for a task. Given a natural language task description, combines semantic search results with temporally coupled files from git history. Returns a deduplicated, budget-aware set of relevant code chunks grouped by file. Ideal for understanding everything relevant to a task before making changes.")]
+    async fn context(
+        &self,
+        Parameters(req): Parameters<ContextRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let config_path = Config::config_path(&self.repo_root);
+        let config = Config::load(&config_path)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let stats = vector_store.get_stats(None).await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        if stats.total_chunks == 0 {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "No indexed content. Run `bobbin index` first.",
+            )]));
+        }
+
+        let metadata_store = self.open_metadata_store()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let model_dir = Config::model_cache_dir()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let embedder = Embedder::load(&model_dir, &config.embedding.model)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let context_config = ContextConfig {
+            budget_lines: req.budget.unwrap_or(500),
+            depth: req.depth.unwrap_or(1),
+            max_coupled: req.max_coupled.unwrap_or(3),
+            coupling_threshold: req.coupling_threshold.unwrap_or(0.1),
+            semantic_weight: config.search.semantic_weight,
+            content_mode: ContentMode::Full, // Always full content for MCP
+            search_limit: req.limit.unwrap_or(20),
+        };
+
+        let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+        let bundle = assembler
+            .assemble(&req.query, req.repo.as_deref())
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let response = ContextResponse {
+            query: bundle.query,
+            budget: ContextBudgetInfo {
+                max_lines: bundle.budget.max_lines,
+                used_lines: bundle.budget.used_lines,
+            },
+            files: bundle.files.iter().map(|f| ContextFileOutput {
+                path: f.path.clone(),
+                language: f.language.clone(),
+                relevance: match f.relevance {
+                    FileRelevance::Direct => "direct".to_string(),
+                    FileRelevance::Coupled => "coupled".to_string(),
+                },
+                score: f.score,
+                coupled_to: f.coupled_to.clone(),
+                chunks: f.chunks.iter().map(|c| ContextChunkOutput {
+                    name: c.name.clone(),
+                    chunk_type: c.chunk_type.to_string(),
+                    start_line: c.start_line,
+                    end_line: c.end_line,
+                    score: c.score,
+                    match_type: c.match_type.map(|mt| match mt {
+                        MatchType::Semantic => "semantic".to_string(),
+                        MatchType::Keyword => "keyword".to_string(),
+                        MatchType::Hybrid => "hybrid".to_string(),
+                    }),
+                    content: c.content.clone(),
+                }).collect(),
+            }).collect(),
+            summary: ContextSummaryOutput {
+                total_files: bundle.summary.total_files,
+                total_chunks: bundle.summary.total_chunks,
+                direct_hits: bundle.summary.direct_hits,
+                coupled_additions: bundle.summary.coupled_additions,
+            },
         };
 
         let json = serde_json::to_string_pretty(&response)
