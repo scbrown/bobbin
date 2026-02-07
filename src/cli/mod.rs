@@ -9,6 +9,7 @@ mod related;
 mod search;
 mod serve;
 mod status;
+mod watch;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -68,6 +69,9 @@ enum Commands {
 
     /// Benchmark embedding models for comparison
     Benchmark(benchmark::BenchmarkArgs),
+
+    /// Watch for file changes and re-index continuously
+    Watch(watch::WatchArgs),
 }
 
 impl Cli {
@@ -90,6 +94,7 @@ impl Cli {
             Commands::Status(args) => status::run(args, output).await,
             Commands::Serve(args) => serve::run(args, output).await,
             Commands::Benchmark(args) => benchmark::run(args, output).await,
+            Commands::Watch(args) => watch::run(args, output).await,
         }
     }
 }

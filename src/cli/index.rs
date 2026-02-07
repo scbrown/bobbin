@@ -604,7 +604,7 @@ async fn process_batch(
 /// from the file content to create enriched embedding text. Returns `None` for
 /// chunks where contextual embedding is disabled (they'll be embedded with their
 /// content directly).
-fn build_context_windows(
+pub(crate) fn build_context_windows(
     chunks: &[Chunk],
     file_content: &str,
     config: &ContextualEmbeddingConfig,
