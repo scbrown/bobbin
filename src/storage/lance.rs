@@ -534,6 +534,53 @@ impl VectorStore {
         Ok(search_results)
     }
 
+    /// Get the stored embedding vector for a chunk by its ID
+    pub async fn get_chunk_embedding(&self, chunk_id: &str) -> Result<Option<Vec<f32>>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        let filter = format!("id = '{}'", chunk_id.replace('\'', "''"));
+
+        let results = table
+            .query()
+            .only_if(filter)
+            .select(lancedb::query::Select::Columns(vec!["vector".to_string()]))
+            .limit(1)
+            .execute()
+            .await
+            .context("Failed to query chunk embedding")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect chunk embedding")?;
+
+        for batch in &batches {
+            if batch.num_rows() == 0 {
+                continue;
+            }
+
+            let vectors = batch
+                .column_by_name("vector")
+                .context("Missing vector column")?
+                .as_any()
+                .downcast_ref::<FixedSizeListArray>()
+                .context("vector column has wrong type")?;
+
+            let value_arr = vectors.value(0);
+            let values = value_arr
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .context("vector values have wrong type")?;
+
+            return Ok(Some(values.values().to_vec()));
+        }
+
+        Ok(None)
+    }
+
     /// Get a single chunk by its ID
     pub async fn get_chunk_by_id(&self, chunk_id: &str) -> Result<Option<Chunk>> {
         let table = match &self.table {
@@ -1550,5 +1597,36 @@ mod tests {
         let results = store.search(&emb, 10, None).await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].chunk.name, Some("main".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_chunk_embedding() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let chunks = vec![sample_chunk("chunk1", "main")];
+        let embedding = sample_embedding();
+
+        store
+            .insert(&chunks, &[embedding.clone()], &no_contexts(1), "default", "abc123", "1234567890")
+            .await
+            .unwrap();
+
+        // Retrieve the stored embedding
+        let retrieved = store.get_chunk_embedding("chunk1").await.unwrap();
+        assert!(retrieved.is_some());
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.len(), 384);
+
+        // Verify values match what we inserted
+        for (a, b) in embedding.iter().zip(retrieved.iter()) {
+            assert!((a - b).abs() < 1e-6, "Embedding values should match");
+        }
+
+        // Non-existent chunk returns None
+        let missing = store.get_chunk_embedding("nonexistent").await.unwrap();
+        assert!(missing.is_none());
     }
 }
