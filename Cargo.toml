@@ -5,9 +5,30 @@ edition = "2021"
 authors = ["Bobbin Team"]
 description = "Local-first code context engine with Temporal RAG"
 license = "MIT"
-repository = "https://github.com/bobbin-dev/bobbin"
+repository = "https://github.com/scbrown/bobbin"
+homepage = "https://github.com/scbrown/bobbin"
+documentation = "https://docs.rs/bobbin"
+readme = "README.md"
 keywords = ["rag", "code-search", "embeddings", "tree-sitter"]
 categories = ["command-line-utilities", "development-tools"]
+exclude = [
+    ".beads/",
+    ".tambour/",
+    ".runtime/",
+    ".claude/",
+    "scripts/",
+    "state.json",
+    "docs/",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "GEMINI.md",
+    "PRD.md",
+    "VISION.md",
+    "Local RAG and Context Injection.md",
+    "justfile",
+    "tambour.just",
+    "target/",
+]
 
 [dependencies]
 # CLI
