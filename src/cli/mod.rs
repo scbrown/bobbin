@@ -1,3 +1,4 @@
+mod context;
 mod grep;
 mod history;
 mod index;
@@ -42,6 +43,9 @@ enum Commands {
     /// Semantic search for code
     Search(search::SearchArgs),
 
+    /// Assemble task-relevant context from search and git history
+    Context(context::ContextArgs),
+
     /// Keyword/regex search
     Grep(grep::GrepArgs),
 
@@ -70,6 +74,7 @@ impl Cli {
             Commands::Init(args) => init::run(args, output).await,
             Commands::Index(args) => index::run(args, output).await,
             Commands::Search(args) => search::run(args, output).await,
+            Commands::Context(args) => context::run(args, output).await,
             Commands::Grep(args) => grep::run(args, output).await,
             Commands::Related(args) => related::run(args, output).await,
             Commands::History(args) => history::run(args, output).await,

@@ -108,6 +108,90 @@ pub struct MatchingLine {
     pub content: String,
 }
 
+/// Request for context assembly
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ContextRequest {
+    /// Natural language description of the task
+    #[schemars(description = "Natural language task description to assemble context for")]
+    pub query: String,
+
+    /// Maximum lines of content to include (default: 500)
+    #[schemars(description = "Maximum lines of code content to include in the context bundle (default: 500)")]
+    pub budget: Option<usize>,
+
+    /// Coupling expansion depth (default: 1, 0 = no coupling)
+    #[schemars(description = "Depth of temporal coupling expansion. 0 disables coupling, 1 expands one level (default: 1)")]
+    pub depth: Option<u32>,
+
+    /// Max coupled files per seed file (default: 3)
+    #[schemars(description = "Maximum number of coupled files to include per seed file (default: 3)")]
+    pub max_coupled: Option<usize>,
+
+    /// Max initial search results (default: 20)
+    #[schemars(description = "Maximum number of initial search results to use as seeds (default: 20)")]
+    pub limit: Option<usize>,
+
+    /// Min coupling score threshold (default: 0.1)
+    #[schemars(description = "Minimum coupling score threshold for including related files (default: 0.1)")]
+    pub coupling_threshold: Option<f32>,
+
+    /// Filter to specific repository
+    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    pub repo: Option<String>,
+}
+
+/// Response for context assembly
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ContextResponse {
+    pub query: String,
+    pub budget: ContextBudgetInfo,
+    pub files: Vec<ContextFileOutput>,
+    pub summary: ContextSummaryOutput,
+}
+
+/// Budget information in context response
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ContextBudgetInfo {
+    pub max_lines: usize,
+    pub used_lines: usize,
+}
+
+/// A file in the context response
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ContextFileOutput {
+    pub path: String,
+    pub language: String,
+    pub relevance: String,
+    pub score: f32,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub coupled_to: Vec<String>,
+    pub chunks: Vec<ContextChunkOutput>,
+}
+
+/// A chunk in the context response
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ContextChunkOutput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub chunk_type: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub score: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub match_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+}
+
+/// Summary statistics in context response
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ContextSummaryOutput {
+    pub total_files: usize,
+    pub total_chunks: usize,
+    pub direct_hits: usize,
+    pub coupled_additions: usize,
+}
+
 /// Request for finding related files
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RelatedRequest {
