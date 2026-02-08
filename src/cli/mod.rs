@@ -4,6 +4,7 @@ mod context;
 mod deps;
 mod grep;
 mod history;
+mod hook;
 mod hotspots;
 mod index;
 mod init;
@@ -88,6 +89,9 @@ enum Commands {
 
     /// Generate shell completions
     Completions(completions::CompletionsArgs),
+
+    /// Manage Claude Code hooks for automatic context injection
+    Hook(hook::HookArgs),
 }
 
 impl Cli {
@@ -118,6 +122,7 @@ impl Cli {
                 completions::run(args);
                 Ok(())
             }
+            Commands::Hook(args) => hook::run(args, output).await,
         }
     }
 }

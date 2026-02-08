@@ -11,6 +11,7 @@ pub struct Config {
     pub search: SearchConfig,
     pub git: GitConfig,
     pub dependencies: DependencyConfig,
+    pub hooks: HooksConfig,
 }
 
 /// Configuration for indexing behavior
@@ -225,6 +226,31 @@ impl Default for GitConfig {
     }
 }
 
+
+/// Configuration for Claude Code hooks integration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HooksConfig {
+    /// Minimum relevance score to include in injected context
+    pub threshold: f32,
+    /// Maximum lines of injected context
+    pub budget: usize,
+    /// Content display mode: "full", "preview", or "none"
+    pub content_mode: String,
+    /// Skip injection for prompts shorter than this
+    pub min_prompt_length: usize,
+}
+
+impl Default for HooksConfig {
+    fn default() -> Self {
+        Self {
+            threshold: 0.5,
+            budget: 150,
+            content_mode: "preview".into(),
+            min_prompt_length: 10,
+        }
+    }
+}
 
 impl Config {
     /// Load configuration from a TOML file
@@ -441,6 +467,43 @@ coupling_depth = 500
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!(config.git.commits_enabled);
         assert_eq!(config.git.commits_depth, 1000);
+    }
+
+    #[test]
+    fn test_hooks_config_defaults() {
+        let config = Config::default();
+        assert!((config.hooks.threshold - 0.5).abs() < f32::EPSILON);
+        assert_eq!(config.hooks.budget, 150);
+        assert_eq!(config.hooks.content_mode, "preview");
+        assert_eq!(config.hooks.min_prompt_length, 10);
+    }
+
+    #[test]
+    fn test_hooks_config_custom() {
+        let toml_str = r#"
+[hooks]
+threshold = 0.7
+budget = 200
+content_mode = "full"
+min_prompt_length = 20
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!((config.hooks.threshold - 0.7).abs() < f32::EPSILON);
+        assert_eq!(config.hooks.budget, 200);
+        assert_eq!(config.hooks.content_mode, "full");
+        assert_eq!(config.hooks.min_prompt_length, 20);
+    }
+
+    #[test]
+    fn test_legacy_config_without_hooks_section() {
+        let toml_str = r#"
+[embedding]
+model = "all-MiniLM-L6-v2"
+batch_size = 32
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!((config.hooks.threshold - 0.5).abs() < f32::EPSILON);
+        assert_eq!(config.hooks.budget, 150);
     }
 
     #[test]
