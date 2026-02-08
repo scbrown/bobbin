@@ -16,7 +16,7 @@ pub struct SearchArgs {
     /// The search query
     query: String,
 
-    /// Filter by chunk type (function, method, class, struct, enum, interface, module, impl, trait)
+    /// Filter by chunk type (function, method, class, struct, enum, interface, module, impl, trait, commit)
     #[arg(long, short = 't')]
     r#type: Option<String>,
 
@@ -335,9 +335,10 @@ fn parse_chunk_type(s: &str) -> Result<ChunkType> {
         "section" => Ok(ChunkType::Section),
         "table" => Ok(ChunkType::Table),
         "code_block" | "codeblock" => Ok(ChunkType::CodeBlock),
+        "commit" => Ok(ChunkType::Commit),
         "other" => Ok(ChunkType::Other),
         _ => bail!(
-            "Unknown chunk type '{}'. Valid types: function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block, other",
+            "Unknown chunk type '{}'. Valid types: function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block, commit, other",
             s
         ),
     }
@@ -410,20 +411,6 @@ fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], v
     for (i, result) in results.iter().enumerate() {
         let chunk = &result.chunk;
 
-        let name_display = chunk
-            .name
-            .as_ref()
-            .map(|n| format!(" ({})", n.cyan()))
-            .unwrap_or_default();
-
-        println!(
-            "{}. {}:{}{}",
-            (i + 1).to_string().bold(),
-            chunk.file_path.blue(),
-            chunk.start_line,
-            name_display
-        );
-
         let match_info = match (mode, result.match_type) {
             (SearchMode::Hybrid, Some(MatchType::Hybrid)) => " [hybrid]".yellow().to_string(),
             (SearchMode::Hybrid, Some(MatchType::Semantic)) => " [semantic]".dimmed().to_string(),
@@ -431,15 +418,53 @@ fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], v
             _ => String::new(),
         };
 
-        println!(
-            "   {} {} · lines {}-{} · score {:.4}{}",
-            chunk.chunk_type.to_string().magenta(),
-            chunk.language.dimmed(),
-            chunk.start_line,
-            chunk.end_line,
-            result.score,
-            match_info
-        );
+        if chunk.chunk_type == ChunkType::Commit {
+            // Commit-specific display
+            let name_display = chunk
+                .name
+                .as_ref()
+                .map(|n| n.cyan().to_string())
+                .unwrap_or_default();
+
+            println!(
+                "{}. {} {}",
+                (i + 1).to_string().bold(),
+                chunk.file_path.blue(),
+                name_display,
+            );
+
+            println!(
+                "   {} · score {:.4}{}",
+                "commit".magenta(),
+                result.score,
+                match_info
+            );
+        } else {
+            // Standard code chunk display
+            let name_display = chunk
+                .name
+                .as_ref()
+                .map(|n| format!(" ({})", n.cyan()))
+                .unwrap_or_default();
+
+            println!(
+                "{}. {}:{}{}",
+                (i + 1).to_string().bold(),
+                chunk.file_path.blue(),
+                chunk.start_line,
+                name_display
+            );
+
+            println!(
+                "   {} {} · lines {}-{} · score {:.4}{}",
+                chunk.chunk_type.to_string().magenta(),
+                chunk.language.dimmed(),
+                chunk.start_line,
+                chunk.end_line,
+                result.score,
+                match_info
+            );
+        }
 
         if verbose {
             let preview = truncate_content(&chunk.content, 300);
@@ -482,6 +507,7 @@ mod tests {
         assert_eq!(parse_chunk_type("mod").unwrap(), ChunkType::Module);
         assert_eq!(parse_chunk_type("impl").unwrap(), ChunkType::Impl);
         assert_eq!(parse_chunk_type("trait").unwrap(), ChunkType::Trait);
+        assert_eq!(parse_chunk_type("commit").unwrap(), ChunkType::Commit);
         assert_eq!(parse_chunk_type("other").unwrap(), ChunkType::Other);
     }
 

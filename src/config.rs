@@ -207,6 +207,10 @@ pub struct GitConfig {
     pub coupling_depth: usize,
     /// Minimum co-changes to establish coupling
     pub coupling_threshold: u32,
+    /// Enable semantic commit indexing (embed commit messages for search)
+    pub commits_enabled: bool,
+    /// How many commits back to index for semantic search
+    pub commits_depth: usize,
 }
 
 impl Default for GitConfig {
@@ -215,6 +219,8 @@ impl Default for GitConfig {
             coupling_enabled: true,
             coupling_depth: 1000,
             coupling_threshold: 3,
+            commits_enabled: true,
+            commits_depth: 1000,
         }
     }
 }
@@ -403,6 +409,38 @@ batch_size = 32
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!(config.dependencies.enabled);
+    }
+
+    #[test]
+    fn test_git_commits_config_defaults() {
+        let config = Config::default();
+        assert!(config.git.commits_enabled);
+        assert_eq!(config.git.commits_depth, 1000);
+    }
+
+    #[test]
+    fn test_git_commits_config_custom() {
+        let toml_str = r#"
+[git]
+commits_enabled = false
+commits_depth = 500
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(!config.git.commits_enabled);
+        assert_eq!(config.git.commits_depth, 500);
+    }
+
+    #[test]
+    fn test_legacy_git_config_without_commits_fields() {
+        // Old config without commits fields should default to enabled
+        let toml_str = r#"
+[git]
+coupling_enabled = true
+coupling_depth = 500
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.git.commits_enabled);
+        assert_eq!(config.git.commits_depth, 1000);
     }
 
     #[test]

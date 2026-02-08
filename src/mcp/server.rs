@@ -88,6 +88,7 @@ impl BobbinMcpServer {
             "section" => Ok(ChunkType::Section),
             "table" => Ok(ChunkType::Table),
             "code_block" | "codeblock" => Ok(ChunkType::CodeBlock),
+            "commit" => Ok(ChunkType::Commit),
             "other" => Ok(ChunkType::Other),
             _ => anyhow::bail!("Unknown chunk type '{}'", s),
         }

@@ -13,7 +13,7 @@ use super::OutputConfig;
 use crate::config::{Config, ContextualEmbeddingConfig};
 use crate::index::{embedder, resolver, Embedder, Parser};
 use crate::storage::{MetadataStore, VectorStore};
-use crate::types::{Chunk, ImportDependency, ImportEdge};
+use crate::types::{Chunk, ChunkType, ImportDependency, ImportEdge};
 
 #[derive(Args)]
 pub struct IndexArgs {
@@ -54,6 +54,8 @@ struct IndexOutput {
     imports_resolved: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     imports_unresolved: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commits_indexed: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     elapsed_ms: Option<u128>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -233,6 +235,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 imports_total: None,
                 imports_resolved: None,
                 imports_unresolved: None,
+                commits_indexed: None,
                 elapsed_ms: None,
                 errors: None,
             };
@@ -465,6 +468,128 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
+    // Index git commits as searchable chunks
+    let mut commits_indexed: usize = 0;
+    if config.git.commits_enabled {
+        if output.verbose && !output.quiet && !output.json {
+            println!("  Indexing git commits...");
+        }
+
+        match crate::index::git::GitAnalyzer::new(&source_root) {
+            Ok(analyzer) => {
+                // Check for incremental commit indexing
+                let last_commit = metadata_store.get_meta("last_indexed_commit")?;
+                let since = if args.force { None } else { last_commit.as_deref() };
+
+                match analyzer.get_commit_log(config.git.commits_depth, since) {
+                    Ok(commit_entries) if !commit_entries.is_empty() => {
+                        let commit_chunks: Vec<Chunk> = commit_entries
+                            .iter()
+                            .map(|entry| {
+                                // Build rich content: message + metadata + files
+                                let files_str = if entry.files.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!("\n\nFiles changed:\n{}", entry.files.join("\n"))
+                                };
+                                let content = format!(
+                                    "{}\n\nAuthor: {}\nDate: {}{}",
+                                    entry.message, entry.author, entry.date, files_str
+                                );
+
+                                Chunk {
+                                    id: format!("commit:{}", entry.hash),
+                                    file_path: format!("git:{}", &entry.hash[..7.min(entry.hash.len())]),
+                                    chunk_type: ChunkType::Commit,
+                                    name: Some(truncate_message(&entry.message, 80)),
+                                    start_line: 0,
+                                    end_line: 0,
+                                    content,
+                                    language: "git".to_string(),
+                                }
+                            })
+                            .collect();
+
+                        // Embed commit messages in batches
+                        let embed_texts: Vec<String> = commit_chunks
+                            .iter()
+                            .map(|c| c.content.clone())
+                            .collect();
+                        let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
+
+                        match embed.embed_batch(&embed_refs).await {
+                            Ok(embeddings) => {
+                                let contexts = vec![None; commit_chunks.len()];
+                                let now = chrono::Utc::now().timestamp().to_string();
+
+                                // Delete old commit chunks if force re-indexing
+                                if args.force {
+                                    let old_ids: Vec<String> = commit_chunks
+                                        .iter()
+                                        .map(|c| c.id.clone())
+                                        .collect();
+                                    vector_store.delete(&old_ids).await.ok();
+                                }
+
+                                if let Err(e) = vector_store
+                                    .insert(
+                                        &commit_chunks,
+                                        &embeddings,
+                                        &contexts,
+                                        repo_name,
+                                        "git-commits",
+                                        &now,
+                                    )
+                                    .await
+                                {
+                                    if !output.quiet && !output.json {
+                                        println!(
+                                            "{} Failed to store commit chunks: {}",
+                                            "!".yellow(),
+                                            e
+                                        );
+                                    }
+                                } else {
+                                    commits_indexed = commit_chunks.len();
+
+                                    // Track the latest commit for incremental indexing
+                                    if let Some(latest) = commit_entries.first() {
+                                        metadata_store
+                                            .set_meta("last_indexed_commit", &latest.hash)?;
+                                    }
+
+                                    if output.verbose && !output.quiet && !output.json {
+                                        println!("  Indexed {} commits", commits_indexed);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                if !output.quiet && !output.json {
+                                    println!(
+                                        "{} Failed to embed commit messages: {}",
+                                        "!".yellow(),
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Ok(_) => {
+                        if output.verbose && !output.quiet && !output.json {
+                            println!("  No new commits to index");
+                        }
+                    }
+                    Err(e) => {
+                        if !output.quiet && !output.json {
+                            println!("{} Failed to get commit log: {}", "!".yellow(), e);
+                        }
+                    }
+                }
+            }
+            Err(_) => {}
+        }
+    }
+
     let elapsed = start_time.elapsed();
 
     // Build import stats for output (only if deps were processed)
@@ -490,6 +615,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             imports_total,
             imports_resolved,
             imports_unresolved,
+            commits_indexed: if commits_indexed > 0 {
+                Some(commits_indexed)
+            } else {
+                None
+            },
             elapsed_ms: Some(elapsed.as_millis()),
             errors: Some(errors.len()),
         };
@@ -502,6 +632,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             total_chunks,
             elapsed.as_secs_f64()
         );
+
+        if commits_indexed > 0 {
+            println!("  Commits: {} indexed for semantic search", commits_indexed);
+        }
 
         if dep_count > 0 {
             println!(
@@ -714,6 +848,18 @@ pub(crate) fn build_context_windows(
         .collect()
 }
 
+/// Truncate a commit message to max_len, appending "..." if truncated
+fn truncate_message(msg: &str, max_len: usize) -> String {
+    // Take only the first line (subject line)
+    let first_line = msg.lines().next().unwrap_or(msg);
+    if first_line.len() <= max_len {
+        first_line.to_string()
+    } else {
+        let truncated: String = first_line.chars().take(max_len - 3).collect();
+        format!("{}...", truncated.trim_end())
+    }
+}
+
 /// Compute SHA256 hash of content
 fn compute_hash(content: &str) -> String {
     let mut hasher = Sha256::new();
@@ -736,6 +882,25 @@ mod tests {
         assert_eq!(hash1, hash2);
         assert_ne!(hash1, hash3);
         assert_eq!(hash1.len(), 64);
+    }
+
+    #[test]
+    fn test_truncate_message_short() {
+        assert_eq!(truncate_message("short msg", 80), "short msg");
+    }
+
+    #[test]
+    fn test_truncate_message_long() {
+        let long_msg = "a".repeat(100);
+        let result = truncate_message(&long_msg, 20);
+        assert_eq!(result.len(), 20); // 17 chars + "..."
+        assert!(result.ends_with("..."));
+    }
+
+    #[test]
+    fn test_truncate_message_multiline() {
+        let msg = "First line subject\n\nLong body with details";
+        assert_eq!(truncate_message(msg, 80), "First line subject");
     }
 
     #[test]

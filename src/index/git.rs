@@ -17,6 +17,17 @@ pub struct FileHistoryEntry {
     pub timestamp: i64,
 }
 
+/// A full commit entry for semantic indexing
+#[derive(Debug, Clone)]
+pub struct CommitEntry {
+    pub hash: String,
+    pub author: String,
+    pub date: String,
+    pub message: String,
+    pub files: Vec<String>,
+    pub timestamp: i64,
+}
+
 /// Specifies which diff to analyze
 #[derive(Debug, Clone)]
 pub enum DiffSpec {
@@ -219,8 +230,6 @@ impl GitAnalyzer {
     }
 
     /// Get the current HEAD commit hash
-    // TODO(bobbin-6vq): For incremental indexing
-    #[allow(dead_code)]
     pub fn get_head_commit(&self) -> Result<String> {
         let output = Command::new("git")
             .args(["rev-parse", "HEAD"])
@@ -229,6 +238,42 @@ impl GitAnalyzer {
             .context("Failed to get HEAD commit")?;
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+
+    /// Get commit log for semantic indexing.
+    ///
+    /// Returns commit entries with hash, author, date, message, and touched files.
+    /// If `since_commit` is provided, only returns commits after that commit.
+    pub fn get_commit_log(
+        &self,
+        depth: usize,
+        since_commit: Option<&str>,
+    ) -> Result<Vec<CommitEntry>> {
+        // Format: ENTRY<sep>hash<sep>timestamp<sep>author<sep>subject
+        // followed by list of files (--name-only)
+        let sep = "\x1f"; // unit separator
+        let format_str = format!("ENTRY{}%H{}%ct{}%an{}%s", sep, sep, sep, sep);
+
+        let mut args = vec![
+            "log".to_string(),
+            format!("--pretty=format:{}", format_str),
+            "--name-only".to_string(),
+        ];
+
+        if let Some(commit) = since_commit {
+            args.push(format!("{}..HEAD", commit));
+        } else {
+            args.push(format!("-{}", depth));
+        }
+
+        let output = Command::new("git")
+            .args(&args)
+            .current_dir(&self.repo_root)
+            .output()
+            .context("Failed to get commit log")?;
+
+        let log = String::from_utf8_lossy(&output.stdout);
+        Ok(parse_commit_log(&log, sep))
     }
 
     /// Get commit counts per file for the entire repo in one pass.
@@ -396,6 +441,63 @@ fn parse_file_history(log: &str) -> Vec<FileHistoryEntry> {
             author,
             message,
             issues,
+            timestamp,
+        });
+    }
+
+    entries
+}
+
+/// Parse commit log output into CommitEntry structs
+fn parse_commit_log(log: &str, sep: &str) -> Vec<CommitEntry> {
+    let mut entries = Vec::new();
+    let mut current: Option<(String, i64, String, String)> = None;
+    let mut current_files: Vec<String> = Vec::new();
+
+    let entry_prefix = format!("ENTRY{}", sep);
+
+    for line in log.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if line.starts_with(&entry_prefix) {
+            // Save previous entry if any
+            if let Some((hash, timestamp, author, message)) = current.take() {
+                entries.push(CommitEntry {
+                    hash,
+                    author,
+                    date: format_timestamp(timestamp),
+                    message,
+                    files: std::mem::take(&mut current_files),
+                    timestamp,
+                });
+            }
+
+            // Parse: ENTRY<sep>hash<sep>timestamp<sep>author<sep>subject
+            let parts: Vec<&str> = line.splitn(5, sep).collect();
+            if parts.len() >= 5 {
+                let hash = parts[1].to_string();
+                let timestamp = parts[2].parse::<i64>().unwrap_or(0);
+                let author = parts[3].to_string();
+                let message = parts[4].to_string();
+                current = Some((hash, timestamp, author, message));
+            }
+        } else {
+            // This is a file path
+            current_files.push(line.to_string());
+        }
+    }
+
+    // Don't forget the last entry
+    if let Some((hash, timestamp, author, message)) = current.take() {
+        entries.push(CommitEntry {
+            hash,
+            author,
+            date: format_timestamp(timestamp),
+            message,
+            files: current_files,
             timestamp,
         });
     }
@@ -720,6 +822,46 @@ mod tests {
 
         // 1970-01-01 00:00:00 UTC = 0
         assert_eq!(format_timestamp(0), "1970-01-01");
+    }
+
+    #[test]
+    fn test_parse_commit_log() {
+        let sep = "\x1f";
+        let log = format!(
+            "ENTRY{s}abc123{s}1704067200{s}Alice{s}Initial commit\nfile1.rs\nfile2.rs\n\nENTRY{s}def456{s}1704153600{s}Bob{s}Add feature\nfile3.rs",
+            s = sep
+        );
+        let entries = parse_commit_log(&log, sep);
+
+        assert_eq!(entries.len(), 2);
+
+        assert_eq!(entries[0].hash, "abc123");
+        assert_eq!(entries[0].author, "Alice");
+        assert_eq!(entries[0].message, "Initial commit");
+        assert_eq!(entries[0].timestamp, 1704067200);
+        assert_eq!(entries[0].files, vec!["file1.rs", "file2.rs"]);
+
+        assert_eq!(entries[1].hash, "def456");
+        assert_eq!(entries[1].author, "Bob");
+        assert_eq!(entries[1].message, "Add feature");
+        assert_eq!(entries[1].files, vec!["file3.rs"]);
+    }
+
+    #[test]
+    fn test_parse_commit_log_empty() {
+        let entries = parse_commit_log("", "\x1f");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_parse_commit_log_no_files() {
+        let sep = "\x1f";
+        let log = format!("ENTRY{s}abc123{s}1704067200{s}Alice{s}Empty commit", s = sep);
+        let entries = parse_commit_log(&log, sep);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].hash, "abc123");
+        assert!(entries[0].files.is_empty());
     }
 
     /// Helper: create a temp git repo and return the path

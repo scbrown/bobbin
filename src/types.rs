@@ -30,6 +30,7 @@ pub enum ChunkType {
     Section,
     Table,
     CodeBlock,
+    Commit,
     Other,
 }
 
@@ -49,6 +50,7 @@ impl std::fmt::Display for ChunkType {
             ChunkType::Section => write!(f, "section"),
             ChunkType::Table => write!(f, "table"),
             ChunkType::CodeBlock => write!(f, "code_block"),
+            ChunkType::Commit => write!(f, "commit"),
             ChunkType::Other => write!(f, "other"),
         }
     }
