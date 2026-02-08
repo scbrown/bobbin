@@ -2,10 +2,13 @@ use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use super::OutputConfig;
 use crate::config::Config;
+use crate::storage::{MetadataStore, VectorStore};
 
 #[derive(Args)]
 pub struct HookArgs {
@@ -352,10 +355,362 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     Ok(())
 }
 
-async fn run_session_context(_args: SessionContextArgs, _output: OutputConfig) -> Result<()> {
-    // Stub: future implementation reads stdin JSON and recovers context
-    // For now, exit silently (never block session start)
+async fn run_session_context(args: SessionContextArgs, _output: OutputConfig) -> Result<()> {
+    // Never block session start — wrap everything in a catch-all
+    match run_session_context_inner(args).await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            eprintln!("bobbin session-context: {}", e);
+            Ok(())
+        }
+    }
+}
+
+/// Input JSON from Claude Code SessionStart hook
+#[derive(Deserialize)]
+struct SessionStartInput {
+    #[serde(default)]
+    source: String,
+    #[serde(default)]
+    cwd: String,
+}
+
+/// Output JSON for Claude Code hook response
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HookResponse {
+    hook_specific_output: HookSpecificOutput,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HookSpecificOutput {
+    hook_event_name: String,
+    additional_context: String,
+}
+
+/// A file with its symbols for display
+struct FileSymbolInfo {
+    path: String,
+    symbols: Vec<SymbolInfo>,
+}
+
+struct SymbolInfo {
+    name: String,
+}
+
+async fn run_session_context_inner(args: SessionContextArgs) -> Result<()> {
+    // 1. Read stdin JSON
+    let input_str = std::io::read_to_string(std::io::stdin())
+        .context("Failed to read stdin")?;
+
+    // If stdin is empty, nothing to do
+    if input_str.trim().is_empty() {
+        return Ok(());
+    }
+
+    let input: SessionStartInput =
+        serde_json::from_str(&input_str).context("Failed to parse stdin JSON")?;
+
+    // 2. Only handle compact events
+    if input.source != "compact" {
+        return Ok(());
+    }
+
+    // 3. Determine repo root
+    let cwd = if input.cwd.is_empty() {
+        std::env::current_dir().context("Failed to get cwd")?
+    } else {
+        PathBuf::from(&input.cwd)
+            .canonicalize()
+            .context("Invalid cwd path")?
+    };
+
+    // Load config (use defaults if not initialized)
+    let config = Config::load(&Config::config_path(&cwd)).unwrap_or_default();
+    let budget = args.budget.unwrap_or(config.hooks.budget);
+
+    // 4. Gather git signals
+    let modified_files = git_status_files(&cwd)?;
+    let recent_commits = git_recent_commits(&cwd, 5)?;
+    let recently_changed_files = git_recently_changed_files(&cwd, 3)?;
+
+    // If there's nothing to report, exit silently
+    if modified_files.is_empty() && recent_commits.is_empty() && recently_changed_files.is_empty() {
+        return Ok(());
+    }
+
+    // 5. Collect all interesting file paths (deduped)
+    let mut all_files: HashSet<String> = HashSet::new();
+    for f in &modified_files {
+        all_files.insert(f.clone());
+    }
+    for f in &recently_changed_files {
+        all_files.insert(f.clone());
+    }
+
+    // 6. Query bobbin for symbols and coupling (best-effort)
+    let mut file_symbols: Vec<FileSymbolInfo> = Vec::new();
+    let mut coupled_files: Vec<(String, String, f32)> = Vec::new(); // (path, coupled_to, score)
+
+    let lance_path = Config::lance_path(&cwd);
+    let db_path = Config::db_path(&cwd);
+
+    if lance_path.exists() && db_path.exists() {
+        let vector_store = VectorStore::open(&lance_path).await.ok();
+        let metadata_store = MetadataStore::open(&db_path).ok();
+
+        // Get symbols for each file
+        if let Some(ref vs) = vector_store {
+            for file_path in &all_files {
+                if let Ok(chunks) = vs.get_chunks_for_file(file_path, None).await {
+                    let symbols: Vec<SymbolInfo> = chunks
+                        .iter()
+                        .filter(|c| c.name.is_some())
+                        .map(|c| SymbolInfo {
+                            name: c.name.clone().unwrap_or_default(),
+                        })
+                        .collect();
+                    if !symbols.is_empty() {
+                        file_symbols.push(FileSymbolInfo {
+                            path: file_path.clone(),
+                            symbols,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Get coupled files
+        if let Some(ref ms) = metadata_store {
+            let mut seen_coupled: HashSet<String> = HashSet::new();
+            for file_path in &all_files {
+                if let Ok(couplings) = ms.get_coupling(file_path, 3) {
+                    for c in couplings {
+                        let other = if c.file_a == *file_path {
+                            &c.file_b
+                        } else {
+                            &c.file_a
+                        };
+                        if !all_files.contains(other) && !seen_coupled.contains(other) {
+                            seen_coupled.insert(other.clone());
+                            coupled_files.push((
+                                other.clone(),
+                                file_path.clone(),
+                                c.score,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort file symbols by path for stable output
+    file_symbols.sort_by(|a, b| a.path.cmp(&b.path));
+    coupled_files.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+
+    // 7. Format compact markdown within budget
+    let context_md = format_session_context(
+        &modified_files,
+        &recent_commits,
+        &file_symbols,
+        &coupled_files,
+        budget,
+    );
+
+    if context_md.is_empty() {
+        return Ok(());
+    }
+
+    // 8. Output hook response JSON
+    let response = HookResponse {
+        hook_specific_output: HookSpecificOutput {
+            hook_event_name: "SessionStart".to_string(),
+            additional_context: context_md,
+        },
+    };
+
+    println!("{}", serde_json::to_string(&response)?);
     Ok(())
+}
+
+/// Get modified/staged/untracked files from git status
+fn git_status_files(cwd: &std::path::Path) -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(cwd)
+        .output()
+        .context("Failed to run git status")?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let files: Vec<String> = stdout
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.len() > 3 {
+                // Format: "XY path" where XY is 2-char status
+                Some(line[3..].trim().to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    Ok(files)
+}
+
+/// Get recent commit summaries
+fn git_recent_commits(cwd: &std::path::Path, count: usize) -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(["log", "--oneline", &format!("-{}", count)])
+        .current_dir(cwd)
+        .output()
+        .context("Failed to run git log")?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.lines().map(|l| l.to_string()).collect())
+}
+
+/// Get files changed in recent commits
+fn git_recently_changed_files(cwd: &std::path::Path, depth: usize) -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args([
+            "diff",
+            "--name-only",
+            &format!("HEAD~{}..HEAD", depth),
+        ])
+        .current_dir(cwd)
+        .output()
+        .context("Failed to run git diff")?;
+
+    if !output.status.success() {
+        // May fail if repo has fewer commits than depth
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.to_string())
+        .collect())
+}
+
+/// Format the session context as compact markdown, respecting budget
+fn format_session_context(
+    modified_files: &[String],
+    recent_commits: &[String],
+    file_symbols: &[FileSymbolInfo],
+    coupled_files: &[(String, String, f32)],
+    budget: usize,
+) -> String {
+    let mut lines: Vec<String> = Vec::new();
+
+    lines.push("## Working Context (recovered after compaction)".to_string());
+    lines.push(String::new());
+
+    // Modified files section
+    if !modified_files.is_empty() {
+        lines.push("### Modified files".to_string());
+        for file in modified_files {
+            // Find symbols for this file
+            let symbols_str = file_symbols
+                .iter()
+                .find(|fs| fs.path == *file)
+                .map(|fs| {
+                    let names: Vec<String> = fs
+                        .symbols
+                        .iter()
+                        .take(5)
+                        .map(|s| s.name.clone())
+                        .collect();
+                    if names.is_empty() {
+                        String::new()
+                    } else {
+                        let count = fs.symbols.len();
+                        let display = names.join(", ");
+                        if count > 5 {
+                            format!(" ({} symbols: {}, ...)", count, display)
+                        } else {
+                            format!(" ({} symbols: {})", count, display)
+                        }
+                    }
+                })
+                .unwrap_or_default();
+            lines.push(format!("- {}{}", file, symbols_str));
+        }
+        lines.push(String::new());
+    }
+
+    // Recent commits section
+    if !recent_commits.is_empty() {
+        lines.push("### Recent commits".to_string());
+        for commit in recent_commits {
+            lines.push(format!("- {}", commit));
+        }
+        lines.push(String::new());
+    }
+
+    // File symbols for non-modified files (recently changed files that aren't modified)
+    let modified_set: HashSet<&String> = modified_files.iter().collect();
+    let other_symbols: Vec<&FileSymbolInfo> = file_symbols
+        .iter()
+        .filter(|fs| !modified_set.contains(&fs.path))
+        .collect();
+
+    if !other_symbols.is_empty() {
+        lines.push("### Recently changed files".to_string());
+        for fs in &other_symbols {
+            let names: Vec<String> = fs
+                .symbols
+                .iter()
+                .take(5)
+                .map(|s| s.name.clone())
+                .collect();
+            let symbols_str = if names.is_empty() {
+                String::new()
+            } else {
+                let count = fs.symbols.len();
+                let display = names.join(", ");
+                if count > 5 {
+                    format!(" ({} symbols: {}, ...)", count, display)
+                } else {
+                    format!(" ({} symbols: {})", count, display)
+                }
+            };
+            lines.push(format!("- {}{}", fs.path, symbols_str));
+        }
+        lines.push(String::new());
+    }
+
+    // Coupled files section
+    if !coupled_files.is_empty() {
+        lines.push("### Related files (via coupling)".to_string());
+        for (path, coupled_to, score) in coupled_files.iter().take(5) {
+            lines.push(format!(
+                "- {} (coupled with {}, score: {:.2})",
+                path, coupled_to, score
+            ));
+        }
+        lines.push(String::new());
+    }
+
+    // Enforce budget
+    if lines.len() > budget {
+        lines.truncate(budget);
+        lines.push("... (truncated to fit budget)".to_string());
+    }
+
+    lines.join("\n")
 }
 
 async fn run_install_git_hook(_args: InstallGitHookArgs, output: OutputConfig) -> Result<()> {
@@ -546,5 +901,182 @@ mod tests {
         // With high threshold, chunk content should be filtered out
         let result = format_context_for_injection(&bundle, 0.5);
         assert!(!result.contains("low_score_fn"));
+    }
+
+    #[test]
+    fn test_session_start_input_parsing() {
+        let json = r#"{"source": "compact", "cwd": "/tmp/test", "session_id": "abc"}"#;
+        let input: SessionStartInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.source, "compact");
+        assert_eq!(input.cwd, "/tmp/test");
+    }
+
+    #[test]
+    fn test_session_start_input_defaults() {
+        let json = r#"{}"#;
+        let input: SessionStartInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.source, "");
+        assert_eq!(input.cwd, "");
+    }
+
+    #[test]
+    fn test_hook_response_serialization() {
+        let response = HookResponse {
+            hook_specific_output: HookSpecificOutput {
+                hook_event_name: "SessionStart".to_string(),
+                additional_context: "test context".to_string(),
+            },
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("hookSpecificOutput"));
+        assert!(json.contains("hookEventName"));
+        assert!(json.contains("additionalContext"));
+        assert!(json.contains("SessionStart"));
+        assert!(json.contains("test context"));
+    }
+
+    #[test]
+    fn test_format_session_context_modified_files() {
+        let modified = vec!["src/main.rs".to_string()];
+        let commits: Vec<String> = vec![];
+        let symbols: Vec<FileSymbolInfo> = vec![];
+        let coupled: Vec<(String, String, f32)> = vec![];
+
+        let result = format_session_context(&modified, &commits, &symbols, &coupled, 150);
+        assert!(result.contains("## Working Context"));
+        assert!(result.contains("### Modified files"));
+        assert!(result.contains("- src/main.rs"));
+    }
+
+    #[test]
+    fn test_format_session_context_with_symbols() {
+        let modified = vec!["src/auth.rs".to_string()];
+        let commits: Vec<String> = vec![];
+        let symbols = vec![FileSymbolInfo {
+            path: "src/auth.rs".to_string(),
+            symbols: vec![
+                SymbolInfo {
+                    name: "validate_token".to_string(),
+
+                },
+                SymbolInfo {
+                    name: "refresh_session".to_string(),
+
+                },
+            ],
+        }];
+        let coupled: Vec<(String, String, f32)> = vec![];
+
+        let result = format_session_context(&modified, &commits, &symbols, &coupled, 150);
+        assert!(result.contains("src/auth.rs (2 symbols: validate_token, refresh_session)"));
+    }
+
+    #[test]
+    fn test_format_session_context_with_commits() {
+        let modified: Vec<String> = vec![];
+        let commits = vec![
+            "a1b2c3d fix: token refresh race condition".to_string(),
+            "d4e5f6g feat: add logout endpoint".to_string(),
+        ];
+        let symbols: Vec<FileSymbolInfo> = vec![];
+        let coupled: Vec<(String, String, f32)> = vec![];
+
+        let result = format_session_context(&modified, &commits, &symbols, &coupled, 150);
+        assert!(result.contains("### Recent commits"));
+        assert!(result.contains("- a1b2c3d fix: token refresh race condition"));
+    }
+
+    #[test]
+    fn test_format_session_context_with_coupling() {
+        let modified = vec!["src/auth.rs".to_string()];
+        let commits: Vec<String> = vec![];
+        let symbols: Vec<FileSymbolInfo> = vec![];
+        let coupled = vec![(
+            "tests/auth_test.rs".to_string(),
+            "src/auth.rs".to_string(),
+            0.91,
+        )];
+
+        let result = format_session_context(&modified, &commits, &symbols, &coupled, 150);
+        assert!(result.contains("### Related files (via coupling)"));
+        assert!(result.contains("tests/auth_test.rs (coupled with src/auth.rs, score: 0.91)"));
+    }
+
+    #[test]
+    fn test_format_session_context_budget_enforcement() {
+        let modified: Vec<String> = (0..100)
+            .map(|i| format!("src/file_{}.rs", i))
+            .collect();
+        let commits: Vec<String> = vec![];
+        let symbols: Vec<FileSymbolInfo> = vec![];
+        let coupled: Vec<(String, String, f32)> = vec![];
+
+        let result = format_session_context(&modified, &commits, &symbols, &coupled, 10);
+        let line_count = result.lines().count();
+        // Budget of 10 + 1 for truncation message
+        assert!(line_count <= 11, "Expected <= 11 lines, got {}", line_count);
+        assert!(result.contains("truncated"));
+    }
+
+    #[test]
+    fn test_format_session_context_many_symbols_truncated() {
+        let modified = vec!["src/big.rs".to_string()];
+        let commits: Vec<String> = vec![];
+        let symbols = vec![FileSymbolInfo {
+            path: "src/big.rs".to_string(),
+            symbols: (0..8)
+                .map(|i| SymbolInfo {
+                    name: format!("fn_{}", i),
+
+                })
+                .collect(),
+        }];
+        let coupled: Vec<(String, String, f32)> = vec![];
+
+        let result = format_session_context(&modified, &commits, &symbols, &coupled, 150);
+        // Should show 5 symbols + "..." indicator
+        assert!(result.contains("8 symbols: fn_0, fn_1, fn_2, fn_3, fn_4, ..."));
+    }
+
+    #[test]
+    fn test_format_session_context_recently_changed_separate() {
+        // Modified files and recently changed files should appear in different sections
+        let modified = vec!["src/modified.rs".to_string()];
+        let commits: Vec<String> = vec![];
+        let symbols = vec![
+            FileSymbolInfo {
+                path: "src/modified.rs".to_string(),
+                symbols: vec![SymbolInfo {
+                    name: "mod_fn".to_string(),
+
+                }],
+            },
+            FileSymbolInfo {
+                path: "src/recent.rs".to_string(),
+                symbols: vec![SymbolInfo {
+                    name: "recent_fn".to_string(),
+
+                }],
+            },
+        ];
+        let coupled: Vec<(String, String, f32)> = vec![];
+
+        let result = format_session_context(&modified, &commits, &symbols, &coupled, 150);
+        assert!(result.contains("### Modified files"));
+        assert!(result.contains("### Recently changed files"));
+        assert!(result.contains("- src/recent.rs (1 symbols: recent_fn)"));
+    }
+
+    #[test]
+    fn test_format_session_context_empty_produces_header_only() {
+        let modified: Vec<String> = vec![];
+        let commits: Vec<String> = vec![];
+        let symbols: Vec<FileSymbolInfo> = vec![];
+        let coupled: Vec<(String, String, f32)> = vec![];
+
+        let result = format_session_context(&modified, &commits, &symbols, &coupled, 150);
+        assert!(result.contains("## Working Context"));
+        // Header line + trailing newline from blank line join
+        assert!(result.lines().count() <= 2);
     }
 }
