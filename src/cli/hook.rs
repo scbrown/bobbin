@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashSet;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -128,17 +130,238 @@ pub async fn run(args: HookArgs, output: OutputConfig) -> Result<()> {
     }
 }
 
-async fn run_install(_args: InstallArgs, output: OutputConfig) -> Result<()> {
-    if !output.quiet {
-        eprintln!("bobbin hook install: not yet implemented");
+/// Resolve the target settings.json path.
+/// --global → ~/.claude/settings.json
+/// otherwise → <git-root>/.claude/settings.json
+fn resolve_settings_path(global: bool) -> Result<PathBuf> {
+    if global {
+        let home = std::env::var("HOME").context("HOME not set")?;
+        Ok(PathBuf::from(home).join(".claude").join("settings.json"))
+    } else {
+        let output = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .context("Failed to run git rev-parse")?;
+        if !output.status.success() {
+            anyhow::bail!("Not in a git repository. Use --global or run from a git repo.");
+        }
+        let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(PathBuf::from(root).join(".claude").join("settings.json"))
     }
+}
+
+/// Build the bobbin hook entries for Claude Code settings.json.
+fn bobbin_hook_entries() -> serde_json::Value {
+    json!({
+        "hooks": {
+            "UserPromptSubmit": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "bobbin hook inject-context",
+                            "timeout": 10,
+                            "statusMessage": "Loading code context..."
+                        }
+                    ]
+                }
+            ],
+            "SessionStart": [
+                {
+                    "matcher": "compact",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "bobbin hook session-context",
+                            "timeout": 10,
+                            "statusMessage": "Recovering project context..."
+                        }
+                    ]
+                }
+            ]
+        }
+    })
+}
+
+/// Check if a hook group entry contains a bobbin command.
+fn is_bobbin_hook_group(group: &serde_json::Value) -> bool {
+    if let Some(hooks) = group.get("hooks").and_then(|h| h.as_array()) {
+        hooks.iter().any(|h| {
+            h.get("command")
+                .and_then(|c| c.as_str())
+                .map(|c| c.starts_with("bobbin hook "))
+                .unwrap_or(false)
+        })
+    } else {
+        false
+    }
+}
+
+/// Merge bobbin hooks into an existing settings object.
+/// Preserves non-bobbin hooks in each event array.
+fn merge_hooks(settings: &mut serde_json::Value) {
+    let bobbin = bobbin_hook_entries();
+    let bobbin_hooks = bobbin.get("hooks").unwrap().as_object().unwrap();
+
+    // Ensure settings.hooks exists as an object
+    if settings.get("hooks").is_none() || !settings["hooks"].is_object() {
+        settings["hooks"] = json!({});
+    }
+
+    for (event_name, bobbin_entries) in bobbin_hooks {
+        let bobbin_arr = bobbin_entries.as_array().unwrap();
+
+        if let Some(existing) = settings["hooks"].get_mut(event_name) {
+            if let Some(arr) = existing.as_array_mut() {
+                // Remove old bobbin entries, then append new ones
+                arr.retain(|entry| !is_bobbin_hook_group(entry));
+                arr.extend(bobbin_arr.iter().cloned());
+            } else {
+                // Event key exists but isn't an array — replace
+                settings["hooks"][event_name] = serde_json::Value::Array(bobbin_arr.clone());
+            }
+        } else {
+            settings["hooks"][event_name] = serde_json::Value::Array(bobbin_arr.clone());
+        }
+    }
+}
+
+/// Remove bobbin hooks from a settings object.
+/// Returns true if any hooks were removed.
+fn remove_bobbin_hooks(settings: &mut serde_json::Value) -> bool {
+    let mut removed = false;
+    if let Some(hooks) = settings.get_mut("hooks").and_then(|h| h.as_object_mut()) {
+        for (_event, entries) in hooks.iter_mut() {
+            if let Some(arr) = entries.as_array_mut() {
+                let before = arr.len();
+                arr.retain(|entry| !is_bobbin_hook_group(entry));
+                if arr.len() < before {
+                    removed = true;
+                }
+            }
+        }
+        // Clean up empty event arrays
+        hooks.retain(|_, v| {
+            v.as_array().map(|a| !a.is_empty()).unwrap_or(true)
+        });
+    }
+    // Remove empty hooks object
+    if let Some(hooks) = settings.get("hooks").and_then(|h| h.as_object()) {
+        if hooks.is_empty() {
+            settings.as_object_mut().unwrap().remove("hooks");
+        }
+    }
+    removed
+}
+
+/// Check whether bobbin hooks are present in a settings.json Value.
+fn has_bobbin_hooks(settings: &serde_json::Value) -> bool {
+    if let Some(hooks) = settings.get("hooks").and_then(|h| h.as_object()) {
+        for (_event, entries) in hooks {
+            if let Some(arr) = entries.as_array() {
+                if arr.iter().any(|e| is_bobbin_hook_group(e)) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Read a settings.json file, returning empty object if missing.
+fn read_settings(path: &Path) -> Result<serde_json::Value> {
+    if path.exists() {
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
+        if content.trim().is_empty() {
+            return Ok(json!({}));
+        }
+        serde_json::from_str(&content)
+            .with_context(|| format!("Failed to parse {}", path.display()))
+    } else {
+        Ok(json!({}))
+    }
+}
+
+/// Write settings.json, creating parent directories as needed.
+fn write_settings(path: &Path, settings: &serde_json::Value) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create directory {}", parent.display()))?;
+    }
+    let content = serde_json::to_string_pretty(settings)
+        .context("Failed to serialize settings")?;
+    std::fs::write(path, content)
+        .with_context(|| format!("Failed to write {}", path.display()))
+}
+
+async fn run_install(args: InstallArgs, output: OutputConfig) -> Result<()> {
+    let settings_path = resolve_settings_path(args.global)?;
+
+    let mut settings = read_settings(&settings_path)?;
+    merge_hooks(&mut settings);
+    write_settings(&settings_path, &settings)?;
+
+    if output.json {
+        let result = json!({
+            "status": "installed",
+            "path": settings_path.display().to_string(),
+            "global": args.global,
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else if !output.quiet {
+        let scope = if args.global { "global" } else { "project" };
+        println!(
+            "{} Bobbin hooks installed ({})",
+            "✓".green(),
+            scope.cyan()
+        );
+        println!("  Location: {}", settings_path.display().to_string().dimmed());
+        println!("  UserPromptSubmit: {}", "inject-context".cyan());
+        println!("  SessionStart:     {}", "session-context (compact)".cyan());
+    }
+
     Ok(())
 }
 
-async fn run_uninstall(_args: UninstallArgs, output: OutputConfig) -> Result<()> {
-    if !output.quiet {
-        eprintln!("bobbin hook uninstall: not yet implemented");
+async fn run_uninstall(args: UninstallArgs, output: OutputConfig) -> Result<()> {
+    let settings_path = resolve_settings_path(args.global)?;
+
+    if !settings_path.exists() {
+        if output.json {
+            let result = json!({
+                "status": "not_installed",
+                "path": settings_path.display().to_string(),
+            });
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        } else if !output.quiet {
+            println!("No hooks to remove ({})", settings_path.display());
+        }
+        return Ok(());
     }
+
+    let mut settings = read_settings(&settings_path)?;
+    let removed = remove_bobbin_hooks(&mut settings);
+    write_settings(&settings_path, &settings)?;
+
+    if output.json {
+        let result = json!({
+            "status": if removed { "uninstalled" } else { "not_installed" },
+            "path": settings_path.display().to_string(),
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else if !output.quiet {
+        if removed {
+            println!(
+                "{} Bobbin hooks removed from {}",
+                "✓".green(),
+                settings_path.display()
+            );
+        } else {
+            println!("No bobbin hooks found in {}", settings_path.display());
+        }
+    }
+
     Ok(())
 }
 
@@ -155,10 +378,30 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
 
     let hooks_cfg = &config.hooks;
 
+    // Check Claude Code hooks (project-local)
+    let project_settings = repo_root.join(".claude").join("settings.json");
+    let hooks_installed = if project_settings.exists() {
+        read_settings(&project_settings)
+            .map(|s| has_bobbin_hooks(&s))
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    // Check git post-commit hook
+    let git_hook_path = repo_root.join(".git").join("hooks").join("post-commit");
+    let git_hook_installed = if git_hook_path.exists() {
+        std::fs::read_to_string(&git_hook_path)
+            .map(|content| content.contains(GIT_HOOK_START_MARKER))
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
     if output.json {
         let status = HookStatusOutput {
-            hooks_installed: false, // TODO: check .claude/settings.json
-            git_hook_installed: false, // TODO: check .git/hooks/post-commit
+            hooks_installed,
+            git_hook_installed,
             config: HookConfigOutput {
                 threshold: hooks_cfg.threshold,
                 budget: hooks_cfg.budget,
@@ -175,8 +418,10 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
         println!("  Content mode:     {}", hooks_cfg.content_mode.cyan());
         println!("  Min prompt len:   {}", hooks_cfg.min_prompt_length.to_string().cyan());
         println!();
-        println!("  Claude Code hooks: {}", "not installed".yellow());
-        println!("  Git post-commit:   {}", "not installed".yellow());
+        let hooks_str = if hooks_installed { "installed".green() } else { "not installed".yellow() };
+        let git_str = if git_hook_installed { "installed".green() } else { "not installed".yellow() };
+        println!("  Claude Code hooks: {}", hooks_str);
+        println!("  Git post-commit:   {}", git_str);
     }
 
     Ok(())
@@ -713,17 +958,187 @@ fn format_session_context(
     lines.join("\n")
 }
 
-async fn run_install_git_hook(_args: InstallGitHookArgs, output: OutputConfig) -> Result<()> {
-    if !output.quiet {
-        eprintln!("bobbin hook install-git-hook: not yet implemented");
+const GIT_HOOK_START_MARKER: &str = "# >>> bobbin post-commit hook >>>";
+const GIT_HOOK_END_MARKER: &str = "# <<< bobbin post-commit hook <<<";
+
+const GIT_HOOK_SECTION: &str = r#"# >>> bobbin post-commit hook >>>
+# Auto-generated by `bobbin hook install-git-hook` — do not edit this section
+if command -v bobbin >/dev/null 2>&1; then
+  bobbin index --quiet &
+fi
+# <<< bobbin post-commit hook <<<"#;
+
+/// Find the .git/hooks directory for the current repo.
+fn git_hooks_dir() -> Result<PathBuf> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .output()
+        .context("Failed to run git rev-parse")?;
+    if !output.status.success() {
+        anyhow::bail!("Not in a git repository");
     }
+    let git_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(PathBuf::from(git_dir).join("hooks"))
+}
+
+async fn run_install_git_hook(_args: InstallGitHookArgs, output: OutputConfig) -> Result<()> {
+    let hooks_dir = git_hooks_dir()?;
+    let hook_path = hooks_dir.join("post-commit");
+
+    std::fs::create_dir_all(&hooks_dir)
+        .with_context(|| format!("Failed to create {}", hooks_dir.display()))?;
+
+    let content = if hook_path.exists() {
+        let existing = std::fs::read_to_string(&hook_path)
+            .with_context(|| format!("Failed to read {}", hook_path.display()))?;
+
+        if existing.contains(GIT_HOOK_START_MARKER) {
+            // Already installed — replace existing section
+            let mut result = String::new();
+            let mut in_bobbin_section = false;
+            for line in existing.lines() {
+                if line.contains(GIT_HOOK_START_MARKER) {
+                    in_bobbin_section = true;
+                    result.push_str(GIT_HOOK_SECTION);
+                    result.push('\n');
+                } else if line.contains(GIT_HOOK_END_MARKER) {
+                    in_bobbin_section = false;
+                    // Already included in GIT_HOOK_SECTION above
+                } else if !in_bobbin_section {
+                    result.push_str(line);
+                    result.push('\n');
+                }
+            }
+            result
+        } else {
+            // Append to existing hook
+            let mut result = existing;
+            if !result.ends_with('\n') {
+                result.push('\n');
+            }
+            result.push('\n');
+            result.push_str(GIT_HOOK_SECTION);
+            result.push('\n');
+            result
+        }
+    } else {
+        // New hook file
+        format!("#!/bin/sh\n\n{}\n", GIT_HOOK_SECTION)
+    };
+
+    std::fs::write(&hook_path, &content)
+        .with_context(|| format!("Failed to write {}", hook_path.display()))?;
+
+    // Make executable
+    let perms = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(&hook_path, perms)
+        .with_context(|| format!("Failed to set permissions on {}", hook_path.display()))?;
+
+    if output.json {
+        let result = json!({
+            "status": "installed",
+            "path": hook_path.display().to_string(),
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else if !output.quiet {
+        println!(
+            "{} Git post-commit hook installed",
+            "✓".green(),
+        );
+        println!("  Location: {}", hook_path.display().to_string().dimmed());
+        println!("  Action:   {} after each commit", "bobbin index --quiet".cyan());
+    }
+
     Ok(())
 }
 
 async fn run_uninstall_git_hook(_args: UninstallGitHookArgs, output: OutputConfig) -> Result<()> {
-    if !output.quiet {
-        eprintln!("bobbin hook uninstall-git-hook: not yet implemented");
+    let hooks_dir = git_hooks_dir()?;
+    let hook_path = hooks_dir.join("post-commit");
+
+    if !hook_path.exists() {
+        if output.json {
+            let result = json!({
+                "status": "not_installed",
+                "path": hook_path.display().to_string(),
+            });
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        } else if !output.quiet {
+            println!("No post-commit hook found");
+        }
+        return Ok(());
     }
+
+    let existing = std::fs::read_to_string(&hook_path)
+        .with_context(|| format!("Failed to read {}", hook_path.display()))?;
+
+    if !existing.contains(GIT_HOOK_START_MARKER) {
+        if output.json {
+            let result = json!({
+                "status": "not_installed",
+                "path": hook_path.display().to_string(),
+            });
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        } else if !output.quiet {
+            println!("No bobbin hook found in {}", hook_path.display());
+        }
+        return Ok(());
+    }
+
+    // Remove bobbin section
+    let mut result = String::new();
+    let mut in_bobbin_section = false;
+    let mut prev_blank = false;
+    for line in existing.lines() {
+        if line.contains(GIT_HOOK_START_MARKER) {
+            in_bobbin_section = true;
+            // Remove preceding blank line if any
+            if prev_blank && result.ends_with('\n') {
+                // Trim trailing blank line
+                let trimmed = result.trim_end_matches('\n');
+                result = format!("{}\n", trimmed);
+            }
+            continue;
+        }
+        if line.contains(GIT_HOOK_END_MARKER) {
+            in_bobbin_section = false;
+            continue;
+        }
+        if !in_bobbin_section {
+            result.push_str(line);
+            result.push('\n');
+            prev_blank = line.trim().is_empty();
+        }
+    }
+
+    // Check if remaining content is just a shebang
+    let meaningful = result
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with("#!"))
+        .count();
+
+    if meaningful == 0 {
+        // Nothing left — remove the file
+        std::fs::remove_file(&hook_path)
+            .with_context(|| format!("Failed to remove {}", hook_path.display()))?;
+    } else {
+        std::fs::write(&hook_path, &result)
+            .with_context(|| format!("Failed to write {}", hook_path.display()))?;
+    }
+
+    if output.json {
+        let result = json!({
+            "status": "uninstalled",
+            "path": hook_path.display().to_string(),
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else if !output.quiet {
+        println!(
+            "{} Bobbin post-commit hook removed",
+            "✓".green(),
+        );
+    }
+
     Ok(())
 }
 
@@ -1078,5 +1493,296 @@ mod tests {
         assert!(result.contains("## Working Context"));
         // Header line + trailing newline from blank line join
         assert!(result.lines().count() <= 2);
+    }
+
+    // --- Hook installer unit tests ---
+
+    #[test]
+    fn test_merge_hooks_into_empty_settings() {
+        let mut settings = json!({});
+        merge_hooks(&mut settings);
+
+        assert!(settings.get("hooks").is_some());
+        let hooks = &settings["hooks"];
+        assert!(hooks.get("UserPromptSubmit").is_some());
+        assert!(hooks.get("SessionStart").is_some());
+
+        // Verify inject-context command
+        let ups = hooks["UserPromptSubmit"].as_array().unwrap();
+        assert_eq!(ups.len(), 1);
+        let cmd = ups[0]["hooks"][0]["command"].as_str().unwrap();
+        assert_eq!(cmd, "bobbin hook inject-context");
+
+        // Verify session-context command
+        let ss = hooks["SessionStart"].as_array().unwrap();
+        assert_eq!(ss.len(), 1);
+        let cmd = ss[0]["hooks"][0]["command"].as_str().unwrap();
+        assert_eq!(cmd, "bobbin hook session-context");
+        assert_eq!(ss[0]["matcher"].as_str().unwrap(), "compact");
+    }
+
+    #[test]
+    fn test_merge_hooks_preserves_existing_hooks() {
+        let mut settings = json!({
+            "hooks": {
+                "UserPromptSubmit": [
+                    {
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "other-tool inject",
+                                "timeout": 5
+                            }
+                        ]
+                    }
+                ]
+            },
+            "other_key": "preserved"
+        });
+
+        merge_hooks(&mut settings);
+
+        // other_key should still be there
+        assert_eq!(settings["other_key"].as_str().unwrap(), "preserved");
+
+        // UserPromptSubmit should have both the other tool AND bobbin
+        let ups = settings["hooks"]["UserPromptSubmit"].as_array().unwrap();
+        assert_eq!(ups.len(), 2);
+        assert_eq!(
+            ups[0]["hooks"][0]["command"].as_str().unwrap(),
+            "other-tool inject"
+        );
+        assert_eq!(
+            ups[1]["hooks"][0]["command"].as_str().unwrap(),
+            "bobbin hook inject-context"
+        );
+    }
+
+    #[test]
+    fn test_merge_hooks_idempotent() {
+        let mut settings = json!({});
+        merge_hooks(&mut settings);
+        merge_hooks(&mut settings); // Second time
+
+        let ups = settings["hooks"]["UserPromptSubmit"].as_array().unwrap();
+        assert_eq!(ups.len(), 1, "Should not duplicate bobbin hooks");
+
+        let ss = settings["hooks"]["SessionStart"].as_array().unwrap();
+        assert_eq!(ss.len(), 1, "Should not duplicate bobbin hooks");
+    }
+
+    #[test]
+    fn test_is_bobbin_hook_group_true() {
+        let group = json!({
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "bobbin hook inject-context",
+                    "timeout": 10
+                }
+            ]
+        });
+        assert!(is_bobbin_hook_group(&group));
+    }
+
+    #[test]
+    fn test_is_bobbin_hook_group_false() {
+        let group = json!({
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "other-tool do-thing",
+                    "timeout": 5
+                }
+            ]
+        });
+        assert!(!is_bobbin_hook_group(&group));
+    }
+
+    #[test]
+    fn test_remove_bobbin_hooks_leaves_others() {
+        let mut settings = json!({
+            "hooks": {
+                "UserPromptSubmit": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "other-tool inject" }
+                        ]
+                    },
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "bobbin hook inject-context" }
+                        ]
+                    }
+                ],
+                "SessionStart": [
+                    {
+                        "matcher": "compact",
+                        "hooks": [
+                            { "type": "command", "command": "bobbin hook session-context" }
+                        ]
+                    }
+                ]
+            }
+        });
+
+        let removed = remove_bobbin_hooks(&mut settings);
+        assert!(removed);
+
+        // other-tool should remain
+        let ups = settings["hooks"]["UserPromptSubmit"].as_array().unwrap();
+        assert_eq!(ups.len(), 1);
+        assert_eq!(
+            ups[0]["hooks"][0]["command"].as_str().unwrap(),
+            "other-tool inject"
+        );
+
+        // SessionStart was only bobbin, so it should be removed entirely
+        assert!(settings["hooks"].get("SessionStart").is_none());
+    }
+
+    #[test]
+    fn test_remove_bobbin_hooks_cleans_empty_hooks_object() {
+        let mut settings = json!({
+            "hooks": {
+                "UserPromptSubmit": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "bobbin hook inject-context" }
+                        ]
+                    }
+                ]
+            },
+            "other": true
+        });
+
+        let removed = remove_bobbin_hooks(&mut settings);
+        assert!(removed);
+
+        // hooks object should be fully removed
+        assert!(settings.get("hooks").is_none());
+        // other keys preserved
+        assert_eq!(settings["other"].as_bool().unwrap(), true);
+    }
+
+    #[test]
+    fn test_remove_bobbin_hooks_none_present() {
+        let mut settings = json!({
+            "hooks": {
+                "UserPromptSubmit": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "other-tool inject" }
+                        ]
+                    }
+                ]
+            }
+        });
+
+        let removed = remove_bobbin_hooks(&mut settings);
+        assert!(!removed);
+
+        // Nothing should change
+        let ups = settings["hooks"]["UserPromptSubmit"].as_array().unwrap();
+        assert_eq!(ups.len(), 1);
+    }
+
+    #[test]
+    fn test_has_bobbin_hooks_true() {
+        let settings = json!({
+            "hooks": {
+                "UserPromptSubmit": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "bobbin hook inject-context" }
+                        ]
+                    }
+                ]
+            }
+        });
+        assert!(has_bobbin_hooks(&settings));
+    }
+
+    #[test]
+    fn test_has_bobbin_hooks_false() {
+        let settings = json!({
+            "hooks": {
+                "UserPromptSubmit": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "other-tool" }
+                        ]
+                    }
+                ]
+            }
+        });
+        assert!(!has_bobbin_hooks(&settings));
+    }
+
+    #[test]
+    fn test_has_bobbin_hooks_empty() {
+        assert!(!has_bobbin_hooks(&json!({})));
+    }
+
+    #[test]
+    fn test_read_settings_missing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("nonexistent.json");
+        let settings = read_settings(&path).unwrap();
+        assert_eq!(settings, json!({}));
+    }
+
+    #[test]
+    fn test_read_settings_empty_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("empty.json");
+        std::fs::write(&path, "").unwrap();
+        let settings = read_settings(&path).unwrap();
+        assert_eq!(settings, json!({}));
+    }
+
+    #[test]
+    fn test_read_settings_valid_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("valid.json");
+        std::fs::write(&path, r#"{"key": "value"}"#).unwrap();
+        let settings = read_settings(&path).unwrap();
+        assert_eq!(settings["key"].as_str().unwrap(), "value");
+    }
+
+    #[test]
+    fn test_write_settings_creates_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("deep").join("nested").join("settings.json");
+        let settings = json!({"test": true});
+        write_settings(&path, &settings).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed["test"].as_bool().unwrap(), true);
+    }
+
+    #[test]
+    fn test_bobbin_hook_entries_structure() {
+        let entries = bobbin_hook_entries();
+        let hooks = entries.get("hooks").unwrap();
+
+        // UserPromptSubmit
+        let ups = hooks["UserPromptSubmit"].as_array().unwrap();
+        assert_eq!(ups.len(), 1);
+        assert_eq!(ups[0]["hooks"][0]["type"].as_str().unwrap(), "command");
+        assert_eq!(ups[0]["hooks"][0]["timeout"].as_i64().unwrap(), 10);
+
+        // SessionStart
+        let ss = hooks["SessionStart"].as_array().unwrap();
+        assert_eq!(ss.len(), 1);
+        assert_eq!(ss[0]["matcher"].as_str().unwrap(), "compact");
+    }
+
+    #[test]
+    fn test_git_hook_section_has_markers() {
+        assert!(GIT_HOOK_SECTION.contains(GIT_HOOK_START_MARKER));
+        assert!(GIT_HOOK_SECTION.contains(GIT_HOOK_END_MARKER));
+        assert!(GIT_HOOK_SECTION.contains("bobbin index --quiet"));
     }
 }
