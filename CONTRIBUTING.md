@@ -1,6 +1,6 @@
 # Contributing to Bobbin
 
-This project uses a mix of Rust (Bobbin) and Python (Tambour).
+Bobbin is a local-first Rust code context engine.
 
 ## Using Just
 
@@ -8,6 +8,7 @@ This project uses [just](https://github.com/casey/just) as a command runner. **A
 
 ```bash
 just --list          # Show available commands
+just setup           # Install system deps (protoc, c++, verify rust)
 just build           # Build (quiet output)
 just test            # Run tests (quiet output)
 just check           # Type check (quiet output)
@@ -28,8 +29,12 @@ just test verbose=true
 
 ### Prerequisites
 
-- Rust (stable toolchain)
+- Rust (stable toolchain) — install via [rustup](https://rustup.rs)
 - `just` command runner
+- `protoc` (Protocol Buffers compiler) — required by lancedb
+- C++ compiler (`g++` on Linux, Xcode CLT on macOS)
+
+Run `just setup` to install system dependencies automatically.
 
 ### Build Commands
 
@@ -39,30 +44,6 @@ just test            # Run all tests
 just check           # Type check without building
 just lint            # Lint with clippy
 ```
-
-## Python Development (Tambour)
-
-Tambour is the Python-based agent harness. Its source lives in a separate rig but is auto-discovered.
-
-### Prerequisites
-
-- Python 3.11+
-
-### Setup & Tests
-
-The venv is auto-created on first use:
-```bash
-just tambour test           # Auto-setup venv + run tests
-just tambour test -v        # Verbose output
-just tambour setup          # Manual venv setup/refresh
-```
-
-The venv is created at `.venv/` and tambour source is discovered automatically from the Gas Town rig structure. Override with `$TAMBOUR_DIR` if needed.
-
-### Code Style
-
-- Follow PEP 8 guidelines.
-- Ensure type hints are used.
 
 ## Feature Integration Checklist
 
