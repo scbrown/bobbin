@@ -20,13 +20,15 @@ files as coverage gaps.
 - Git coupling analysis (`analyze_coupling()`) with frequency + recency scoring
 
 **What's needed**:
-- Test file detection heuristics (pattern-based: `*_test.rs`, `tests/`, `__tests__/`, `*.spec.ts`, etc.)
+- Test detection via AST analysis (not filename heuristics): tree-sitter can
+  identify `#[test]`, `#[cfg(test)]`, `def test_*`, `describe(`/`it(`, etc.
+  directly during parsing. Tag chunks as test code at index time.
 - New CLI command: `bobbin coverage [file]` — show test files covering a source file, or show uncovered files
 - Coverage gap report: source files with zero coupled test files
-- Optional: `ChunkType::Test` variant for richer chunk classification
+- `ChunkType::Test` variant for richer chunk classification
 - MCP tool: `test_coverage`
 
-**Scope**: Medium. Mostly composition of existing coupling queries + pattern matching.
+**Scope**: Medium. AST-based test detection during parsing + coupling queries.
 
 ---
 
@@ -148,8 +150,8 @@ so plans should include confidence levels.
 
 | Feature | Leverage | Scope | Existing Foundation | Priority |
 |---------|----------|-------|-------------------|----------|
-| Test Coverage Mapping | High | Medium | Strong (coupling exists) | P1 |
 | Claude Code Hooks | High | Medium | Strong (MCP + CLI exist) | P1 |
-| Semantic Commit Indexing | Medium | Medium | Strong (git parsing exists) | P2 |
+| Semantic Commit Indexing | High | Medium | Strong (git parsing exists) | P1 |
+| Test Coverage Mapping | High | Medium | Strong (coupling exists) | P2 |
 | Refactoring Planner | High | Large | Good (impact + refs exist) | P2 |
 | Cross-Repo Coupling | Medium | Large | Partial (multi-repo exists) | P3 |
