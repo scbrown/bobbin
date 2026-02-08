@@ -315,8 +315,11 @@ fn merge_signals(
         .into_iter()
         .map(|(path, signals)| {
             if signals.len() == 1 || mode != ImpactMode::Combined {
-                // Single signal: use it directly
-                let (signal, score, reason) = signals.into_iter().next().unwrap();
+                // Single signal: use it directly (signals is non-empty since it's from a HashMap value)
+                let (signal, score, reason) = signals
+                    .into_iter()
+                    .next()
+                    .expect("signal_map values are always non-empty");
                 ImpactResult {
                     path,
                     signal,
@@ -324,11 +327,11 @@ fn merge_signals(
                     reason,
                 }
             } else {
-                // Combined: take the best score, note all signals
+                // Combined: take the best score, note all signals (signals.len() > 1 here)
                 let best = signals
                     .iter()
                     .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-                    .unwrap();
+                    .expect("signals is non-empty in Combined branch");
                 let best_score = best.1;
 
                 let reasons: Vec<&str> = signals.iter().map(|(_, _, r)| r.as_str()).collect();

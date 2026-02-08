@@ -21,6 +21,16 @@ const TABLE_NAME: &str = "chunks";
 /// Default embedding dimension (for backward compatibility)
 const DEFAULT_EMBEDDING_DIM: i32 = 384;
 
+/// Extract a named string column from a RecordBatch, returning a Result instead of panicking.
+fn string_column<'a>(batch: &'a RecordBatch, name: &str) -> Result<&'a StringArray> {
+    batch
+        .column_by_name(name)
+        .with_context(|| format!("missing column '{name}' in RecordBatch"))?
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .with_context(|| format!("column '{name}' is not a StringArray"))
+}
+
 /// Unified chunk storage using LanceDB (vectors + metadata + FTS)
 pub struct VectorStore {
     conn: Connection,
@@ -45,7 +55,10 @@ impl VectorStore {
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
 
-        let conn = connect(path.to_str().unwrap())
+        let path_str = path
+            .to_str()
+            .context("non-UTF8 path for LanceDB")?;
+        let conn = connect(path_str)
             .execute()
             .await
             .with_context(|| format!("Failed to open LanceDB at: {}", path.display()))?;
@@ -857,14 +870,10 @@ impl VectorStore {
         }
 
         let batch = &batches[0];
-        let file_paths = batch.column_by_name("file_path").unwrap()
-            .as_any().downcast_ref::<StringArray>().unwrap();
-        let languages = batch.column_by_name("language").unwrap()
-            .as_any().downcast_ref::<StringArray>().unwrap();
-        let file_hashes = batch.column_by_name("file_hash").unwrap()
-            .as_any().downcast_ref::<StringArray>().unwrap();
-        let indexed_ats = batch.column_by_name("indexed_at").unwrap()
-            .as_any().downcast_ref::<StringArray>().unwrap();
+        let file_paths = string_column(batch, "file_path")?;
+        let languages = string_column(batch, "language")?;
+        let file_hashes = string_column(batch, "file_hash")?;
+        let indexed_ats = string_column(batch, "indexed_at")?;
 
         let indexed_at_str = indexed_ats.value(0);
         let indexed_at = indexed_at_str.parse::<i64>().unwrap_or(0);
@@ -1066,12 +1075,9 @@ impl VectorStore {
         let mut last_indexed: Option<i64> = None;
 
         for batch in &batches {
-            let file_paths = batch.column_by_name("file_path").unwrap()
-                .as_any().downcast_ref::<StringArray>().unwrap();
-            let languages = batch.column_by_name("language").unwrap()
-                .as_any().downcast_ref::<StringArray>().unwrap();
-            let indexed_ats = batch.column_by_name("indexed_at").unwrap()
-                .as_any().downcast_ref::<StringArray>().unwrap();
+            let file_paths = string_column(batch, "file_path")?;
+            let languages = string_column(batch, "language")?;
+            let indexed_ats = string_column(batch, "indexed_at")?;
 
             for i in 0..batch.num_rows() {
                 let fp = file_paths.value(i).to_string();

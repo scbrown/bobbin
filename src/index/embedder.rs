@@ -131,16 +131,20 @@ impl Embedder {
     /// Generate embedding for a single text
     pub async fn embed(&mut self, text: &str) -> Result<Vec<f32>> {
         self.embed_batch(&[text])
-            .await
-            .map(|v| v.into_iter().next().unwrap())
+            .await?
+            .into_iter()
+            .next()
+            .context("embed_batch returned empty results for single input")
     }
 
     /// Synchronous embed for backward compatibility (ONNX only)
     pub fn embed_sync(&mut self, text: &str) -> Result<Vec<f32>> {
         match &mut self.backend {
             EmbedderBackend::Onnx(onnx) => onnx
-                .embed_batch(&[text])
-                .map(|v| v.into_iter().next().unwrap()),
+                .embed_batch(&[text])?
+                .into_iter()
+                .next()
+                .context("embed_batch returned empty results for single input"),
             EmbedderBackend::Api(_) => {
                 anyhow::bail!("Synchronous embed not supported for API backend; use embed().await")
             }

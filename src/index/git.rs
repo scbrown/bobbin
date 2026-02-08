@@ -166,7 +166,7 @@ impl GitAnalyzer {
             .collect();
 
         // Sort by score descending
-        couplings.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        couplings.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
         Ok(couplings)
     }
