@@ -13,14 +13,11 @@ keywords = ["rag", "code-search", "embeddings", "tree-sitter"]
 categories = ["command-line-utilities", "development-tools"]
 exclude = [
     ".beads/",
-    ".tambour/",
     ".runtime/",
     ".claude/",
     ".logs/",
-    "scripts/",
     "docs/tasks/",
     "docs/dev-log.md",
-    "docs/tambour-metrics.md",
     "mail/",
     "state.json",
     "AGENTS.md",
@@ -28,7 +25,6 @@ exclude = [
     "PRD.md",
     "VISION.md",
     "justfile",
-    "tambour.just",
     "Local RAG and Context Injection.md",
 ]
 

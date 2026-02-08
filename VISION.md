@@ -44,7 +44,7 @@ In the era of AI-assisted development, context is everything. Current tools trea
 
 ## What Bobbin Is Not
 
-- Not a task manager (see Tambour)
+- Not a task manager or agent harness
 - Not an IDE extension (headless by design)
 - Not a cloud service
 - Not an AI agent itself - it serves agents
@@ -64,7 +64,7 @@ In the era of AI-assisted development, context is everything. Current tools trea
 1. **AI Coding Agents** - Claude Code, Cursor, Aider, custom agents
 2. **Developers** - Direct CLI usage for code exploration
 3. **Tool Builders** - Foundation for context-aware dev tools
-4. **Tambour** - Future middleware integration
+4. **Agent Harnesses** - Middleware integration for orchestration tools
 
 ## Success Metrics
 

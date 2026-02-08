@@ -15,19 +15,6 @@ Thumbs.db
 # Bobbin index data
 .bobbin/
 
-# Tambour local state
-.tambour/
-.tambour-source
-
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.eggs/
-dist/
-build/
-.venv/
-
 # Gas Town (added by gt)
 .runtime/
 .claude/

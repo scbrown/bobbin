@@ -1,8 +1,6 @@
 # Bobbin: Semantic code indexing
 # Run `just --list` to see available recipes
 
-mod tambour 'tambour.just'
-
 # Quiet by default to save context; use verbose=true for full output
 verbose := "false"
 cargo_flags := if verbose == "true" { "" } else { "-q --message-format=short" }

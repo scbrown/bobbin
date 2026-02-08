@@ -45,7 +45,7 @@ A local, structure-aware, temporally-intelligent context engine fills a gap no c
 - **Constraints**: Doesn't want to set up complex infrastructure; needs it to just work
 
 ### Persona 3: Tool Builder
-- **Examples**: Developers building custom dev tools, Tambour middleware
+- **Examples**: Developers building custom dev tools, agent harnesses
 - **Needs**: Reliable API/CLI to build upon; extensible architecture
 - **Constraints**: Needs stable interfaces; good documentation
 
@@ -437,7 +437,7 @@ coupling_threshold = 3
 - [ ] Comprehensive test suite
 - [ ] Release binaries for all platforms
 
-**Exit Criteria:** Ready for Tambour integration and public release
+**Exit Criteria:** Ready for external tool integration and public release
 
 ---
 
@@ -567,9 +567,9 @@ During the auth refactor, we learned...
 - Visualization: export to DOT/Mermaid for graph rendering
 - Compatibility with existing frontmatter tools (Obsidian, etc.)
 
-### Relationship to Tambour
+### Relationship to Agent Harnesses
 
-This feature aligns with Tambour's mission of context injection. Tambour could:
+This feature aligns with the goal of context injection. An agent harness could:
 - Inject relevant lessons-learned when an agent starts related work
 - Surface ADRs when code governed by them is modified
 - Build "context packages" that follow annotation links

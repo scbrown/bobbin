@@ -18,20 +18,12 @@ This note appears in the status line. Examples: "fix parser bug", "add tests", "
 
 ## Agent Workflow
 
-This project uses [beads](https://github.com/steveyegge/beads) for issue tracking and **tambour** as an agent harness for worktree isolation.
+This project uses [beads](https://github.com/steveyegge/beads) for issue tracking.
 
 ### Finding and Starting Work
 
-To start working on a task (via tambour harness):
 ```bash
-just tambour agent                  # Auto-picks next ready task by priority
-just tambour agent-for bobbin-xx    # Work on specific issue
-just tambour agent-label <label>    # Filter by label
-```
-
-Or manually with native beads commands:
-```bash
-bd ready              # Find available work
+bd ready              # Find available work (no blockers)
 bd show <id>          # View issue details
 bd update <id> --status in_progress  # Claim work
 ```
@@ -48,19 +40,8 @@ bd show $(git branch --show-current)  # Shows full issue details
 
 ### Finishing Work
 
-To finish and merge (via tambour):
 ```bash
-just tambour finish bobbin-xx
-```
-
-To abort/cancel (if started by mistake):
-```bash
-just tambour abort bobbin-xx
-```
-
-Manual completion (if not using tambour harness):
-```bash
-bd close <id>         # Complete work
+bd close <id>         # Mark issue complete
 ```
 
 ## Development Guidelines
@@ -93,7 +74,7 @@ just test verbose=true
 1. **Stop expanding scope** - finish what you can with remaining context
 2. **Create a blocker issue** for any unfinished subtask:
    ```bash
-   just tambour spinoff "Brief title" --blocks $(git branch --show-current)
+   bd create --title "Unfinished: <brief title>" --type task --blocks <current-issue>
    ```
 3. **Document handoff context** in the new issue's description
 4. **Land the plane** - commit, push, and close/pause current work
@@ -112,7 +93,7 @@ When you discover issues, improvements, or subtasks during work, **create issues
 
 **Issue creation command:**
 ```bash
-just tambour spinoff "Title" [--type bug|feature|task|chore] [--priority P0-P4] [--labels label1,label2] [--blocks issue-id]
+bd create --title "Title" --type bug|feature|task|chore --priority P0-P4 --labels label1,label2
 ```
 
 **Default issue template** (fill in relevant sections):
@@ -145,7 +126,6 @@ Any implementation hints, gotchas, or constraints discovered.
 - `tech-debt` - Cleanup, refactoring
 - `enhancement` - Improvement to existing feature
 - `docs` - Documentation work
-- `tambour` - Related to agent harness
 
 ## Landing the Plane (Session Completion)
 
@@ -156,9 +136,11 @@ Any implementation hints, gotchas, or constraints discovered.
 1. **File issues for remaining work** - Create issues for anything that needs follow-up
 2. **Run quality gates** (if code changed) - Tests, linters, builds
 3. **Update issue status** - Close finished work, update in-progress items
-4. **FINISH AND PUSH** - Use tambour to merge and sync:
+4. **Commit and push**:
    ```bash
-   just tambour finish <issue-id>
+   git add <files>
+   git commit -m "<type>: <description> (<issue-id>)"
+   git push
    ```
 5. **Clean up** - Clear stashes, prune remote branches
 6. **Verify** - All changes committed AND pushed
@@ -169,51 +151,3 @@ Any implementation hints, gotchas, or constraints discovered.
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
-
-## Tambour Development Notes
-
-The `scripts/` directory and `justfile` contain **tambour** - an agent harness for beads. This code lives here temporarily but will eventually become its own module/project.
-
-### Running Tambour Tests
-
-The venv is auto-created on first use. Just run:
-```bash
-just tambour test           # Run all tambour tests (quiet)
-just tambour test -v        # Verbose output
-just tambour test -k name   # Filter by test name
-```
-
-To manually set up or refresh the venv:
-```bash
-just tambour setup
-```
-
-The venv lives at `.venv/` in the repo root. Tambour source is auto-discovered from the Gas Town rig structure or `$TAMBOUR_DIR` env var.
-
-### Tambour Tenets
-
-1. **Tambour enables workflows, it doesn't impose them.**
-   The harness is agnostic to how you organize your work. It picks the next ready task by priority - no special filtering, no hardcoded labels. If you want to focus on a specific label, use `--label`. Your workflow, your rules.
-
-2. **Tambour is distinct from any specific project.**
-   It emerged from bobbin development but doesn't know or care about bobbin. It orchestrates agents working on beads issues - that's it.
-
-3. **Tambour will eventually be extracted.**
-   It lives here temporarily while the interface stabilizes. When it needs to orchestrate agents across multiple repositories, it becomes its own project.
-
-### Merge Lock (Parallel Agent Support)
-
-When multiple agents work in parallel, they can race at merge time. Tambour uses a distributed merge lock to serialize merges:
-
-- **Automatic**: `just tambour finish` acquires the lock before merging, releases after push
-- **Agents wait**: If another merge is in progress, the agent waits (up to 5 minutes by default)
-- **No retries needed**: Agents don't need to manually pull/rebase - the lock ensures clean merges
-
-**Manual lock management** (for troubleshooting):
-```bash
-just tambour lock-status    # Check who holds the lock
-just tambour lock-release   # Force-release a stuck lock
-```
-
-**Environment variables:**
-- `TAMBOUR_LOCK_TIMEOUT`: Max seconds to wait for lock (default: 300)

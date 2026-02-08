@@ -25,7 +25,7 @@ just build verbose=true
 just test verbose=true
 ```
 
-## Rust Development (Bobbin)
+## Rust Development
 
 ### Prerequisites
 
