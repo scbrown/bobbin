@@ -265,7 +265,10 @@ impl VectorStore {
         Ok(())
     }
 
-    /// Ensure FTS index exists on content and chunk_name columns
+    /// Ensure FTS index exists on the content column.
+    ///
+    /// LanceDB 0.17 does not support multi-column (composite) FTS indexes,
+    /// so we index only the `content` column which contains the actual code text.
     pub async fn ensure_fts_index(&mut self) -> Result<()> {
         if self.fts_indexed {
             return Ok(());
@@ -276,10 +279,9 @@ impl VectorStore {
             None => return Ok(()),
         };
 
-        // Create FTS index on content, chunk_name, and full_context columns
         table
             .create_index(
-                &["content", "chunk_name", "full_context"],
+                &["content"],
                 Index::FTS(FtsIndexBuilder::default()),
             )
             .execute()

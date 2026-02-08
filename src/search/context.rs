@@ -320,10 +320,15 @@ impl ContextAssembler {
             .vector_store
             .search(&query_embedding, fetch_limit, repo)
             .await?;
-        let keyword_results = self
+        // FTS may fail (e.g. index not built yet) — fall back to semantic-only
+        let keyword_results = match self
             .vector_store
             .search_fts(query, fetch_limit, repo)
-            .await?;
+            .await
+        {
+            Ok(results) => results,
+            Err(_) => vec![],
+        };
 
         // RRF combination
         let k = 60.0_f32;
@@ -380,11 +385,19 @@ impl ContextAssembler {
         let mut combined: Vec<_> = scores.into_values().collect();
         combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
+        // Normalize RRF scores to [0, 1] so downstream threshold filters
+        // (which expect similarity-scale scores) work correctly.
+        let max_score = combined.first().map(|(_, s)| *s).unwrap_or(1.0);
+
         Ok(combined
             .into_iter()
             .take(self.config.search_limit)
             .map(|(mut result, score)| {
-                result.score = score;
+                result.score = if max_score > 0.0 {
+                    score / max_score
+                } else {
+                    0.0
+                };
                 result
             })
             .collect())

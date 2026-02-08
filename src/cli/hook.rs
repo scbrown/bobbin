@@ -431,7 +431,10 @@ async fn run_inject_context(args: InjectContextArgs, _output: OutputConfig) -> R
     // Never block user prompts — any error exits silently
     match inject_context_inner(args).await {
         Ok(()) => Ok(()),
-        Err(_) => Ok(()),
+        Err(e) => {
+            eprintln!("bobbin inject-context: {:#}", e);
+            Ok(())
+        }
     }
 }
 
@@ -471,20 +474,19 @@ fn format_context_for_injection(
     use std::fmt::Write;
 
     let budget = bundle.budget.max_lines;
-    let mut lines_used: usize = 0;
     let mut out = String::new();
 
     let header = format!(
-        "Bobbin found {} relevant files ({} chunks, {}/{} budget lines):\n",
+        "Bobbin found {} relevant files ({} chunks, {}/{} budget lines):",
         bundle.summary.total_files,
         bundle.summary.total_chunks,
         bundle.budget.used_lines,
         bundle.budget.max_lines,
     );
-    lines_used += header.lines().count();
     out.push_str(&header);
+    out.push('\n');
 
-    'outer: for file in &bundle.files {
+    for file in &bundle.files {
         for chunk in &file.chunks {
             if chunk.score < threshold {
                 continue;
@@ -494,35 +496,41 @@ fn format_context_for_injection(
                 .as_ref()
                 .map(|n| format!(" {}", n))
                 .unwrap_or_default();
-            let chunk_header = format!(
-                "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n",
-                file.path, chunk.start_line, chunk.end_line, name, chunk.chunk_type, chunk.score,
-            );
-            let header_lines = chunk_header.lines().count();
-
-            if let Some(ref content) = chunk.content {
-                let content_lines = content.lines().count();
-                // Check if this chunk fits within remaining budget
-                if lines_used + header_lines + content_lines > budget {
-                    break 'outer;
-                }
-                let _ = write!(out, "{}", chunk_header);
-                let _ = write!(out, "{}", content);
-                if !content.ends_with('\n') {
-                    let _ = writeln!(out);
-                }
-                lines_used += header_lines + content_lines;
+            let chunk_section = if let Some(ref content) = chunk.content {
+                format!(
+                    "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n{}{}",
+                    file.path,
+                    chunk.start_line,
+                    chunk.end_line,
+                    name,
+                    chunk.chunk_type,
+                    chunk.score,
+                    content,
+                    if content.ends_with('\n') { "" } else { "\n" },
+                )
             } else {
-                if lines_used + header_lines > budget {
-                    break 'outer;
-                }
-                let _ = write!(out, "{}", chunk_header);
-                lines_used += header_lines;
+                format!(
+                    "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n",
+                    file.path, chunk.start_line, chunk.end_line, name, chunk.chunk_type, chunk.score,
+                )
+            };
+
+            // Check if adding this chunk would exceed budget
+            let candidate = format!("{}{}", out, chunk_section);
+            if candidate.lines().count() > budget {
+                break;
             }
+            let _ = write!(out, "{}", chunk_section);
         }
     }
 
-    out
+    // Final enforcement: trim to budget
+    let lines: Vec<&str> = out.lines().collect();
+    if lines.len() > budget {
+        lines[..budget].join("\n") + "\n"
+    } else {
+        out
+    }
 }
 
 /// Inner implementation that can return errors (caller swallows them).
@@ -830,10 +838,12 @@ fn git_status_files(cwd: &std::path::Path) -> Result<Vec<String>> {
     let files: Vec<String> = stdout
         .lines()
         .filter_map(|line| {
-            let line = line.trim();
+            // git status --porcelain format: "XY path" where XY is a 2-char
+            // status code at fixed positions 0-1, followed by a space at
+            // position 2, then the path.  Do NOT trim the line first — the
+            // leading space in " M" is part of the status code.
             if line.len() > 3 {
-                // Format: "XY path" where XY is 2-char status
-                Some(line[3..].trim().to_string())
+                Some(line[3..].to_string())
             } else {
                 None
             }

@@ -152,19 +152,18 @@ fn search_returns_content_preview() {
 }
 
 // ─── Grep (FTS) ─────────────────────────────────────────────────────────────
-// Note: FTS requires multi-column composite index which is not supported in
-// LanceDB 0.17. Grep tests verify the command handles this gracefully.
+// FTS now uses single-column index on `content` (LanceDB 0.17 compatible).
 
 #[test]
-fn grep_reports_fts_limitation() {
+fn grep_finds_results() {
     let project = indexed_project();
 
-    // Grep requires FTS which may fail with current LanceDB version
     Command::new(TestProject::bobbin_bin())
         .args(["grep", "Calculator"])
         .arg(project.path())
         .assert()
-        .failure();
+        .success()
+        .stdout(predicate::str::contains("Calculator"));
 }
 
 // ─── Error cases ────────────────────────────────────────────────────────────
