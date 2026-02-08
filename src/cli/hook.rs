@@ -459,24 +459,32 @@ fn find_bobbin_root(start: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Format a context bundle into a compact text block for Claude.
+/// Format a context bundle into a compact text block for Claude Code injection.
+///
+/// Produces a plain-text summary of relevant code chunks, enforcing a hard line
+/// budget on the output. The `threshold` filters out low-scoring chunks. The
+/// output budget is taken from `bundle.budget.max_lines`.
 fn format_context_for_injection(
     bundle: &crate::search::context::ContextBundle,
     threshold: f32,
 ) -> String {
     use std::fmt::Write;
 
+    let budget = bundle.budget.max_lines;
+    let mut lines_used: usize = 0;
     let mut out = String::new();
-    let _ = writeln!(
-        out,
-        "Bobbin found {} relevant files ({} chunks, {}/{} budget lines):",
+
+    let header = format!(
+        "Bobbin found {} relevant files ({} chunks, {}/{} budget lines):\n",
         bundle.summary.total_files,
         bundle.summary.total_chunks,
         bundle.budget.used_lines,
         bundle.budget.max_lines,
     );
+    lines_used += header.lines().count();
+    out.push_str(&header);
 
-    for file in &bundle.files {
+    'outer: for file in &bundle.files {
         for chunk in &file.chunks {
             if chunk.score < threshold {
                 continue;
@@ -486,16 +494,30 @@ fn format_context_for_injection(
                 .as_ref()
                 .map(|n| format!(" {}", n))
                 .unwrap_or_default();
-            let _ = writeln!(
-                out,
-                "\n--- {}:{}-{}{} ({}, score {:.3}) ---",
+            let chunk_header = format!(
+                "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n",
                 file.path, chunk.start_line, chunk.end_line, name, chunk.chunk_type, chunk.score,
             );
+            let header_lines = chunk_header.lines().count();
+
             if let Some(ref content) = chunk.content {
+                let content_lines = content.lines().count();
+                // Check if this chunk fits within remaining budget
+                if lines_used + header_lines + content_lines > budget {
+                    break 'outer;
+                }
+                let _ = write!(out, "{}", chunk_header);
                 let _ = write!(out, "{}", content);
                 if !content.ends_with('\n') {
                     let _ = writeln!(out);
                 }
+                lines_used += header_lines + content_lines;
+            } else {
+                if lines_used + header_lines > budget {
+                    break 'outer;
+                }
+                let _ = write!(out, "{}", chunk_header);
+                lines_used += header_lines;
             }
         }
     }
@@ -702,8 +724,20 @@ async fn run_session_context_inner(args: SessionContextArgs) -> Result<()> {
     let db_path = Config::db_path(&cwd);
 
     if lance_path.exists() && db_path.exists() {
-        let vector_store = VectorStore::open(&lance_path).await.ok();
-        let metadata_store = MetadataStore::open(&db_path).ok();
+        let vector_store = match VectorStore::open(&lance_path).await {
+            Ok(vs) => Some(vs),
+            Err(e) => {
+                eprintln!("bobbin: vector store unavailable: {}", e);
+                None
+            }
+        };
+        let metadata_store = match MetadataStore::open(&db_path) {
+            Ok(ms) => Some(ms),
+            Err(e) => {
+                eprintln!("bobbin: metadata store unavailable: {}", e);
+                None
+            }
+        };
 
         // Get symbols for each file
         if let Some(ref vs) = vector_store {
@@ -850,7 +884,11 @@ fn git_recently_changed_files(cwd: &std::path::Path, depth: usize) -> Result<Vec
         .collect())
 }
 
-/// Format the session context as compact markdown, respecting budget
+/// Format session context as compact markdown for Claude Code SessionStart recovery.
+///
+/// Produces a markdown summary of working state (modified files, recent commits,
+/// coupled files) within the given line budget. Budget is enforced on output lines;
+/// if truncation is needed the last line is a notice message, counted within budget.
 fn format_session_context(
     modified_files: &[String],
     recent_commits: &[String],
@@ -949,9 +987,9 @@ fn format_session_context(
         lines.push(String::new());
     }
 
-    // Enforce budget
+    // Enforce budget (reserve 1 line for truncation message if needed)
     if lines.len() > budget {
-        lines.truncate(budget);
+        lines.truncate(budget.saturating_sub(1));
         lines.push("... (truncated to fit budget)".to_string());
     }
 
@@ -1279,7 +1317,7 @@ mod tests {
         assert!(result.contains("src/auth.rs:10-25"));
         assert!(result.contains("authenticate"));
         assert!(result.contains("fn authenticate()"));
-        assert!(result.contains("score 0.850"));
+        assert!(result.contains("score 0.85"));
     }
 
     #[test]
@@ -1428,8 +1466,8 @@ mod tests {
 
         let result = format_session_context(&modified, &commits, &symbols, &coupled, 10);
         let line_count = result.lines().count();
-        // Budget of 10 + 1 for truncation message
-        assert!(line_count <= 11, "Expected <= 11 lines, got {}", line_count);
+        // Budget of 10 — truncation message counts within budget
+        assert!(line_count <= 10, "Expected <= 10 lines, got {}", line_count);
         assert!(result.contains("truncated"));
     }
 
@@ -1493,6 +1531,128 @@ mod tests {
         assert!(result.contains("## Working Context"));
         // Header line + trailing newline from blank line join
         assert!(result.lines().count() <= 2);
+    }
+
+    // --- Budget enforcement tests for inject-context formatter ---
+
+    #[test]
+    fn test_format_context_for_injection_respects_budget() {
+        // Build a bundle with many chunks that would exceed a small budget
+        let bundle = ContextBundle {
+            query: "auth".to_string(),
+            files: vec![
+                ContextFile {
+                    path: "src/a.rs".to_string(),
+                    language: "rust".to_string(),
+                    relevance: FileRelevance::Direct,
+                    score: 0.9,
+                    coupled_to: vec![],
+                    chunks: vec![
+                        ContextChunk {
+                            name: Some("fn_a".to_string()),
+                            chunk_type: ChunkType::Function,
+                            start_line: 1,
+                            end_line: 10,
+                            score: 0.9,
+                            match_type: Some(MatchType::Hybrid),
+                            content: Some("line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10".to_string()),
+                        },
+                        ContextChunk {
+                            name: Some("fn_b".to_string()),
+                            chunk_type: ChunkType::Function,
+                            start_line: 20,
+                            end_line: 30,
+                            score: 0.8,
+                            match_type: Some(MatchType::Hybrid),
+                            content: Some("b1\nb2\nb3\nb4\nb5\nb6\nb7\nb8\nb9\nb10\nb11".to_string()),
+                        },
+                    ],
+                },
+            ],
+            budget: BudgetInfo {
+                max_lines: 15,
+                used_lines: 21,
+            },
+            summary: ContextSummary {
+                total_files: 1,
+                total_chunks: 2,
+                direct_hits: 2,
+                coupled_additions: 0,
+            },
+        };
+        let result = format_context_for_injection(&bundle, 0.0);
+        let line_count = result.lines().count();
+        // Must not exceed max_lines budget
+        assert!(
+            line_count <= 15,
+            "Expected <= 15 lines, got {}:\n{}",
+            line_count,
+            result
+        );
+        // Should include at least the first chunk
+        assert!(result.contains("fn_a"));
+    }
+
+    #[test]
+    fn test_format_context_for_injection_score_format() {
+        let bundle = ContextBundle {
+            query: "test".to_string(),
+            files: vec![ContextFile {
+                path: "src/x.rs".to_string(),
+                language: "rust".to_string(),
+                relevance: FileRelevance::Direct,
+                score: 0.85,
+                coupled_to: vec![],
+                chunks: vec![ContextChunk {
+                    name: Some("fn_x".to_string()),
+                    chunk_type: ChunkType::Function,
+                    start_line: 1,
+                    end_line: 3,
+                    score: 0.856,
+                    match_type: None,
+                    content: Some("fn x() {}".to_string()),
+                }],
+            }],
+            budget: BudgetInfo {
+                max_lines: 150,
+                used_lines: 3,
+            },
+            summary: ContextSummary {
+                total_files: 1,
+                total_chunks: 1,
+                direct_hits: 1,
+                coupled_additions: 0,
+            },
+        };
+        let result = format_context_for_injection(&bundle, 0.0);
+        // Score should be 2 decimal places
+        assert!(result.contains("score 0.86"), "Expected 2-decimal score in: {}", result);
+    }
+
+    #[test]
+    fn test_format_session_context_very_small_budget() {
+        let modified = vec!["src/a.rs".to_string(), "src/b.rs".to_string()];
+        let commits: Vec<String> = vec![];
+        let symbols: Vec<FileSymbolInfo> = vec![];
+        let coupled: Vec<(String, String, f32)> = vec![];
+
+        // Budget of 3 — header + blank + 1 content line at most
+        let result = format_session_context(&modified, &commits, &symbols, &coupled, 3);
+        let line_count = result.lines().count();
+        assert!(line_count <= 3, "Expected <= 3 lines, got {}:\n{}", line_count, result);
+    }
+
+    #[test]
+    fn test_format_session_context_budget_zero() {
+        let modified = vec!["src/a.rs".to_string()];
+        let commits: Vec<String> = vec![];
+        let symbols: Vec<FileSymbolInfo> = vec![];
+        let coupled: Vec<(String, String, f32)> = vec![];
+
+        // Budget of 0 — should still not panic
+        let result = format_session_context(&modified, &commits, &symbols, &coupled, 0);
+        // Should produce at most the truncation message
+        assert!(result.lines().count() <= 1);
     }
 
     // --- Hook installer unit tests ---
