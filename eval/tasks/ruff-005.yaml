@@ -1,0 +1,14 @@
+id: ruff-005
+repo: astral-sh/ruff
+commit: aa9c9bf01fc32260359a1c0e727ed57c90fc642c
+description: |
+  Suppress diagnostic output when running `ruff format --check --silent`.
+  The `--silent` flag was not being respected in format check mode, causing
+  "Would reformat" messages to still appear. Fix by wrapping the
+  output-writing match block in a `log_level > LogLevel::Silent` guard so
+  that no stdout output is produced in silent mode. Add integration tests
+  for both `--silent` and `--quiet` modes to verify correct output behavior.
+test_command: "cargo test -p ruff -- format"
+language: rust
+difficulty: easy
+tags: [cli, bug-fix, output-suppression, cross-file]

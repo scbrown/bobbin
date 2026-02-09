@@ -1,0 +1,15 @@
+id: ruff-003
+repo: astral-sh/ruff
+commit: 80dbc62a7654bfc6165f3f4dff46df10c94abb8a
+description: |
+  Fix the pylint PLC2701 (import-private-name) rule in two ways: (1) Stop
+  flagging dunder submodules like `__main__` as private imports by using the
+  `is_dunder` helper instead of a simple `starts_with("__")` check, which
+  incorrectly matched dunder names. (2) Improve diagnostic ranges to point
+  at the exact private name segment rather than the entire import binding,
+  using a tokenizer to locate the private segment in module paths and alias
+  name ranges for imported members.
+test_command: "cargo test -p ruff_linter -- PLC2701"
+language: rust
+difficulty: medium
+tags: [linter, bug-fix, diagnostic-range, false-positive, cross-file]

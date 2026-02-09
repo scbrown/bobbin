@@ -1,0 +1,14 @@
+id: flask-005
+repo: pallets/flask
+commit: 1e5dd430223369d13ea94ffffe22bca53a98e730
+description: |
+  Refactor error checking in register_error_handler and
+  _get_exc_class_and_code to consolidate validation logic. Move error code
+  lookup validation into _get_exc_class_and_code, replace the assertion for
+  non-Exception subclasses with a proper ValueError, add a TypeError for
+  when an exception instance is passed instead of a class, and rewrite
+  error messages to be more consistent and descriptive.
+test_command: "pytest tests/test_basic.py tests/test_user_error_handler.py -x"
+language: python
+difficulty: easy
+tags: [refactoring, error-handling, validation, cross-file]

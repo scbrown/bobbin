@@ -1,0 +1,15 @@
+id: ruff-004
+repo: astral-sh/ruff
+commit: ceb876b82300bd237d11e3eb77c46fcf3d3afe85
+description: |
+  Fix inconsistent handling of forward references (stringized annotations)
+  in the flake8-pyi PYI034 rule for `__new__`, `__enter__`, and `__aenter__`
+  methods. Previously, return type annotations using forward references like
+  `def __new__(cls) -> "MyClass"` were not detected, while non-stringized
+  versions were. Add a new `is_name_or_stringized_name` helper that uses
+  `match_maybe_stringized_annotation` to resolve both plain and stringized
+  annotations, and use it for the return type checks.
+test_command: "cargo test -p ruff_linter -- PYI034"
+language: rust
+difficulty: easy
+tags: [linter, bug-fix, type-annotations, forward-references, cross-file]

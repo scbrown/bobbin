@@ -1,0 +1,15 @@
+id: ruff-002
+repo: astral-sh/ruff
+commit: ddeadcbd18a2b3319a2f5963c16191d14d44bca9
+description: |
+  Add `multiprocessing.Value` to the list of functions excluded from the
+  flake8-boolean-trap rule FBT003. The `Value` constructor commonly takes a
+  boolean as its second argument (e.g., `Value("b", False)`), and this is a
+  legitimate use case that should not trigger a boolean positional argument
+  warning. Implement a new `is_semantically_allowed_func_call` helper that
+  uses qualified name resolution to match the call, and integrate it into the
+  existing `allow_boolean_trap` logic.
+test_command: "cargo test -p ruff_linter -- flake8_boolean_trap"
+language: rust
+difficulty: easy
+tags: [linter, enhancement, false-positive, cross-file]

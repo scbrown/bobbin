@@ -1,0 +1,14 @@
+id: flask-001
+repo: pallets/flask
+commit: 8646edca6f47e2cd57464081b3911218d4734f8d
+description: |
+  Fix the Vary: Cookie header to be set consistently when the session is
+  accessed, modified, or refreshed. Previously, the header was only set when
+  the session was modified but not when it was merely accessed or when a
+  session cookie was being deleted. Move the Vary header logic so it covers
+  all code paths in save_session, including cookie deletion and session
+  refresh without modification.
+test_command: "pytest tests/test_basic.py -x -k session"
+language: python
+difficulty: medium
+tags: [bug-fix, sessions, http-headers, cross-file]

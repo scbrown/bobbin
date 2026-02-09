@@ -1,0 +1,14 @@
+id: ruff-001
+repo: astral-sh/ruff
+commit: f14fd5d88507553830d78cf3cfae625a17297ebd
+description: |
+  Fix the Python formatter to preserve parentheses around exception handler
+  tuples when any element is a starred expression (Python 3.14+). Without
+  parentheses, a starred element in an except clause is parsed as `except*`
+  (exception group syntax) rather than a tuple containing a starred element,
+  changing semantics. Add a check for starred expressions in the tuple before
+  removing parentheses.
+test_command: "cargo test -p ruff_python_formatter -- except_handler"
+language: rust
+difficulty: medium
+tags: [formatter, bug-fix, syntax-preservation, cross-file]

@@ -1,0 +1,14 @@
+id: flask-004
+repo: pallets/flask
+commit: eb5dd9f5ef255c578cbbe13c1cb4dd11389d5519
+description: |
+  Add an aborter_class attribute and aborter instance to the Flask app object,
+  along with a make_aborter factory method. Create a new flask.abort helper
+  function that delegates to app.aborter when current_app is available,
+  otherwise falls back to werkzeug.exceptions.abort. This allows applications
+  to customize abort behavior, including registering custom HTTP error codes.
+  Update flask.__init__ to export abort from helpers instead of werkzeug.
+test_command: "pytest tests/test_helpers.py -x -k abort"
+language: python
+difficulty: medium
+tags: [feature, abort, app-customization, cross-file]

@@ -1,0 +1,14 @@
+id: flask-003
+repo: pallets/flask
+commit: fdab801fbbd9de5adbdb3320ca4a1cb116c892f5
+description: |
+  Add a redirect method to the Flask app object and a new flask.redirect
+  helper function that delegates to it. This allows applications to customize
+  redirect behavior by overriding app.redirect. The flask.redirect function
+  checks for current_app and calls app.redirect if available, otherwise
+  falls back to werkzeug.utils.redirect. Update flask.__init__ to export
+  redirect from helpers instead of werkzeug.
+test_command: "pytest tests/test_helpers.py -x -k redirect"
+language: python
+difficulty: medium
+tags: [feature, redirect, app-customization, cross-file]

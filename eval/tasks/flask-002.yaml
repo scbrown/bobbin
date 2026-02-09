@@ -1,0 +1,13 @@
+id: flask-002
+repo: pallets/flask
+commit: 1232d698600e11dcb83bb5dc349ca785eae02d2f
+description: |
+  Refactor the CLI module to inline conditional imports (dotenv, ssl,
+  importlib.metadata) at their point of use instead of importing them at
+  module level. This avoids import errors and unnecessary imports when the
+  optional dependencies are not installed, and moves version-conditional
+  importlib.metadata handling into the method that actually uses it.
+test_command: "pytest tests/test_cli.py -x"
+language: python
+difficulty: medium
+tags: [refactoring, cli, imports, cross-file]
