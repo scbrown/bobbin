@@ -28,6 +28,11 @@ jobs:
             archive: tar.gz
             ort_asset: onnxruntime-linux-x64
             ort_version: "1.24.1"
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
+            archive: tar.gz
+            ort_asset: onnxruntime-linux-aarch64
+            ort_version: "1.24.1"
           - target: aarch64-apple-darwin
             os: macos-14
             archive: tar.gz
@@ -63,11 +68,23 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake
 
+      - name: Install aarch64 cross-compilation toolchain
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
       - name: Build
+        shell: bash
         env:
           # Build aws-lc-sys from source to avoid prebuilt glibc 2.38 dependency
           AWS_LC_SYS_CMAKE_BUILDER: "1"
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+            export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
+            export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
+            export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
+          fi
+          cargo build --release --target ${{ matrix.target }}
 
       - name: Download ONNX Runtime
         shell: bash
@@ -147,7 +164,16 @@ jobs:
           cp "$LINUX_DIR"/lib/libonnxruntime.so.* libonnxruntime-linux-amd64.so 2>/dev/null || true
           rm -rf "$LINUX_DIR"
 
-          find . -type f \( -name "*.tar.gz" -o -name "SHA256SUMS.txt" -o -name "bobbin-linux-amd64" -o -name "libonnxruntime-linux-amd64.so" \) -exec mv {} . \; 2>/dev/null || true
+          # Extract the linux-arm64 binary as a standalone
+          find . -name "bobbin-*-aarch64-unknown-linux-gnu.tar.gz" -exec tar xzf {} -C . \;
+          ARM_DIR=$(find . -maxdepth 1 -type d -name "bobbin-*-aarch64-unknown-linux-gnu" | head -1)
+          if [ -n "$ARM_DIR" ]; then
+            cp "$ARM_DIR/bobbin" bobbin-linux-arm64
+            cp "$ARM_DIR"/lib/libonnxruntime.so.* libonnxruntime-linux-arm64.so 2>/dev/null || true
+            rm -rf "$ARM_DIR"
+          fi
+
+          find . -type f \( -name "*.tar.gz" -o -name "SHA256SUMS.txt" -o -name "bobbin-linux-*" -o -name "libonnxruntime-linux-*.so" \) -exec mv {} . \; 2>/dev/null || true
           rm -rf bobbin-*/ checksums/
           ls -la
 
