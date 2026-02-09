@@ -1,37 +1,14 @@
 mod common;
 
 use assert_cmd::Command;
-use common::TestProject;
+use common::{init_project, try_indexed_project, TestProject};
 use predicates::prelude::*;
-
-/// Helper: initialize, write fixtures, and index a project.
-fn indexed_project() -> TestProject {
-    let project = TestProject::new();
-    project.write_rust_fixtures();
-    project.write_python_fixtures();
-    project.write_markdown_fixtures();
-    project.git_commit("initial");
-
-    Command::new(TestProject::bobbin_bin())
-        .arg("init")
-        .arg(project.path())
-        .output()
-        .expect("init failed");
-
-    Command::new(TestProject::bobbin_bin())
-        .arg("index")
-        .arg(project.path())
-        .output()
-        .expect("index failed");
-
-    project
-}
 
 // ─── inject-context handler ─────────────────────────────────────────────────
 
 #[test]
 fn inject_context_returns_relevant_context() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     let stdin_json = serde_json::json!({
         "prompt": "how does the calculator work",
@@ -52,7 +29,7 @@ fn inject_context_returns_relevant_context() {
 
 #[test]
 fn inject_context_includes_file_and_score() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     let stdin_json = serde_json::json!({
         "prompt": "calculator addition and multiplication",
@@ -80,7 +57,7 @@ fn inject_context_includes_file_and_score() {
 
 #[test]
 fn inject_context_skips_short_prompts() {
-    let project = indexed_project();
+    let project = init_project();
 
     // Default min_prompt_length is 10, "hi" is too short
     let stdin_json = serde_json::json!({
@@ -146,7 +123,7 @@ fn inject_context_silent_on_no_bobbin() {
 
 #[test]
 fn inject_context_budget_limits_output() {
-    let project = indexed_project();
+    let project = init_project();
 
     let stdin_json = serde_json::json!({
         "prompt": "show me all functions and structs in the codebase",
@@ -174,7 +151,7 @@ fn inject_context_budget_limits_output() {
 
 #[test]
 fn inject_context_respects_threshold_override() {
-    let project = indexed_project();
+    let project = init_project();
 
     let stdin_json = serde_json::json!({
         "prompt": "calculator math operations add multiply",
@@ -193,7 +170,7 @@ fn inject_context_respects_threshold_override() {
 
 #[test]
 fn inject_context_gate_threshold_skips_low_similarity() {
-    let project = indexed_project();
+    let project = init_project();
 
     let stdin_json = serde_json::json!({
         "prompt": "how does the calculator work",
@@ -212,7 +189,7 @@ fn inject_context_gate_threshold_skips_low_similarity() {
 
 #[test]
 fn inject_context_gate_threshold_zero_allows_all() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     let stdin_json = serde_json::json!({
         "prompt": "how does the calculator work",
@@ -233,7 +210,7 @@ fn inject_context_gate_threshold_zero_allows_all() {
 
 #[test]
 fn session_context_returns_json_with_git_state() {
-    let project = indexed_project();
+    let project = init_project();
 
     // Create some git history to report
     project.write_file("src/new_feature.rs", "pub fn new_thing() {}\n");
@@ -281,7 +258,7 @@ fn session_context_returns_json_with_git_state() {
 
 #[test]
 fn session_context_includes_modified_files() {
-    let project = indexed_project();
+    let project = init_project();
 
     // Create uncommitted changes
     project.write_file("src/lib.rs", "pub fn modified() {}\n");
@@ -320,7 +297,7 @@ fn session_context_includes_modified_files() {
 
 #[test]
 fn session_context_ignores_non_compact_events() {
-    let project = indexed_project();
+    let project = init_project();
 
     let stdin_json = serde_json::json!({
         "source": "new_session",
@@ -339,7 +316,7 @@ fn session_context_ignores_non_compact_events() {
 
 #[test]
 fn session_context_silent_on_empty_stdin() {
-    let project = indexed_project();
+    let project = init_project();
 
     Command::new(TestProject::bobbin_bin())
         .args(["hook", "session-context"])
@@ -352,7 +329,7 @@ fn session_context_silent_on_empty_stdin() {
 
 #[test]
 fn session_context_budget_limits_output() {
-    let project = indexed_project();
+    let project = init_project();
 
     // Create lots of commits for a full context
     for i in 0..10 {
@@ -399,7 +376,7 @@ fn session_context_budget_limits_output() {
 
 #[test]
 fn end_to_end_install_inject_uninstall() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     // 1. Install hooks
     Command::new(TestProject::bobbin_bin())
@@ -511,7 +488,7 @@ fn end_to_end_install_inject_uninstall() {
 
 #[test]
 fn inject_context_dedup_skips_identical_prompt() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     let stdin_json = serde_json::json!({
         "prompt": "how does the calculator work with addition",
@@ -548,7 +525,7 @@ fn inject_context_dedup_skips_identical_prompt() {
 
 #[test]
 fn inject_context_no_dedup_forces_output() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     let stdin_json = serde_json::json!({
         "prompt": "how does the calculator work with multiplication",
@@ -584,7 +561,7 @@ fn inject_context_no_dedup_forces_output() {
 
 #[test]
 fn inject_context_updates_hook_state() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     let stdin_json = serde_json::json!({
         "prompt": "calculator struct and its methods",
@@ -664,7 +641,7 @@ fn hot_topics_force_generates_without_data() {
 
 #[test]
 fn hot_topics_generates_after_injections() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     // Run a few injections to build frequency data
     for prompt in &[

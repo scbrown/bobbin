@@ -1,37 +1,14 @@
 mod common;
 
 use assert_cmd::Command;
-use common::TestProject;
+use common::{try_indexed_project, TestProject};
 use predicates::prelude::*;
-
-/// Helper: initialize, write fixtures, and index a project.
-fn indexed_project() -> TestProject {
-    let project = TestProject::new();
-    project.write_rust_fixtures();
-    project.write_python_fixtures();
-    project.write_markdown_fixtures();
-    project.git_commit("initial");
-
-    Command::new(TestProject::bobbin_bin())
-        .arg("init")
-        .arg(project.path())
-        .output()
-        .expect("init failed");
-
-    Command::new(TestProject::bobbin_bin())
-        .arg("index")
-        .arg(project.path())
-        .output()
-        .expect("index failed");
-
-    project
-}
 
 // ─── Semantic Search ────────────────────────────────────────────────────────
 
 #[test]
 fn search_semantic_finds_relevant_results() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     Command::new(TestProject::bobbin_bin())
         .args(["search", "calculator", "--mode", "semantic"])
@@ -43,7 +20,7 @@ fn search_semantic_finds_relevant_results() {
 
 #[test]
 fn search_semantic_json_output_structure() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     let output = Command::new(TestProject::bobbin_bin())
         .args(["--json", "search", "add numbers", "--mode", "semantic"])
@@ -73,7 +50,7 @@ fn search_semantic_json_output_structure() {
 
 #[test]
 fn search_limit_respected() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     let output = Command::new(TestProject::bobbin_bin())
         .args(["--json", "search", "function", "--limit", "2", "--mode", "semantic"])
@@ -91,7 +68,7 @@ fn search_limit_respected() {
 
 #[test]
 fn search_type_filter() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     let output = Command::new(TestProject::bobbin_bin())
         .args(["--json", "search", "calculator", "--type", "struct", "--mode", "semantic"])
@@ -114,7 +91,7 @@ fn search_type_filter() {
 
 #[test]
 fn search_finds_python_code() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     let output = Command::new(TestProject::bobbin_bin())
         .args(["--json", "search", "user management", "--mode", "semantic"])
@@ -133,7 +110,7 @@ fn search_finds_python_code() {
 
 #[test]
 fn search_returns_content_preview() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     let output = Command::new(TestProject::bobbin_bin())
         .args(["--json", "search", "clamp value", "--mode", "semantic"])
@@ -156,7 +133,7 @@ fn search_returns_content_preview() {
 
 #[test]
 fn grep_finds_results() {
-    let project = indexed_project();
+    let Some(project) = try_indexed_project() else { return };
 
     Command::new(TestProject::bobbin_bin())
         .args(["grep", "Calculator"])

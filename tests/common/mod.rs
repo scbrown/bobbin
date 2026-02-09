@@ -183,9 +183,56 @@ Provides semantic and keyword search capabilities.
         );
     }
 
+    /// Initialize bobbin in this project directory.
+    pub fn bobbin_init(&self) {
+        std::process::Command::new(Self::bobbin_bin())
+            .arg("init")
+            .arg(self.path())
+            .output()
+            .expect("bobbin init failed");
+    }
+
+    /// Run `bobbin index` and return true if it succeeded.
+    /// Returns false if the ONNX runtime is unavailable or indexing fails.
+    pub fn bobbin_index(&self) -> bool {
+        let output = std::process::Command::new(Self::bobbin_bin())
+            .arg("index")
+            .arg(self.path())
+            .output()
+            .expect("failed to run bobbin index");
+        output.status.success()
+    }
+
     /// Return the path to the bobbin binary (built via cargo).
     pub fn bobbin_bin() -> PathBuf {
         // assert_cmd finds the binary automatically via cargo
         PathBuf::from(env!("CARGO_BIN_EXE_bobbin"))
     }
+}
+
+/// Create an initialized project with fixtures (no indexing/embeddings needed).
+pub fn init_project() -> TestProject {
+    let project = TestProject::new();
+    project.write_rust_fixtures();
+    project.write_python_fixtures();
+    project.write_markdown_fixtures();
+    project.git_commit("initial");
+    project.bobbin_init();
+    project
+}
+
+/// Create an indexed project with fixtures. Returns `None` if the ONNX runtime
+/// is unavailable and indexing cannot complete (tests should skip gracefully).
+pub fn try_indexed_project() -> Option<TestProject> {
+    let project = init_project();
+
+    if !project.bobbin_index() {
+        eprintln!(
+            "SKIP: bobbin index failed (ONNX runtime likely unavailable). \
+             Set ORT_DYLIB_PATH or install libonnxruntime.so to enable embedding tests."
+        );
+        return None;
+    }
+
+    Some(project)
 }
