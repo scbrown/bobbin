@@ -1010,6 +1010,92 @@ impl VectorStore {
         Ok(chunks)
     }
 
+    /// Get all chunks with their embedding vectors, optionally filtered by repo.
+    /// Returns (Chunk, embedding, repo_name) tuples for bulk operations like duplicate scanning.
+    pub async fn get_all_chunks_with_embeddings(
+        &self,
+        repo: Option<&str>,
+    ) -> Result<Vec<(Chunk, Vec<f32>, String)>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let mut q = table.query().limit(SCAN_ALL_LIMIT);
+
+        if let Some(repo_name) = repo {
+            q = q.only_if(format!("repo = '{}'", repo_name.replace('\'', "''")));
+        }
+
+        let results = q
+            .execute()
+            .await
+            .context("Failed to query all chunks with embeddings")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect chunks with embeddings")?;
+
+        let mut items = Vec::new();
+        for batch in &batches {
+            let ids = string_column(batch, "id")?;
+            let file_paths = string_column(batch, "file_path")?;
+            let chunk_names = string_column(batch, "chunk_name")?;
+            let chunk_types = string_column(batch, "chunk_type")?;
+            let contents = string_column(batch, "content")?;
+            let languages = string_column(batch, "language")?;
+            let repos = string_column(batch, "repo")?;
+            let start_lines = batch
+                .column_by_name("start_line")
+                .context("Missing start_line column")?
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .context("start_line column has wrong type")?;
+            let end_lines = batch
+                .column_by_name("end_line")
+                .context("Missing end_line column")?
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .context("end_line column has wrong type")?;
+            let vectors = batch
+                .column_by_name("vector")
+                .context("Missing vector column")?
+                .as_any()
+                .downcast_ref::<FixedSizeListArray>()
+                .context("vector column has wrong type")?;
+
+            for i in 0..batch.num_rows() {
+                let chunk = Chunk {
+                    id: ids.value(i).to_string(),
+                    file_path: file_paths.value(i).to_string(),
+                    chunk_type: str_to_chunk_type(chunk_types.value(i)),
+                    name: if chunk_names.is_null(i) {
+                        None
+                    } else {
+                        Some(chunk_names.value(i).to_string())
+                    },
+                    start_line: start_lines.value(i),
+                    end_line: end_lines.value(i),
+                    content: contents.value(i).to_string(),
+                    language: languages.value(i).to_string(),
+                };
+
+                let value_arr = vectors.value(i);
+                let values = value_arr
+                    .as_any()
+                    .downcast_ref::<Float32Array>()
+                    .context("vector values have wrong type")?;
+                let embedding = values.values().to_vec();
+
+                let repo_name = repos.value(i).to_string();
+                items.push((chunk, embedding, repo_name));
+            }
+        }
+
+        Ok(items)
+    }
+
     /// Get all chunks whose chunk_name matches the given name, optionally filtered by repo
     pub async fn get_chunks_by_name(
         &self,
