@@ -1,6 +1,6 @@
 ---
 title: "history"
-description: "Show commit history for a file"
+description: "Show commit history and churn statistics for a file"
 status: draft
 category: cli-reference
 tags: [cli, history]

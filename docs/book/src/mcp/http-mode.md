@@ -1,6 +1,6 @@
 ---
 title: "HTTP Mode"
-description: "Running bobbin as a remote MCP server with the --server flag"
+description: "Running bobbin as an HTTP REST API server for centralized deployments"
 tags: [mcp, http, server, thin-client]
 category: mcp
 ---

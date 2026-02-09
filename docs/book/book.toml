@@ -8,13 +8,16 @@ language = "en"
 [build]
 build-dir = "book"
 
+[preprocessor.frontmatter]
+command = "mdbook-frontmatter"
+
 [output.html]
 default-theme = "coal"
 preferred-dark-theme = "coal"
 git-repository-url = "https://github.com/scbrown/bobbin"
 edit-url-template = "https://github.com/scbrown/bobbin/edit/main/docs/book/{path}"
 additional-css = ["custom/css/custom.css"]
-site-url = "/book/"
+site-url = "/bobbin/"
 
 [output.html.search]
 enable = true

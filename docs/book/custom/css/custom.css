@@ -1,16 +1,49 @@
-/* Bobbin Documentation Custom Styles */
+/* Bobbin Documentation — Dracula Theme Override
+   Applied to the Coal theme (default) */
 
-/* Coal theme adjustments */
-:root {
-    --bg-color: #282a36;
-    --fg-color: #f8f8f2;
-    --link-color: #8be9fd;
-    --code-bg: #44475a;
-    --accent-color: #50fa7b;
-    --warning-color: #f1fa8c;
-    --error-color: #ff5555;
-    --info-color: #8be9fd;
-    --border-color: #6272a4;
+/* Dracula palette:
+   Background:    #282a36
+   Current Line:  #44475a
+   Foreground:    #f8f8f2
+   Comment:       #6272a4
+   Cyan:          #8be9fd
+   Green:         #50fa7b
+   Orange:        #ffb86c
+   Pink:          #ff79c6
+   Purple:        #bd93f9
+   Red:           #ff5555
+   Yellow:        #f1fa8c
+*/
+
+.coal {
+    --bg: #282a36;
+    --fg: #f8f8f2;
+    --sidebar-bg: #21222c;
+    --sidebar-fg: #f8f8f2;
+    --sidebar-non-existant: #44475a;
+    --sidebar-active: #8be9fd;
+    --sidebar-spacer: #44475a;
+    --scrollbar: #44475a;
+    --icons: #6272a4;
+    --icons-hover: #bd93f9;
+    --links: #8be9fd;
+    --inline-code-color: #50fa7b;
+    --theme-popup-bg: #282a36;
+    --theme-popup-border: #44475a;
+    --theme-hover: #44475a;
+    --quote-bg: rgba(68, 71, 90, 0.4);
+    --quote-border: #6272a4;
+    --table-border-color: #44475a;
+    --table-header-bg: #44475a;
+    --table-alternate-bg: rgba(68, 71, 90, 0.2);
+    --searchbar-border-color: #44475a;
+    --searchbar-bg: #44475a;
+    --searchbar-fg: #f8f8f2;
+    --searchbar-shadow-color: rgba(0, 0, 0, 0.3);
+    --searchresults-header-fg: #8be9fd;
+    --searchresults-border-color: #44475a;
+    --searchresults-li-bg: #44475a;
+    --search-mark-bg: rgba(241, 250, 140, 0.3);
 }
 
 /* Table styling */
@@ -23,11 +56,11 @@ table {
 th, td {
     padding: 0.5rem;
     text-align: left;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--table-border-color);
 }
 
 th {
-    background: var(--code-bg);
+    background: var(--table-header-bg);
     font-weight: 600;
 }
 
@@ -41,22 +74,22 @@ code {
     font-family: 'Fira Code', 'Consolas', monospace;
 }
 
-/* Blockquote callouts for status badges */
+/* Blockquote callouts */
 blockquote {
-    border-left: 4px solid var(--border-color);
+    border-left: 4px solid var(--quote-border);
     padding: 0.5rem 1rem;
     margin: 1rem 0;
-    background: rgba(68, 71, 90, 0.3);
+    background: var(--quote-bg);
     border-radius: 0 4px 4px 0;
 }
 
 blockquote strong {
-    color: var(--warning-color);
+    color: #f1fa8c;
 }
 
 /* Command page styling */
 .cli-usage {
-    background: var(--code-bg);
+    background: #44475a;
     border-radius: 4px;
     padding: 1rem;
     margin: 1rem 0;
@@ -69,7 +102,7 @@ blockquote strong {
     border-radius: 3px;
     font-size: 0.8em;
     font-weight: 600;
-    background: var(--warning-color);
+    background: #f1fa8c;
     color: #282a36;
 }
 
@@ -79,7 +112,7 @@ blockquote strong {
     border-radius: 3px;
     font-size: 0.8em;
     font-weight: 600;
-    background: var(--accent-color);
+    background: #50fa7b;
     color: #282a36;
 }
 
@@ -89,8 +122,8 @@ blockquote strong {
     border-radius: 3px;
     font-size: 0.8em;
     font-weight: 600;
-    background: var(--border-color);
-    color: var(--fg-color);
+    background: #6272a4;
+    color: #f8f8f2;
 }
 
 /* Navigation improvements */
@@ -104,4 +137,18 @@ mark {
     color: inherit;
     padding: 0.1rem 0.2rem;
     border-radius: 2px;
+}
+
+/* Headings with Dracula purple accent */
+.coal h1, .coal h2, .coal h3 {
+    color: #bd93f9;
+}
+
+.coal h4, .coal h5, .coal h6 {
+    color: #ff79c6;
+}
+
+/* Improved link hover */
+.coal a:hover {
+    color: #ff79c6;
 }

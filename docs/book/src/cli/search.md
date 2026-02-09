@@ -1,6 +1,6 @@
 ---
 title: "search"
-description: "Semantic search for code"
+description: "Hybrid, semantic, and keyword search across your codebase"
 status: draft
 category: cli-reference
 tags: [cli, search]

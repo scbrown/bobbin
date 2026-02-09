@@ -1,6 +1,6 @@
 ---
 title: "benchmark"
-description: "Benchmark embedding models for comparison"
+description: "Benchmark embedding model load times, latency, and throughput"
 category: cli-reference
 tags: [cli, benchmark]
 commands: [benchmark]
