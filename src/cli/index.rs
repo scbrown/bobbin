@@ -747,6 +747,7 @@ async fn process_batch(
     let now = chrono::Utc::now().timestamp().to_string();
 
     let mut indexed_count = 0;
+    let mut chunks_count = 0;
 
     for result in results.drain(..) {
         // Build text to embed: use full_context when available, fall back to content
@@ -782,11 +783,11 @@ async fn process_batch(
             .await
             .context("Failed to store chunks")?;
 
+        chunks_count += result.chunks.len();
         indexed_count += 1;
     }
 
-    // We already drained, but count total chunks from what was processed
-    Ok((indexed_count, 0)) // chunks counted per-file below
+    Ok((indexed_count, chunks_count))
 }
 
 /// Build context windows for chunks based on contextual embedding config.

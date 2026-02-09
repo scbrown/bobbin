@@ -79,7 +79,8 @@ fn index_json_output() {
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(json["status"], "indexed");
     assert!(json["files_indexed"].as_u64().unwrap() >= 2);
-    // total_chunks is the cumulative count from the store (chunks_created is always 0 due to process_batch)
+    let chunks_created = json["chunks_created"].as_u64().unwrap();
+    assert!(chunks_created >= 4, "expected at least 4 chunks_created, got {chunks_created}");
     assert!(json["total_chunks"].as_u64().unwrap() >= 4, "expected at least 4 total chunks in store");
 }
 
