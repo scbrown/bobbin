@@ -27,6 +27,7 @@ use crate::storage::{MetadataStore, VectorStore};
 use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::impact::{ImpactAnalyzer, ImpactConfig, ImpactMode, ImpactSignal};
 use crate::analysis::refs::RefAnalyzer;
+use crate::analysis::similar::{SimilarTarget, SimilarityAnalyzer};
 use crate::index::GitAnalyzer;
 use crate::types::{ChunkType, MatchType, SearchResult};
 
@@ -1084,6 +1085,127 @@ impl BobbinMcpServer {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
+    /// Find similar code or scan for duplicates
+    #[tool(description = "Find code chunks semantically similar to a target, or scan the entire codebase for near-duplicate clusters. Single-target mode: provide a chunk reference ('file.rs:function_name') or free text to find similar code. Scan mode: set scan=true to detect duplicate/near-duplicate code clusters across the codebase. Useful for: 'find code similar to this function', 'detect copy-paste duplicates', 'find redundant implementations'.")]
+    async fn similar(
+        &self,
+        Parameters(req): Parameters<SimilarRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let scan = req.scan.unwrap_or(false);
+        let limit = req.limit.unwrap_or(10);
+        let cross_repo = req.cross_repo.unwrap_or(false);
+
+        let config_path = Config::config_path(&self.repo_root);
+        let config = Config::load(&config_path)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let stats = vector_store.get_stats(None).await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        if stats.total_chunks == 0 {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "No indexed content. Run `bobbin index` first.",
+            )]));
+        }
+
+        let model_dir = Config::model_cache_dir()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let embedder = Embedder::from_config(&config.embedding, &model_dir)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let mut analyzer = SimilarityAnalyzer::new(embedder, vector_store);
+        let repo_filter = req.repo.as_deref();
+
+        let response = if scan {
+            let threshold = req.threshold.unwrap_or(0.90);
+            let clusters = analyzer
+                .scan_duplicates(threshold, limit, repo_filter, cross_repo)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+            SimilarResponse {
+                mode: "scan".to_string(),
+                threshold,
+                target: None,
+                count: clusters.len(),
+                results: vec![],
+                clusters: clusters
+                    .iter()
+                    .map(|c| SimilarClusterItem {
+                        representative: SimilarChunkRef {
+                            file_path: c.representative.file_path.clone(),
+                            name: c.representative.name.clone(),
+                            chunk_type: c.representative.chunk_type.to_string(),
+                            start_line: c.representative.start_line,
+                            end_line: c.representative.end_line,
+                            language: c.representative.language.clone(),
+                        },
+                        avg_similarity: c.avg_similarity,
+                        member_count: c.members.len(),
+                        members: c
+                            .members
+                            .iter()
+                            .map(|m| SimilarResultItem {
+                                file_path: m.chunk.file_path.clone(),
+                                name: m.chunk.name.clone(),
+                                chunk_type: m.chunk.chunk_type.to_string(),
+                                start_line: m.chunk.start_line,
+                                end_line: m.chunk.end_line,
+                                similarity: m.similarity,
+                                language: m.chunk.language.clone(),
+                                explanation: m.explanation.clone(),
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            }
+        } else {
+            let target_str = req.target.as_deref().ok_or_else(|| {
+                McpError::invalid_params(
+                    "Either 'target' or 'scan=true' is required".to_string(),
+                    None,
+                )
+            })?;
+
+            let threshold = req.threshold.unwrap_or(0.85);
+            let target = Self::parse_similar_target(target_str);
+
+            let results = analyzer
+                .find_similar(&target, threshold, limit, repo_filter)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+            SimilarResponse {
+                mode: "single".to_string(),
+                threshold,
+                target: Some(target_str.to_string()),
+                count: results.len(),
+                results: results
+                    .iter()
+                    .map(|r| SimilarResultItem {
+                        file_path: r.chunk.file_path.clone(),
+                        name: r.chunk.name.clone(),
+                        chunk_type: r.chunk.chunk_type.to_string(),
+                        start_line: r.chunk.start_line,
+                        end_line: r.chunk.end_line,
+                        similarity: r.similarity,
+                        language: r.chunk.language.clone(),
+                        explanation: r.explanation.clone(),
+                    })
+                    .collect(),
+                clusters: vec![],
+            }
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
     /// Project primer/overview
     #[tool(description = "Get an LLM-friendly overview of Bobbin with live index statistics. Shows what Bobbin does, architecture, available commands, and MCP tools. Use 'section' to get a specific part, or 'brief' for a compact summary. Always includes live stats when the index is initialized.")]
     async fn prime(
@@ -1140,6 +1262,17 @@ impl BobbinMcpServer {
 }
 
 impl BobbinMcpServer {
+    /// Parse a target string into a SimilarTarget for MCP.
+    fn parse_similar_target(s: &str) -> SimilarTarget {
+        if let Some(colon_pos) = s.find(':') {
+            let before = &s[..colon_pos];
+            if before.contains('.') || before.contains('/') {
+                return SimilarTarget::ChunkRef(s.to_string());
+            }
+        }
+        SimilarTarget::Text(s.to_string())
+    }
+
     fn extract_primer_brief(primer: &str) -> String {
         let mut result = String::new();
         let mut heading_count = 0;

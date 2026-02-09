@@ -15,6 +15,7 @@ mod related;
 mod review;
 mod search;
 mod serve;
+mod similar;
 mod status;
 mod tour;
 mod watch;
@@ -85,6 +86,9 @@ enum Commands {
     /// Assemble review context from a git diff
     Review(review::ReviewArgs),
 
+    /// Find semantically similar code chunks or scan for duplicates
+    Similar(similar::SimilarArgs),
+
     /// Show index status and statistics
     Status(status::StatusArgs),
 
@@ -132,6 +136,7 @@ impl Cli {
             Commands::Hotspots(args) => hotspots::run(args, output).await,
             Commands::Impact(args) => impact::run(args, output).await,
             Commands::Review(args) => review::run(args, output).await,
+            Commands::Similar(args) => similar::run(args, output).await,
             Commands::Status(args) => status::run(args, output).await,
             Commands::Serve(args) => serve::run(args, output).await,
             Commands::Benchmark(args) => benchmark::run(args, output).await,

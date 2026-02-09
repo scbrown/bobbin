@@ -457,6 +457,81 @@ pub struct ImpactResultItem {
     pub reason: String,
 }
 
+/// Request for similarity search
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SimilarRequest {
+    /// Target to find similar code for (file:name chunk ref or free text). Required unless scan is true.
+    #[schemars(description = "Target to find similar code for. Use 'file.rs:function_name' for a chunk reference, or free text like 'error handling with retry'. Required unless scan=true.")]
+    pub target: Option<String>,
+
+    /// Scan entire codebase for near-duplicate clusters
+    #[schemars(description = "If true, scan entire codebase for near-duplicate clusters instead of searching for a specific target")]
+    pub scan: Option<bool>,
+
+    /// Minimum cosine similarity threshold (default: 0.85)
+    #[schemars(description = "Minimum cosine similarity threshold (0.0-1.0, default: 0.85 for single target, 0.90 for scan)")]
+    pub threshold: Option<f32>,
+
+    /// Maximum number of results or clusters (default: 10)
+    #[schemars(description = "Maximum number of results (single target) or clusters (scan mode) to return (default: 10)")]
+    pub limit: Option<usize>,
+
+    /// Filter to a specific repository
+    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    pub repo: Option<String>,
+
+    /// In scan mode, compare chunks across different repos
+    #[schemars(description = "In scan mode, compare chunks across different repos (default: false)")]
+    pub cross_repo: Option<bool>,
+}
+
+/// Response for similarity search
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SimilarResponse {
+    pub mode: String,
+    pub threshold: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    pub count: usize,
+    pub results: Vec<SimilarResultItem>,
+    pub clusters: Vec<SimilarClusterItem>,
+}
+
+/// A single similarity result
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SimilarResultItem {
+    pub file_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub chunk_type: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub similarity: f32,
+    pub language: String,
+    pub explanation: String,
+}
+
+/// A duplicate cluster from scan mode
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SimilarClusterItem {
+    pub representative: SimilarChunkRef,
+    pub avg_similarity: f32,
+    pub member_count: usize,
+    pub members: Vec<SimilarResultItem>,
+}
+
+/// A chunk reference in a cluster
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SimilarChunkRef {
+    pub file_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub chunk_type: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub language: String,
+}
+
 /// Request for diff-aware review context
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReviewRequest {
