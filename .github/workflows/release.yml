@@ -14,6 +14,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   VERSION: ${{ inputs.version || github.ref_name }}
+  # ONNX Runtime version to bundle (must be manylinux_2_28 compatible)
+  ORT_VERSION: "1.24.1"
 
 jobs:
   build:
@@ -24,11 +26,15 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-22.04
             archive: tar.gz
+            ort_platform: manylinux_2_27_x86_64.manylinux_2_28_x86_64
+            ort_pyver: cp312-cp312
           - target: aarch64-apple-darwin
             os: macos-14
             archive: tar.gz
+            ort_platform: macosx_12_0_arm64
+            ort_pyver: cp312-cp312
 
     steps:
       - name: Checkout
@@ -52,12 +58,53 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Download ONNX Runtime
+        shell: bash
+        run: |
+          # Download manylinux-compatible ONNX Runtime from PyPI wheel
+          WHEEL_NAME="onnxruntime-${{ env.ORT_VERSION }}-${{ matrix.ort_pyver }}-${{ matrix.ort_platform }}.whl"
+          curl -sL "https://pypi.io/packages/${{ matrix.ort_pyver }}/${{ matrix.ort_platform }}/${WHEEL_NAME}" -o /tmp/ort.whl || \
+            pip download "onnxruntime==${{ env.ORT_VERSION }}" \
+              --platform "${{ matrix.ort_platform }}" \
+              --python-version 3.12 \
+              --no-deps --only-binary :all: \
+              -d /tmp/ort-dl
+          # Extract libonnxruntime from wheel
+          python3 -c "
+          import zipfile, glob, os
+          whl = '/tmp/ort.whl' if os.path.exists('/tmp/ort.whl') else glob.glob('/tmp/ort-dl/*.whl')[0]
+          with zipfile.ZipFile(whl) as z:
+              for name in z.namelist():
+                  if 'libonnxruntime' in name and '.so' in name and 'providers' not in name:
+                      z.extract(name, '/tmp/ort-extracted')
+                      print(f'Extracted: {name}')
+                  elif 'libonnxruntime' in name and '.dylib' in name and 'providers' not in name:
+                      z.extract(name, '/tmp/ort-extracted')
+                      print(f'Extracted: {name}')
+          "
+
       - name: Package
         shell: bash
         run: |
-          cd target/${{ matrix.target }}/release
-          tar czvf ../../../bobbin-${{ env.VERSION }}-${{ matrix.target }}.tar.gz bobbin
-          cd ../../..
+          STAGING="bobbin-${{ env.VERSION }}-${{ matrix.target }}"
+          mkdir -p "$STAGING/lib"
+          cp target/${{ matrix.target }}/release/bobbin "$STAGING/"
+
+          # Bundle ONNX Runtime shared library
+          find /tmp/ort-extracted -name "libonnxruntime*" -not -name "*providers*" | while read f; do
+            cp "$f" "$STAGING/lib/"
+          done
+          # Create symlink without version suffix
+          cd "$STAGING/lib"
+          for f in libonnxruntime.so.*; do
+            [ -f "$f" ] && ln -sf "$f" libonnxruntime.so
+          done
+          for f in libonnxruntime.*.dylib; do
+            [ -f "$f" ] && ln -sf "$f" libonnxruntime.dylib
+          done
+          cd ../..
+
+          tar czvf "${STAGING}.tar.gz" "$STAGING"
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -106,10 +153,13 @@ jobs:
           cd artifacts
           # Extract the linux-amd64 binary as a standalone for homelab deployment
           find . -name "bobbin-*-x86_64-unknown-linux-gnu.tar.gz" -exec tar xzf {} -C . \;
-          cp bobbin bobbin-linux-amd64
-          rm bobbin
+          LINUX_DIR=$(find . -maxdepth 1 -type d -name "bobbin-*-x86_64-unknown-linux-gnu" | head -1)
+          cp "$LINUX_DIR/bobbin" bobbin-linux-amd64
+          # Also publish the ONNX Runtime .so for homelab deployment
+          cp "$LINUX_DIR"/lib/libonnxruntime.so.* libonnxruntime-linux-amd64.so 2>/dev/null || true
+          rm -rf "$LINUX_DIR"
 
-          find . -type f \( -name "*.tar.gz" -o -name "SHA256SUMS.txt" -o -name "bobbin-linux-amd64" \) -exec mv {} . \; 2>/dev/null || true
+          find . -type f \( -name "*.tar.gz" -o -name "SHA256SUMS.txt" -o -name "bobbin-linux-amd64" -o -name "libonnxruntime-linux-amd64.so" \) -exec mv {} . \; 2>/dev/null || true
           rm -rf bobbin-*/ checksums/
           ls -la
 
