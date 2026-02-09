@@ -367,3 +367,45 @@ pub struct HotspotItem {
     pub complexity: f32,
     pub language: String,
 }
+
+/// Request for project primer/overview
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PrimeRequest {
+    /// Show only a specific section (e.g. "architecture", "commands", "mcp tools")
+    #[schemars(description = "Optional section name to show. Available: 'what bobbin does', 'architecture', 'supported languages', 'key commands', 'mcp tools', 'quick start', 'configuration'. Omit to show the full primer.")]
+    pub section: Option<String>,
+
+    /// Show a brief (compact) overview only
+    #[schemars(description = "If true, show only the title and first section for a compact overview")]
+    pub brief: Option<bool>,
+}
+
+/// Response for project primer/overview
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct PrimeResponse {
+    pub primer: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub section: Option<String>,
+    pub initialized: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stats: Option<PrimeStats>,
+}
+
+/// Live index statistics included in prime response
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct PrimeStats {
+    pub total_files: u64,
+    pub total_chunks: u64,
+    pub total_embeddings: u64,
+    pub languages: Vec<PrimeLanguageStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_indexed: Option<String>,
+}
+
+/// Per-language stats in prime response
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct PrimeLanguageStats {
+    pub language: String,
+    pub file_count: u64,
+    pub chunk_count: u64,
+}

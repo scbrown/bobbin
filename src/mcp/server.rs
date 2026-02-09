@@ -879,6 +879,129 @@ impl BobbinMcpServer {
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
+
+    /// Project primer/overview
+    #[tool(description = "Get an LLM-friendly overview of Bobbin with live index statistics. Shows what Bobbin does, architecture, available commands, and MCP tools. Use 'section' to get a specific part, or 'brief' for a compact summary. Always includes live stats when the index is initialized.")]
+    async fn prime(
+        &self,
+        Parameters(req): Parameters<PrimeRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        const PRIMER: &str = include_str!("../../docs/primer.md");
+
+        let primer_text = if let Some(ref section) = req.section {
+            Self::extract_primer_section(PRIMER, section)
+        } else if req.brief.unwrap_or(false) {
+            Self::extract_primer_brief(PRIMER)
+        } else {
+            PRIMER.to_string()
+        };
+
+        // Gather live stats
+        let stats = match self.open_vector_store().await {
+            Ok(store) => match store.get_stats(None).await {
+                Ok(s) => Some(PrimeStats {
+                    total_files: s.total_files,
+                    total_chunks: s.total_chunks,
+                    total_embeddings: s.total_embeddings,
+                    languages: s
+                        .languages
+                        .iter()
+                        .map(|l| PrimeLanguageStats {
+                            language: l.language.clone(),
+                            file_count: l.file_count,
+                            chunk_count: l.chunk_count,
+                        })
+                        .collect(),
+                    last_indexed: s.last_indexed.and_then(|ts| {
+                        chrono::DateTime::from_timestamp(ts, 0).map(|t| t.to_rfc3339())
+                    }),
+                }),
+                Err(_) => None,
+            },
+            Err(_) => None,
+        };
+
+        let response = PrimeResponse {
+            primer: primer_text,
+            section: req.section,
+            initialized: true, // Server only runs when initialized
+            stats,
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+}
+
+impl BobbinMcpServer {
+    fn extract_primer_brief(primer: &str) -> String {
+        let mut result = String::new();
+        let mut heading_count = 0;
+
+        for line in primer.lines() {
+            if line.starts_with("## ") {
+                heading_count += 1;
+                if heading_count > 1 {
+                    break;
+                }
+            }
+            result.push_str(line);
+            result.push('\n');
+        }
+
+        result.trim_end().to_string()
+    }
+
+    fn extract_primer_section(primer: &str, query: &str) -> String {
+        let query_lower = query.to_lowercase();
+        let sections = [
+            "what bobbin does",
+            "architecture",
+            "supported languages",
+            "key commands",
+            "mcp tools",
+            "quick start",
+            "configuration",
+        ];
+
+        let target = sections
+            .iter()
+            .find(|s| s.contains(&query_lower.as_str()) || query_lower.contains(*s))
+            .copied()
+            .unwrap_or(query_lower.as_str());
+
+        let mut result = String::new();
+        let mut capturing = false;
+
+        for line in primer.lines() {
+            if line.starts_with("## ") {
+                if capturing {
+                    break;
+                }
+                let heading = line.trim_start_matches('#').trim().to_lowercase();
+                if heading.contains(target) || target.contains(heading.as_str()) {
+                    capturing = true;
+                }
+            }
+
+            if capturing {
+                result.push_str(line);
+                result.push('\n');
+            }
+        }
+
+        if result.is_empty() {
+            format!(
+                "Section '{}' not found. Available sections: {}",
+                query,
+                sections.join(", ")
+            )
+        } else {
+            result.trim_end().to_string()
+        }
+    }
 }
 
 #[tool_handler]

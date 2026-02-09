@@ -7,6 +7,7 @@ mod history;
 mod hook;
 mod hotspots;
 mod index;
+mod prime;
 mod init;
 mod refs;
 mod related;
@@ -96,6 +97,9 @@ enum Commands {
 
     /// Interactive guided walkthrough of bobbin features
     Tour(tour::TourArgs),
+
+    /// Show LLM-friendly project overview with live stats
+    Prime(prime::PrimeArgs),
 }
 
 impl Cli {
@@ -128,6 +132,7 @@ impl Cli {
             }
             Commands::Hook(args) => hook::run(args, output).await,
             Commands::Tour(args) => tour::run(args, output).await,
+            Commands::Prime(args) => prime::run(args, output).await,
         }
     }
 }
