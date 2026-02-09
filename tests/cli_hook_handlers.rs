@@ -506,3 +506,202 @@ fn end_to_end_install_inject_uninstall() {
     assert_eq!(final_json["hooks_installed"].as_bool().unwrap(), false);
     assert_eq!(final_json["git_hook_installed"].as_bool().unwrap(), false);
 }
+
+// ─── Session dedup tests ────────────────────────────────────────────────────
+
+#[test]
+fn inject_context_dedup_skips_identical_prompt() {
+    let project = indexed_project();
+
+    let stdin_json = serde_json::json!({
+        "prompt": "how does the calculator work with addition",
+        "cwd": project.path().to_str().unwrap()
+    });
+    let stdin_str = serde_json::to_string(&stdin_json).unwrap();
+
+    // First call: should produce output (gate_threshold=0 to ensure injection)
+    let first = Command::new(TestProject::bobbin_bin())
+        .args(["hook", "inject-context", "--gate-threshold", "0.0"])
+        .current_dir(project.path())
+        .write_stdin(stdin_str.clone())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let first_stdout = String::from_utf8(first).unwrap();
+    assert!(
+        first_stdout.contains("Bobbin found"),
+        "First call should produce context output"
+    );
+
+    // Second call with same prompt: dedup should skip injection
+    Command::new(TestProject::bobbin_bin())
+        .args(["hook", "inject-context", "--gate-threshold", "0.0"])
+        .current_dir(project.path())
+        .write_stdin(stdin_str)
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty());
+}
+
+#[test]
+fn inject_context_no_dedup_forces_output() {
+    let project = indexed_project();
+
+    let stdin_json = serde_json::json!({
+        "prompt": "how does the calculator work with multiplication",
+        "cwd": project.path().to_str().unwrap()
+    });
+    let stdin_str = serde_json::to_string(&stdin_json).unwrap();
+
+    // First call
+    Command::new(TestProject::bobbin_bin())
+        .args(["hook", "inject-context", "--gate-threshold", "0.0"])
+        .current_dir(project.path())
+        .write_stdin(stdin_str.clone())
+        .assert()
+        .success();
+
+    // Second call with --no-dedup: should still produce output
+    let second = Command::new(TestProject::bobbin_bin())
+        .args(["hook", "inject-context", "--gate-threshold", "0.0", "--no-dedup"])
+        .current_dir(project.path())
+        .write_stdin(stdin_str)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let second_stdout = String::from_utf8(second).unwrap();
+    assert!(
+        second_stdout.contains("Bobbin found"),
+        "--no-dedup should force context output on repeated prompt"
+    );
+}
+
+#[test]
+fn inject_context_updates_hook_state() {
+    let project = indexed_project();
+
+    let stdin_json = serde_json::json!({
+        "prompt": "calculator struct and its methods",
+        "cwd": project.path().to_str().unwrap()
+    });
+
+    Command::new(TestProject::bobbin_bin())
+        .args(["hook", "inject-context", "--gate-threshold", "0.0"])
+        .current_dir(project.path())
+        .write_stdin(serde_json::to_string(&stdin_json).unwrap())
+        .assert()
+        .success();
+
+    // Verify hook_state.json was created and has expected fields
+    let state_path = project.path().join(".bobbin").join("hook_state.json");
+    assert!(state_path.exists(), "hook_state.json should be created after injection");
+
+    let state_content = std::fs::read_to_string(&state_path).unwrap();
+    let state: serde_json::Value = serde_json::from_str(&state_content).unwrap();
+
+    assert_eq!(state["injection_count"].as_u64().unwrap(), 1);
+    assert!(!state["last_session_id"].as_str().unwrap().is_empty());
+    assert!(!state["last_injection_time"].as_str().unwrap().is_empty());
+}
+
+// ─── Hot topics tests ───────────────────────────────────────────────────────
+
+#[test]
+fn hot_topics_requires_injection_data() {
+    let project = TestProject::new();
+    project.write_rust_fixtures();
+    project.git_commit("initial");
+
+    Command::new(TestProject::bobbin_bin())
+        .args(["init"])
+        .current_dir(project.path())
+        .output()
+        .expect("init failed");
+
+    // No injection data yet — should print informational message
+    Command::new(TestProject::bobbin_bin())
+        .args(["hook", "hot-topics"])
+        .current_dir(project.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No injection data yet"));
+}
+
+#[test]
+fn hot_topics_force_generates_without_data() {
+    let project = TestProject::new();
+    project.write_rust_fixtures();
+    project.git_commit("initial");
+
+    Command::new(TestProject::bobbin_bin())
+        .args(["init"])
+        .current_dir(project.path())
+        .output()
+        .expect("init failed");
+
+    // --force should generate even without injection data
+    Command::new(TestProject::bobbin_bin())
+        .args(["hook", "hot-topics", "--force"])
+        .current_dir(project.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Generated"));
+
+    // Verify the file was created
+    let hot_topics_path = project.path().join(".bobbin").join("hot-topics.md");
+    assert!(hot_topics_path.exists(), "hot-topics.md should be created");
+
+    let content = std::fs::read_to_string(&hot_topics_path).unwrap();
+    assert!(content.contains("# Hot Topics (auto-generated by bobbin)"));
+    assert!(content.contains("No injection data yet."));
+}
+
+#[test]
+fn hot_topics_generates_after_injections() {
+    let project = indexed_project();
+
+    // Run a few injections to build frequency data
+    for prompt in &[
+        "calculator struct addition methods",
+        "user service and greeting function",
+        "clamp utility and identifier validation",
+    ] {
+        let stdin_json = serde_json::json!({
+            "prompt": prompt,
+            "cwd": project.path().to_str().unwrap()
+        });
+
+        Command::new(TestProject::bobbin_bin())
+            .args(["hook", "inject-context", "--gate-threshold", "0.0", "--no-dedup"])
+            .current_dir(project.path())
+            .write_stdin(serde_json::to_string(&stdin_json).unwrap())
+            .assert()
+            .success();
+    }
+
+    // Now generate hot topics
+    Command::new(TestProject::bobbin_bin())
+        .args(["hook", "hot-topics"])
+        .current_dir(project.path())
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Generated")
+                .and(predicate::str::contains("3 injections")),
+        );
+
+    // Verify content has actual data (not "No injection data")
+    let hot_topics_path = project.path().join(".bobbin").join("hot-topics.md");
+    let content = std::fs::read_to_string(&hot_topics_path).unwrap();
+    assert!(content.contains("Based on 3 context injections."));
+    assert!(content.contains("## Frequently Referenced Code"));
+    assert!(content.contains("## Most Referenced Files"));
+    // Should have actual ranked entries, not "No injection data"
+    assert!(!content.contains("No injection data yet."));
+}
