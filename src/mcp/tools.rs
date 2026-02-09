@@ -409,3 +409,42 @@ pub struct PrimeLanguageStats {
     pub file_count: u64,
     pub chunk_count: u64,
 }
+
+/// Request for diff-aware review context
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReviewRequest {
+    /// Diff specification: "unstaged", "staged", a branch name (prefixed with "branch:"), or a commit range like "HEAD~3..HEAD"
+    #[schemars(description = "What to diff. Use 'unstaged' for working tree changes, 'staged' for staged changes, 'branch:<name>' to compare a branch against main, or a commit range like 'HEAD~3..HEAD'.")]
+    pub diff: Option<String>,
+
+    /// Maximum lines of context to include (default: 500)
+    #[schemars(description = "Maximum lines of code content to include in the review context (default: 500)")]
+    pub budget: Option<usize>,
+
+    /// Coupling expansion depth (default: 1, 0 = no coupling)
+    #[schemars(description = "Depth of temporal coupling expansion. 0 disables coupling, 1 expands one level (default: 1)")]
+    pub depth: Option<u32>,
+
+    /// Filter coupled files to a specific repository
+    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    pub repo: Option<String>,
+}
+
+/// Response for review context
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ReviewResponse {
+    pub diff_description: String,
+    pub changed_files: Vec<ReviewChangedFile>,
+    pub budget: ContextBudgetInfo,
+    pub files: Vec<ContextFileOutput>,
+    pub summary: ContextSummaryOutput,
+}
+
+/// A changed file in the review diff
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ReviewChangedFile {
+    pub path: String,
+    pub status: String,
+    pub added_lines: usize,
+    pub removed_lines: usize,
+}

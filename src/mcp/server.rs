@@ -880,6 +880,129 @@ impl BobbinMcpServer {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
+    /// Diff-aware review context
+    #[tool(description = "Assemble review context from a git diff. Given a diff specification (unstaged changes, staged changes, branch comparison, or commit range), finds the indexed code chunks that overlap with the changed lines and expands via temporal coupling. Returns a budget-aware context bundle with changed-file annotations. Ideal for code review: 'what do I need to understand to review these changes?'")]
+    async fn review(
+        &self,
+        Parameters(req): Parameters<ReviewRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let config_path = Config::config_path(&self.repo_root);
+        let config = Config::load(&config_path)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let stats = vector_store.get_stats(None).await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        if stats.total_chunks == 0 {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "No indexed content. Run `bobbin index` first.",
+            )]));
+        }
+
+        let metadata_store = self.open_metadata_store()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let model_dir = Config::model_cache_dir()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let embedder = Embedder::from_config(&config.embedding, &model_dir)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Parse diff spec from the request
+        let diff_spec = parse_diff_spec(req.diff.as_deref());
+        let diff_description = describe_diff_spec(&diff_spec);
+
+        let git = GitAnalyzer::new(&self.repo_root)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let diff_files = git
+            .get_diff_files(&diff_spec)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        if diff_files.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                r#"{"error": "no_changes", "message": "No changes found for the specified diff."}"#,
+            )]));
+        }
+
+        let seeds = crate::search::review::map_diff_to_chunks(
+            &diff_files,
+            &vector_store,
+            req.repo.as_deref(),
+        )
+        .await
+        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let context_config = ContextConfig {
+            budget_lines: req.budget.unwrap_or(500),
+            depth: req.depth.unwrap_or(1),
+            max_coupled: 3,
+            coupling_threshold: 0.1,
+            semantic_weight: config.search.semantic_weight,
+            content_mode: ContentMode::Full,
+            search_limit: 20,
+        };
+
+        let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+        let bundle = assembler
+            .assemble_from_seeds(&diff_description, seeds, req.repo.as_deref())
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let response = ReviewResponse {
+            diff_description,
+            changed_files: diff_files
+                .iter()
+                .map(|f| ReviewChangedFile {
+                    path: f.path.clone(),
+                    status: f.status.to_string(),
+                    added_lines: f.added_lines.len(),
+                    removed_lines: f.removed_lines.len(),
+                })
+                .collect(),
+            budget: ContextBudgetInfo {
+                max_lines: bundle.budget.max_lines,
+                used_lines: bundle.budget.used_lines,
+            },
+            files: bundle.files.iter().map(|f| ContextFileOutput {
+                path: f.path.clone(),
+                language: f.language.clone(),
+                relevance: match f.relevance {
+                    FileRelevance::Direct => "direct".to_string(),
+                    FileRelevance::Coupled => "coupled".to_string(),
+                },
+                score: f.score,
+                coupled_to: f.coupled_to.clone(),
+                chunks: f.chunks.iter().map(|c| ContextChunkOutput {
+                    name: c.name.clone(),
+                    chunk_type: c.chunk_type.to_string(),
+                    start_line: c.start_line,
+                    end_line: c.end_line,
+                    score: c.score,
+                    match_type: c.match_type.map(|mt| match mt {
+                        MatchType::Semantic => "semantic".to_string(),
+                        MatchType::Keyword => "keyword".to_string(),
+                        MatchType::Hybrid => "hybrid".to_string(),
+                    }),
+                    content: c.content.clone(),
+                }).collect(),
+            }).collect(),
+            summary: ContextSummaryOutput {
+                total_files: bundle.summary.total_files,
+                total_chunks: bundle.summary.total_chunks,
+                direct_hits: bundle.summary.direct_hits,
+                coupled_additions: bundle.summary.coupled_additions,
+            },
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
     /// Project primer/overview
     #[tool(description = "Get an LLM-friendly overview of Bobbin with live index statistics. Shows what Bobbin does, architecture, available commands, and MCP tools. Use 'section' to get a specific part, or 'brief' for a compact summary. Always includes live stats when the index is initialized.")]
     async fn prime(
@@ -1120,6 +1243,30 @@ impl ServerHandler for BobbinMcpServer {
             description: Some(format!("Explore codebase with focus on: {}", focus)),
             messages: vec![PromptMessage::new_text(PromptMessageRole::User, prompt_text)],
         })
+    }
+}
+
+/// Parse a diff spec string into a DiffSpec enum.
+///
+/// Accepts: "unstaged" (default), "staged", "branch:<name>", or a commit range like "HEAD~3..HEAD".
+fn parse_diff_spec(spec: Option<&str>) -> crate::index::git::DiffSpec {
+    use crate::index::git::DiffSpec;
+    match spec {
+        None | Some("unstaged") | Some("") => DiffSpec::Unstaged,
+        Some("staged") => DiffSpec::Staged,
+        Some(s) if s.starts_with("branch:") => DiffSpec::Branch(s[7..].to_string()),
+        Some(range) => DiffSpec::Range(range.to_string()),
+    }
+}
+
+/// Human-readable description of a DiffSpec.
+fn describe_diff_spec(spec: &crate::index::git::DiffSpec) -> String {
+    use crate::index::git::DiffSpec;
+    match spec {
+        DiffSpec::Unstaged => "unstaged changes".to_string(),
+        DiffSpec::Staged => "staged changes".to_string(),
+        DiffSpec::Branch(b) => format!("branch: {}", b),
+        DiffSpec::Range(r) => format!("range: {}", r),
     }
 }
 

@@ -11,6 +11,7 @@ mod prime;
 mod init;
 mod refs;
 mod related;
+mod review;
 mod search;
 mod serve;
 mod status;
@@ -77,6 +78,9 @@ enum Commands {
     /// Identify code hotspots (high churn + high complexity)
     Hotspots(hotspots::HotspotsArgs),
 
+    /// Assemble review context from a git diff
+    Review(review::ReviewArgs),
+
     /// Show index status and statistics
     Status(status::StatusArgs),
 
@@ -122,6 +126,7 @@ impl Cli {
             Commands::Related(args) => related::run(args, output).await,
             Commands::History(args) => history::run(args, output).await,
             Commands::Hotspots(args) => hotspots::run(args, output).await,
+            Commands::Review(args) => review::run(args, output).await,
             Commands::Status(args) => status::run(args, output).await,
             Commands::Serve(args) => serve::run(args, output).await,
             Commands::Benchmark(args) => benchmark::run(args, output).await,
