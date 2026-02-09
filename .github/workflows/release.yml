@@ -28,13 +28,11 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
             archive: tar.gz
-            ort_platform: manylinux_2_27_x86_64.manylinux_2_28_x86_64
-            ort_pyver: cp312-cp312
+            ort_platform: manylinux_2_28_x86_64
           - target: aarch64-apple-darwin
             os: macos-14
             archive: tar.gz
-            ort_platform: macosx_12_0_arm64
-            ort_pyver: cp312-cp312
+            ort_platform: macosx_14_0_arm64
 
     steps:
       - name: Checkout
