@@ -243,6 +243,8 @@ pub struct HooksConfig {
     /// If the top semantic search result scores below this threshold,
     /// the entire injection is skipped (the query isn't relevant enough).
     pub gate_threshold: f32,
+    /// Skip injection when search results haven't changed since last injection
+    pub dedup_enabled: bool,
 }
 
 impl Default for HooksConfig {
@@ -253,6 +255,7 @@ impl Default for HooksConfig {
             content_mode: "preview".into(),
             min_prompt_length: 10,
             gate_threshold: 0.75,
+            dedup_enabled: true,
         }
     }
 }
@@ -482,6 +485,7 @@ coupling_depth = 500
         assert_eq!(config.hooks.content_mode, "preview");
         assert_eq!(config.hooks.min_prompt_length, 10);
         assert!((config.hooks.gate_threshold - 0.75).abs() < f32::EPSILON);
+        assert!(config.hooks.dedup_enabled);
     }
 
     #[test]
@@ -493,6 +497,7 @@ budget = 200
 content_mode = "full"
 min_prompt_length = 20
 gate_threshold = 0.9
+dedup_enabled = false
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!((config.hooks.threshold - 0.7).abs() < f32::EPSILON);
@@ -500,6 +505,7 @@ gate_threshold = 0.9
         assert_eq!(config.hooks.content_mode, "full");
         assert_eq!(config.hooks.min_prompt_length, 20);
         assert!((config.hooks.gate_threshold - 0.9).abs() < f32::EPSILON);
+        assert!(!config.hooks.dedup_enabled);
     }
 
     #[test]
@@ -525,6 +531,7 @@ budget = 150
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!((config.hooks.gate_threshold - 0.75).abs() < f32::EPSILON);
+        assert!(config.hooks.dedup_enabled);
     }
 
     #[test]

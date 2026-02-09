@@ -50,7 +50,7 @@ pub struct ContextFile {
 }
 
 /// A chunk within a context file
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ContextChunk {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,

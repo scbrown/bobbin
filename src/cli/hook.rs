@@ -3,7 +3,7 @@ use clap::{Args, Subcommand};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -92,6 +92,10 @@ struct InjectContextArgs {
     /// Minimum raw semantic similarity to inject context at all (overrides config)
     #[arg(long)]
     gate_threshold: Option<f32>,
+
+    /// Force injection even if results match previous session (disables dedup)
+    #[arg(long)]
+    no_dedup: bool,
 }
 
 #[derive(Args)]
@@ -121,6 +125,7 @@ struct HookConfigOutput {
     content_mode: String,
     min_prompt_length: usize,
     gate_threshold: f32,
+    dedup_enabled: bool,
 }
 
 pub async fn run(args: HookArgs, output: OutputConfig) -> Result<()> {
@@ -413,6 +418,7 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
                 content_mode: hooks_cfg.content_mode.clone(),
                 min_prompt_length: hooks_cfg.min_prompt_length,
                 gate_threshold: hooks_cfg.gate_threshold,
+                dedup_enabled: hooks_cfg.dedup_enabled,
             },
         };
         println!("{}", serde_json::to_string_pretty(&status)?);
@@ -424,6 +430,7 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
         println!("  Content mode:     {}", hooks_cfg.content_mode.cyan());
         println!("  Min prompt len:   {}", hooks_cfg.min_prompt_length.to_string().cyan());
         println!("  Gate threshold:   {}", hooks_cfg.gate_threshold.to_string().cyan());
+        println!("  Dedup enabled:    {}", if hooks_cfg.dedup_enabled { "yes".green() } else { "no".yellow() });
         println!();
         let hooks_str = if hooks_installed { "installed".green() } else { "not installed".yellow() };
         let git_str = if git_hook_installed { "installed".green() } else { "not installed".yellow() };
@@ -540,6 +547,81 @@ fn format_context_for_injection(
     }
 }
 
+/// Persistent state for hook dedup and frequency tracking.
+/// Stored in `.bobbin/hook_state.json`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct HookState {
+    #[serde(default)]
+    last_session_id: String,
+    #[serde(default)]
+    last_injected_chunks: Vec<String>,
+    #[serde(default)]
+    last_injection_time: String,
+    #[serde(default)]
+    injection_count: u64,
+    #[serde(default)]
+    chunk_frequencies: HashMap<String, ChunkFrequency>,
+    #[serde(default)]
+    file_frequencies: HashMap<String, u64>,
+    #[serde(default)]
+    hot_topics_generated_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ChunkFrequency {
+    count: u64,
+    file: String,
+    name: Option<String>,
+}
+
+fn hook_state_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(".bobbin").join("hook_state.json")
+}
+
+/// Load hook state from disk. Returns default on any error.
+fn load_hook_state(repo_root: &Path) -> HookState {
+    let path = hook_state_path(repo_root);
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => HookState::default(),
+    }
+}
+
+/// Save hook state to disk. Errors are swallowed (never block prompts).
+fn save_hook_state(repo_root: &Path, state: &HookState) {
+    let path = hook_state_path(repo_root);
+    if let Ok(json) = serde_json::to_string_pretty(state) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
+/// Compute a session ID from the context bundle's chunks.
+///
+/// Takes the chunk composite keys (file:start:end), filters by threshold,
+/// sorts alphabetically, takes top 10, concatenates with `|`, and returns
+/// the first 16 hex chars of the SHA-256 hash.
+fn compute_session_id(bundle: &crate::search::context::ContextBundle, threshold: f32) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut keys: Vec<String> = bundle
+        .files
+        .iter()
+        .flat_map(|f| {
+            f.chunks
+                .iter()
+                .filter(|c| c.score >= threshold)
+                .map(move |c| format!("{}:{}:{}", f.path, c.start_line, c.end_line))
+        })
+        .collect();
+
+    keys.sort();
+    keys.truncate(10);
+
+    let joined = keys.join("|");
+    let hash = Sha256::digest(joined.as_bytes());
+    hex::encode(&hash[..8]) // 8 bytes = 16 hex chars
+}
+
 /// Inner implementation that can return errors (caller swallows them).
 async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     use crate::index::Embedder;
@@ -636,13 +718,56 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         return Ok(());
     }
 
-    // 8. Output context (only if we found something)
+    // 8. Session dedup: skip if results haven't changed
+    let dedup_enabled = !args.no_dedup && hooks_cfg.dedup_enabled;
+    let session_id = compute_session_id(&bundle, threshold);
+    let mut state = if dedup_enabled {
+        let s = load_hook_state(&repo_root);
+        if s.last_session_id == session_id && !session_id.is_empty() {
+            eprintln!("bobbin: skipped (session unchanged)");
+            return Ok(());
+        }
+        s
+    } else {
+        load_hook_state(&repo_root)
+    };
+
+    // 9. Output context (only if we found something)
     if bundle.files.is_empty() {
         return Ok(());
     }
 
     let context_text = format_context_for_injection(&bundle, threshold);
     print!("{}", context_text);
+
+    // 10. Update hook state
+    let chunk_keys: Vec<String> = bundle
+        .files
+        .iter()
+        .flat_map(|f| {
+            f.chunks
+                .iter()
+                .filter(|c| c.score >= threshold)
+                .map(move |c| (f.path.clone(), c))
+        })
+        .map(|(path, c)| {
+            let key = format!("{}:{}:{}", path, c.start_line, c.end_line);
+            let freq = state.chunk_frequencies.entry(key.clone()).or_insert(ChunkFrequency {
+                count: 0,
+                file: path.clone(),
+                name: c.name.clone(),
+            });
+            freq.count += 1;
+            *state.file_frequencies.entry(path).or_insert(0) += 1;
+            key
+        })
+        .collect();
+
+    state.last_session_id = session_id;
+    state.last_injected_chunks = chunk_keys;
+    state.last_injection_time = chrono::Utc::now().to_rfc3339();
+    state.injection_count += 1;
+    save_hook_state(&repo_root, &state);
 
     Ok(())
 }
@@ -1224,6 +1349,7 @@ mod tests {
                 content_mode: "preview".to_string(),
                 min_prompt_length: 10,
                 gate_threshold: 0.75,
+                dedup_enabled: true,
             },
         };
         let json = serde_json::to_string(&output).unwrap();
@@ -1231,6 +1357,7 @@ mod tests {
         assert!(json.contains("\"budget\":150"));
         assert!(json.contains("\"content_mode\":\"preview\""));
         assert!(json.contains("\"gate_threshold\":0.75"));
+        assert!(json.contains("\"dedup_enabled\":true"));
     }
 
     #[test]
@@ -1978,5 +2105,334 @@ mod tests {
         assert!(GIT_HOOK_SECTION.contains(GIT_HOOK_START_MARKER));
         assert!(GIT_HOOK_SECTION.contains(GIT_HOOK_END_MARKER));
         assert!(GIT_HOOK_SECTION.contains("bobbin index --quiet"));
+    }
+
+    // --- Session dedup tests ---
+
+    #[test]
+    fn test_hook_state_serde_roundtrip() {
+        let mut chunk_freqs = HashMap::new();
+        chunk_freqs.insert(
+            "src/foo.rs:10:50".to_string(),
+            ChunkFrequency {
+                count: 12,
+                file: "src/foo.rs".to_string(),
+                name: Some("InjectContextArgs".to_string()),
+            },
+        );
+        let mut file_freqs = HashMap::new();
+        file_freqs.insert("src/foo.rs".to_string(), 15);
+
+        let state = HookState {
+            last_session_id: "a1b2c3d4e5f6a7b8".to_string(),
+            last_injected_chunks: vec!["src/foo.rs:10:50".to_string()],
+            last_injection_time: "2026-02-08T10:30:00Z".to_string(),
+            injection_count: 47,
+            chunk_frequencies: chunk_freqs,
+            file_frequencies: file_freqs,
+            hot_topics_generated_at: 40,
+        };
+
+        let json = serde_json::to_string_pretty(&state).unwrap();
+        let parsed: HookState = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.last_session_id, "a1b2c3d4e5f6a7b8");
+        assert_eq!(parsed.injection_count, 47);
+        assert_eq!(parsed.chunk_frequencies["src/foo.rs:10:50"].count, 12);
+        assert_eq!(parsed.file_frequencies["src/foo.rs"], 15);
+        assert_eq!(parsed.hot_topics_generated_at, 40);
+    }
+
+    #[test]
+    fn test_hook_state_default() {
+        let state = HookState::default();
+        assert!(state.last_session_id.is_empty());
+        assert!(state.last_injected_chunks.is_empty());
+        assert_eq!(state.injection_count, 0);
+        assert!(state.chunk_frequencies.is_empty());
+        assert!(state.file_frequencies.is_empty());
+    }
+
+    #[test]
+    fn test_hook_state_deserialize_corrupt_falls_back() {
+        let corrupt = "{ not valid json at all }}}";
+        let state: HookState = serde_json::from_str(corrupt).unwrap_or_default();
+        assert!(state.last_session_id.is_empty());
+        assert_eq!(state.injection_count, 0);
+    }
+
+    #[test]
+    fn test_hook_state_deserialize_partial_fields() {
+        // Only some fields present — rest should default
+        let json = r#"{"last_session_id": "abc", "injection_count": 5}"#;
+        let state: HookState = serde_json::from_str(json).unwrap();
+        assert_eq!(state.last_session_id, "abc");
+        assert_eq!(state.injection_count, 5);
+        assert!(state.chunk_frequencies.is_empty());
+        assert!(state.file_frequencies.is_empty());
+    }
+
+    #[test]
+    fn test_load_save_hook_state() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bobbin_dir = tmp.path().join(".bobbin");
+        std::fs::create_dir_all(&bobbin_dir).unwrap();
+
+        // Load from nonexistent file returns default
+        let state = load_hook_state(tmp.path());
+        assert!(state.last_session_id.is_empty());
+
+        // Save and reload
+        let mut state = HookState::default();
+        state.last_session_id = "test123".to_string();
+        state.injection_count = 3;
+        save_hook_state(tmp.path(), &state);
+
+        let loaded = load_hook_state(tmp.path());
+        assert_eq!(loaded.last_session_id, "test123");
+        assert_eq!(loaded.injection_count, 3);
+    }
+
+    #[test]
+    fn test_compute_session_id_deterministic() {
+        let bundle = ContextBundle {
+            query: "test".to_string(),
+            files: vec![ContextFile {
+                path: "src/a.rs".to_string(),
+                language: "rust".to_string(),
+                relevance: FileRelevance::Direct,
+                score: 0.9,
+                coupled_to: vec![],
+                chunks: vec![
+                    ContextChunk {
+                        name: Some("fn_a".to_string()),
+                        chunk_type: ChunkType::Function,
+                        start_line: 10,
+                        end_line: 20,
+                        score: 0.9,
+                        match_type: None,
+                        content: None,
+                    },
+                    ContextChunk {
+                        name: Some("fn_b".to_string()),
+                        chunk_type: ChunkType::Function,
+                        start_line: 30,
+                        end_line: 40,
+                        score: 0.8,
+                        match_type: None,
+                        content: None,
+                    },
+                ],
+            }],
+            budget: BudgetInfo {
+                max_lines: 150,
+                used_lines: 10,
+            },
+            summary: ContextSummary {
+                total_files: 1,
+                total_chunks: 2,
+                direct_hits: 2,
+                coupled_additions: 0,
+                top_semantic_score: 0.9,
+            },
+        };
+
+        let id1 = compute_session_id(&bundle, 0.5);
+        let id2 = compute_session_id(&bundle, 0.5);
+        assert_eq!(id1, id2);
+        assert_eq!(id1.len(), 16); // 16 hex chars
+    }
+
+    #[test]
+    fn test_compute_session_id_changes_with_different_chunks() {
+        let make_bundle = |start: u32| ContextBundle {
+            query: "test".to_string(),
+            files: vec![ContextFile {
+                path: "src/a.rs".to_string(),
+                language: "rust".to_string(),
+                relevance: FileRelevance::Direct,
+                score: 0.9,
+                coupled_to: vec![],
+                chunks: vec![ContextChunk {
+                    name: None,
+                    chunk_type: ChunkType::Function,
+                    start_line: start,
+                    end_line: start + 10,
+                    score: 0.9,
+                    match_type: None,
+                    content: None,
+                }],
+            }],
+            budget: BudgetInfo {
+                max_lines: 150,
+                used_lines: 5,
+            },
+            summary: ContextSummary {
+                total_files: 1,
+                total_chunks: 1,
+                direct_hits: 1,
+                coupled_additions: 0,
+                top_semantic_score: 0.9,
+            },
+        };
+
+        let id1 = compute_session_id(&make_bundle(10), 0.0);
+        let id2 = compute_session_id(&make_bundle(50), 0.0);
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_compute_session_id_filters_by_threshold() {
+        let bundle = ContextBundle {
+            query: "test".to_string(),
+            files: vec![ContextFile {
+                path: "src/a.rs".to_string(),
+                language: "rust".to_string(),
+                relevance: FileRelevance::Direct,
+                score: 0.9,
+                coupled_to: vec![],
+                chunks: vec![
+                    ContextChunk {
+                        name: None,
+                        chunk_type: ChunkType::Function,
+                        start_line: 1,
+                        end_line: 10,
+                        score: 0.9,
+                        match_type: None,
+                        content: None,
+                    },
+                    ContextChunk {
+                        name: None,
+                        chunk_type: ChunkType::Function,
+                        start_line: 20,
+                        end_line: 30,
+                        score: 0.3, // Below threshold
+                        match_type: None,
+                        content: None,
+                    },
+                ],
+            }],
+            budget: BudgetInfo {
+                max_lines: 150,
+                used_lines: 10,
+            },
+            summary: ContextSummary {
+                total_files: 1,
+                total_chunks: 2,
+                direct_hits: 2,
+                coupled_additions: 0,
+                top_semantic_score: 0.9,
+            },
+        };
+
+        // With threshold 0.5, low-score chunk is excluded
+        let id_high = compute_session_id(&bundle, 0.5);
+        // With threshold 0.0, both chunks included
+        let id_low = compute_session_id(&bundle, 0.0);
+        assert_ne!(id_high, id_low);
+    }
+
+    #[test]
+    fn test_compute_session_id_empty_bundle() {
+        let bundle = ContextBundle {
+            query: "test".to_string(),
+            files: vec![],
+            budget: BudgetInfo {
+                max_lines: 150,
+                used_lines: 0,
+            },
+            summary: ContextSummary {
+                total_files: 0,
+                total_chunks: 0,
+                direct_hits: 0,
+                coupled_additions: 0,
+                top_semantic_score: 0.0,
+            },
+        };
+
+        let id = compute_session_id(&bundle, 0.0);
+        assert_eq!(id.len(), 16);
+    }
+
+    #[test]
+    fn test_compute_session_id_top_10_limit() {
+        // Create 15 chunks — only first 10 (sorted alphabetically by key) should matter
+        let chunks: Vec<ContextChunk> = (0..15)
+            .map(|i| ContextChunk {
+                name: None,
+                chunk_type: ChunkType::Function,
+                start_line: i * 10,
+                end_line: i * 10 + 5,
+                score: 0.9,
+                match_type: None,
+                content: None,
+            })
+            .collect();
+
+        let bundle_all = ContextBundle {
+            query: "test".to_string(),
+            files: vec![ContextFile {
+                path: "src/a.rs".to_string(),
+                language: "rust".to_string(),
+                relevance: FileRelevance::Direct,
+                score: 0.9,
+                coupled_to: vec![],
+                chunks: chunks.clone(),
+            }],
+            budget: BudgetInfo {
+                max_lines: 150,
+                used_lines: 50,
+            },
+            summary: ContextSummary {
+                total_files: 1,
+                total_chunks: 15,
+                direct_hits: 15,
+                coupled_additions: 0,
+                top_semantic_score: 0.9,
+            },
+        };
+
+        // Build a bundle with the top-10 keys (alphabetically sorted) from all 15
+        let mut all_keys: Vec<String> = chunks
+            .iter()
+            .map(|c| format!("src/a.rs:{}:{}", c.start_line, c.end_line))
+            .collect();
+        all_keys.sort();
+        let top_10_keys: HashSet<String> = all_keys.into_iter().take(10).collect();
+
+        let top_10_chunks: Vec<ContextChunk> = chunks
+            .iter()
+            .filter(|c| {
+                let key = format!("src/a.rs:{}:{}", c.start_line, c.end_line);
+                top_10_keys.contains(&key)
+            })
+            .cloned()
+            .collect();
+
+        let bundle_ten = ContextBundle {
+            query: "test".to_string(),
+            files: vec![ContextFile {
+                path: "src/a.rs".to_string(),
+                language: "rust".to_string(),
+                relevance: FileRelevance::Direct,
+                score: 0.9,
+                coupled_to: vec![],
+                chunks: top_10_chunks,
+            }],
+            budget: BudgetInfo {
+                max_lines: 150,
+                used_lines: 30,
+            },
+            summary: ContextSummary {
+                total_files: 1,
+                total_chunks: 10,
+                direct_hits: 10,
+                coupled_additions: 0,
+                top_semantic_score: 0.9,
+            },
+        };
+
+        let id_all = compute_session_id(&bundle_all, 0.0);
+        let id_ten = compute_session_id(&bundle_ten, 0.0);
+        assert_eq!(id_all, id_ten, "Top-10 truncation should produce same ID");
     }
 }
