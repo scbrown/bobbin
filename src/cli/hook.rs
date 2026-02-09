@@ -88,6 +88,10 @@ struct InjectContextArgs {
     /// Minimum prompt length to trigger injection (overrides config)
     #[arg(long)]
     min_prompt_length: Option<usize>,
+
+    /// Minimum raw semantic similarity to inject context at all (overrides config)
+    #[arg(long)]
+    gate_threshold: Option<f32>,
 }
 
 #[derive(Args)]
@@ -116,6 +120,7 @@ struct HookConfigOutput {
     budget: usize,
     content_mode: String,
     min_prompt_length: usize,
+    gate_threshold: f32,
 }
 
 pub async fn run(args: HookArgs, output: OutputConfig) -> Result<()> {
@@ -407,6 +412,7 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
                 budget: hooks_cfg.budget,
                 content_mode: hooks_cfg.content_mode.clone(),
                 min_prompt_length: hooks_cfg.min_prompt_length,
+                gate_threshold: hooks_cfg.gate_threshold,
             },
         };
         println!("{}", serde_json::to_string_pretty(&status)?);
@@ -417,6 +423,7 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
         println!("  Budget:           {} lines", hooks_cfg.budget.to_string().cyan());
         println!("  Content mode:     {}", hooks_cfg.content_mode.cyan());
         println!("  Min prompt len:   {}", hooks_cfg.min_prompt_length.to_string().cyan());
+        println!("  Gate threshold:   {}", hooks_cfg.gate_threshold.to_string().cyan());
         println!();
         let hooks_str = if hooks_installed { "installed".green() } else { "not installed".yellow() };
         let git_str = if git_hook_installed { "installed".green() } else { "not installed".yellow() };
@@ -619,7 +626,17 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         .await
         .context("Context assembly failed")?;
 
-    // 7. Output context (only if we found something)
+    // 7. Gate check: skip entire injection if top semantic score is too low
+    let gate = args.gate_threshold.unwrap_or(hooks_cfg.gate_threshold);
+    if bundle.summary.top_semantic_score < gate {
+        eprintln!(
+            "bobbin: skipped (semantic={:.2} < gate={:.2})",
+            bundle.summary.top_semantic_score, gate
+        );
+        return Ok(());
+    }
+
+    // 8. Output context (only if we found something)
     if bundle.files.is_empty() {
         return Ok(());
     }
@@ -1206,12 +1223,14 @@ mod tests {
                 budget: 150,
                 content_mode: "preview".to_string(),
                 min_prompt_length: 10,
+                gate_threshold: 0.75,
             },
         };
         let json = serde_json::to_string(&output).unwrap();
         assert!(json.contains("\"threshold\":0.5"));
         assert!(json.contains("\"budget\":150"));
         assert!(json.contains("\"content_mode\":\"preview\""));
+        assert!(json.contains("\"gate_threshold\":0.75"));
     }
 
     #[test]
@@ -1286,6 +1305,7 @@ mod tests {
                 total_chunks: 0,
                 direct_hits: 0,
                 coupled_additions: 0,
+                top_semantic_score: 0.0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0);
@@ -1321,6 +1341,7 @@ mod tests {
                 total_chunks: 1,
                 direct_hits: 1,
                 coupled_additions: 0,
+                top_semantic_score: 0.0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.5);
@@ -1359,6 +1380,7 @@ mod tests {
                 total_chunks: 1,
                 direct_hits: 1,
                 coupled_additions: 0,
+                top_semantic_score: 0.0,
             },
         };
         // With high threshold, chunk content should be filtered out
@@ -1588,6 +1610,7 @@ mod tests {
                 total_chunks: 2,
                 direct_hits: 2,
                 coupled_additions: 0,
+                top_semantic_score: 0.0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0);
@@ -1632,6 +1655,7 @@ mod tests {
                 total_chunks: 1,
                 direct_hits: 1,
                 coupled_additions: 0,
+                top_semantic_score: 0.0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0);

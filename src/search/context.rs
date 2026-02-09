@@ -78,6 +78,9 @@ pub struct ContextSummary {
     pub total_chunks: usize,
     pub direct_hits: usize,
     pub coupled_additions: usize,
+    /// Raw cosine similarity of the top semantic search result (before RRF normalization).
+    /// Used by the gate_threshold check to decide whether to inject context at all.
+    pub top_semantic_score: f32,
 }
 
 /// How a file was found
@@ -173,7 +176,7 @@ impl ContextAssembler {
     /// then expands via coupling and applies budget constraints.
     pub async fn assemble(mut self, query: &str, repo: Option<&str>) -> Result<ContextBundle> {
         // Phase 1: Seed via hybrid search
-        let seed_results = self.run_hybrid_search(query, repo).await?;
+        let (seed_results, top_semantic_score) = self.run_hybrid_search(query, repo).await?;
 
         // Convert internal SeedResults to public SeedChunks
         let seeds: Vec<SeedChunk> = seed_results
@@ -196,7 +199,9 @@ impl ContextAssembler {
             })
             .collect();
 
-        self.assemble_from_seeds(query, seeds, repo).await
+        let mut bundle = self.assemble_from_seeds(query, seeds, repo).await?;
+        bundle.summary.top_semantic_score = top_semantic_score;
+        Ok(bundle)
     }
 
     /// Assemble a context bundle from externally-provided seed chunks.
@@ -307,12 +312,14 @@ impl ContextAssembler {
         Ok(coupled_chunks)
     }
 
-    /// Run hybrid search manually to avoid ownership issues with HybridSearch
+    /// Run hybrid search manually to avoid ownership issues with HybridSearch.
+    /// Returns `(results, top_semantic_score)` where `top_semantic_score` is the
+    /// raw cosine similarity of the best semantic match before RRF normalization.
     async fn run_hybrid_search(
         &mut self,
         query: &str,
         repo: Option<&str>,
-    ) -> Result<Vec<SeedResult>> {
+    ) -> Result<(Vec<SeedResult>, f32)> {
         let fetch_limit = self.config.search_limit * 2;
 
         let query_embedding = self.embedder.embed(query).await?;
@@ -329,6 +336,12 @@ impl ContextAssembler {
             Ok(results) => results,
             Err(_) => vec![],
         };
+
+        // Capture raw cosine similarity of the top semantic result before RRF
+        let top_semantic_score = semantic_results
+            .first()
+            .map(|r| r.score)
+            .unwrap_or(0.0);
 
         // RRF combination
         let k = 60.0_f32;
@@ -389,18 +402,21 @@ impl ContextAssembler {
         // (which expect similarity-scale scores) work correctly.
         let max_score = combined.first().map(|(_, s)| *s).unwrap_or(1.0);
 
-        Ok(combined
-            .into_iter()
-            .take(self.config.search_limit)
-            .map(|(mut result, score)| {
-                result.score = if max_score > 0.0 {
-                    score / max_score
-                } else {
-                    0.0
-                };
-                result
-            })
-            .collect())
+        Ok((
+            combined
+                .into_iter()
+                .take(self.config.search_limit)
+                .map(|(mut result, score)| {
+                    result.score = if max_score > 0.0 {
+                        score / max_score
+                    } else {
+                        0.0
+                    };
+                    result
+                })
+                .collect(),
+            top_semantic_score,
+        ))
     }
 }
 
@@ -625,6 +641,7 @@ fn assemble_bundle(
             total_chunks,
             direct_hits: direct_hit_count,
             coupled_additions: coupled_addition_count,
+            top_semantic_score: 0.0,
         },
     })
 }

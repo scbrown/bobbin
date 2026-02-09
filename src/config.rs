@@ -239,6 +239,10 @@ pub struct HooksConfig {
     pub content_mode: String,
     /// Skip injection for prompts shorter than this
     pub min_prompt_length: usize,
+    /// Minimum raw semantic similarity to inject context at all.
+    /// If the top semantic search result scores below this threshold,
+    /// the entire injection is skipped (the query isn't relevant enough).
+    pub gate_threshold: f32,
 }
 
 impl Default for HooksConfig {
@@ -248,6 +252,7 @@ impl Default for HooksConfig {
             budget: 150,
             content_mode: "preview".into(),
             min_prompt_length: 10,
+            gate_threshold: 0.75,
         }
     }
 }
@@ -476,6 +481,7 @@ coupling_depth = 500
         assert_eq!(config.hooks.budget, 150);
         assert_eq!(config.hooks.content_mode, "preview");
         assert_eq!(config.hooks.min_prompt_length, 10);
+        assert!((config.hooks.gate_threshold - 0.75).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -486,12 +492,14 @@ threshold = 0.7
 budget = 200
 content_mode = "full"
 min_prompt_length = 20
+gate_threshold = 0.9
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!((config.hooks.threshold - 0.7).abs() < f32::EPSILON);
         assert_eq!(config.hooks.budget, 200);
         assert_eq!(config.hooks.content_mode, "full");
         assert_eq!(config.hooks.min_prompt_length, 20);
+        assert!((config.hooks.gate_threshold - 0.9).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -504,6 +512,19 @@ batch_size = 32
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!((config.hooks.threshold - 0.5).abs() < f32::EPSILON);
         assert_eq!(config.hooks.budget, 150);
+        assert!((config.hooks.gate_threshold - 0.75).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_hooks_gate_threshold_backward_compatible() {
+        // Config with hooks section but no gate_threshold should default to 0.75
+        let toml_str = r#"
+[hooks]
+threshold = 0.5
+budget = 150
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!((config.hooks.gate_threshold - 0.75).abs() < f32::EPSILON);
     }
 
     #[test]

@@ -39,7 +39,7 @@ fn inject_context_returns_relevant_context() {
     });
 
     Command::new(TestProject::bobbin_bin())
-        .args(["hook", "inject-context"])
+        .args(["hook", "inject-context", "--gate-threshold", "0.0"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
         .assert()
@@ -60,7 +60,7 @@ fn inject_context_includes_file_and_score() {
     });
 
     let output = Command::new(TestProject::bobbin_bin())
-        .args(["hook", "inject-context"])
+        .args(["hook", "inject-context", "--gate-threshold", "0.0"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
         .assert()
@@ -189,6 +189,44 @@ fn inject_context_respects_threshold_override() {
         .assert()
         .success();
     // Not asserting empty since scores vary, but at minimum it shouldn't crash
+}
+
+#[test]
+fn inject_context_gate_threshold_skips_low_similarity() {
+    let project = indexed_project();
+
+    let stdin_json = serde_json::json!({
+        "prompt": "how does the calculator work",
+        "cwd": project.path().to_str().unwrap()
+    });
+
+    // Very high gate threshold should suppress all injection
+    Command::new(TestProject::bobbin_bin())
+        .args(["hook", "inject-context", "--gate-threshold", "0.99"])
+        .current_dir(project.path())
+        .write_stdin(serde_json::to_string(&stdin_json).unwrap())
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty());
+}
+
+#[test]
+fn inject_context_gate_threshold_zero_allows_all() {
+    let project = indexed_project();
+
+    let stdin_json = serde_json::json!({
+        "prompt": "how does the calculator work",
+        "cwd": project.path().to_str().unwrap()
+    });
+
+    // Gate threshold of 0 should allow all injection
+    Command::new(TestProject::bobbin_bin())
+        .args(["hook", "inject-context", "--gate-threshold", "0.0"])
+        .current_dir(project.path())
+        .write_stdin(serde_json::to_string(&stdin_json).unwrap())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Bobbin found"));
 }
 
 // ─── session-context handler ────────────────────────────────────────────────
@@ -386,7 +424,7 @@ fn end_to_end_install_inject_uninstall() {
     });
 
     Command::new(TestProject::bobbin_bin())
-        .args(["hook", "inject-context"])
+        .args(["hook", "inject-context", "--gate-threshold", "0.0"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&inject_input).unwrap())
         .assert()
@@ -436,6 +474,10 @@ fn end_to_end_install_inject_uninstall() {
     let status: serde_json::Value = serde_json::from_slice(&status_output).unwrap();
     assert_eq!(status["hooks_installed"].as_bool().unwrap(), true);
     assert_eq!(status["git_hook_installed"].as_bool().unwrap(), true);
+    assert!(
+        (status["config"]["gate_threshold"].as_f64().unwrap() - 0.75).abs() < 0.01,
+        "Status JSON should include gate_threshold"
+    );
 
     // 7. Uninstall everything
     Command::new(TestProject::bobbin_bin())
