@@ -6,6 +6,7 @@ mod grep;
 mod history;
 mod hook;
 mod hotspots;
+mod impact;
 mod index;
 mod prime;
 mod init;
@@ -78,6 +79,9 @@ enum Commands {
     /// Identify code hotspots (high churn + high complexity)
     Hotspots(hotspots::HotspotsArgs),
 
+    /// Predict which files are affected by a change
+    Impact(impact::ImpactArgs),
+
     /// Assemble review context from a git diff
     Review(review::ReviewArgs),
 
@@ -126,6 +130,7 @@ impl Cli {
             Commands::Related(args) => related::run(args, output).await,
             Commands::History(args) => history::run(args, output).await,
             Commands::Hotspots(args) => hotspots::run(args, output).await,
+            Commands::Impact(args) => impact::run(args, output).await,
             Commands::Review(args) => review::run(args, output).await,
             Commands::Status(args) => status::run(args, output).await,
             Commands::Serve(args) => serve::run(args, output).await,

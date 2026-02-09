@@ -56,17 +56,17 @@ impl Default for ImpactConfig {
 
 /// Analyzes what code is affected when a target file or function changes,
 /// by combining coupling, semantic similarity, and dependency signals.
-pub struct ImpactAnalyzer<'a> {
-    metadata_store: &'a MetadataStore,
-    vector_store: &'a VectorStore,
-    embedder: &'a mut Embedder,
+pub struct ImpactAnalyzer {
+    metadata_store: MetadataStore,
+    vector_store: VectorStore,
+    embedder: Embedder,
 }
 
-impl<'a> ImpactAnalyzer<'a> {
+impl ImpactAnalyzer {
     pub fn new(
-        metadata_store: &'a MetadataStore,
-        vector_store: &'a VectorStore,
-        embedder: &'a mut Embedder,
+        metadata_store: MetadataStore,
+        vector_store: VectorStore,
+        embedder: Embedder,
     ) -> Self {
         Self {
             metadata_store,

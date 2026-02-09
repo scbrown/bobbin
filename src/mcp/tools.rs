@@ -410,6 +410,53 @@ pub struct PrimeLanguageStats {
     pub chunk_count: u64,
 }
 
+/// Request for impact analysis
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ImpactRequest {
+    /// File path or file:function target to analyze
+    #[schemars(description = "File path or file:function target (e.g. 'src/auth.rs' or 'src/auth.rs:login_handler')")]
+    pub target: String,
+
+    /// Transitive impact depth (1-3, default: 1)
+    #[schemars(description = "Transitive expansion depth (1 = direct only, 2-3 = expand through results with score decay). Default: 1")]
+    pub depth: Option<u32>,
+
+    /// Signal mode: combined, coupling, semantic, deps
+    #[schemars(description = "Which signals to use: 'combined' (default, uses all), 'coupling' (git co-change only), 'semantic' (vector similarity only), 'deps' (dependency graph, not yet available)")]
+    pub mode: Option<String>,
+
+    /// Maximum number of results (default: 15)
+    #[schemars(description = "Maximum number of results to return (default: 15)")]
+    pub limit: Option<usize>,
+
+    /// Minimum impact score threshold (0.0-1.0, default: 0.1)
+    #[schemars(description = "Minimum impact score threshold (0.0-1.0, default: 0.1)")]
+    pub threshold: Option<f32>,
+
+    /// Filter to a specific repository
+    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    pub repo: Option<String>,
+}
+
+/// Response for impact analysis
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ImpactResponse {
+    pub target: String,
+    pub mode: String,
+    pub depth: u32,
+    pub count: usize,
+    pub results: Vec<ImpactResultItem>,
+}
+
+/// A single impact result
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ImpactResultItem {
+    pub file: String,
+    pub signal: String,
+    pub score: f32,
+    pub reason: String,
+}
+
 /// Request for diff-aware review context
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReviewRequest {

@@ -25,6 +25,7 @@ use crate::search::context::{ContentMode, ContextAssembler, ContextConfig, FileR
 use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{MetadataStore, VectorStore};
 use crate::analysis::complexity::ComplexityAnalyzer;
+use crate::analysis::impact::{ImpactAnalyzer, ImpactConfig, ImpactMode, ImpactSignal};
 use crate::analysis::refs::RefAnalyzer;
 use crate::index::GitAnalyzer;
 use crate::types::{ChunkType, MatchType, SearchResult};
@@ -872,6 +873,86 @@ impl BobbinMcpServer {
             count: hotspots.len(),
             since: since.to_string(),
             hotspots,
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Impact analysis
+    #[tool(description = "Predict which files are affected by a change to a target file or function. Combines git co-change coupling and semantic similarity signals, with optional transitive expansion. Returns a ranked list of impacted files with signal attribution and scores. Best for: 'what breaks if I change this?', 'which files should I review after touching auth.rs?'.")]
+    async fn impact(
+        &self,
+        Parameters(req): Parameters<ImpactRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let depth = req.depth.unwrap_or(1);
+        let mode_str = req.mode.as_deref().unwrap_or("combined");
+        let limit = req.limit.unwrap_or(15);
+        let threshold = req.threshold.unwrap_or(0.1);
+
+        let mode = match mode_str {
+            "combined" => ImpactMode::Combined,
+            "coupling" => ImpactMode::Coupling,
+            "semantic" => ImpactMode::Semantic,
+            "deps" => ImpactMode::Deps,
+            _ => {
+                return Err(McpError::invalid_params(
+                    format!("Invalid mode: {}. Use: combined, coupling, semantic, deps", mode_str),
+                    None,
+                ));
+            }
+        };
+
+        let impact_config = ImpactConfig {
+            mode,
+            threshold,
+            limit,
+        };
+
+        let config_path = Config::config_path(&self.repo_root);
+        let config = Config::load(&config_path)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let metadata_store = self.open_metadata_store()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let model_dir = Config::model_cache_dir()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let embedder = Embedder::from_config(&config.embedding, &model_dir)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let mut analyzer = ImpactAnalyzer::new(metadata_store, vector_store, embedder);
+        let results = analyzer
+            .analyze(&req.target, &impact_config, depth, req.repo.as_deref())
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let signal_name = |s: &ImpactSignal| -> &'static str {
+            match s {
+                ImpactSignal::Coupling { .. } => "coupling",
+                ImpactSignal::Semantic { .. } => "semantic",
+                ImpactSignal::Dependency => "deps",
+                ImpactSignal::Combined => "combined",
+            }
+        };
+
+        let response = ImpactResponse {
+            target: req.target,
+            mode: mode_str.to_string(),
+            depth,
+            count: results.len(),
+            results: results
+                .iter()
+                .map(|r| ImpactResultItem {
+                    file: r.path.clone(),
+                    signal: signal_name(&r.signal).to_string(),
+                    score: r.score,
+                    reason: r.reason.clone(),
+                })
+                .collect(),
         };
 
         let json = serde_json::to_string_pretty(&response)
