@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use super::OutputConfig;
 use crate::config::Config;
-use crate::storage::{MetadataStore, VectorStore};
+use crate::storage::VectorStore;
 use crate::types::IndexStats;
 
 /// Embedded primer documentation
@@ -58,12 +58,14 @@ pub async fn run(args: PrimeArgs, output: OutputConfig) -> Result<()> {
     let initialized = config_path.exists();
 
     // Gather live stats if initialized
-    let stats = if initialized {
-        let lance_path = Config::lance_path(&repo_root);
-        match VectorStore::open(&lance_path).await {
-            Ok(store) => store.get_stats(None).await.ok(),
-            Err(_) => None,
-        }
+    let lance_path = Config::lance_path(&repo_root);
+    let vector_store = if initialized {
+        VectorStore::open(&lance_path).await.ok()
+    } else {
+        None
+    };
+    let stats = if let Some(ref store) = vector_store {
+        store.get_stats(None).await.ok()
     } else {
         None
     };
@@ -127,9 +129,8 @@ pub async fn run(args: PrimeArgs, output: OutputConfig) -> Result<()> {
         }
 
         // Show dependency stats
-        let db_path = Config::db_path(&repo_root);
-        if let Ok(meta_store) = MetadataStore::open(&db_path) {
-            if let Ok((total_deps, resolved_deps)) = meta_store.get_dependency_stats() {
+        if let Some(ref vs) = vector_store {
+            if let Ok((total_deps, resolved_deps)) = vs.get_dependency_stats().await {
                 if total_deps > 0 {
                     println!(
                         "  Dependencies: {} ({} resolved)",

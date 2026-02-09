@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use arrow::array::{
-    Array, ArrayRef, FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator,
-    StringArray, UInt32Array,
+    Array, ArrayRef, BooleanArray, FixedSizeListArray, Float32Array, RecordBatch,
+    RecordBatchIterator, StringArray, UInt32Array,
 };
 use arrow::datatypes::{DataType, Field, FieldRef, Schema, SchemaRef};
 use futures::TryStreamExt;
@@ -14,10 +14,16 @@ use lancedb::{connect, Connection, Table};
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::types::{Chunk, ChunkType, FileMetadata, IndexStats, LanguageStats, MatchType, SearchResult};
+use crate::types::{
+    Chunk, ChunkType, FileMetadata, ImportDependency, IndexStats, LanguageStats, MatchType,
+    SearchResult,
+};
 
 /// Table name for chunk storage
 const TABLE_NAME: &str = "chunks";
+
+/// Table name for dependency storage
+const DEPS_TABLE_NAME: &str = "dependencies";
 
 /// Limit for queries that need all rows. LanceDB 0.17 defaults to limit=10
 /// (DEFAULT_TOP_K) for all queries including plain scans, so we must set an
@@ -38,10 +44,12 @@ fn string_column<'a>(batch: &'a RecordBatch, name: &str) -> Result<&'a StringArr
         .with_context(|| format!("column '{name}' is not a StringArray"))
 }
 
-/// Unified chunk storage using LanceDB (vectors + metadata + FTS)
+/// Unified chunk storage using LanceDB (vectors + metadata + FTS + dependencies)
 pub struct VectorStore {
     conn: Connection,
     table: Option<Table>,
+    /// Dependency graph table
+    deps_table: Option<Table>,
     /// Embedding dimension used by this store
     embedding_dim: i32,
     /// Whether FTS index has been created for this session
@@ -88,9 +96,21 @@ impl VectorStore {
             None
         };
 
+        let deps_table = if tables.contains(&DEPS_TABLE_NAME.to_string()) {
+            Some(
+                conn.open_table(DEPS_TABLE_NAME)
+                    .execute()
+                    .await
+                    .context("Failed to open dependencies table")?,
+            )
+        } else {
+            None
+        };
+
         Ok(Self {
             conn,
             table,
+            deps_table,
             embedding_dim,
             fts_indexed: false,
         })
@@ -1171,6 +1191,207 @@ impl VectorStore {
             index_size_bytes: 0, // LanceDB doesn't expose this easily
         })
     }
+
+    // ── Dependency graph methods ──────────────────────────────────────
+
+    /// Arrow schema for the dependencies table
+    fn deps_schema() -> Schema {
+        Schema::new(vec![
+            Field::new("file_a", DataType::Utf8, false),
+            Field::new("file_b", DataType::Utf8, false),
+            Field::new("dep_type", DataType::Utf8, false),
+            Field::new("import_statement", DataType::Utf8, false),
+            Field::new("symbol", DataType::Utf8, true),
+            Field::new("resolved", DataType::Boolean, false),
+        ])
+    }
+
+    /// Convert ImportDependency slice to a RecordBatch
+    fn deps_to_record_batch(deps: &[ImportDependency]) -> Result<RecordBatch> {
+        let schema = Arc::new(Self::deps_schema());
+
+        let file_as: Vec<&str> = deps.iter().map(|d| d.file_a.as_str()).collect();
+        let file_bs: Vec<&str> = deps.iter().map(|d| d.file_b.as_str()).collect();
+        let dep_types: Vec<&str> = deps.iter().map(|d| d.dep_type.as_str()).collect();
+        let stmts: Vec<&str> = deps.iter().map(|d| d.import_statement.as_str()).collect();
+        let symbols: Vec<Option<&str>> = deps.iter().map(|d| d.symbol.as_deref()).collect();
+        let resolved: Vec<bool> = deps.iter().map(|d| d.resolved).collect();
+
+        let columns: Vec<ArrayRef> = vec![
+            Arc::new(StringArray::from(file_as)),
+            Arc::new(StringArray::from(file_bs)),
+            Arc::new(StringArray::from(dep_types)),
+            Arc::new(StringArray::from(stmts)),
+            Arc::new(StringArray::from(symbols)),
+            Arc::new(BooleanArray::from(resolved)),
+        ];
+
+        RecordBatch::try_new(schema, columns).context("Failed to create deps record batch")
+    }
+
+    /// Insert or replace dependency edges (batch)
+    pub async fn upsert_dependencies(&mut self, deps: &[ImportDependency]) -> Result<()> {
+        if deps.is_empty() {
+            return Ok(());
+        }
+
+        let schema = Arc::new(Self::deps_schema());
+        let batch = Self::deps_to_record_batch(deps)?;
+
+        match &self.deps_table {
+            Some(table) => {
+                let reader = Self::batch_to_reader(batch, schema);
+                table
+                    .add(reader)
+                    .execute()
+                    .await
+                    .context("Failed to add dependencies")?;
+            }
+            None => {
+                let reader = Self::batch_to_reader(batch, schema);
+                let table = self
+                    .conn
+                    .create_table(DEPS_TABLE_NAME, reader)
+                    .execute()
+                    .await
+                    .context("Failed to create dependencies table")?;
+                self.deps_table = Some(table);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get dependencies from a file (what does this file import?)
+    pub async fn get_dependencies(&self, file_path: &str) -> Result<Vec<ImportDependency>> {
+        let table = match &self.deps_table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let filter = format!("file_a = '{}'", file_path.replace('\'', "''"));
+        let results = table
+            .query()
+            .only_if(filter)
+            .limit(SCAN_ALL_LIMIT)
+            .execute()
+            .await
+            .context("Failed to query dependencies")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect dependencies")?;
+
+        Self::batches_to_deps(&batches)
+    }
+
+    /// Get reverse dependencies (what files import this file?)
+    pub async fn get_dependents(&self, file_path: &str) -> Result<Vec<ImportDependency>> {
+        let table = match &self.deps_table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let filter = format!("file_b = '{}'", file_path.replace('\'', "''"));
+        let results = table
+            .query()
+            .only_if(filter)
+            .limit(SCAN_ALL_LIMIT)
+            .execute()
+            .await
+            .context("Failed to query dependents")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect dependents")?;
+
+        Self::batches_to_deps(&batches)
+    }
+
+    /// Clear all dependency data for a single file (for re-indexing)
+    pub async fn clear_file_dependencies(&self, file_path: &str) -> Result<()> {
+        let table = match &self.deps_table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        let filter = format!("file_a = '{}'", file_path.replace('\'', "''"));
+        table
+            .delete(&filter)
+            .await
+            .context("Failed to clear file dependencies")?;
+
+        Ok(())
+    }
+
+    /// Clear all dependency data
+    pub async fn clear_dependencies(&self) -> Result<()> {
+        let table = match &self.deps_table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        table
+            .delete("file_a IS NOT NULL")
+            .await
+            .context("Failed to clear dependencies")?;
+
+        Ok(())
+    }
+
+    /// Get dependency statistics: (total_edges, resolved_count)
+    pub async fn get_dependency_stats(&self) -> Result<(u64, u64)> {
+        let table = match &self.deps_table {
+            Some(t) => t,
+            None => return Ok((0, 0)),
+        };
+
+        let total = table.count_rows(None).await.unwrap_or(0) as u64;
+        let resolved = table
+            .count_rows(Some("resolved = true".to_string()))
+            .await
+            .unwrap_or(0) as u64;
+
+        Ok((total, resolved))
+    }
+
+    /// Convert RecordBatches to ImportDependency structs
+    fn batches_to_deps(batches: &[RecordBatch]) -> Result<Vec<ImportDependency>> {
+        let mut deps = Vec::new();
+
+        for batch in batches {
+            let file_as = string_column(batch, "file_a")?;
+            let file_bs = string_column(batch, "file_b")?;
+            let dep_types = string_column(batch, "dep_type")?;
+            let stmts = string_column(batch, "import_statement")?;
+            let symbols = string_column(batch, "symbol")?;
+            let resolved_col = batch
+                .column_by_name("resolved")
+                .context("Missing resolved column")?
+                .as_any()
+                .downcast_ref::<BooleanArray>()
+                .context("resolved column has wrong type")?;
+
+            for i in 0..batch.num_rows() {
+                deps.push(ImportDependency {
+                    file_a: file_as.value(i).to_string(),
+                    file_b: file_bs.value(i).to_string(),
+                    dep_type: dep_types.value(i).to_string(),
+                    import_statement: stmts.value(i).to_string(),
+                    symbol: if symbols.is_null(i) {
+                        None
+                    } else {
+                        Some(symbols.value(i).to_string())
+                    },
+                    resolved: resolved_col.value(i),
+                });
+            }
+        }
+
+        Ok(deps)
+    }
 }
 
 /// Convert ChunkType to string for storage
@@ -1930,5 +2151,134 @@ mod tests {
         // Non-existent chunk returns None
         let missing = store.get_chunk_embedding("nonexistent").await.unwrap();
         assert!(missing.is_none());
+    }
+
+    // ── Dependency tests ──────────────────────────────────────────────
+
+    fn sample_dep(file_a: &str, file_b: &str, resolved: bool) -> ImportDependency {
+        ImportDependency {
+            file_a: file_a.to_string(),
+            file_b: file_b.to_string(),
+            dep_type: "import".to_string(),
+            import_statement: format!("use {};", file_b),
+            symbol: None,
+            resolved,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_deps_insert_and_query() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let deps = vec![
+            ImportDependency {
+                file_a: "src/main.rs".to_string(),
+                file_b: "src/types.rs".to_string(),
+                dep_type: "use".to_string(),
+                import_statement: "use crate::types::Chunk;".to_string(),
+                symbol: Some("Chunk".to_string()),
+                resolved: true,
+            },
+        ];
+        store.upsert_dependencies(&deps).await.unwrap();
+
+        let result = store.get_dependencies("src/main.rs").await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].file_b, "src/types.rs");
+        assert_eq!(result[0].dep_type, "use");
+        assert_eq!(result[0].symbol, Some("Chunk".to_string()));
+        assert!(result[0].resolved);
+    }
+
+    #[tokio::test]
+    async fn test_deps_reverse_lookup() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let deps = vec![
+            sample_dep("src/main.rs", "src/types.rs", true),
+            sample_dep("src/cli/search.rs", "src/types.rs", true),
+        ];
+        store.upsert_dependencies(&deps).await.unwrap();
+
+        let dependents = store.get_dependents("src/types.rs").await.unwrap();
+        assert_eq!(dependents.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_deps_clear_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let deps = vec![
+            sample_dep("src/a.rs", "src/b.rs", true),
+            sample_dep("src/c.rs", "src/b.rs", true),
+        ];
+        store.upsert_dependencies(&deps).await.unwrap();
+
+        // Clear only a.rs deps
+        store.clear_file_dependencies("src/a.rs").await.unwrap();
+
+        assert_eq!(store.get_dependencies("src/a.rs").await.unwrap().len(), 0);
+        assert_eq!(store.get_dependencies("src/c.rs").await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_deps_stats() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let deps = vec![
+            sample_dep("src/a.rs", "src/b.rs", true),
+            sample_dep("src/a.rs", "unresolved:anyhow::Result", false),
+        ];
+        store.upsert_dependencies(&deps).await.unwrap();
+
+        let (total, resolved) = store.get_dependency_stats().await.unwrap();
+        assert_eq!(total, 2);
+        assert_eq!(resolved, 1);
+    }
+
+    #[tokio::test]
+    async fn test_deps_empty_store() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let store = VectorStore::open(&path).await.unwrap();
+
+        let deps = store.get_dependencies("src/a.rs").await.unwrap();
+        assert!(deps.is_empty());
+
+        let (total, resolved) = store.get_dependency_stats().await.unwrap();
+        assert_eq!(total, 0);
+        assert_eq!(resolved, 0);
+    }
+
+    #[tokio::test]
+    async fn test_deps_persist_across_reopen() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        {
+            let mut store = VectorStore::open(&path).await.unwrap();
+            let deps = vec![sample_dep("src/a.rs", "src/b.rs", true)];
+            store.upsert_dependencies(&deps).await.unwrap();
+        }
+
+        {
+            let store = VectorStore::open(&path).await.unwrap();
+            let deps = store.get_dependencies("src/a.rs").await.unwrap();
+            assert_eq!(deps.len(), 1);
+            assert_eq!(deps[0].file_b, "src/b.rs");
+        }
     }
 }

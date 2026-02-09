@@ -193,7 +193,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         // Also clear import dependencies for deleted files
         if config.dependencies.enabled {
             for file in &deleted_files {
-                metadata_store.clear_file_dependencies(file)?;
+                vector_store.clear_file_dependencies(file).await?;
             }
         }
     }
@@ -431,15 +431,15 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .into_iter()
             .collect();
 
-        metadata_store.begin_transaction()?;
         for file in &reindexed_files {
-            metadata_store.clear_file_dependencies(file)?;
+            vector_store.clear_file_dependencies(file).await?;
         }
+        let mut dep_batch: Vec<ImportDependency> = Vec::new();
         let mut dep_count = 0;
         let mut resolved_count = 0;
         for edge in &all_imports {
             let resolved = edge.resolved_path.is_some();
-            let dep = ImportDependency {
+            dep_batch.push(ImportDependency {
                 file_a: edge.source_file.clone(),
                 file_b: if let Some(ref rp) = edge.resolved_path {
                     rp.clone()
@@ -450,15 +450,13 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 import_statement: edge.import_specifier.clone(),
                 symbol: None,
                 resolved,
-            };
-            if metadata_store.upsert_dependency(&dep).is_ok() {
-                dep_count += 1;
-                if resolved {
-                    resolved_count += 1;
-                }
+            });
+            dep_count += 1;
+            if resolved {
+                resolved_count += 1;
             }
         }
-        metadata_store.commit()?;
+        vector_store.upsert_dependencies(&dep_batch).await?;
 
         if output.verbose && !output.quiet && !output.json {
             println!(

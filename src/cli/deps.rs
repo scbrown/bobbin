@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use super::OutputConfig;
 use crate::config::Config;
-use crate::storage::MetadataStore;
+use crate::storage::VectorStore;
 
 #[derive(Args)]
 pub struct DepsArgs {
@@ -47,9 +47,11 @@ pub async fn run(args: DepsArgs, output: OutputConfig) -> Result<()> {
         .with_context(|| format!("File not found: {}", args.file.display()))?;
 
     let repo_root = find_repo_root(&file_path)?;
-    let db_path = Config::db_path(&repo_root);
+    let lance_path = Config::lance_path(&repo_root);
 
-    let store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
+    let vector_store = VectorStore::open(&lance_path)
+        .await
+        .context("Failed to open vector store")?;
 
     let rel_path = file_path
         .strip_prefix(&repo_root)
@@ -61,13 +63,13 @@ pub async fn run(args: DepsArgs, output: OutputConfig) -> Result<()> {
     let show_dependents = args.reverse || args.both;
 
     let imports = if show_imports {
-        Some(store.get_dependencies(&rel_path)?)
+        Some(vector_store.get_dependencies(&rel_path).await?)
     } else {
         None
     };
 
     let dependents = if show_dependents {
-        Some(store.get_dependents(&rel_path)?)
+        Some(vector_store.get_dependents(&rel_path).await?)
     } else {
         None
     };

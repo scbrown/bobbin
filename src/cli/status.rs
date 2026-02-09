@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use super::OutputConfig;
 use crate::config::Config;
-use crate::storage::{MetadataStore, VectorStore};
+use crate::storage::VectorStore;
 use crate::types::IndexStats;
 
 #[derive(Args)]
@@ -109,16 +109,13 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
         }
 
         // Show dependency stats
-        let db_path = Config::db_path(&repo_root);
-        if let Ok(meta_store) = MetadataStore::open(&db_path) {
-            if let Ok((total_deps, resolved_deps)) = meta_store.get_dependency_stats() {
-                if total_deps > 0 {
-                    println!(
-                        "  Dependencies: {} ({} resolved)",
-                        total_deps.to_string().cyan(),
-                        resolved_deps
-                    );
-                }
+        if let Ok((total_deps, resolved_deps)) = vector_store.get_dependency_stats().await {
+            if total_deps > 0 {
+                println!(
+                    "  Dependencies: {} ({} resolved)",
+                    total_deps.to_string().cyan(),
+                    resolved_deps
+                );
             }
         }
 
