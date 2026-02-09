@@ -43,12 +43,16 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Vale lint
-        uses: errata-ai/vale-action@v2
-        with:
-          files: docs/book/src
-          reporter: github-check
-          fail_on_error: true
+      - name: Install Vale
+        run: |
+          wget -qO- https://github.com/errata-ai/vale/releases/download/v3.13.1/vale_3.13.1_Linux_64-bit.tar.gz | tar xz -C /usr/local/bin vale
+          vale --version
+
+      - name: Vale sync
+        run: vale sync
+
+      - name: Vale lint (errors only)
+        run: vale --minAlertLevel error docs/book/src/
 
   build:
     name: Build docs
