@@ -590,6 +590,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
+    // Compact fragmented lance data after indexing — each file insert creates a
+    // new fragment, and compaction merges them for better read performance.
+    vector_store.compact().await.ok();
+
     let elapsed = start_time.elapsed();
 
     // Build import stats for output (only if deps were processed)

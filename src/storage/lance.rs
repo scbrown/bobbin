@@ -9,6 +9,7 @@ use lance_index::scalar::FullTextSearchQuery;
 use lancedb::index::scalar::FtsIndexBuilder;
 use lancedb::index::Index;
 use lancedb::query::{ExecutableQuery, QueryBase};
+use lancedb::table::{CompactionOptions, OptimizeAction};
 use lancedb::{connect, Connection, Table};
 use std::path::Path;
 use std::sync::Arc;
@@ -17,6 +18,12 @@ use crate::types::{Chunk, ChunkType, FileMetadata, IndexStats, LanguageStats, Ma
 
 /// Table name for chunk storage
 const TABLE_NAME: &str = "chunks";
+
+/// Limit for queries that need all rows. LanceDB 0.17 defaults to limit=10
+/// (DEFAULT_TOP_K) for all queries including plain scans, so we must set an
+/// explicit large limit when scanning the full table. Using i64::MAX is safe
+/// because the lance scanner casts to i64 internally.
+const SCAN_ALL_LIMIT: usize = i64::MAX as usize;
 
 /// Default embedding dimension (for backward compatibility)
 const DEFAULT_EMBEDDING_DIM: i32 = 384;
@@ -289,6 +296,28 @@ impl VectorStore {
             .context("Failed to create FTS index")?;
 
         self.fts_indexed = true;
+        Ok(())
+    }
+
+    /// Compact fragmented data files.
+    ///
+    /// LanceDB creates a new fragment for every add/delete. With per-file upserts
+    /// this leads to heavy fragmentation that hurts read performance. Compaction
+    /// merges small fragments into larger ones.
+    pub async fn compact(&self) -> Result<()> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        table
+            .optimize(OptimizeAction::Compact {
+                options: CompactionOptions::default(),
+                remap_options: None,
+            })
+            .await
+            .context("Failed to compact table")?;
+
         Ok(())
     }
 
@@ -769,7 +798,8 @@ impl VectorStore {
 
         let mut q = table
             .query()
-            .select(lancedb::query::Select::Columns(vec!["file_path".to_string()]));
+            .select(lancedb::query::Select::Columns(vec!["file_path".to_string()]))
+            .limit(SCAN_ALL_LIMIT);
 
         if let Some(repo_name) = repo {
             q = q.only_if(format!("repo = '{}'", repo_name.replace('\'', "''")));
@@ -812,6 +842,7 @@ impl VectorStore {
         let results = table
             .query()
             .select(lancedb::query::Select::Columns(vec!["repo".to_string()]))
+            .limit(SCAN_ALL_LIMIT)
             .execute()
             .await
             .context("Failed to query repos")?;
@@ -908,6 +939,7 @@ impl VectorStore {
         let results = table
             .query()
             .only_if(filter)
+            .limit(SCAN_ALL_LIMIT)
             .execute()
             .await
             .context("Failed to query chunks for file")?;
@@ -977,6 +1009,7 @@ impl VectorStore {
         let results = table
             .query()
             .only_if(filter)
+            .limit(SCAN_ALL_LIMIT)
             .execute()
             .await
             .context("Failed to query chunks by name")?;
@@ -1046,14 +1079,15 @@ impl VectorStore {
 
         let total_chunks = table.count_rows(repo_filter.clone()).await.unwrap_or(0) as u64;
 
-        // Query for stats by selecting relevant columns
+        // Scan all rows for per-language aggregation.
         let mut q = table
             .query()
             .select(lancedb::query::Select::Columns(vec![
                 "file_path".to_string(),
                 "language".to_string(),
                 "indexed_at".to_string(),
-            ]));
+            ]))
+            .limit(SCAN_ALL_LIMIT);
 
         if let Some(ref filter) = repo_filter {
             q = q.only_if(filter.clone());
@@ -1464,6 +1498,67 @@ mod tests {
         let python_stats = stats.languages.iter().find(|l| l.language == "python").unwrap();
         assert_eq!(python_stats.file_count, 1);
         assert_eq!(python_stats.chunk_count, 1);
+    }
+
+    /// Regression test: many per-file inserts caused get_stats to return only
+    /// 10 rows because LanceDB Query defaults to limit=10 (DEFAULT_TOP_K).
+    #[tokio::test]
+    async fn test_get_stats_many_inserts() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        // Simulate per-file inserts (the real-world pattern that triggers the bug)
+        let languages = ["rust", "python", "markdown", "typescript"];
+        for i in 0..20 {
+            let lang = languages[i % languages.len()];
+            let chunk = Chunk {
+                id: format!("frag_chunk_{i}"),
+                file_path: format!("src/file_{i}.{}", if lang == "rust" { "rs" } else { lang }),
+                chunk_type: if lang == "markdown" {
+                    ChunkType::Section
+                } else {
+                    ChunkType::Function
+                },
+                name: Some(format!("func_{i}")),
+                start_line: 1,
+                end_line: 10,
+                content: format!("content of chunk {i}"),
+                language: lang.to_string(),
+            };
+
+            store
+                .insert(
+                    &[chunk],
+                    &[sample_embedding()],
+                    &no_contexts(1),
+                    "default",
+                    &format!("hash_{i}"),
+                    "1234567890",
+                )
+                .await
+                .unwrap();
+        }
+
+        let stats = store.get_stats(None).await.unwrap();
+        assert_eq!(stats.total_chunks, 20);
+        assert_eq!(stats.total_files, 20);
+
+        // Per-language breakdown must account for ALL chunks, not just 10
+        let total_lang_chunks: u64 = stats.languages.iter().map(|l| l.chunk_count).sum();
+        assert_eq!(
+            total_lang_chunks, 20,
+            "per-language chunk sum must equal total — got breakdown: {:?}",
+            stats.languages
+        );
+
+        // 20 chunks across 4 languages = 5 each
+        assert_eq!(stats.languages.len(), 4);
+        for lang_stat in &stats.languages {
+            assert_eq!(lang_stat.chunk_count, 5, "{} should have 5 chunks", lang_stat.language);
+            assert_eq!(lang_stat.file_count, 5, "{} should have 5 files", lang_stat.language);
+        }
     }
 
     #[tokio::test]
