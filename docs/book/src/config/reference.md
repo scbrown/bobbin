@@ -78,6 +78,43 @@ coupling_depth = 1000
 coupling_threshold = 3
 ```
 
+## Documentation-Heavy Projects
+
+For projects that are primarily markdown documentation (doc sites, wikis, knowledge bases), consider these tuned settings:
+
+```toml
+[index]
+include = [
+    "**/*.md",
+]
+
+exclude = [
+    "**/node_modules/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/.git/**",
+    "**/site/**",            # MkDocs build output
+    "**/book/**",            # mdBook build output
+    "**/_build/**",          # Sphinx build output
+]
+
+[embedding.context]
+context_lines = 5
+enabled_languages = ["markdown"]
+
+[search]
+semantic_weight = 0.8        # Favor semantic search for natural-language queries
+```
+
+Key differences from the defaults:
+- **Include** restricted to `**/*.md` to skip non-documentation files
+- **Exclude** adds common doc-tool build output directories
+- **Semantic weight** raised to 0.8 since documentation queries tend to be natural language
+
+For projects that mix code and documentation, keep the default include patterns and add the documentation-specific exclude patterns.
+
+See [Indexing Documentation](../guides/documentation.md) for a full walkthrough.
+
 ## Sections
 
 | Section | Description | Details |

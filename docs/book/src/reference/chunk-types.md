@@ -38,6 +38,117 @@ These chunk types are extracted by pulldown-cmark from Markdown files.
 | `code_block` | Fenced code blocks | ` ```rust ... ``` ` |
 | `doc` | YAML frontmatter blocks | `---\ntitle: "..."` |
 
+### `section`
+
+A section chunk captures a heading and all content up to the next heading of the same or higher level. Section names include the full heading hierarchy, so nested headings produce names like `"API Reference > Authentication > OAuth Flow"`.
+
+Given this markdown:
+
+```markdown
+# API Reference
+
+Overview text.
+
+## Authentication
+
+Auth details here.
+
+### OAuth Flow
+
+OAuth steps.
+```
+
+Bobbin produces three section chunks:
+
+- `"API Reference"` — contains "Overview text."
+- `"API Reference > Authentication"` — contains "Auth details here."
+- `"API Reference > Authentication > OAuth Flow"` — contains "OAuth steps."
+
+Content before the first heading (excluding frontmatter) becomes a `doc` chunk named "Preamble".
+
+**Search example:**
+
+```bash
+bobbin search "OAuth authorization" --type section
+```
+
+### `table`
+
+Table chunks capture the full markdown table. They are named after their parent section heading — for example, a table under `## Configuration` becomes `"Configuration (table)"`.
+
+Given this markdown:
+
+```markdown
+## Configuration
+
+| Key      | Default | Description          |
+|----------|---------|----------------------|
+| timeout  | 30      | Request timeout (s)  |
+| retries  | 3       | Max retry attempts   |
+```
+
+Bobbin produces one table chunk named `"Configuration (table)"`.
+
+**Search example:**
+
+```bash
+bobbin search "timeout settings" --type table
+bobbin grep "retries" --type table
+```
+
+### `code_block`
+
+Code block chunks capture fenced code blocks. They are named by their language tag — ` ```bash ` produces a chunk named `"code: bash"`.
+
+Given this markdown:
+
+````markdown
+## Installation
+
+```bash
+pip install mypackage
+```
+
+```python
+import mypackage
+mypackage.init()
+```
+````
+
+Bobbin produces two code_block chunks: `"code: bash"` and `"code: python"`.
+
+**Search example:**
+
+```bash
+bobbin search "install dependencies" --type code_block
+bobbin grep "pip install" --type code_block
+```
+
+### `doc` (frontmatter)
+
+Doc chunks capture YAML frontmatter at the top of a markdown file. The chunk is named `"Frontmatter"`.
+
+Given this markdown:
+
+```markdown
+---
+title: Deployment Guide
+tags: [ops, deployment]
+status: published
+---
+
+# Deployment Guide
+```
+
+Bobbin produces one doc chunk named `"Frontmatter"` containing the YAML block.
+
+**Search example:**
+
+```bash
+bobbin grep "status: draft" --type doc
+bobbin search "deployment guide metadata" --type doc
+```
+
 ## Special Chunk Types
 
 | Type | Description |

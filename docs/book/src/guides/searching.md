@@ -60,9 +60,24 @@ bobbin search "parse config file" --type function
 # Only structs
 bobbin search "database connection" --type struct
 
-# Only documentation
+# Only documentation frontmatter
 bobbin search "retry behavior" --type doc
 ```
+
+For markdown files, additional chunk types let you target specific document structures:
+
+```bash
+# Heading-delimited sections
+bobbin search "deployment steps" --type section
+
+# Tables (API references, config options, comparison charts)
+bobbin search "HTTP status codes" --type table
+
+# Fenced code blocks (examples, snippets)
+bobbin search "docker compose" --type code_block
+```
+
+See [Indexing Documentation](documentation.md) for a full guide to searching docs.
 
 ### By repository
 

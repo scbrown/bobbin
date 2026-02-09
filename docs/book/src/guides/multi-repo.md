@@ -147,6 +147,48 @@ bobbin index --repo infra --source ~/projects/infrastructure
 bobbin index --repo my-company-api-server-v2 --source ...
 ```
 
+## Documentation alongside code
+
+A common multi-repo pattern is indexing documentation repos alongside their code counterparts. This lets you cross-reference docs and implementation:
+
+```bash
+# Index the code
+bobbin index --repo api --source ~/projects/api-server
+
+# Index the documentation
+bobbin index --repo docs --source ~/projects/docs-site/src
+
+# Index a wiki
+bobbin index --repo wiki --source ~/projects/repo.wiki
+```
+
+Now you can search across both code and documentation:
+
+```bash
+# Find the docs explaining a feature
+bobbin search "rate limiting configuration" --repo docs
+
+# Find the code implementing what the docs describe
+bobbin search "rate limiter middleware" --repo api
+
+# Search everything at once
+bobbin search "rate limiting"
+```
+
+You can also filter by chunk type across repos. For example, find all tables in documentation:
+
+```bash
+bobbin search "API endpoints" --repo docs --type table
+```
+
+Or find code examples in the docs:
+
+```bash
+bobbin search "authentication example" --repo docs --type code_block
+```
+
+For detailed guidance on indexing documentation, see [Indexing Documentation](documentation.md).
+
 ## Monorepo alternative
 
 If your code is in a monorepo, you don't need multi-repo indexing. A single `bobbin index` covers everything. But you might still use `--repo` to logically partition a monorepo:

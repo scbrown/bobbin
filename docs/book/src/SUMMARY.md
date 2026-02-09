@@ -12,6 +12,7 @@
 # Guides
 
 - [Searching](guides/searching.md)
+- [Indexing Documentation](guides/documentation.md)
 - [Context Assembly](guides/context-assembly.md)
 - [Git Coupling](guides/git-coupling.md)
 - [Hotspots](guides/hotspots.md)
