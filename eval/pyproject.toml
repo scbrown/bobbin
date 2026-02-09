@@ -22,7 +22,10 @@ bobbin-eval = "runner.cli:cli"
 
 [build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["runner*", "scorer*", "analysis*"]
 
 [tool.ruff]
 line-length = 100
