@@ -1,31 +1,451 @@
-"""CLI entrypoint for the bobbin eval runner."""
+"""CLI entrypoint for the bobbin eval runner.
+
+Provides commands for running evaluations, scoring results, and generating
+reports. The runner orchestrates workspace setup, agent invocation, and
+scoring for each task × approach × attempt combination.
+
+Usage::
+
+    bobbin-eval run-task ruff-001
+    bobbin-eval run-all --tasks-dir tasks
+    bobbin-eval score results/
+    bobbin-eval report results/ --output report.md
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 
 import click
 
+from runner.task_loader import TaskLoadError, load_all_tasks, load_task_by_id
+
+logger = logging.getLogger(__name__)
+
+
+def _setup_logging(verbose: bool) -> None:
+    """Configure logging based on verbosity."""
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+
+def _resolve_tasks_dir(tasks_dir: str) -> Path:
+    """Resolve tasks directory relative to the eval root."""
+    p = Path(tasks_dir)
+    if p.is_absolute():
+        return p
+    # Try relative to cwd first, then relative to eval/ directory.
+    if p.is_dir():
+        return p
+    eval_root = Path(__file__).parent.parent
+    candidate = eval_root / p
+    if candidate.is_dir():
+        return candidate
+    return p  # Let downstream raise the error.
+
+
+def _build_prompt(task: dict) -> str:
+    """Build the agent prompt from a task definition."""
+    repo = task["repo"]
+    desc = task["description"].strip()
+    test_cmd = task["test_command"]
+    return (
+        f"You are working on the {repo} project.\n\n"
+        f"{desc}\n\n"
+        f"Implement the fix. Run the test suite with `{test_cmd}` to verify."
+    )
+
+
+def _save_result(result: dict, results_dir: Path) -> Path:
+    """Save a single run result as a JSON file.
+
+    Filename format: ``<task_id>_<approach>_<attempt>.json``
+    """
+    results_dir.mkdir(parents=True, exist_ok=True)
+    task_id = result.get("task_id", "unknown")
+    approach = result.get("approach", "unknown")
+    attempt = result.get("attempt", 0)
+    filename = f"{task_id}_{approach}_{attempt}.json"
+    path = results_dir / filename
+    path.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
+    return path
+
+
+def _run_single(
+    task: dict,
+    approach: str,
+    attempt: int,
+    results_dir: Path,
+    *,
+    settings_file: str | None = None,
+    model: str = "claude-sonnet-4-5-20250929",
+    budget: float = 2.00,
+    timeout: int = 600,
+    skip_verify: bool = False,
+) -> dict:
+    """Execute a single task × approach × attempt evaluation run.
+
+    Returns the result dict (also saved to results_dir).
+    """
+    from runner.agent_runner import run_agent
+    from runner.bobbin_setup import setup_bobbin
+    from runner.workspace import setup_workspace, snapshot
+    from scorer.diff_scorer import score_diff
+    from scorer.test_scorer import run_tests
+
+    task_id = task["id"]
+    click.echo(f"  [{task_id}] {approach} attempt {attempt + 1}")
+
+    # 1. Setup workspace.
+    with tempfile.TemporaryDirectory(prefix=f"bobbin-eval-{task_id}-") as tmpdir:
+        click.echo("    Setting up workspace...")
+        try:
+            ws, parent = setup_workspace(
+                task["repo"],
+                task["commit"],
+                task["test_command"],
+                tmpdir,
+                verify=not skip_verify,
+            )
+        except Exception as exc:
+            click.echo(f"    Workspace setup failed: {exc}", err=True)
+            result = {
+                "task_id": task_id,
+                "approach": approach,
+                "attempt": attempt,
+                "status": "workspace_error",
+                "error": str(exc),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            _save_result(result, results_dir)
+            return result
+
+        # 2. Bobbin setup (with-bobbin only).
+        if approach == "with-bobbin":
+            click.echo("    Running bobbin init + index...")
+            try:
+                setup_bobbin(str(ws))
+            except Exception as exc:
+                click.echo(f"    Bobbin setup failed: {exc}", err=True)
+                result = {
+                    "task_id": task_id,
+                    "approach": approach,
+                    "attempt": attempt,
+                    "status": "bobbin_setup_error",
+                    "error": str(exc),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                _save_result(result, results_dir)
+                return result
+
+        # 3. Run agent.
+        prompt = _build_prompt(task)
+        click.echo(f"    Running Claude Code (model={model}, budget=${budget:.2f})...")
+        agent_result = run_agent(
+            str(ws),
+            prompt,
+            settings_file=settings_file if approach == "with-bobbin" else None,
+            model=model,
+            max_budget_usd=budget,
+            timeout=timeout,
+        )
+
+        # 4. Snapshot and score.
+        click.echo("    Scoring...")
+        snap = snapshot(ws)
+        test_result = run_tests(str(ws), task["test_command"])
+        diff_result = score_diff(str(ws), task["commit"], snapshot=snap)
+
+        result = {
+            "task_id": task_id,
+            "approach": approach,
+            "attempt": attempt,
+            "status": "completed",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "task": {
+                "repo": task["repo"],
+                "commit": task["commit"],
+                "test_command": task["test_command"],
+                "language": task.get("language"),
+                "difficulty": task.get("difficulty"),
+            },
+            "agent_result": {
+                "exit_code": agent_result["exit_code"],
+                "duration_seconds": agent_result["duration_seconds"],
+                "timed_out": agent_result["timed_out"],
+            },
+            "test_result": {
+                "passed": test_result["passed"],
+                "total": test_result["total"],
+                "failures": test_result["failures"],
+                "parsed": test_result["parsed"],
+            },
+            "diff_result": {
+                "file_precision": diff_result["file_precision"],
+                "file_recall": diff_result["file_recall"],
+                "f1": diff_result["f1"],
+                "files_touched": diff_result["files_touched"],
+                "ground_truth_files": diff_result["ground_truth_files"],
+                "exact_file_match": diff_result["exact_file_match"],
+            },
+        }
+
+        path = _save_result(result, results_dir)
+        status = "PASS" if test_result["passed"] else "FAIL"
+        click.echo(
+            f"    {status} | precision={diff_result['file_precision']:.2f} "
+            f"recall={diff_result['file_recall']:.2f} "
+            f"f1={diff_result['f1']:.2f} | {agent_result['duration_seconds']:.0f}s"
+        )
+        click.echo(f"    Saved: {path.name}")
+
+    return result
+
+
+def _resolve_approaches(approaches: str) -> list[str]:
+    """Expand 'both' into the two approach names."""
+    if approaches == "both":
+        return ["no-bobbin", "with-bobbin"]
+    return [approaches]
+
 
 @click.group()
-def cli():
+@click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
+def cli(verbose: bool):
     """Bobbin evaluation framework — compare Claude Code with and without bobbin."""
-    pass
+    _setup_logging(verbose)
 
 
 @cli.command()
 @click.argument("task_id")
 @click.option("--attempts", default=3, help="Number of attempts per approach.")
-@click.option("--approaches", default="both", type=click.Choice(["no-bobbin", "with-bobbin", "both"]))
-def run_task(task_id: str, attempts: int, approaches: str):
-    """Run evaluation for a single task."""
-    click.echo(f"Running task {task_id} ({attempts} attempts, approaches={approaches})")
-    raise NotImplementedError("Runner not yet implemented — see bo-4iep")
+@click.option(
+    "--approaches",
+    default="both",
+    type=click.Choice(["no-bobbin", "with-bobbin", "both"]),
+    help="Which approaches to evaluate.",
+)
+@click.option("--tasks-dir", default="tasks", help="Directory containing task YAML files.")
+@click.option("--results-dir", default="results", help="Directory to store result JSON files.")
+@click.option("--settings-file", default=None, help="Claude Code settings file for with-bobbin.")
+@click.option("--model", default="claude-sonnet-4-5-20250929", help="Claude model to use.")
+@click.option("--budget", default=2.00, type=float, help="Max budget per run (USD).")
+@click.option("--timeout", default=600, type=int, help="Agent timeout in seconds.")
+@click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
+def run_task(
+    task_id: str,
+    attempts: int,
+    approaches: str,
+    tasks_dir: str,
+    results_dir: str,
+    settings_file: str | None,
+    model: str,
+    budget: float,
+    timeout: int,
+    skip_verify: bool,
+):
+    """Run evaluation for a single task.
+
+    TASK_ID is the task identifier (e.g., ruff-001).
+    """
+    tasks_path = _resolve_tasks_dir(tasks_dir)
+    rdir = Path(results_dir)
+
+    try:
+        task = load_task_by_id(task_id, tasks_path)
+    except TaskLoadError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    approach_list = _resolve_approaches(approaches)
+    total = len(approach_list) * attempts
+    click.echo(f"Running task {task_id}: {total} runs ({len(approach_list)} approaches × {attempts} attempts)")
+
+    results = []
+    for approach in approach_list:
+        for attempt in range(attempts):
+            result = _run_single(
+                task,
+                approach,
+                attempt,
+                rdir,
+                settings_file=settings_file,
+                model=model,
+                budget=budget,
+                timeout=timeout,
+                skip_verify=skip_verify,
+            )
+            results.append(result)
+
+    passed = sum(1 for r in results if r.get("test_result", {}).get("passed"))
+    click.echo(f"\nDone: {passed}/{len(results)} runs passed tests")
 
 
 @cli.command()
 @click.option("--tasks-dir", default="tasks", help="Directory containing task YAML files.")
-@click.option("--attempts", default=3)
-def run_all(tasks_dir: str, attempts: int):
+@click.option("--results-dir", default="results", help="Directory to store result JSON files.")
+@click.option("--attempts", default=3, type=int, help="Number of attempts per approach.")
+@click.option(
+    "--approaches",
+    default="both",
+    type=click.Choice(["no-bobbin", "with-bobbin", "both"]),
+)
+@click.option("--settings-file", default=None, help="Claude Code settings file for with-bobbin.")
+@click.option("--model", default="claude-sonnet-4-5-20250929", help="Claude model to use.")
+@click.option("--budget", default=2.00, type=float, help="Max budget per run (USD).")
+@click.option("--timeout", default=600, type=int, help="Agent timeout in seconds.")
+@click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
+def run_all(
+    tasks_dir: str,
+    results_dir: str,
+    attempts: int,
+    approaches: str,
+    settings_file: str | None,
+    model: str,
+    budget: float,
+    timeout: int,
+    skip_verify: bool,
+):
     """Run evaluation for all tasks in the tasks directory."""
-    click.echo(f"Running all tasks from {tasks_dir} ({attempts} attempts each)")
-    raise NotImplementedError("Runner not yet implemented — see bo-4iep")
+    tasks_path = _resolve_tasks_dir(tasks_dir)
+    rdir = Path(results_dir)
+
+    try:
+        tasks = load_all_tasks(tasks_path)
+    except TaskLoadError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    approach_list = _resolve_approaches(approaches)
+    total = len(tasks) * len(approach_list) * attempts
+    click.echo(
+        f"Running {len(tasks)} tasks: {total} total runs "
+        f"({len(approach_list)} approaches × {attempts} attempts)"
+    )
+
+    all_results = []
+    for task in tasks:
+        click.echo(f"\n--- {task['id']}: {task['repo']} ---")
+        for approach in approach_list:
+            for attempt in range(attempts):
+                result = _run_single(
+                    task,
+                    approach,
+                    attempt,
+                    rdir,
+                    settings_file=settings_file,
+                    model=model,
+                    budget=budget,
+                    timeout=timeout,
+                    skip_verify=skip_verify,
+                )
+                all_results.append(result)
+
+    passed = sum(1 for r in all_results if r.get("test_result", {}).get("passed"))
+    click.echo(f"\nAll done: {passed}/{len(all_results)} runs passed tests")
+
+
+@cli.command()
+@click.argument("results_dir", default="results")
+def score(results_dir: str):
+    """Display a summary of existing results.
+
+    RESULTS_DIR is the directory containing result JSON files.
+    """
+    rdir = Path(results_dir)
+    if not rdir.is_dir():
+        click.echo(f"Error: Results directory not found: {rdir}", err=True)
+        sys.exit(1)
+
+    json_files = sorted(rdir.glob("*.json"))
+    if not json_files:
+        click.echo(f"No result files found in {rdir}", err=True)
+        sys.exit(1)
+
+    results = []
+    for f in json_files:
+        try:
+            results.append(json.loads(f.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError) as exc:
+            click.echo(f"Warning: skipping {f.name}: {exc}", err=True)
+
+    # Group by approach and compute stats.
+    by_approach: dict[str, list[dict]] = {}
+    for r in results:
+        a = r.get("approach", "unknown")
+        by_approach.setdefault(a, []).append(r)
+
+    click.echo(f"\n{'Approach':<16} {'Runs':>5} {'Pass':>5} {'Rate':>8} "
+               f"{'Prec':>8} {'Recall':>8} {'F1':>8} {'Avg Time':>10}")
+    click.echo("-" * 80)
+
+    for approach in sorted(by_approach):
+        runs = by_approach[approach]
+        n = len(runs)
+        passed = sum(1 for r in runs if r.get("test_result", {}).get("passed"))
+        rate = passed / n if n else 0
+
+        precisions = [
+            r["diff_result"]["file_precision"]
+            for r in runs
+            if r.get("diff_result", {}).get("file_precision") is not None
+        ]
+        recalls = [
+            r["diff_result"]["file_recall"]
+            for r in runs
+            if r.get("diff_result", {}).get("file_recall") is not None
+        ]
+        f1s = [
+            r["diff_result"]["f1"]
+            for r in runs
+            if r.get("diff_result", {}).get("f1") is not None
+        ]
+        durations = [
+            r["agent_result"]["duration_seconds"]
+            for r in runs
+            if r.get("agent_result", {}).get("duration_seconds") is not None
+        ]
+
+        avg_prec = sum(precisions) / len(precisions) if precisions else 0
+        avg_recall = sum(recalls) / len(recalls) if recalls else 0
+        avg_f1 = sum(f1s) / len(f1s) if f1s else 0
+        avg_time = sum(durations) / len(durations) if durations else 0
+
+        click.echo(
+            f"{approach:<16} {n:>5} {passed:>5} {rate:>7.1%} "
+            f"{avg_prec:>8.3f} {avg_recall:>8.3f} {avg_f1:>8.3f} {avg_time:>9.1f}s"
+        )
+
+
+@cli.command()
+@click.argument("results_dir", default="results")
+@click.option("--output", "-o", default=None, help="Output path for the markdown report.")
+def report(results_dir: str, output: str | None):
+    """Generate a markdown summary report from results.
+
+    RESULTS_DIR is the directory containing result JSON files.
+    """
+    from analysis.report import ReportError, generate_report
+
+    if output is None:
+        output = str(Path(results_dir) / "report.md")
+
+    try:
+        generate_report(results_dir, output)
+    except ReportError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Report written to {output}")
 
 
 if __name__ == "__main__":
