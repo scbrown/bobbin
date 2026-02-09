@@ -21,7 +21,7 @@ Bobbin uses standard Unix exit codes. All commands follow the same convention.
 
 ### Not Initialized (exit 1)
 
-```
+```text
 Error: Bobbin not initialized in /path/to/project. Run `bobbin init` first.
 ```
 
@@ -33,7 +33,7 @@ Commands like `search` and `grep` return exit code 0 with zero results if the in
 
 ### Invalid Arguments (exit 2)
 
-```
+```text
 error: unexpected argument '--foo' found
 ```
 
@@ -41,7 +41,7 @@ The clap argument parser returns exit code 2 for unrecognized flags, missing req
 
 ### File Not Found (exit 1)
 
-```
+```text
 Error: File not found in index: src/nonexistent.rs
 ```
 
@@ -49,7 +49,7 @@ Occurs when `related` or `read_chunk` references a file that isn't in the index.
 
 ### Invalid Search Mode (exit 1)
 
-```
+```text
 Error: Invalid search mode: 'fuzzy'. Use 'hybrid', 'semantic', or 'keyword'
 ```
 

@@ -18,7 +18,7 @@ Bobbin is a local-first code context engine built in Rust. It provides semantic 
 
 ## Module Structure
 
-```
+```text
 src/
 ├── main.rs           # Entry point, CLI initialization
 ├── config.rs         # Configuration management (.bobbin/config.toml)
@@ -62,7 +62,7 @@ src/
 
 ### Indexing Pipeline
 
-```
+```text
 Repository Files
       │
       ▼
@@ -91,7 +91,7 @@ Repository Files
 
 ### Query Pipeline
 
-```
+```text
 User Query
       │
       ▼

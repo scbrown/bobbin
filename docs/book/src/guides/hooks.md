@@ -55,7 +55,7 @@ bobbin hook status
 
 Output shows whether hooks are installed and the current configuration:
 
-```
+```text
 Claude Code hooks: installed
 Git hook: not installed
 

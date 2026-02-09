@@ -11,7 +11,7 @@ Bobbin generates 384-dimensional vector embeddings locally using ONNX Runtime wi
 
 ## Pipeline Overview
 
-```
+```text
 Source File
     │
     ▼

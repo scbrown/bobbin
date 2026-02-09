@@ -46,7 +46,7 @@ Bobbin offers three search modes:
 |------|-------------|----------|
 | **Hybrid** (default) | Combines semantic + keyword via RRF | General-purpose queries |
 | **Semantic** | Vector similarity (ANN) only | Conceptual queries ("authentication logic") |
-| **Keyword** | Full-text search (FTS) only | Exact identifiers ("handleRequest") |
+| **Keyword** | Full-text search (FTS) only | Exact identifiers ("`handleRequest`") |
 
 **Reciprocal Rank Fusion (RRF)** merges the ranked results from both semantic and keyword search. The `semantic_weight` config (default: 0.7) controls the balance.
 

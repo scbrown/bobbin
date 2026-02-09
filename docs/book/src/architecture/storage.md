@@ -13,7 +13,7 @@ Bobbin uses a dual-storage architecture: LanceDB as the primary store for chunks
 
 All chunk data, embeddings, and full-text search live in LanceDB:
 
-```
+```text
 chunks table:
   - id: string            # SHA256-based unique chunk ID
   - vector: float[384]    # MiniLM embedding
@@ -87,11 +87,12 @@ struct SearchResult {
 
 The hybrid search combines semantic (vector) and keyword (FTS) results using Reciprocal Rank Fusion:
 
-```
+```text
 RRF_score = semantic_weight / (k + semantic_rank) + keyword_weight / (k + keyword_rank)
 ```
 
 Where:
+
 - `k = 60` (standard RRF constant)
 - `semantic_weight` from config (default 0.7)
 - `keyword_weight = 1 - semantic_weight`

@@ -31,7 +31,7 @@ Results that appear in both lists get boosted. Results unique to one list still 
 
 ### When to Use
 
-Hybrid is the best default for most queries. It handles both conceptual queries ("functions that validate user input") and specific terms ("parseConfig") well.
+Hybrid is the best default for most queries. It handles both conceptual queries ("functions that validate user input") and specific terms ("`parseConfig`") well.
 
 ## Semantic
 

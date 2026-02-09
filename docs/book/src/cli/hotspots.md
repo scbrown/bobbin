@@ -24,11 +24,12 @@ The `hotspots` command combines git commit history with AST-based complexity ana
 
 The **hotspot score** is the geometric mean of normalized churn and complexity:
 
-```
+```text
 score = sqrt(churn_normalized * complexity)
 ```
 
 Where:
+
 - **churn** is the number of commits touching a file in the time window, normalized against the most-changed file.
 - **complexity** is a weighted AST complexity score in the range \[0, 1\].
 

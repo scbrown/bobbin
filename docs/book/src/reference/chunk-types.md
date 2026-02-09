@@ -91,5 +91,5 @@ Accepted type values (case-insensitive, with aliases):
 | Go | `.go` | function, method, struct |
 | Java | `.java` | method, class, interface, enum |
 | C++ | `.cpp`, `.cc`, `.hpp` | function, method, class, struct, enum |
-| Markdown | `.md` | section, table, code_block, doc |
+| Markdown | `.md` | section, table, `code_block`, doc |
 | Other | * | other (line-based) |

@@ -34,7 +34,7 @@ bobbin search "auth" --repo myproject             # Search within a specific rep
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--type <TYPE>` | `-t` | Filter by chunk type (function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block) |
+| `--type <TYPE>` | `-t` | Filter by chunk type (function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, `code_block`) |
 | `--limit <N>` | `-n` | Maximum results (default: 10) |
 | `--mode <MODE>` | `-m` | Search mode: `hybrid` (default), `semantic`, or `keyword` |
 | `--repo <NAME>` | `-r` | Filter to a specific repository |

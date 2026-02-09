@@ -16,6 +16,7 @@ Code that changes together belongs together — or at least, you need to know ab
 Temporal coupling measures how often two files appear in the same git commit. If `auth.rs` and `session.rs` are modified in 30 of the same 50 commits, they have a high coupling score. This signal is independent of the language, the import graph, or the directory structure.
 
 This matters because:
+
 - **Hidden dependencies** — files may be logically coupled without any import between them (a schema file and the code that queries it, a test file and its fixtures).
 - **Change propagation** — when you modify one file, coupled files are likely candidates for coordinated changes.
 - **Code review scope** — temporal coupling reveals what a reviewer should look at beyond the diff.
@@ -24,7 +25,7 @@ This matters because:
 
 During `bobbin index`, if `[git].coupling_enabled` is true (the default), bobbin walks the last N commits (controlled by `coupling_depth`, default 1000) and records which files change together. The coupling score between two files is:
 
-```
+```text
 score = co_changes / min(changes_a, changes_b)
 ```
 
@@ -40,7 +41,7 @@ bobbin related src/auth.rs
 
 Output lists files ranked by coupling score, highest first:
 
-```
+```text
 src/session.rs         0.82  (shared 41 of 50 commits)
 src/middleware/auth.rs 0.64  (shared 32 of 50 commits)
 tests/auth_test.rs     0.58  (shared 29 of 50 commits)

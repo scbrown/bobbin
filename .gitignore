@@ -15,6 +15,12 @@ Thumbs.db
 # Bobbin index data
 .bobbin/
 
+# Docs build output
+/docs/book/book/
+
+# Vale synced styles (downloaded by vale sync)
+.vale/styles/write-good/
+
 # Python
 __pycache__/
 *.egg-info/

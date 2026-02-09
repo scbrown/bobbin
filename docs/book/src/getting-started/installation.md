@@ -38,6 +38,7 @@ The binary is at `target/release/bobbin`.
 On first use, bobbin automatically downloads the embedding model (`all-MiniLM-L6-v2`, ~23 MB) to a local cache directory. This is a one-time download — subsequent runs use the cached model.
 
 The model cache location follows platform conventions:
+
 - **Linux**: `~/.cache/bobbin/models/`
 - **macOS**: `~/Library/Caches/bobbin/models/`
 

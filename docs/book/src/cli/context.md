@@ -45,6 +45,7 @@ bobbin context "auth" --repo myproject --json         # JSON output for a specif
 ## Context Bundle
 
 The context bundle includes:
+
 - **Direct matches**: Code chunks matching your query, ranked by relevance
 - **Coupled files**: Files with shared commit history to the direct matches
 - **Budget tracking**: How many lines were used out of the budget

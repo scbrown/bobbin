@@ -20,7 +20,7 @@ A hotspot is a file that scores high on two axes:
 
 The **hotspot score** is the geometric mean of these two signals:
 
-```
+```text
 score = sqrt(churn_normalized * complexity)
 ```
 
@@ -34,7 +34,7 @@ bobbin hotspots
 
 This shows the top 20 hotspots from the last year, ranked by score:
 
-```
+```text
  Score  Churn  Complexity  File
  0.823    47       0.72    src/cli/hook.rs
  0.756    38       0.68    src/index/parser.rs

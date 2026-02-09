@@ -11,7 +11,7 @@ Bobbin implements a [Model Context Protocol (MCP)](https://modelcontextprotocol.
 
 ## How It Works
 
-```
+```text
 AI Agent (Claude Code, Cursor, etc.)
     │
     ├── MCP Protocol (JSON-RPC over stdio)

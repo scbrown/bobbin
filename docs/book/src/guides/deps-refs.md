@@ -25,7 +25,7 @@ bobbin deps src/main.rs
 
 Output shows each import and where it resolves to:
 
-```
+```text
 src/main.rs imports:
   use crate::config::Config    → src/config.rs
   use crate::cli::run          → src/cli/mod.rs
@@ -44,7 +44,7 @@ bobbin deps --reverse src/config.rs
 
 Output shows every file that imports from `config.rs`:
 
-```
+```text
 Files that import src/config.rs:
   src/main.rs         use crate::config::Config
   src/cli/init.rs     use crate::config::Config
@@ -75,7 +75,7 @@ bobbin refs find Config
 
 Output shows the definition location and every usage:
 
-```
+```text
 Definition:
   struct Config — src/config.rs:10-25
 
@@ -108,7 +108,7 @@ bobbin refs symbols src/config.rs
 
 Output:
 
-```
+```text
 src/config.rs (4 symbols):
   struct Config           lines 10-25
   struct HooksConfig      lines 30-48

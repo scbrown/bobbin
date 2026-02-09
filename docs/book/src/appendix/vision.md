@@ -20,22 +20,26 @@ In the era of AI-assisted development, context is everything. Current tools trea
 ## Core Principles
 
 ### 1. Local-First, Always
+
 - All indexing and search happens on your machine
 - No data leaves your environment
 - Works offline, works air-gapped
 - Your code stays yours
 
 ### 2. Structure-Aware
+
 - Code is parsed, not chunked arbitrarily
 - Functions, classes, and modules are first-class citizens
 - Respects language semantics via Tree-sitter
 
 ### 3. Temporally-Aware
+
 - Git history is a retrieval signal, not just version control
 - Files that change together are semantically linked
 - Understand "what usually changes when X changes"
 
 ### 4. Agent-Ready, Human-Friendly
+
 - CLI interface works for both humans and AI agents
 - No special agent protocols required (MCP optional)
 - Simple, composable commands

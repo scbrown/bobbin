@@ -92,6 +92,7 @@ bobbin serve
 ```
 
 The server advertises:
+
 - **Protocol version**: `2024-11-05`
 - **Server name**: `bobbin`
 - **Capabilities**: tools, resources, prompts

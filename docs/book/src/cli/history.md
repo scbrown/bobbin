@@ -36,6 +36,7 @@ bobbin history src/main.rs --json        # JSON output with stats
 ## Output
 
 Output includes:
+
 - Commit date, author, and message for each entry
 - Referenced issue IDs (if present in commit messages)
 - Statistics: total commits, churn rate (commits/month), author breakdown

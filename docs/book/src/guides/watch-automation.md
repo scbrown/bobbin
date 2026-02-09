@@ -20,8 +20,9 @@ bobbin watch
 ```
 
 This starts a long-running process that:
+
 - Detects file creates, modifications, and deletions using OS-native notifications (inotify on Linux, FSEvents on macOS).
-- Debounces rapid changes (default 500ms) to batch them efficiently.
+- `Debounces` rapid changes (default 500ms) to batch them efficiently.
 - Re-parses, re-embeds, and upserts chunks for changed files.
 - Removes chunks for deleted files.
 - Skips files whose content hash hasn't changed.
@@ -67,11 +68,13 @@ bobbin hook install-git-hook
 This creates (or appends to) `.git/hooks/post-commit` with a call to `bobbin index`. Only files changed in the commit are re-indexed.
 
 **Advantages over watch mode:**
+
 - No background process to manage.
 - Only runs when you commit, not on every file save.
 - Works well in CI environments where filesystem watchers aren't practical.
 
 **Disadvantages:**
+
 - Index is stale between commits. Uncommitted changes aren't reflected.
 - Adds a small delay to each commit.
 
@@ -111,6 +114,7 @@ systemctl --user enable --now bobbin-watch
 ```
 
 The generated unit:
+
 - Uses `Type=simple` with automatic restart on failure.
 - Sets `RestartSec=5` and `RUST_LOG=info`.
 - Includes the resolved working directory and any `--repo`/`--source` flags.
@@ -217,6 +221,7 @@ The incremental indexing in each strategy means redundant runs are cheap — bob
 ### Watcher stops after a while
 
 If the watcher exits silently, check the logs. Common causes:
+
 - The `.bobbin/` directory was deleted or moved.
 - Disk is full (LanceDB needs space for vector storage).
 - inotify watch limit reached on Linux. Increase it:
