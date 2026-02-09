@@ -10,7 +10,7 @@
 
 ## See It In Action
 
-```
+```text
 $ bobbin search "authentication middleware"
 ✓ Found 8 results for: authentication middleware (hybrid)
 
@@ -24,7 +24,7 @@ $ bobbin search "authentication middleware"
    function rust · lines 31-62 · score 0.7892 [keyword]
 ```
 
-```
+```text
 $ bobbin context "fix the login bug"
 ✓ Context for: fix the login bug
   6 files, 14 chunks (487/500 lines)
@@ -37,7 +37,7 @@ $ bobbin context "fix the login bug"
   create_session (function), lines 88-121
 ```
 
-```
+```text
 $ bobbin related src/auth/middleware.rs
 Related to src/auth/middleware.rs:
 1. src/auth/session.rs (score: 0.85) - Co-changed 23 times
@@ -136,7 +136,9 @@ Other file types use line-based chunking with overlap.
 
 ## Documentation
 
-📖 **[CLI Reference](docs/commands.md)** — All 12 commands, flags, and examples
+📚 **[Full Documentation](https://scbrown.github.io/bobbin/)** — Comprehensive guides, CLI reference, architecture, and more
+
+📖 **[CLI Reference](docs/commands.md)** — All commands, flags, and examples
 
 ⚙️ **[Configuration](docs/configuration.md)** — `.bobbin/config.toml` reference
 
