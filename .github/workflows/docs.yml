@@ -72,7 +72,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/book/book
+          path: docs/book/book/html
 
   deploy:
     name: Deploy to GitHub Pages
