@@ -101,7 +101,7 @@ def _run_single(
     """
     from runner.agent_runner import run_agent
     from runner.bobbin_setup import setup_bobbin
-    from runner.workspace import diff_snapshot, setup_workspace, snapshot
+    from runner.workspace import collect_loc_stats, diff_snapshot, setup_workspace, snapshot
     from scorer.diff_scorer import score_diff
     from scorer.test_scorer import run_tests
 
@@ -137,12 +137,20 @@ def _run_single(
             _save_result(result, results_dir)
             return result
 
-        # 2. Bobbin setup (with-bobbin only).
+        # 2a. Collect LOC stats via tokei.
+        project_metadata = None
+        try:
+            project_metadata = collect_loc_stats(ws)
+        except Exception as exc:
+            click.echo(f"    LOC stats collection failed (non-fatal): {exc}", err=True)
+
+        # 2b. Bobbin setup (with-bobbin only).
         pre_agent_baseline = None
+        bobbin_metadata = None
         if approach == "with-bobbin":
             click.echo("    Running bobbin init + index...")
             try:
-                setup_bobbin(str(ws))
+                bobbin_metadata = setup_bobbin(str(ws))
             except Exception as exc:
                 click.echo(f"    Bobbin setup failed: {exc}", err=True)
                 result = {
@@ -220,6 +228,8 @@ def _run_single(
             },
             "agent_diff": agent_diff,
             "ground_truth_diff": ground_truth_diff,
+            "project_metadata": project_metadata,
+            "bobbin_metadata": bobbin_metadata,
         }
 
         path = _save_result(result, results_dir)
@@ -684,6 +694,38 @@ def judge(results_dir: str, judge_model: str, pairs: str):
             click.echo(f"  {pair_label}: {', '.join(parts)}")
     else:
         click.echo("\nNo judgements were produced.")
+
+
+@cli.command()
+@click.argument("results_dir", default="results")
+@click.option(
+    "--output-dir",
+    default=None,
+    help="Output directory for generated pages (default: docs/book/src/eval).",
+)
+@click.option("--tasks-dir", default="tasks", help="Directory containing task YAML files.")
+def publish(results_dir: str, output_dir: str | None, tasks_dir: str):
+    """Generate mdbook pages from eval results.
+
+    Reads results JSON files and task definitions, then generates markdown
+    pages with inline SVG charts for the documentation site.
+    """
+    from analysis.mdbook_pages import PageGenError, generate_all_pages
+
+    if output_dir is None:
+        output_dir = str(_EVAL_ROOT.parent / "docs" / "book" / "src" / "eval")
+
+    tasks_path = _resolve_tasks_dir(tasks_dir)
+
+    try:
+        generated = generate_all_pages(results_dir, str(tasks_path), output_dir)
+    except PageGenError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Generated {len(generated)} pages in {output_dir}:")
+    for f in generated:
+        click.echo(f"  {f}")
 
 
 if __name__ == "__main__":

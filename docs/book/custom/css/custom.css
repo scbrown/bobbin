@@ -155,6 +155,78 @@ mark {
     color: #ff79c6;
 }
 
+/* Eval result badges */
+.eval-easy {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75em;
+    font-weight: 600;
+    background: #50fa7b;
+    color: #282a36;
+}
+
+.eval-medium {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75em;
+    font-weight: 600;
+    background: #f1fa8c;
+    color: #282a36;
+}
+
+.eval-hard {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75em;
+    font-weight: 600;
+    background: #ff5555;
+    color: #f8f8f2;
+}
+
+.eval-pass {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.8em;
+    font-weight: 600;
+    background: #50fa7b;
+    color: #282a36;
+}
+
+.eval-fail {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.8em;
+    font-weight: 600;
+    background: #ff5555;
+    color: #f8f8f2;
+}
+
+.eval-chart {
+    margin: 1rem 0;
+    text-align: center;
+    overflow-x: auto;
+}
+
+.eval-chart svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.eval-delta-positive {
+    color: #50fa7b;
+    font-weight: 600;
+}
+
+.eval-delta-negative {
+    color: #ff5555;
+    font-weight: 600;
+}
+
 /* Improved link hover */
 .coal a:hover {
     color: #ff79c6;

@@ -8,10 +8,12 @@ that state, and takes git-based snapshots for later diffing.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -282,3 +284,44 @@ def setup_workspace(
             )
 
     return ws, parent
+
+
+def collect_loc_stats(workspace: str | Path) -> dict[str, Any]:
+    """Run ``tokei --output json`` on the workspace and return LOC stats.
+
+    Returns a dict mapping language name to
+    ``{files, lines, code, comments, blanks}``.
+
+    Raises :class:`WorkspaceError` if tokei is not installed.
+    """
+    ws = Path(workspace)
+    tokei = shutil.which("tokei")
+    if not tokei:
+        raise WorkspaceError(
+            "tokei not found. Run `just setup` to install it."
+        )
+
+    try:
+        result = _run([tokei, "--output", "json"], cwd=ws, timeout=60)
+    except subprocess.CalledProcessError as exc:
+        raise WorkspaceError(f"tokei failed: {exc.stderr.strip()}") from exc
+
+    raw = json.loads(result.stdout)
+
+    stats: dict[str, Any] = {}
+    for lang, data in raw.items():
+        # tokei wraps each language in an object with optional inner keys;
+        # the top-level keys we care about are direct on the language object.
+        if not isinstance(data, dict):
+            continue
+        reports = data.get("reports", [])
+        if not reports and "code" not in data:
+            continue
+        stats[lang] = {
+            "files": len(reports) if reports else data.get("children", {}).get("count", 0),
+            "lines": data.get("blanks", 0) + data.get("code", 0) + data.get("comments", 0),
+            "code": data.get("code", 0),
+            "comments": data.get("comments", 0),
+            "blanks": data.get("blanks", 0),
+        }
+    return stats

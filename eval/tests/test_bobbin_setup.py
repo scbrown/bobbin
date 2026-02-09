@@ -53,13 +53,17 @@ class TestSetupBobbin:
             yield mock_run
 
     def test_runs_init_then_index(self, mock_bobbin: MagicMock, tmp_path: Path):
-        setup_bobbin(str(tmp_path))
+        result = setup_bobbin(str(tmp_path))
 
-        assert mock_bobbin.call_count == 2
+        assert mock_bobbin.call_count == 3  # init, index, status --json
         init_cmd = mock_bobbin.call_args_list[0][0][0]
         index_cmd = mock_bobbin.call_args_list[1][0][0]
+        status_cmd = mock_bobbin.call_args_list[2][0][0]
         assert init_cmd == ["/usr/bin/bobbin", "init"]
         assert index_cmd == ["/usr/bin/bobbin", "index"]
+        assert status_cmd == ["/usr/bin/bobbin", "status", "--json"]
+        assert isinstance(result, dict)
+        assert "index_duration_seconds" in result
 
     def test_workspace_used_as_cwd(self, mock_bobbin: MagicMock, tmp_path: Path):
         setup_bobbin(str(tmp_path))
@@ -95,6 +99,25 @@ class TestSetupBobbin:
 
         with pytest.raises(BobbinSetupError, match="timed out"):
             setup_bobbin(str(tmp_path))
+
+    def test_returns_metadata_with_status(self, mock_bobbin: MagicMock, tmp_path: Path):
+        """setup_bobbin returns metadata dict including bobbin status info."""
+        import json
+        status_json = json.dumps({
+            "total_files": 42,
+            "total_chunks": 100,
+            "total_embeddings": 100,
+            "languages": ["Rust", "Python"],
+        })
+        mock_bobbin.side_effect = [
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout=status_json, stderr=""),
+        ]
+        result = setup_bobbin(str(tmp_path))
+        assert result["total_files"] == 42
+        assert result["total_chunks"] == 100
+        assert result["languages"] == ["Rust", "Python"]
 
     def test_custom_timeout(self, mock_bobbin: MagicMock, tmp_path: Path):
         setup_bobbin(str(tmp_path), timeout=120)

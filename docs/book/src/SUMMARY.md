@@ -68,6 +68,14 @@
 - [Embedding Pipeline](architecture/embedding.md)
 - [Language Support](architecture/languages.md)
 
+# Evaluation
+
+- [Methodology](eval/overview.md)
+- [Results Summary](eval/summary.md)
+- [Project Catalog](eval/projects.md)
+- [Flask (Python)](eval/flask.md)
+- [Ruff (Rust)](eval/ruff.md)
+
 # Reference
 
 - [Chunk Types](reference/chunk-types.md)
