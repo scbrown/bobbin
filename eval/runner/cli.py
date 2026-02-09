@@ -27,6 +27,9 @@ from runner.task_loader import TaskLoadError, load_all_tasks, load_task_by_id
 
 logger = logging.getLogger(__name__)
 
+_EVAL_ROOT = Path(__file__).resolve().parent.parent
+_DEFAULT_SETTINGS = _EVAL_ROOT / "settings-with-bobbin.json"
+
 
 def _setup_logging(verbose: bool) -> None:
     """Configure logging based on verbosity."""
@@ -98,7 +101,7 @@ def _run_single(
     """
     from runner.agent_runner import run_agent
     from runner.bobbin_setup import setup_bobbin
-    from runner.workspace import setup_workspace, snapshot
+    from runner.workspace import diff_snapshot, setup_workspace, snapshot
     from scorer.diff_scorer import score_diff
     from scorer.test_scorer import run_tests
 
@@ -177,6 +180,11 @@ def _run_single(
             baseline=pre_agent_baseline,
         )
 
+        # Capture diffs for post-hoc LLM judge comparison.
+        diff_base = pre_agent_baseline or parent
+        agent_diff = diff_snapshot(ws, diff_base, snap)
+        ground_truth_diff = diff_snapshot(ws, parent, task["commit"])
+
         result = {
             "task_id": task_id,
             "approach": approach,
@@ -209,6 +217,8 @@ def _run_single(
                 "ground_truth_files": diff_result["ground_truth_files"],
                 "exact_file_match": diff_result["exact_file_match"],
             },
+            "agent_diff": agent_diff,
+            "ground_truth_diff": ground_truth_diff,
         }
 
         path = _save_result(result, results_dir)
@@ -272,6 +282,10 @@ def run_task(
     tasks_path = _resolve_tasks_dir(tasks_dir)
     rdir = Path(results_dir)
 
+    # Auto-resolve settings file for with-bobbin runs.
+    if settings_file is None and _DEFAULT_SETTINGS.exists():
+        settings_file = str(_DEFAULT_SETTINGS)
+
     try:
         task = load_task_by_id(task_id, tasks_path)
     except TaskLoadError as exc:
@@ -330,6 +344,10 @@ def run_all(
     """Run evaluation for all tasks in the tasks directory."""
     tasks_path = _resolve_tasks_dir(tasks_dir)
     rdir = Path(results_dir)
+
+    # Auto-resolve settings file for with-bobbin runs.
+    if settings_file is None and _DEFAULT_SETTINGS.exists():
+        settings_file = str(_DEFAULT_SETTINGS)
 
     try:
         tasks = load_all_tasks(tasks_path)
@@ -458,6 +476,213 @@ def report(results_dir: str, output: str | None):
         sys.exit(1)
 
     click.echo(f"Report written to {output}")
+
+
+def _load_results(results_dir: Path) -> list[dict]:
+    """Load all JSON result files from the results directory."""
+    json_files = sorted(results_dir.glob("*.json"))
+    results = []
+    for f in json_files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if data.get("status") == "completed":
+                results.append(data)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return results
+
+
+def _group_results_by_task(results: list[dict]) -> dict[str, dict[str, list[dict]]]:
+    """Group results by task_id then by approach.
+
+    Returns ``{task_id: {approach: [results]}}``.
+    """
+    grouped: dict[str, dict[str, list[dict]]] = {}
+    for r in results:
+        tid = r.get("task_id", "unknown")
+        approach = r.get("approach", "unknown")
+        grouped.setdefault(tid, {}).setdefault(approach, []).append(r)
+    return grouped
+
+
+def _pick_best_attempt(runs: list[dict]) -> dict | None:
+    """Pick the best attempt from a list of runs for a single task×approach.
+
+    Prefers passing runs, then highest F1, then first attempt.
+    """
+    if not runs:
+        return None
+    passing = [r for r in runs if r.get("test_result", {}).get("passed")]
+    pool = passing if passing else runs
+    return max(pool, key=lambda r: r.get("diff_result", {}).get("f1", 0.0))
+
+
+@cli.command()
+@click.argument("results_dir", default="results")
+@click.option(
+    "--judge-model",
+    default="claude-sonnet-4-5-20250929",
+    help="Model to use as the LLM judge.",
+)
+@click.option(
+    "--pairs",
+    default="all",
+    type=click.Choice(["all", "ai-vs-ai", "human-vs-ai", "human-vs-bobbin"]),
+    help="Which pairs to judge.",
+)
+def judge(results_dir: str, judge_model: str, pairs: str):
+    """Run LLM-as-judge pairwise comparison on stored results.
+
+    Compares three pairs per task:
+      - human (ground truth) vs AI (no-bobbin)
+      - human (ground truth) vs AI+bobbin (with-bobbin)
+      - AI vs AI+bobbin
+
+    Requires that results contain stored diffs (agent_diff + ground_truth_diff).
+    Judge results are saved alongside the original results.
+    """
+    from scorer.llm_judge import LLMJudgeError, judge_pairwise
+
+    rdir = Path(results_dir)
+    if not rdir.is_dir():
+        click.echo(f"Error: Results directory not found: {rdir}", err=True)
+        sys.exit(1)
+
+    results = _load_results(rdir)
+    if not results:
+        click.echo(f"Error: No completed results in {rdir}", err=True)
+        sys.exit(1)
+
+    # Check that results have stored diffs.
+    has_diffs = any("agent_diff" in r for r in results)
+    if not has_diffs:
+        click.echo(
+            "Error: Results do not contain stored diffs (agent_diff). "
+            "Re-run evaluations with the updated runner to capture diffs.",
+            err=True,
+        )
+        sys.exit(1)
+
+    grouped = _group_results_by_task(results)
+    all_judgements: list[dict] = []
+
+    for task_id, by_approach in sorted(grouped.items()):
+        click.echo(f"\n--- Judging {task_id} ---")
+
+        no_bobbin = _pick_best_attempt(by_approach.get("no-bobbin", []))
+        with_bobbin = _pick_best_attempt(by_approach.get("with-bobbin", []))
+
+        if not no_bobbin and not with_bobbin:
+            click.echo(f"  Skipping {task_id}: no completed runs")
+            continue
+
+        # Build context for the judge.
+        sample = no_bobbin or with_bobbin
+        task_info = sample.get("task", {})
+        context = {
+            "repo": task_info.get("repo", ""),
+            "description": task_info.get("description", task_id),
+            "language": task_info.get("language", ""),
+        }
+
+        gt_diff = (sample or {}).get("ground_truth_diff", "")
+
+        # Define pairs to judge.
+        pair_configs = []
+        if pairs in ("all", "ai-vs-ai") and no_bobbin and with_bobbin:
+            pair_configs.append({
+                "name": "AI vs AI+bobbin",
+                "label": "ai-vs-ai+bobbin",
+                "diff_a": no_bobbin.get("agent_diff", ""),
+                "diff_b": with_bobbin.get("agent_diff", ""),
+                "a_label": "no-bobbin",
+                "b_label": "with-bobbin",
+            })
+        if pairs in ("all", "human-vs-ai") and no_bobbin and gt_diff:
+            pair_configs.append({
+                "name": "Human vs AI",
+                "label": "human-vs-ai",
+                "diff_a": gt_diff,
+                "diff_b": no_bobbin.get("agent_diff", ""),
+                "a_label": "human",
+                "b_label": "no-bobbin",
+            })
+        if pairs in ("all", "human-vs-bobbin") and with_bobbin and gt_diff:
+            pair_configs.append({
+                "name": "Human vs AI+bobbin",
+                "label": "human-vs-ai+bobbin",
+                "diff_a": gt_diff,
+                "diff_b": with_bobbin.get("agent_diff", ""),
+                "a_label": "human",
+                "b_label": "with-bobbin",
+            })
+
+        for pair in pair_configs:
+            if not pair["diff_a"].strip() or not pair["diff_b"].strip():
+                click.echo(f"  Skipping {pair['name']}: empty diff(s)")
+                continue
+
+            click.echo(f"  Judging: {pair['name']}...")
+            try:
+                verdict = judge_pairwise(
+                    pair["diff_a"],
+                    pair["diff_b"],
+                    context,
+                    model=judge_model,
+                )
+            except LLMJudgeError as exc:
+                click.echo(f"    Judge error: {exc}", err=True)
+                continue
+
+            # Map winner labels back to meaningful names.
+            winner_map = {"a": pair["a_label"], "b": pair["b_label"], "tie": "tie"}
+            named_winner = winner_map.get(verdict["overall_winner"], verdict["overall_winner"])
+
+            judgement = {
+                "task_id": task_id,
+                "pair": pair["label"],
+                "a_label": pair["a_label"],
+                "b_label": pair["b_label"],
+                "overall_winner": verdict["overall_winner"],
+                "named_winner": named_winner,
+                "dimensions": verdict["dimensions"],
+                "bias_detected": verdict.get("bias_detected", False),
+                "reasoning": verdict.get("reasoning", ""),
+                "judge_model": judge_model,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            all_judgements.append(judgement)
+
+            click.echo(
+                f"    Winner: {named_winner}"
+                f" (bias={'yes' if verdict.get('bias_detected') else 'no'})"
+            )
+
+    # Save all judgements.
+    if all_judgements:
+        judge_file = rdir / "judge_results.json"
+        judge_file.write_text(
+            json.dumps(all_judgements, indent=2, default=str),
+            encoding="utf-8",
+        )
+        click.echo(f"\nJudge results saved to {judge_file}")
+        click.echo(f"Total judgements: {len(all_judgements)}")
+
+        # Print summary.
+        click.echo("\nJudge Summary:")
+        for pair_label in ("ai-vs-ai+bobbin", "human-vs-ai", "human-vs-ai+bobbin"):
+            pair_results = [j for j in all_judgements if j["pair"] == pair_label]
+            if not pair_results:
+                continue
+            wins: dict[str, int] = {}
+            for j in pair_results:
+                w = j["named_winner"]
+                wins[w] = wins.get(w, 0) + 1
+            total = len(pair_results)
+            parts = [f"{name}: {count}/{total}" for name, count in sorted(wins.items())]
+            click.echo(f"  {pair_label}: {', '.join(parts)}")
+    else:
+        click.echo("\nNo judgements were produced.")
 
 
 if __name__ == "__main__":

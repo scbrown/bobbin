@@ -16,7 +16,11 @@ class ReportError(Exception):
 
 
 def _load_results(results_dir: Path) -> list[dict[str, Any]]:
-    """Load all JSON result files from the results directory."""
+    """Load all JSON result files from the results directory.
+
+    Skips non-result files (e.g. judge_results.json which contains a list)
+    by checking that each file is a dict with a ``task_id`` key.
+    """
     json_files = sorted(results_dir.glob("*.json"))
     if not json_files:
         raise ReportError(f"No result JSON files found in {results_dir}")
@@ -25,7 +29,9 @@ def _load_results(results_dir: Path) -> list[dict[str, Any]]:
     for f in json_files:
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
-            results.append(data)
+            # Only include per-run result dicts, not other JSON files.
+            if isinstance(data, dict) and "task_id" in data:
+                results.append(data)
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Skipping invalid result file %s: %s", f.name, exc)
     return results
@@ -187,6 +193,67 @@ def _build_per_task_table(
     return "\n".join(lines)
 
 
+def _build_judge_table(judge_results: list[dict]) -> str:
+    """Build a summary table from LLM judge pairwise results."""
+    # Group by pair type.
+    by_pair: dict[str, list[dict]] = {}
+    for j in judge_results:
+        pair = j.get("pair", "unknown")
+        by_pair.setdefault(pair, []).append(j)
+
+    lines = [
+        "| Comparison | Tasks | A Wins | B Wins | Ties | Bias Detected |",
+        "|------------|:-----:|:------:|:------:|:----:|:-------------:|",
+    ]
+
+    for pair_label in sorted(by_pair):
+        judgements = by_pair[pair_label]
+        n = len(judgements)
+        a_wins = sum(1 for j in judgements if j.get("overall_winner") == "a")
+        b_wins = sum(1 for j in judgements if j.get("overall_winner") == "b")
+        ties = sum(1 for j in judgements if j.get("overall_winner") == "tie")
+        bias = sum(1 for j in judgements if j.get("bias_detected"))
+
+        # Get human-readable labels from first result.
+        a_label = judgements[0].get("a_label", "A")
+        b_label = judgements[0].get("b_label", "B")
+        display = f"{a_label} vs {b_label}"
+
+        lines.append(
+            f"| {display} | {n} "
+            f"| {a_label}: {a_wins} "
+            f"| {b_label}: {b_wins} "
+            f"| {ties} "
+            f"| {bias}/{n} |"
+        )
+
+    # Per-task detail table.
+    lines.extend([
+        "",
+        "### Per-Task Judge Detail",
+        "",
+        "| Task | Comparison | Winner | Consistency | Completeness | Minimality |",
+        "|------|------------|--------|:-----------:|:------------:|:----------:|",
+    ])
+
+    for j in sorted(judge_results, key=lambda x: (x.get("task_id", ""), x.get("pair", ""))):
+        dims = j.get("dimensions", {})
+        cons = dims.get("consistency", {})
+        comp = dims.get("completeness", {})
+        mini = dims.get("minimality", {})
+        winner = j.get("named_winner", j.get("overall_winner", "?"))
+        lines.append(
+            f"| {j.get('task_id', '?')} "
+            f"| {j.get('a_label', 'A')} vs {j.get('b_label', 'B')} "
+            f"| {winner} "
+            f"| {cons.get('a', '?')}/{cons.get('b', '?')} "
+            f"| {comp.get('a', '?')}/{comp.get('b', '?')} "
+            f"| {mini.get('a', '?')}/{mini.get('b', '?')} |"
+        )
+
+    return "\n".join(lines)
+
+
 def generate_report(results_dir: str, output_path: str) -> None:
     """Read results JSON files and generate a markdown summary report.
 
@@ -221,6 +288,15 @@ def generate_report(results_dir: str, output_path: str) -> None:
     by_approach = _group_by_approach(results)
     stats = {approach: _compute_approach_stats(runs) for approach, runs in by_approach.items()}
 
+    # Load judge results if available.
+    judge_file = rdir / "judge_results.json"
+    judge_results: list[dict] = []
+    if judge_file.exists():
+        try:
+            judge_results = json.loads(judge_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not load judge results: %s", exc)
+
     # Build report sections.
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     total_tasks = len(_group_by_task(results))
@@ -235,11 +311,22 @@ def generate_report(results_dir: str, output_path: str) -> None:
         "",
         _build_summary_table(stats),
         "",
+    ]
+
+    if judge_results:
+        sections.extend([
+            "## LLM Judge Results",
+            "",
+            _build_judge_table(judge_results),
+            "",
+        ])
+
+    sections.extend([
         "## Per-Task Breakdown",
         "",
         _build_per_task_table(results),
         "",
-    ]
+    ])
 
     report = "\n".join(sections) + "\n"
 
