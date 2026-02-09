@@ -55,7 +55,14 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
+      - name: Install cmake (for aws-lc-sys source build)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
       - name: Build
+        env:
+          # Build aws-lc-sys from source to avoid prebuilt glibc 2.38 dependency
+          AWS_LC_SYS_CMAKE_BUILDER: "1"
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Download ONNX Runtime
