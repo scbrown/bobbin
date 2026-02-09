@@ -8,7 +8,8 @@ description: |
   otherwise falls back to werkzeug.exceptions.abort. This allows applications
   to customize abort behavior, including registering custom HTTP error codes.
   Update flask.__init__ to export abort from helpers instead of werkzeug.
-test_command: "pytest tests/test_helpers.py -x -k abort"
+setup_command: "uv venv .venv --python 3.11 && uv pip install -e . 'werkzeug<3' pytest --quiet"
+test_command: ".venv/bin/pytest tests/test_helpers.py -x -k abort"
 language: python
 difficulty: medium
 tags: [feature, abort, app-customization, cross-file]

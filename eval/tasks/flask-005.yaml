@@ -8,7 +8,8 @@ description: |
   non-Exception subclasses with a proper ValueError, add a TypeError for
   when an exception instance is passed instead of a class, and rewrite
   error messages to be more consistent and descriptive.
-test_command: "pytest tests/test_basic.py tests/test_user_error_handler.py -x"
+setup_command: "uv venv .venv --python 3.11 && uv pip install -e . 'werkzeug<3' pytest --quiet"
+test_command: ".venv/bin/pytest tests/test_basic.py tests/test_user_error_handler.py -x"
 language: python
 difficulty: easy
 tags: [refactoring, error-handling, validation, cross-file]

@@ -205,21 +205,43 @@ def diff_snapshot(workspace: str | Path, base: str, snapshot_hash: str) -> str:
     return result.stdout
 
 
+def run_setup_command(workspace: str | Path, setup_command: str, *, timeout: int = 600) -> None:
+    """Run a setup command (e.g. dependency installation) in the workspace.
+
+    Raises :class:`WorkspaceError` if the command fails.
+    """
+    ws = Path(workspace)
+    logger.info("Running setup command in %s: %s", ws, setup_command)
+    try:
+        _run(["sh", "-c", setup_command], cwd=ws, timeout=timeout)
+    except subprocess.CalledProcessError as exc:
+        raise WorkspaceError(
+            f"Setup command failed in {ws}: {exc.stderr.strip()}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise WorkspaceError(
+            f"Setup command timed out after {timeout}s in {ws}"
+        ) from exc
+
+
 def setup_workspace(
     repo: str,
     commit: str,
     test_command: str,
     dest: str,
     *,
+    setup_command: str | None = None,
     cache_dir: Path | None = None,
     verify: bool = True,
     test_timeout: int = 600,
+    setup_timeout: int = 300,
 ) -> tuple[Path, str]:
     """Full workspace setup pipeline for a single eval run.
 
     1. Clone repo (using cache)
     2. Checkout parent of target commit
-    3. Optionally verify tests pass at parent
+    3. Run setup command (e.g. install dependencies)
+    4. Optionally verify tests pass at parent
 
     Parameters
     ----------
@@ -231,19 +253,26 @@ def setup_workspace(
         Shell command to verify tests.
     dest:
         Base directory for workspaces.
+    setup_command:
+        Optional shell command to run after checkout (e.g. ``pip install -e .``).
     cache_dir:
         Override cache location.
     verify:
         If True (default), run test_command and raise on failure.
     test_timeout:
         Timeout in seconds for test verification.
+    setup_timeout:
+        Timeout in seconds for the setup command.
 
     Returns ``(workspace_path, parent_hash)``.
 
-    Raises :class:`WorkspaceError` if verification is enabled and tests fail.
+    Raises :class:`WorkspaceError` if setup or verification fails.
     """
     ws = clone_repo(repo, dest, cache_dir=cache_dir)
     parent = checkout_parent(ws, commit)
+
+    if setup_command:
+        run_setup_command(ws, setup_command, timeout=setup_timeout)
 
     if verify:
         if not verify_tests(ws, test_command, timeout=test_timeout):

@@ -11,7 +11,7 @@ import yaml
 logger = logging.getLogger(__name__)
 
 REQUIRED_FIELDS = {"id", "repo", "commit", "description", "test_command"}
-OPTIONAL_FIELDS = {"language", "difficulty", "tags"}
+OPTIONAL_FIELDS = {"language", "difficulty", "tags", "setup_command"}
 VALID_DIFFICULTIES = {"easy", "medium", "hard"}
 
 

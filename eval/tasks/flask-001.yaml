@@ -8,7 +8,8 @@ description: |
   session cookie was being deleted. Move the Vary header logic so it covers
   all code paths in save_session, including cookie deletion and session
   refresh without modification.
-test_command: "pytest tests/test_basic.py -x -k session"
+setup_command: "uv venv .venv --python 3.11 && uv pip install -e . 'werkzeug<3' pytest --quiet"
+test_command: ".venv/bin/pytest tests/test_basic.py -x -k session"
 language: python
 difficulty: medium
 tags: [bug-fix, sessions, http-headers, cross-file]

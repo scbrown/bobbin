@@ -121,6 +121,7 @@ def _run_single(
                 task["commit"],
                 task["test_command"],
                 tmpdir,
+                setup_command=task.get("setup_command"),
                 verify=not skip_verify,
             )
         except Exception as exc:

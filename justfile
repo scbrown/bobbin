@@ -74,6 +74,20 @@ setup:
             exit 1
         fi
     fi
+    # tokei (LOC counter, needed by eval framework)
+    if command -v tokei &>/dev/null; then
+        echo "  tokei $(tokei --version | awk '{print $2}') ✓"
+    else
+        echo "  tokei not found — installing..."
+        cargo install tokei
+    fi
+    # uv (Python package manager, needed by eval framework)
+    if command -v uv &>/dev/null; then
+        echo "  uv $(uv --version | awk '{print $2}') ✓"
+    else
+        echo "  uv not found — installing..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+    fi
     echo "All dependencies satisfied."
 
 # === Documentation ===

@@ -1,8 +1,16 @@
 {
-  "mcpServers": {
-    "bobbin": {
-      "command": "bobbin",
-      "args": ["serve"]
-    }
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "bobbin hook inject-context",
+            "statusMessage": "Loading code context...",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ]
   }
 }
