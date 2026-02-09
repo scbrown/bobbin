@@ -130,6 +130,9 @@ struct HookStatusOutput {
     hooks_installed: bool,
     git_hook_installed: bool,
     config: HookConfigOutput,
+    injection_count: u64,
+    last_injection_time: Option<String>,
+    last_session_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -423,6 +426,9 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
         false
     };
 
+    // Load runtime state
+    let state = load_hook_state(&repo_root);
+
     if output.json {
         let status = HookStatusOutput {
             hooks_installed,
@@ -434,6 +440,17 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
                 min_prompt_length: hooks_cfg.min_prompt_length,
                 gate_threshold: hooks_cfg.gate_threshold,
                 dedup_enabled: hooks_cfg.dedup_enabled,
+            },
+            injection_count: state.injection_count,
+            last_injection_time: if state.last_injection_time.is_empty() {
+                None
+            } else {
+                Some(state.last_injection_time.clone())
+            },
+            last_session_id: if state.last_session_id.is_empty() {
+                None
+            } else {
+                Some(state.last_session_id.clone())
             },
         };
         println!("{}", serde_json::to_string_pretty(&status)?);
@@ -451,6 +468,18 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
         let git_str = if git_hook_installed { "installed".green() } else { "not installed".yellow() };
         println!("  Claude Code hooks: {}", hooks_str);
         println!("  Git post-commit:   {}", git_str);
+        println!();
+        println!("{} Injection stats", "📊".bold());
+        println!();
+        println!("  Injection count:  {}", state.injection_count.to_string().cyan());
+        if !state.last_injection_time.is_empty() {
+            println!("  Last injected:    {}", state.last_injection_time.cyan());
+        } else {
+            println!("  Last injected:    {}", "never".dimmed());
+        }
+        if !state.last_session_id.is_empty() {
+            println!("  Session ID:       {}", state.last_session_id.dimmed());
+        }
     }
 
     Ok(())
@@ -1496,6 +1525,9 @@ mod tests {
                 gate_threshold: 0.75,
                 dedup_enabled: true,
             },
+            injection_count: 42,
+            last_injection_time: Some("2026-02-08T10:30:00Z".to_string()),
+            last_session_id: Some("a1b2c3d4e5f6a7b8".to_string()),
         };
         let json = serde_json::to_string(&output).unwrap();
         assert!(json.contains("\"threshold\":0.5"));
@@ -1503,6 +1535,32 @@ mod tests {
         assert!(json.contains("\"content_mode\":\"preview\""));
         assert!(json.contains("\"gate_threshold\":0.75"));
         assert!(json.contains("\"dedup_enabled\":true"));
+        assert!(json.contains("\"injection_count\":42"));
+        assert!(json.contains("\"last_injection_time\":\"2026-02-08T10:30:00Z\""));
+        assert!(json.contains("\"last_session_id\":\"a1b2c3d4e5f6a7b8\""));
+    }
+
+    #[test]
+    fn test_hook_status_output_no_state() {
+        let output = HookStatusOutput {
+            hooks_installed: true,
+            git_hook_installed: false,
+            config: HookConfigOutput {
+                threshold: 0.5,
+                budget: 150,
+                content_mode: "preview".to_string(),
+                min_prompt_length: 10,
+                gate_threshold: 0.75,
+                dedup_enabled: true,
+            },
+            injection_count: 0,
+            last_injection_time: None,
+            last_session_id: None,
+        };
+        let json = serde_json::to_string(&output).unwrap();
+        assert!(json.contains("\"injection_count\":0"));
+        assert!(json.contains("\"last_injection_time\":null"));
+        assert!(json.contains("\"last_session_id\":null"));
     }
 
     #[test]
