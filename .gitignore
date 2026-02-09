@@ -15,6 +15,9 @@ Thumbs.db
 # Bobbin index data
 .bobbin/
 
+# Python
+__pycache__/
+
 # Eval results (generated per run)
 /eval/results/*.json
 
