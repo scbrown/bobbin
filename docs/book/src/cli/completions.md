@@ -1,7 +1,6 @@
 ---
 title: "completions"
 description: "Generate shell completions for bash, zsh, fish, and PowerShell"
-status: draft
 category: cli-reference
 tags: [cli, completions]
 commands: [completions]
@@ -11,10 +10,68 @@ source_files: [src/cli/completions.rs]
 
 # completions
 
-> **Status: Draft** — This page is a placeholder and will be filled in a future update.
+Generate shell completion scripts for bobbin.
 
-## Usage
+## Synopsis
 
 ```bash
-bobbin completions [OPTIONS]
+bobbin completions <SHELL>
 ```
+
+## Description
+
+The `completions` command outputs a shell completion script to stdout. Pipe the output to the appropriate file for your shell to enable tab-completion for all bobbin commands, subcommands, and options.
+
+Supported shells: `bash`, `zsh`, `fish`, `elvish`, `powershell`.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<SHELL>` | Shell to generate completions for (required) |
+
+## Setup
+
+### Bash
+
+```bash
+bobbin completions bash > ~/.local/share/bash-completion/completions/bobbin
+```
+
+Or for the current session only:
+
+```bash
+source <(bobbin completions bash)
+```
+
+### Zsh
+
+```bash
+bobbin completions zsh > ~/.zfunc/_bobbin
+```
+
+Make sure `~/.zfunc` is in your `$fpath` (add `fpath=(~/.zfunc $fpath)` to `~/.zshrc` before `compinit`).
+
+### Fish
+
+```bash
+bobbin completions fish > ~/.config/fish/completions/bobbin.fish
+```
+
+### Elvish
+
+```bash
+bobbin completions elvish > ~/.config/elvish/lib/bobbin.elv
+```
+
+### PowerShell
+
+```powershell
+bobbin completions powershell > $HOME\.config\powershell\bobbin.ps1
+# Add to your $PROFILE: . $HOME\.config\powershell\bobbin.ps1
+```
+
+## See Also
+
+- [Installation](../getting-started/installation.md) — installing bobbin
+- [CLI Overview](overview.md) — all available commands
