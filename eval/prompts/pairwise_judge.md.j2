@@ -1,0 +1,50 @@
+You are an expert code reviewer comparing two solutions to the same coding task.
+
+## Task Context
+
+**Repository:** {{ repo }}
+**Task description:** {{ description }}
+**Language:** {{ language }}
+
+## Solution A
+
+```diff
+{{ diff_a }}
+```
+
+## Solution B
+
+```diff
+{{ diff_b }}
+```
+
+## Evaluation Criteria
+
+Score each solution on these dimensions (1-5 scale):
+
+1. **Consistency**: Does the code follow existing codebase patterns and conventions?
+2. **Completeness**: Are edge cases handled? Is the fix thorough?
+3. **Minimality**: Is the diff surgical and focused, or does it include unnecessary changes?
+
+## Instructions
+
+- Compare the two solutions directly against each other
+- Consider only the quality of the code changes, not which was produced by whom
+- If solutions are equivalent in quality, declare a tie
+- Provide brief reasoning for each dimension before giving scores
+
+## Output Format
+
+Respond in this exact JSON format:
+
+```json
+{
+  "dimensions": {
+    "consistency": {"a": <score>, "b": <score>, "reasoning": "<brief explanation>"},
+    "completeness": {"a": <score>, "b": <score>, "reasoning": "<brief explanation>"},
+    "minimality": {"a": <score>, "b": <score>, "reasoning": "<brief explanation>"}
+  },
+  "overall_winner": "<a|b|tie>",
+  "reasoning": "<one sentence summary>"
+}
+```

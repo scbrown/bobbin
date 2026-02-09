@@ -15,6 +15,9 @@ Thumbs.db
 # Bobbin index data
 .bobbin/
 
+# Eval results (generated per run)
+/eval/results/*.json
+
 # Gas Town (added by gt)
 .runtime/
 .claude/
