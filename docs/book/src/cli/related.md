@@ -11,10 +11,25 @@ source_files: [src/cli/related.rs]
 
 # related
 
-> **Status: Draft** — This page is a placeholder and will be filled in a future update.
+Find files that are temporally coupled to a given file -- files that frequently change together in git history.
 
 ## Usage
 
 ```bash
-bobbin related [OPTIONS]
+bobbin related <FILE> [OPTIONS]
 ```
+
+## Examples
+
+```bash
+bobbin related src/auth.rs
+bobbin related src/auth.rs --limit 20
+bobbin related src/auth.rs --threshold 0.5   # Only strong coupling
+```
+
+## Options
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--limit <N>` | `-n` | Maximum results (default: 10) |
+| `--threshold <F>` | | Minimum coupling score (default: 0.0) |

@@ -11,10 +11,29 @@ source_files: [src/cli/serve.rs]
 
 # serve
 
-> **Status: Draft** — This page is a placeholder and will be filled in a future update.
+Start an MCP (Model Context Protocol) server, exposing Bobbin's search and analysis capabilities to AI agents like Claude and Cursor.
 
 ## Usage
 
 ```bash
-bobbin serve [OPTIONS]
+bobbin serve [PATH] [OPTIONS]
 ```
+
+## Examples
+
+```bash
+bobbin serve                # Serve current directory
+bobbin serve /path/to/repo  # Serve a specific repository
+```
+
+## MCP Tools Exposed
+
+| Tool | Description |
+|------|-------------|
+| `search` | Semantic/hybrid/keyword code search |
+| `grep` | Pattern matching with regex support |
+| `context` | Task-aware context assembly |
+| `related` | Find temporally coupled files |
+| `read_chunk` | Read a specific code chunk with context lines |
+
+See [MCP Integration](../mcp/overview.md) for configuration examples.

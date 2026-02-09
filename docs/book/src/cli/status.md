@@ -11,10 +11,25 @@ source_files: [src/cli/status.rs]
 
 # status
 
-> **Status: Draft** — This page is a placeholder and will be filled in a future update.
+Show index statistics.
 
 ## Usage
 
 ```bash
 bobbin status [OPTIONS]
 ```
+
+## Examples
+
+```bash
+bobbin status
+bobbin status --detailed              # Per-language breakdown
+bobbin status --repo myproject        # Stats for a specific repo
+```
+
+## Options
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--detailed` | | Show per-language breakdown |
+| `--repo <NAME>` | `-r` | Stats for a specific repository only |
