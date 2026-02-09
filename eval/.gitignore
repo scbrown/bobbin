@@ -1,0 +1,10 @@
+# Eval artifacts
+results/*.json
+results/*.md
+!results/.gitkeep
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
