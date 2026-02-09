@@ -1,0 +1,24 @@
+[book]
+title = "Bobbin Documentation"
+authors = ["Steve Brown"]
+description = "Complete documentation for Bobbin - the local-first code context engine"
+src = "src"
+language = "en"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "coal"
+preferred-dark-theme = "coal"
+git-repository-url = "https://github.com/scbrown/bobbin"
+edit-url-template = "https://github.com/scbrown/bobbin/edit/main/docs/book/{path}"
+additional-css = ["custom/css/custom.css"]
+site-url = "/book/"
+
+[output.html.search]
+enable = true
+
+[output.linkcheck]
+warning-policy = "warn"
+optional = true

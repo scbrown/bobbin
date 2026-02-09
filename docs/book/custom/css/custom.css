@@ -1,0 +1,107 @@
+/* Bobbin Documentation Custom Styles */
+
+/* Coal theme adjustments */
+:root {
+    --bg-color: #282a36;
+    --fg-color: #f8f8f2;
+    --link-color: #8be9fd;
+    --code-bg: #44475a;
+    --accent-color: #50fa7b;
+    --warning-color: #f1fa8c;
+    --error-color: #ff5555;
+    --info-color: #8be9fd;
+    --border-color: #6272a4;
+}
+
+/* Table styling */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+
+th, td {
+    padding: 0.5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+th {
+    background: var(--code-bg);
+    font-weight: 600;
+}
+
+/* Code block improvements */
+pre {
+    border-radius: 4px;
+    overflow-x: auto;
+}
+
+code {
+    font-family: 'Fira Code', 'Consolas', monospace;
+}
+
+/* Blockquote callouts for status badges */
+blockquote {
+    border-left: 4px solid var(--border-color);
+    padding: 0.5rem 1rem;
+    margin: 1rem 0;
+    background: rgba(68, 71, 90, 0.3);
+    border-radius: 0 4px 4px 0;
+}
+
+blockquote strong {
+    color: var(--warning-color);
+}
+
+/* Command page styling */
+.cli-usage {
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+/* Status badges */
+.status-draft {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.8em;
+    font-weight: 600;
+    background: var(--warning-color);
+    color: #282a36;
+}
+
+.status-stable {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.8em;
+    font-weight: 600;
+    background: var(--accent-color);
+    color: #282a36;
+}
+
+.status-planned {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.8em;
+    font-weight: 600;
+    background: var(--border-color);
+    color: var(--fg-color);
+}
+
+/* Navigation improvements */
+.chapter li.chapter-item {
+    margin-top: 0.25rem;
+}
+
+/* Search result highlighting */
+mark {
+    background: rgba(241, 250, 140, 0.3);
+    color: inherit;
+    padding: 0.1rem 0.2rem;
+    border-radius: 2px;
+}
