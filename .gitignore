@@ -17,6 +17,9 @@ Thumbs.db
 
 # Python
 __pycache__/
+*.egg-info/
+.venv/
+uv.lock
 
 # Eval results (generated per run)
 /eval/results/*.json
