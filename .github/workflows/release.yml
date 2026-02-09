@@ -14,8 +14,6 @@ on:
 env:
   CARGO_TERM_COLOR: always
   VERSION: ${{ inputs.version || github.ref_name }}
-  # ONNX Runtime version to bundle (must be manylinux_2_28 compatible)
-  ORT_VERSION: "1.24.1"
 
 jobs:
   build:
@@ -28,11 +26,19 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
             archive: tar.gz
-            ort_platform: manylinux_2_28_x86_64
+            ort_asset: onnxruntime-linux-x64
+            ort_version: "1.24.1"
           - target: aarch64-apple-darwin
             os: macos-14
             archive: tar.gz
-            ort_platform: macosx_14_0_arm64
+            ort_asset: onnxruntime-osx-arm64
+            ort_version: "1.24.1"
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+            archive: tar.gz
+            # ORT 1.24+ dropped x86_64 macOS; 1.23.2 is the last version with support
+            ort_asset: onnxruntime-osx-x86_64
+            ort_version: "1.23.2"
 
     steps:
       - name: Checkout
@@ -66,23 +72,12 @@ jobs:
       - name: Download ONNX Runtime
         shell: bash
         run: |
-          pip3 download "onnxruntime==${{ env.ORT_VERSION }}" \
-            --platform "${{ matrix.ort_platform }}" \
-            --python-version 3.12 \
-            --no-deps --only-binary :all: \
-            -d /tmp/ort-dl
-          # Extract libonnxruntime from wheel
-          python3 -c "
-          import zipfile, glob
-          whl = glob.glob('/tmp/ort-dl/*.whl')[0]
-          print(f'Using wheel: {whl}')
-          with zipfile.ZipFile(whl) as z:
-              for name in z.namelist():
-                  if 'libonnxruntime' in name and ('providers' not in name):
-                      if name.endswith('.so') or '.so.' in name or name.endswith('.dylib') or '.dylib.' in name:
-                          z.extract(name, '/tmp/ort-extracted')
-                          print(f'Extracted: {name}')
-          "
+          ORT_TAG="v${{ matrix.ort_version }}"
+          ORT_TARBALL="${{ matrix.ort_asset }}-${{ matrix.ort_version }}.tgz"
+          curl -sL "https://github.com/microsoft/onnxruntime/releases/download/${ORT_TAG}/${ORT_TARBALL}" \
+            -o /tmp/ort.tgz
+          mkdir -p /tmp/ort-extracted
+          tar xzf /tmp/ort.tgz -C /tmp/ort-extracted --strip-components=1
 
       - name: Package
         shell: bash
@@ -91,19 +86,11 @@ jobs:
           mkdir -p "$STAGING/lib"
           cp target/${{ matrix.target }}/release/bobbin "$STAGING/"
 
-          # Bundle ONNX Runtime shared library
-          find /tmp/ort-extracted -name "libonnxruntime*" -not -name "*providers*" | while read f; do
+          # Bundle ONNX Runtime shared library from extracted tarball
+          find /tmp/ort-extracted/lib -maxdepth 1 -name "libonnxruntime*" \
+            -not -name "*providers*" -not -type d | while read f; do
             cp "$f" "$STAGING/lib/"
           done
-          # Create symlink without version suffix
-          cd "$STAGING/lib"
-          for f in libonnxruntime.so.*; do
-            [ -f "$f" ] && ln -sf "$f" libonnxruntime.so
-          done
-          for f in libonnxruntime.*.dylib; do
-            [ -f "$f" ] && ln -sf "$f" libonnxruntime.dylib
-          done
-          cd ../..
 
           tar czvf "${STAGING}.tar.gz" "$STAGING"
 
