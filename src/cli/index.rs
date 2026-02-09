@@ -592,7 +592,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     // Compact fragmented lance data after indexing — each file insert creates a
     // new fragment, and compaction merges them for better read performance.
-    vector_store.compact().await.ok();
+    // Stats queries on heavily fragmented tables return incomplete results.
+    if let Err(e) = vector_store.compact().await {
+        eprintln!("warning: lance compaction failed: {e:#}");
+    }
 
     let elapsed = start_time.elapsed();
 

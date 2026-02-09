@@ -1060,6 +1060,10 @@ impl VectorStore {
     }
 
     /// Get index statistics, optionally filtered by repo
+    ///
+    /// Compacts the table first to merge fragments. LanceDB scans on heavily
+    /// fragmented tables (from per-file delete+insert cycles) can return
+    /// incomplete results. Compaction is idempotent and fast when already done.
     pub async fn get_stats(&self, repo: Option<&str>) -> Result<IndexStats> {
         let table = match &self.table {
             Some(t) => t,
@@ -1074,6 +1078,10 @@ impl VectorStore {
                 });
             }
         };
+
+        // Compact before scanning — fragmented tables return incomplete scan
+        // results in LanceDB 0.17. This is a no-op if already compacted.
+        self.compact().await.ok();
 
         let repo_filter = repo.map(|r| format!("repo = '{}'", r.replace('\'', "''")));
 
@@ -1109,6 +1117,7 @@ impl VectorStore {
         let mut lang_chunks: std::collections::HashMap<String, u64> =
             std::collections::HashMap::new();
         let mut last_indexed: Option<i64> = None;
+        let mut scanned_rows: u64 = 0;
 
         for batch in &batches {
             let file_paths = string_column(batch, "file_path")?;
@@ -1132,6 +1141,16 @@ impl VectorStore {
                     last_indexed = Some(ts);
                 }
             }
+            scanned_rows += batch.num_rows() as u64;
+        }
+
+        // Sanity check: scan should have found all rows. If not, the
+        // per-language breakdown is inaccurate (use count_rows as truth).
+        if scanned_rows < total_chunks {
+            eprintln!(
+                "warning: stats scan returned {scanned_rows} rows but count_rows reports \
+                 {total_chunks} — per-language breakdown may be incomplete"
+            );
         }
 
         let languages: Vec<LanguageStats> = lang_files
@@ -1498,6 +1517,116 @@ mod tests {
         let python_stats = stats.languages.iter().find(|l| l.language == "python").unwrap();
         assert_eq!(python_stats.file_count, 1);
         assert_eq!(python_stats.chunk_count, 1);
+    }
+
+    /// Regression test: delete_by_file + insert per file (the real indexing
+    /// pattern) creates heavy fragmentation. Without compaction, the stats
+    /// scan must still return all rows — not just the LanceDB default 10.
+    #[tokio::test]
+    async fn test_get_stats_fragmented_upserts() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        // Phase 1: Initial insert of 30 files across 3 languages
+        let languages = ["rust", "python", "markdown"];
+        for i in 0..30 {
+            let lang = languages[i % languages.len()];
+            let ext = match lang {
+                "rust" => "rs",
+                "python" => "py",
+                _ => "md",
+            };
+            let fp = format!("src/file_{i}.{ext}");
+
+            let chunk = Chunk {
+                id: format!("chunk_{i}"),
+                file_path: fp.clone(),
+                chunk_type: ChunkType::Function,
+                name: Some(format!("func_{i}")),
+                start_line: 1,
+                end_line: 10,
+                content: format!("content of chunk {i}"),
+                language: lang.to_string(),
+            };
+
+            store
+                .insert(
+                    &[chunk],
+                    &[sample_embedding()],
+                    &no_contexts(1),
+                    "default",
+                    &format!("hash_{i}_v1"),
+                    "1000",
+                )
+                .await
+                .unwrap();
+        }
+
+        // Phase 2: Re-index all files (delete_by_file + insert), simulating
+        // incremental re-indexing WITHOUT compaction in between.
+        for i in 0..30 {
+            let lang = languages[i % languages.len()];
+            let ext = match lang {
+                "rust" => "rs",
+                "python" => "py",
+                _ => "md",
+            };
+            let fp = format!("src/file_{i}.{ext}");
+
+            // This is the real-world pattern from cli/index.rs
+            store.delete_by_file(&[fp.clone()]).await.unwrap();
+
+            let chunk = Chunk {
+                id: format!("chunk_{i}"),
+                file_path: fp,
+                chunk_type: ChunkType::Function,
+                name: Some(format!("func_{i}_v2")),
+                start_line: 1,
+                end_line: 10,
+                content: format!("updated content of chunk {i}"),
+                language: lang.to_string(),
+            };
+
+            store
+                .insert(
+                    &[chunk],
+                    &[sample_embedding()],
+                    &no_contexts(1),
+                    "default",
+                    &format!("hash_{i}_v2"),
+                    "2000",
+                )
+                .await
+                .unwrap();
+        }
+
+        // NO compaction — stats must still be correct
+        let stats = store.get_stats(None).await.unwrap();
+        assert_eq!(stats.total_chunks, 30, "total chunks from count_rows");
+        assert_eq!(stats.total_files, 30, "total files from scan");
+
+        let total_lang_chunks: u64 = stats.languages.iter().map(|l| l.chunk_count).sum();
+        assert_eq!(
+            total_lang_chunks, 30,
+            "per-language chunk sum must equal total — got breakdown: {:?}",
+            stats.languages
+        );
+
+        assert_eq!(stats.languages.len(), 3);
+        for lang_stat in &stats.languages {
+            assert_eq!(
+                lang_stat.chunk_count, 10,
+                "{} should have 10 chunks",
+                lang_stat.language
+            );
+            assert_eq!(
+                lang_stat.file_count, 10,
+                "{} should have 10 files",
+                lang_stat.language
+            );
+        }
     }
 
     /// Regression test: many per-file inserts caused get_stats to return only
