@@ -1,8 +1,10 @@
 ---
-title: "Index Settings"
-description: "Configuring file patterns, languages, and indexing behavior"
+title: Index Settings
+description: Configuring file patterns, languages, and indexing behavior
 tags: [config, index]
+status: draft
 category: config
+related: [cli/index.md, config/reference.md]
 ---
 
 # Index Settings

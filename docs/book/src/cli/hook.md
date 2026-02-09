@@ -1,8 +1,10 @@
 ---
-title: "hook"
-description: "Manage Claude Code hooks for automatic context injection"
-category: cli-reference
+title: hook
+description: Manage Claude Code hooks for automatic context injection
 tags: [cli, hook]
+status: draft
+category: cli-reference
+related: [guides/hooks.md, config/hooks.md]
 commands: [hook]
 feature: hook
 source_files: [src/cli/hook.rs]

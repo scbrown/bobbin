@@ -1,8 +1,10 @@
 ---
-title: "completions"
-description: "Generate shell completions for bash, zsh, fish, and PowerShell"
-category: cli-reference
+title: completions
+description: Generate shell completions for bash, zsh, fish, and PowerShell
 tags: [cli, completions]
+status: draft
+category: cli-reference
+related: [cli/overview.md]
 commands: [completions]
 feature: completions
 source_files: [src/cli/completions.rs]

@@ -1,8 +1,10 @@
 ---
-title: "Changelog"
-description: "Release history and notable changes"
+title: Changelog
+description: Release history and notable changes
 tags: [appendix, changelog]
+status: draft
 category: appendix
+related: [appendix/roadmap.md]
 ---
 
 # Changelog

@@ -1,8 +1,10 @@
 ---
-title: "Embedding Settings"
-description: "Configuring the embedding model, batch size, and ONNX runtime"
+title: Embedding Settings
+description: Configuring the embedding model, batch size, and ONNX runtime
 tags: [config, embedding, onnx]
+status: draft
 category: config
+related: [architecture/embedding.md, config/reference.md, cli/benchmark.md]
 ---
 
 # Embedding Settings

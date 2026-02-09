@@ -1,10 +1,11 @@
 ---
-title: "Hooks"
-description: "Setting up Claude Code hooks for automatic context injection"
+title: Hooks
+description: Setting up Claude Code hooks for automatic context injection
 tags: [hooks, claude-code, guide]
-commands: [hook]
 status: draft
 category: guide
+related: [cli/hook.md, config/hooks.md, getting-started/agent-setup.md]
+commands: [hook]
 ---
 
 # Hooks

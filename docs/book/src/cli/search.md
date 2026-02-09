@@ -1,9 +1,10 @@
 ---
-title: "search"
-description: "Hybrid, semantic, and keyword search across your codebase"
+title: search
+description: Hybrid, semantic, and keyword search across your codebase
+tags: [cli, search]
 status: draft
 category: cli-reference
-tags: [cli, search]
+related: [cli/grep.md, guides/searching.md, reference/search-modes.md]
 commands: [search]
 feature: search
 source_files: [src/cli/search.rs]

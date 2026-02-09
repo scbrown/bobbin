@@ -1,8 +1,10 @@
 ---
-title: "Architecture Overview"
-description: "High-level architecture of bobbin's indexing, search, and context pipeline"
+title: Architecture Overview
+description: High-level architecture of bobbin's indexing, search, and context pipeline
 tags: [architecture, overview]
+status: draft
 category: architecture
+related: [architecture/storage.md, architecture/embedding.md, architecture/languages.md]
 ---
 
 # Architecture Overview

@@ -1,8 +1,10 @@
 ---
-title: "Quick Start"
-description: "A guided walkthrough of bobbin's core features using your own repository"
+title: Quick Start
+description: A guided walkthrough of bobbin's core features using your own repository
 tags: [tutorial, quickstart]
+status: draft
 category: getting-started
+related: [getting-started/concepts.md, cli/init.md, cli/search.md]
 ---
 
 # Quick Start

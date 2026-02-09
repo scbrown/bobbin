@@ -1,9 +1,10 @@
 ---
-title: "CLI Overview"
-description: "Global flags, output modes, and thin-client mode"
+title: CLI Overview
+description: Global flags, output modes, and thin-client mode
+tags: [cli, overview]
 status: draft
 category: cli-reference
-tags: [cli, overview]
+related: [cli/init.md, getting-started/quick-start.md]
 ---
 
 # CLI Overview

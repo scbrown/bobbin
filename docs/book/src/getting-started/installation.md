@@ -1,8 +1,10 @@
 ---
-title: "Installation"
-description: "Installing bobbin from source or pre-built binaries"
+title: Installation
+description: Installing bobbin from source or pre-built binaries
 tags: [installation, setup]
+status: draft
 category: getting-started
+related: [getting-started/quick-start.md, cli/init.md]
 ---
 
 # Installation

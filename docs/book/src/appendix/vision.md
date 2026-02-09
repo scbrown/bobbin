@@ -1,8 +1,10 @@
 ---
-title: "Vision"
-description: "The vision and philosophy behind bobbin as a local-first code context engine"
+title: Vision
+description: The vision and philosophy behind bobbin as a local-first code context engine
 tags: [appendix, vision]
+status: draft
 category: appendix
+related: [appendix/roadmap.md, architecture/overview.md]
 ---
 
 # Bobbin Vision & Mission

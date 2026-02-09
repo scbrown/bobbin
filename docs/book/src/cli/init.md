@@ -1,9 +1,10 @@
 ---
-title: "init"
-description: "Initialize bobbin in the current repository"
+title: init
+description: Initialize bobbin in the current repository
+tags: [cli, init]
 status: draft
 category: cli-reference
-tags: [cli, init]
+related: [getting-started/quick-start.md, cli/index.md]
 commands: [init]
 feature: init
 source_files: [src/cli/init.rs]

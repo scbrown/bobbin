@@ -1,8 +1,10 @@
 ---
-title: "Hooks Configuration"
-description: "Configuring automatic context injection hooks"
+title: Hooks Configuration
+description: Configuring automatic context injection hooks
 tags: [config, hooks]
+status: draft
 category: config
+related: [cli/hook.md, guides/hooks.md, config/reference.md]
 ---
 
 # Hooks Configuration

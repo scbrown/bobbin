@@ -1,9 +1,10 @@
 ---
-title: "grep"
-description: "Keyword and regex search"
+title: grep
+description: Keyword and regex search
+tags: [cli, grep]
 status: draft
 category: cli-reference
-tags: [cli, grep]
+related: [cli/search.md, guides/searching.md]
 commands: [grep]
 feature: grep
 source_files: [src/cli/grep.rs]

@@ -1,9 +1,10 @@
 ---
-title: "related"
-description: "Find files related to a given file via git coupling analysis"
+title: related
+description: Find files related to a given file via git coupling analysis
+tags: [cli, related]
 status: draft
 category: cli-reference
-tags: [cli, related]
+related: [guides/git-coupling.md, cli/hotspots.md]
 commands: [related]
 feature: related
 source_files: [src/cli/related.rs]

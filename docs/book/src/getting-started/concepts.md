@@ -1,8 +1,10 @@
 ---
-title: "Concepts"
+title: Concepts
 description: "Core concepts: chunks, embeddings, hybrid search, coupling, and context assembly"
 tags: [concepts, fundamentals]
+status: draft
 category: getting-started
+related: [architecture/overview.md, reference/glossary.md]
 ---
 
 # Core Concepts

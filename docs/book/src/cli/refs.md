@@ -1,8 +1,10 @@
 ---
-title: "refs"
-description: "Find symbol references and list file symbols"
-category: cli-reference
+title: refs
+description: Find symbol references and list file symbols
 tags: [cli, refs]
+status: draft
+category: cli-reference
+related: [cli/deps.md, guides/deps-refs.md]
 commands: [refs]
 feature: refs
 source_files: [src/cli/refs.rs]

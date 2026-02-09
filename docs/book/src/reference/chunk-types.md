@@ -1,8 +1,10 @@
 ---
-title: "Chunk Types"
+title: Chunk Types
 description: "All chunk types produced by bobbin's parsers: function, class, module, doc, and more"
 tags: [reference, chunks, parsing]
+status: draft
 category: reference
+related: [architecture/languages.md, architecture/embedding.md]
 ---
 
 # Chunk Types

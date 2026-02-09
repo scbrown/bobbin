@@ -1,9 +1,10 @@
 ---
-title: "index"
-description: "Build or update the search index"
+title: index
+description: Build or update the search index
+tags: [cli, index]
 status: draft
 category: cli-reference
-tags: [cli, index]
+related: [cli/watch.md, config/index.md]
 commands: [index]
 feature: index
 source_files: [src/cli/index.rs]

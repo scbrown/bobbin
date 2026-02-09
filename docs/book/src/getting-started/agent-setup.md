@@ -1,8 +1,10 @@
 ---
-title: "Agent Setup"
-description: "Configuring bobbin with Claude Code, Cursor, and other AI coding tools"
+title: Agent Setup
+description: Configuring bobbin with Claude Code, Cursor, and other AI coding tools
 tags: [setup, mcp, claude-code, cursor]
+status: draft
 category: getting-started
+related: [mcp/overview.md, mcp/client-config.md, cli/serve.md]
 ---
 
 # Agent Setup

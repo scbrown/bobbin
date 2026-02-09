@@ -1,8 +1,10 @@
 ---
-title: "Language Support"
-description: "Supported languages, Tree-sitter grammars, and adding new language support"
+title: Language Support
+description: Supported languages, Tree-sitter grammars, and adding new language support
 tags: [architecture, languages, tree-sitter]
+status: draft
 category: architecture
+related: [architecture/overview.md, reference/chunk-types.md]
 ---
 
 # Language Support

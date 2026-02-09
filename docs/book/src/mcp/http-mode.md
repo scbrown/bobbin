@@ -1,8 +1,10 @@
 ---
-title: "HTTP Mode"
-description: "Running bobbin as an HTTP REST API server for centralized deployments"
+title: HTTP Mode
+description: Running bobbin as an HTTP REST API server for centralized deployments
 tags: [mcp, http, server, thin-client]
+status: draft
 category: mcp
+related: [mcp/overview.md, cli/serve.md, config/reference.md]
 ---
 
 # HTTP Mode

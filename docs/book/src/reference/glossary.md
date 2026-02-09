@@ -1,8 +1,10 @@
 ---
-title: "Glossary"
-description: "Definitions of key terms used throughout bobbin's documentation"
+title: Glossary
+description: Definitions of key terms used throughout bobbin's documentation
 tags: [reference, glossary]
+status: draft
 category: reference
+related: [getting-started/concepts.md]
 ---
 
 # Glossary

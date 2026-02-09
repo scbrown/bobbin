@@ -1,8 +1,10 @@
 ---
-title: "Search Modes"
-description: "Semantic search, keyword grep, and hybrid search modes explained"
+title: Search Modes
+description: Semantic search, keyword grep, and hybrid search modes explained
 tags: [reference, search, hybrid]
+status: draft
 category: reference
+related: [cli/search.md, cli/grep.md, guides/searching.md]
 ---
 
 # Search Modes

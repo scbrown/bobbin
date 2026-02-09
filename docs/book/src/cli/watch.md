@@ -1,8 +1,10 @@
 ---
-title: "watch"
-description: "Watch for file changes and re-index continuously"
-category: cli-reference
+title: watch
+description: Watch for file changes and re-index continuously
 tags: [cli, watch]
+status: draft
+category: cli-reference
+related: [guides/watch-automation.md, cli/index.md]
 commands: [watch]
 feature: watch
 source_files: [src/cli/watch.rs]

@@ -1,9 +1,10 @@
 ---
-title: "context"
-description: "Assemble task-relevant context from search and git history"
+title: context
+description: Assemble task-relevant context from search and git history
+tags: [cli, context]
 status: draft
 category: cli-reference
-tags: [cli, context]
+related: [guides/context-assembly.md, cli/search.md]
 commands: [context]
 feature: context
 source_files: [src/cli/context.rs]

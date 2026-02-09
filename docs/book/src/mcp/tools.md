@@ -1,8 +1,10 @@
 ---
-title: "Tools Reference"
-description: "Complete reference for all bobbin MCP tools"
+title: Tools Reference
+description: Complete reference for all bobbin MCP tools
 tags: [mcp, tools, reference]
+status: draft
 category: mcp
+related: [mcp/overview.md, cli/search.md, cli/context.md]
 ---
 
 # Tools Reference

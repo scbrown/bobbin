@@ -1,8 +1,10 @@
 ---
-title: "hotspots"
-description: "Identify code hotspots with high churn and high complexity"
-category: cli-reference
+title: hotspots
+description: Identify code hotspots with high churn and high complexity
 tags: [cli, hotspots]
+status: draft
+category: cli-reference
+related: [guides/hotspots.md, cli/related.md, cli/history.md]
 commands: [hotspots]
 feature: hotspots
 source_files: [src/cli/hotspots.rs]

@@ -1,8 +1,10 @@
 ---
-title: "Client Configuration"
-description: "Configuring bobbin MCP with Claude Code, Cursor, and other clients"
+title: Client Configuration
+description: Configuring bobbin MCP with Claude Code, Cursor, and other clients
 tags: [mcp, claude-code, cursor, configuration]
+status: draft
 category: mcp
+related: [mcp/overview.md, getting-started/agent-setup.md]
 ---
 
 # Client Configuration

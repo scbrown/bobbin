@@ -1,10 +1,11 @@
 ---
 title: "Deps & Refs"
-description: "Exploring import dependencies and symbol references across files"
+description: Exploring import dependencies and symbol references across files
 tags: [deps, refs, guide]
-commands: [deps, refs]
 status: draft
 category: guide
+related: [cli/deps.md, cli/refs.md]
+commands: [deps, refs]
 ---
 
 # Deps & Refs

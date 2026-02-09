@@ -1,8 +1,10 @@
 ---
 title: "Storage & Data Flow"
-description: "How bobbin stores indexes, embeddings, and coupling data in .bobbin/"
+description: How bobbin stores indexes, embeddings, and coupling data in .bobbin/
 tags: [architecture, storage, lancedb]
+status: draft
 category: architecture
+related: [architecture/overview.md, config/index.md]
 ---
 
 # Storage & Data Flow

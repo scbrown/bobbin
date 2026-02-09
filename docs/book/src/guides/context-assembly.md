@@ -1,10 +1,11 @@
 ---
-title: "Context Assembly"
-description: "Assembling task-relevant context from search results and git history"
+title: Context Assembly
+description: Assembling task-relevant context from search results and git history
 tags: [context, guide]
-commands: [context]
 status: draft
 category: guide
+related: [cli/context.md, cli/search.md]
+commands: [context]
 ---
 
 # Context Assembly

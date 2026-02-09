@@ -1,8 +1,10 @@
 ---
-title: "Contributing"
+title: Contributing
 description: "How to contribute to bobbin: development setup, testing, and documentation guidelines"
 tags: [appendix, contributing]
+status: draft
 category: appendix
+related: [getting-started/installation.md]
 ---
 
 # Contributing to Bobbin

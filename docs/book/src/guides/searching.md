@@ -1,10 +1,11 @@
 ---
-title: "Searching"
-description: "Using semantic search and grep to find code across your codebase"
+title: Searching
+description: Using semantic search and grep to find code across your codebase
 tags: [search, grep, guide]
-commands: [search, grep]
 status: draft
 category: guide
+related: [cli/search.md, cli/grep.md, reference/search-modes.md]
+commands: [search, grep]
 ---
 
 # Searching

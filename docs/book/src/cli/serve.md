@@ -1,9 +1,10 @@
 ---
-title: "serve"
-description: "Start MCP server for AI agent integration"
+title: serve
+description: Start MCP server for AI agent integration
+tags: [cli, serve, mcp]
 status: draft
 category: cli-reference
-tags: [cli, serve, mcp]
+related: [mcp/overview.md, mcp/tools.md, mcp/http-mode.md]
 commands: [serve]
 feature: serve
 source_files: [src/cli/serve.rs]

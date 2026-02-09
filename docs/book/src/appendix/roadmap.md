@@ -1,8 +1,10 @@
 ---
-title: "Roadmap"
-description: "Planned features and development roadmap for bobbin"
+title: Roadmap
+description: Planned features and development roadmap for bobbin
 tags: [appendix, roadmap]
+status: draft
 category: appendix
+related: [appendix/vision.md, appendix/changelog.md]
 ---
 
 # Roadmap

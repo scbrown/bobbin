@@ -1,9 +1,10 @@
 ---
-title: "status"
-description: "Show index status and statistics"
+title: status
+description: Show index status and statistics
+tags: [cli, status]
 status: draft
 category: cli-reference
-tags: [cli, status]
+related: [cli/index.md]
 commands: [status]
 feature: status
 source_files: [src/cli/status.rs]

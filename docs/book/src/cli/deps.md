@@ -1,8 +1,10 @@
 ---
-title: "deps"
-description: "Show import dependencies for a file"
-category: cli-reference
+title: deps
+description: Show import dependencies for a file
 tags: [cli, deps]
+status: draft
+category: cli-reference
+related: [cli/refs.md, guides/deps-refs.md]
 commands: [deps]
 feature: deps
 source_files: [src/cli/deps.rs]

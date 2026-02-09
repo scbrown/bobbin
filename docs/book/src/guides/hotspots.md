@@ -1,10 +1,11 @@
 ---
-title: "Hotspots"
-description: "Finding high-churn, high-complexity code hotspots for refactoring targets"
+title: Hotspots
+description: Finding high-churn, high-complexity code hotspots for refactoring targets
 tags: [hotspots, churn, complexity, guide]
-commands: [hotspots]
 status: draft
 category: guide
+related: [cli/hotspots.md, cli/history.md]
+commands: [hotspots]
 ---
 
 # Hotspots

@@ -1,9 +1,11 @@
 ---
-title: "Multi-Repo"
-description: "Indexing and searching across multiple repositories with the --repo flag"
+title: Multi-Repo
+description: Indexing and searching across multiple repositories with the --repo flag
 tags: [multi-repo, guide]
 status: draft
 category: guide
+related: [cli/search.md, cli/index.md]
+commands: [search, index]
 ---
 
 # Multi-Repo

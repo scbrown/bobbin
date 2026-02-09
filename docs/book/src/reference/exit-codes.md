@@ -1,8 +1,10 @@
 ---
-title: "Exit Codes"
-description: "Bobbin CLI exit codes and their meanings"
+title: Exit Codes
+description: Bobbin CLI exit codes and their meanings
 tags: [reference, exit-codes]
+status: draft
 category: reference
+related: [cli/overview.md]
 ---
 
 # Exit Codes

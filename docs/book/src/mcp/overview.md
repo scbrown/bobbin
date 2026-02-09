@@ -1,8 +1,10 @@
 ---
-title: "MCP Overview"
-description: "Model Context Protocol integration for AI coding assistants"
+title: MCP Overview
+description: Model Context Protocol integration for AI coding assistants
 tags: [mcp, overview]
+status: draft
 category: mcp
+related: [mcp/tools.md, mcp/client-config.md, cli/serve.md]
 ---
 
 # MCP Overview

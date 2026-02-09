@@ -1,8 +1,10 @@
 ---
-title: "Search Settings"
-description: "Configuring search defaults, thresholds, and result limits"
+title: Search Settings
+description: Configuring search defaults, thresholds, and result limits
 tags: [config, search]
+status: draft
 category: config
+related: [cli/search.md, config/reference.md, reference/search-modes.md]
 ---
 
 # Search Settings

@@ -1,10 +1,11 @@
 ---
-title: "Git Coupling"
-description: "Understanding temporal coupling, related files, and git-based code relationships"
+title: Git Coupling
+description: Understanding temporal coupling, related files, and git-based code relationships
 tags: [coupling, related, git, guide]
-commands: [related]
 status: draft
 category: guide
+related: [cli/related.md, guides/hotspots.md]
+commands: [related]
 ---
 
 # Git Coupling

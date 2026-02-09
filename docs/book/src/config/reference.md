@@ -1,8 +1,10 @@
 ---
-title: "Configuration Reference"
-description: "Complete reference for bobbin's config.toml settings"
+title: Configuration Reference
+description: Complete reference for bobbin's config.toml settings
 tags: [config, reference]
+status: draft
 category: config
+related: [config/index.md, config/search.md, config/embedding.md, config/hooks.md]
 ---
 
 # Configuration Reference

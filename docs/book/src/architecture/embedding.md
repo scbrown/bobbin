@@ -1,8 +1,10 @@
 ---
-title: "Embedding Pipeline"
-description: "The chunking, parsing, and vector embedding pipeline"
+title: Embedding Pipeline
+description: The chunking, parsing, and vector embedding pipeline
 tags: [architecture, embedding, chunking]
+status: draft
 category: architecture
+related: [architecture/overview.md, config/embedding.md, cli/benchmark.md]
 ---
 
 # Embedding Pipeline

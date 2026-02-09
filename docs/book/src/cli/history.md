@@ -1,9 +1,10 @@
 ---
-title: "history"
-description: "Show commit history and churn statistics for a file"
+title: history
+description: Show commit history and churn statistics for a file
+tags: [cli, history]
 status: draft
 category: cli-reference
-tags: [cli, history]
+related: [cli/hotspots.md, cli/related.md]
 commands: [history]
 feature: history
 source_files: [src/cli/history.rs]

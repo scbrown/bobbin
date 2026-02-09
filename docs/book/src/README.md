@@ -1,9 +1,10 @@
 ---
-title: "Introduction"
-description: "Bobbin — the local-first code context engine for AI-assisted development"
+title: Introduction
+description: Bobbin — the local-first code context engine for AI-assisted development
 tags: [overview, introduction]
 status: draft
 category: getting-started
+related: [getting-started/installation.md, getting-started/quick-start.md]
 ---
 
 # Bobbin

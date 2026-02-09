@@ -1,8 +1,10 @@
 ---
-title: "benchmark"
-description: "Benchmark embedding model load times, latency, and throughput"
-category: cli-reference
+title: benchmark
+description: Benchmark embedding model load times, latency, and throughput
 tags: [cli, benchmark]
+status: draft
+category: cli-reference
+related: [architecture/embedding.md, config/embedding.md]
 commands: [benchmark]
 feature: benchmark
 source_files: [src/cli/benchmark.rs]

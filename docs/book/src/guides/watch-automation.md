@@ -1,10 +1,11 @@
 ---
 title: "Watch & Automation"
-description: "Continuous re-indexing with watch mode and CI integration patterns"
+description: Continuous re-indexing with watch mode and CI integration patterns
 tags: [watch, automation, ci, guide]
-commands: [watch]
 status: draft
 category: guide
+related: [cli/watch.md, cli/index.md]
+commands: [watch]
 ---
 
 # Watch & Automation
