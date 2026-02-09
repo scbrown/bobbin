@@ -65,9 +65,6 @@ jobs:
         with:
           tool: mdbook
 
-      - name: Install mdbook-frontmatter
-        run: cargo install mdbook-frontmatter --locked
-
       - name: Build book
         run: mdbook build docs/book
 

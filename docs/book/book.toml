@@ -8,8 +8,8 @@ language = "en"
 [build]
 build-dir = "book"
 
-[preprocessor.frontmatter]
-command = "mdbook-frontmatter"
+[preprocessor.strip-frontmatter]
+command = "python3 docs/book/strip-frontmatter.py"
 
 [output.html]
 default-theme = "coal"
