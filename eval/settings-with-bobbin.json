@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bobbin": {
+      "command": "bobbin",
+      "args": ["serve"]
+    }
+  }
+}

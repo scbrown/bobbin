@@ -102,6 +102,10 @@ def _run_single(
     from scorer.diff_scorer import score_diff
     from scorer.test_scorer import run_tests
 
+    # Resolve settings file to absolute path so it works from any cwd.
+    if settings_file:
+        settings_file = str(Path(settings_file).resolve())
+
     task_id = task["id"]
     click.echo(f"  [{task_id}] {approach} attempt {attempt + 1}")
 
@@ -130,6 +134,7 @@ def _run_single(
             return result
 
         # 2. Bobbin setup (with-bobbin only).
+        pre_agent_baseline = None
         if approach == "with-bobbin":
             click.echo("    Running bobbin init + index...")
             try:
@@ -146,6 +151,9 @@ def _run_single(
                 }
                 _save_result(result, results_dir)
                 return result
+            # Snapshot after bobbin setup so diff scoring excludes bobbin
+            # infrastructure files (.bobbin/, .gitignore changes).
+            pre_agent_baseline = snapshot(ws)
 
         # 3. Run agent.
         prompt = _build_prompt(task)
@@ -163,7 +171,11 @@ def _run_single(
         click.echo("    Scoring...")
         snap = snapshot(ws)
         test_result = run_tests(str(ws), task["test_command"])
-        diff_result = score_diff(str(ws), task["commit"], snapshot=snap)
+        diff_result = score_diff(
+            str(ws), task["commit"],
+            snapshot=snap,
+            baseline=pre_agent_baseline,
+        )
 
         result = {
             "task_id": task_id,

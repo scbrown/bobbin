@@ -40,7 +40,13 @@ def _files_changed_between(workspace: Path, base: str, head: str) -> set[str]:
     return {f for f in result.stdout.strip().splitlines() if f}
 
 
-def score_diff(workspace: str, ground_truth_commit: str, *, snapshot: str | None = None) -> dict:
+def score_diff(
+    workspace: str,
+    ground_truth_commit: str,
+    *,
+    snapshot: str | None = None,
+    baseline: str | None = None,
+) -> dict:
     """Compare the workspace diff against the ground truth commit.
 
     Computes file-level precision and recall by comparing which files the agent
@@ -55,8 +61,14 @@ def score_diff(workspace: str, ground_truth_commit: str, *, snapshot: str | None
         The commit hash whose changes represent the correct solution.
     snapshot:
         The agent's snapshot commit hash.  If provided, compares files changed
-        between ``ground_truth_commit^`` (the parent) and *snapshot*.  If None,
-        compares the current working tree against ``ground_truth_commit^``.
+        between the baseline and *snapshot*.  If None, compares the current
+        working tree against the baseline.
+    baseline:
+        The baseline commit to diff against.  If provided, agent files are
+        computed as changes between *baseline* and *snapshot* (or working tree).
+        This is useful for with-bobbin runs where bobbin setup modifies the
+        workspace before the agent starts.  If None, defaults to
+        ``ground_truth_commit^`` (the parent commit).
 
     Returns a dict with keys:
         file_precision     — fraction of agent-touched files that are in ground truth
@@ -76,26 +88,30 @@ def score_diff(workspace: str, ground_truth_commit: str, *, snapshot: str | None
             f"Cannot read ground truth commit {ground_truth_commit}: {exc.stderr.strip()}"
         ) from exc
 
-    # Get agent files.
-    try:
-        parent = subprocess.run(
-            ["git", "rev-parse", f"{ground_truth_commit}^"],
-            cwd=ws,
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-    except subprocess.CalledProcessError as exc:
-        raise DiffScorerError(
-            f"Cannot resolve parent of {ground_truth_commit}: {exc.stderr.strip()}"
-        ) from exc
-
-    if snapshot:
-        agent_files = _files_changed_between(ws, parent, snapshot)
+    # Determine diff base: use explicit baseline if provided, else parent commit.
+    if baseline:
+        base = baseline
     else:
-        # Compare working tree + staged changes against parent.
+        try:
+            base = subprocess.run(
+                ["git", "rev-parse", f"{ground_truth_commit}^"],
+                cwd=ws,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+        except subprocess.CalledProcessError as exc:
+            raise DiffScorerError(
+                f"Cannot resolve parent of {ground_truth_commit}: {exc.stderr.strip()}"
+            ) from exc
+
+    # Get agent files.
+    if snapshot:
+        agent_files = _files_changed_between(ws, base, snapshot)
+    else:
+        # Compare working tree + staged changes against base.
         result = subprocess.run(
-            ["git", "diff", "--name-only", parent],
+            ["git", "diff", "--name-only", base],
             cwd=ws,
             capture_output=True,
             text=True,
