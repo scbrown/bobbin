@@ -13,6 +13,7 @@ mod related;
 mod search;
 mod serve;
 mod status;
+mod tour;
 mod watch;
 
 use anyhow::Result;
@@ -92,6 +93,9 @@ enum Commands {
 
     /// Manage Claude Code hooks for automatic context injection
     Hook(hook::HookArgs),
+
+    /// Interactive guided walkthrough of bobbin features
+    Tour(tour::TourArgs),
 }
 
 impl Cli {
@@ -123,6 +127,7 @@ impl Cli {
                 Ok(())
             }
             Commands::Hook(args) => hook::run(args, output).await,
+            Commands::Tour(args) => tour::run(args, output).await,
         }
     }
 }
