@@ -1,0 +1,18 @@
+config:
+  MD013: { line_length: 120, tables: false, code_blocks: false, headings: false }
+  MD033: false
+  MD024: { siblings_only: true }
+  MD026: false
+  MD041: true
+  MD040: true
+  MD004: { style: "dash" }
+
+globs:
+  - "docs/book/src/**/*.md"
+  - "README.md"
+  - "CONTRIBUTING.md"
+
+ignores:
+  - "docs/tasks/**"
+  - "docs/plans/**"
+  - "docs/design/**"

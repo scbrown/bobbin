@@ -1,0 +1,6 @@
+bobbin
+LanceDB
+Tree-sitter
+MCP
+ONNX
+SQLite

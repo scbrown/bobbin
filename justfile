@@ -75,3 +75,23 @@ setup:
         fi
     fi
     echo "All dependencies satisfied."
+
+# === Documentation ===
+
+# Documentation management: just docs <cmd>
+# Commands: build, serve, lint, fix, fmt, vale, validate, coverage, check
+docs cmd="build":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{cmd}}" in
+        build)    mdbook build docs/book ;;
+        serve)    mdbook serve docs/book --open ;;
+        lint)     npx markdownlint-cli2 "docs/book/src/**/*.md" "README.md" "CONTRIBUTING.md" ;;
+        fix)      npx markdownlint-cli2 --fix "docs/book/src/**/*.md" "README.md" "CONTRIBUTING.md" ;;
+        fmt)      npx prettier --write "docs/book/src/**/*.md" --prose-wrap preserve ;;
+        vale)     vale docs/book/src/ ;;
+        validate) bash scripts/validate-frontmatter.sh ;;
+        coverage) bash scripts/doc-coverage.sh ;;
+        check)    just docs lint && just docs vale && just docs validate && just docs build ;;
+        *)        echo "Unknown: {{cmd}}. Try: build serve lint fix fmt vale validate coverage check" ;;
+    esac
