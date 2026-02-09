@@ -18,12 +18,12 @@ refresh without modification.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 100.0% | 50.0% | 33.3% | 40.0% | 2.3m |
-| with-bobbin | 100.0% | 100.0% | 33.3% | 50.0% | 1.4m |
+| no-bobbin | 100.0% | 100.0% | 33.3% | 50.0% | 1.1m |
+| with-bobbin | 100.0% | 100.0% | 33.3% | 50.0% | 1.2m |
 
 **Ground truth files**: `CHANGES.rst`, `src/flask/sessions.py`, `tests/test_basic.py`
 
-**Files touched (no-bobbin)**: `src/flask/sessions.py`, `test_vary_fix.py`
+**Files touched (no-bobbin)**: `src/flask/sessions.py`
 **Files touched (with-bobbin)**: `src/flask/sessions.py`
 
 <div class="eval-chart">
@@ -43,8 +43,8 @@ refresh without modification.
 <text x="44" y="60.0" text-anchor="end" fill="#6272a4" font-size="10">40%</text>
 <line x1="50" y1="40.0" x2="280" y2="40.0" stroke="#44475a" stroke-width="1"/>
 <text x="44" y="44.0" text-anchor="end" fill="#6272a4" font-size="10">50%</text>
-<rect x="54.0" y="56.0" width="109.0" height="64.0" fill="#bd93f9" rx="2"/>
-<text x="108.5" y="52.0" text-anchor="middle" fill="#bd93f9" font-size="9">40%</text>
+<rect x="54.0" y="40.0" width="109.0" height="80.0" fill="#bd93f9" rx="2"/>
+<text x="108.5" y="36.0" text-anchor="middle" fill="#bd93f9" font-size="9">50%</text>
 <rect x="167.0" y="40.0" width="109.0" height="80.0" fill="#50fa7b" rx="2"/>
 <text x="221.5" y="36.0" text-anchor="middle" fill="#50fa7b" font-size="9">50%</text>
 <text x="165.0" y="136.0" text-anchor="middle" fill="#f8f8f2" font-size="11">flask-001</text>

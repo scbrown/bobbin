@@ -318,8 +318,11 @@ def generate_project_page(
 
         if meta:
             # LOC breakdown table.
-            total_code = sum(v.get("code", 0) for v in meta.values() if isinstance(v, dict))
-            total_lines = sum(v.get("lines", 0) for v in meta.values() if isinstance(v, dict))
+            # Use tokei's "Total" entry if present, otherwise sum individual languages.
+            tokei_total = meta.get("Total", {}) if isinstance(meta.get("Total"), dict) else {}
+            lang_entries = {k: v for k, v in meta.items() if isinstance(v, dict) and k != "Total"}
+            total_code = tokei_total.get("code", sum(v.get("code", 0) for v in lang_entries.values()))
+            total_lines = tokei_total.get("lines", sum(v.get("lines", 0) for v in lang_entries.values()))
 
             lines.append("### Lines of Code")
             lines.append("")
@@ -327,10 +330,12 @@ def generate_project_page(
             lines.append("|----------|------:|-----:|---------:|-------:|------:|")
 
             sorted_langs = sorted(
-                [(k, v) for k, v in meta.items() if isinstance(v, dict) and v.get("code", 0) > 0],
+                [(k, v) for k, v in meta.items()
+                 if isinstance(v, dict) and v.get("code", 0) > 0 and k != "Total"],
                 key=lambda x: x[1].get("code", 0),
                 reverse=True,
             )
+            total_files = sum(v.get("files", 0) for _, v in sorted_langs)
             for lang, stats in sorted_langs[:10]:
                 lines.append(
                     f"| {lang} | {stats.get('files', 0):,} | {stats.get('code', 0):,} "
@@ -338,7 +343,7 @@ def generate_project_page(
                     f"| {stats.get('lines', 0):,} |"
                 )
             if total_code:
-                lines.append(f"| **Total** | | **{total_code:,}** | | | **{total_lines:,}** |")
+                lines.append(f"| **Total** | **{total_files:,}** | **{total_code:,}** | | | **{total_lines:,}** |")
             lines.append("")
 
         if bobbin_meta:
