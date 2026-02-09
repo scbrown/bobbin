@@ -2287,6 +2287,172 @@ mod tests {
     }
 
     #[test]
+    fn test_merge_hooks_preserves_unrelated_events() {
+        // Events that bobbin doesn't use should be completely untouched
+        let mut settings = json!({
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "gt tap guard pr-workflow" }
+                        ],
+                        "matcher": "Bash(gh pr create*)"
+                    }
+                ],
+                "Stop": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "gt costs record" }
+                        ],
+                        "matcher": ""
+                    }
+                ],
+                "PostToolUseFailure": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "dp record --source claude-code" }
+                        ],
+                        "matcher": ".*"
+                    }
+                ]
+            }
+        });
+
+        merge_hooks(&mut settings);
+
+        // All original events preserved
+        let hooks = &settings["hooks"];
+        assert_eq!(hooks["PreToolUse"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            hooks["PreToolUse"][0]["hooks"][0]["command"].as_str().unwrap(),
+            "gt tap guard pr-workflow"
+        );
+        assert_eq!(hooks["Stop"].as_array().unwrap().len(), 1);
+        assert_eq!(hooks["PostToolUseFailure"].as_array().unwrap().len(), 1);
+
+        // Bobbin events added
+        assert!(hooks["UserPromptSubmit"].is_array());
+        assert!(hooks["SessionStart"].is_array());
+    }
+
+    #[test]
+    fn test_merge_hooks_preserves_non_hook_settings() {
+        // Top-level keys like statusLine must survive
+        let mut settings = json!({
+            "statusLine": {
+                "command": "bash ~/.claude/statusline-command.sh",
+                "type": "command"
+            },
+            "permissions": {
+                "allow": ["Bash(cargo *)"]
+            }
+        });
+
+        merge_hooks(&mut settings);
+
+        assert_eq!(
+            settings["statusLine"]["command"].as_str().unwrap(),
+            "bash ~/.claude/statusline-command.sh"
+        );
+        assert_eq!(
+            settings["permissions"]["allow"][0].as_str().unwrap(),
+            "Bash(cargo *)"
+        );
+    }
+
+    #[test]
+    fn test_merge_hooks_realistic_multi_tool_settings() {
+        // Mirrors a real ~/.claude/settings.json with Gas Town + dp hooks
+        let mut settings = json!({
+            "hooks": {
+                "UserPromptSubmit": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "gt mail check --inject" }
+                        ],
+                        "matcher": ""
+                    }
+                ],
+                "SessionStart": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "gt prime --hook" }
+                        ],
+                        "matcher": ""
+                    }
+                ],
+                "PreCompact": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "gt prime --hook" }
+                        ],
+                        "matcher": ""
+                    }
+                ],
+                "Stop": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "gt costs record" }
+                        ],
+                        "matcher": ""
+                    }
+                ]
+            },
+            "statusLine": {
+                "command": "bash ~/.claude/statusline-command.sh",
+                "type": "command"
+            }
+        });
+
+        merge_hooks(&mut settings);
+
+        let hooks = &settings["hooks"];
+
+        // Gas Town hooks in shared events preserved alongside bobbin
+        let ups = hooks["UserPromptSubmit"].as_array().unwrap();
+        assert_eq!(ups.len(), 2);
+        assert_eq!(ups[0]["hooks"][0]["command"].as_str().unwrap(), "gt mail check --inject");
+        assert_eq!(ups[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook inject-context");
+
+        let ss = hooks["SessionStart"].as_array().unwrap();
+        assert_eq!(ss.len(), 2);
+        assert_eq!(ss[0]["hooks"][0]["command"].as_str().unwrap(), "gt prime --hook");
+        assert_eq!(ss[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook session-context");
+
+        // Events bobbin doesn't touch are untouched
+        assert_eq!(hooks["PreCompact"].as_array().unwrap().len(), 1);
+        assert_eq!(hooks["Stop"].as_array().unwrap().len(), 1);
+
+        // Non-hook settings preserved
+        assert!(settings["statusLine"].is_object());
+    }
+
+    #[test]
+    fn test_merge_hooks_idempotent_with_other_tools() {
+        // Merge twice with non-bobbin hooks — should not duplicate anything
+        let mut settings = json!({
+            "hooks": {
+                "UserPromptSubmit": [
+                    {
+                        "hooks": [
+                            { "type": "command", "command": "gt mail check --inject" }
+                        ]
+                    }
+                ]
+            }
+        });
+
+        merge_hooks(&mut settings);
+        merge_hooks(&mut settings);
+
+        let ups = settings["hooks"]["UserPromptSubmit"].as_array().unwrap();
+        assert_eq!(ups.len(), 2, "gt hook + 1 bobbin hook, no duplicates");
+
+        let ss = settings["hooks"]["SessionStart"].as_array().unwrap();
+        assert_eq!(ss.len(), 1, "Only 1 bobbin SessionStart hook");
+    }
+
+    #[test]
     fn test_bobbin_hook_entries_structure() {
         let entries = bobbin_hook_entries();
         let hooks = entries.get("hooks").unwrap();

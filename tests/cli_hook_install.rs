@@ -112,6 +112,172 @@ fn hook_install_preserves_existing_hooks() {
 }
 
 #[test]
+fn hook_install_global_preserves_existing_hooks() {
+    let project = TestProject::new();
+    project.git_commit("initial");
+
+    // Set up a fake HOME with pre-existing global settings
+    let fake_home = project.path().join("fakehome");
+    let claude_dir = fake_home.join(".claude");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    std::fs::write(
+        claude_dir.join("settings.json"),
+        r#"{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "gt mail check --inject" }
+        ],
+        "matcher": ""
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "gt prime --hook" }
+        ],
+        "matcher": ""
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "gt tap guard pr-workflow" }
+        ],
+        "matcher": "Bash(gh pr create*)"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "gt costs record" }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "command": "bash ~/.claude/statusline-command.sh",
+    "type": "command"
+  }
+}"#,
+    )
+    .unwrap();
+
+    Command::new(TestProject::bobbin_bin())
+        .args(["hook", "install", "--global"])
+        .env("HOME", &fake_home)
+        .current_dir(project.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("hooks installed"));
+
+    let content = std::fs::read_to_string(claude_dir.join("settings.json")).unwrap();
+    let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    // Gas Town UserPromptSubmit hook preserved alongside bobbin
+    let ups = settings["hooks"]["UserPromptSubmit"].as_array().unwrap();
+    assert_eq!(ups.len(), 2);
+    assert_eq!(
+        ups[0]["hooks"][0]["command"].as_str().unwrap(),
+        "gt mail check --inject"
+    );
+    assert_eq!(
+        ups[1]["hooks"][0]["command"].as_str().unwrap(),
+        "bobbin hook inject-context"
+    );
+
+    // Gas Town SessionStart hook preserved alongside bobbin
+    let ss = settings["hooks"]["SessionStart"].as_array().unwrap();
+    assert_eq!(ss.len(), 2);
+    assert_eq!(
+        ss[0]["hooks"][0]["command"].as_str().unwrap(),
+        "gt prime --hook"
+    );
+    assert_eq!(
+        ss[1]["hooks"][0]["command"].as_str().unwrap(),
+        "bobbin hook session-context"
+    );
+
+    // Events bobbin doesn't touch are completely untouched
+    let ptu = settings["hooks"]["PreToolUse"].as_array().unwrap();
+    assert_eq!(ptu.len(), 1);
+    assert_eq!(
+        ptu[0]["hooks"][0]["command"].as_str().unwrap(),
+        "gt tap guard pr-workflow"
+    );
+
+    let stop = settings["hooks"]["Stop"].as_array().unwrap();
+    assert_eq!(stop.len(), 1);
+    assert_eq!(
+        stop[0]["hooks"][0]["command"].as_str().unwrap(),
+        "gt costs record"
+    );
+
+    // Non-hook top-level keys preserved
+    assert_eq!(
+        settings["statusLine"]["command"].as_str().unwrap(),
+        "bash ~/.claude/statusline-command.sh"
+    );
+}
+
+#[test]
+fn hook_install_global_uninstall_preserves_other_tools() {
+    let project = TestProject::new();
+    project.git_commit("initial");
+
+    let fake_home = project.path().join("fakehome");
+    let claude_dir = fake_home.join(".claude");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+
+    // Start with Gas Town hooks
+    std::fs::write(
+        claude_dir.join("settings.json"),
+        r#"{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "gt mail check --inject" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "gt costs record" }] }
+    ]
+  }
+}"#,
+    )
+    .unwrap();
+
+    // Install bobbin hooks
+    Command::new(TestProject::bobbin_bin())
+        .args(["hook", "install", "--global"])
+        .env("HOME", &fake_home)
+        .current_dir(project.path())
+        .assert()
+        .success();
+
+    // Now uninstall bobbin hooks
+    Command::new(TestProject::bobbin_bin())
+        .args(["hook", "uninstall", "--global"])
+        .env("HOME", &fake_home)
+        .current_dir(project.path())
+        .assert()
+        .success();
+
+    let content = std::fs::read_to_string(claude_dir.join("settings.json")).unwrap();
+    let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    // Gas Town hooks should remain
+    let ups = settings["hooks"]["UserPromptSubmit"].as_array().unwrap();
+    assert_eq!(ups.len(), 1);
+    assert_eq!(
+        ups[0]["hooks"][0]["command"].as_str().unwrap(),
+        "gt mail check --inject"
+    );
+
+    let stop = settings["hooks"]["Stop"].as_array().unwrap();
+    assert_eq!(stop.len(), 1);
+}
+
+#[test]
 fn hook_install_json_output() {
     let project = TestProject::new();
     project.git_commit("initial");
