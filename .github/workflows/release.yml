@@ -68,26 +68,22 @@ jobs:
       - name: Download ONNX Runtime
         shell: bash
         run: |
-          # Download manylinux-compatible ONNX Runtime from PyPI wheel
-          WHEEL_NAME="onnxruntime-${{ env.ORT_VERSION }}-${{ matrix.ort_pyver }}-${{ matrix.ort_platform }}.whl"
-          curl -sL "https://pypi.io/packages/${{ matrix.ort_pyver }}/${{ matrix.ort_platform }}/${WHEEL_NAME}" -o /tmp/ort.whl || \
-            pip download "onnxruntime==${{ env.ORT_VERSION }}" \
-              --platform "${{ matrix.ort_platform }}" \
-              --python-version 3.12 \
-              --no-deps --only-binary :all: \
-              -d /tmp/ort-dl
+          pip3 download "onnxruntime==${{ env.ORT_VERSION }}" \
+            --platform "${{ matrix.ort_platform }}" \
+            --python-version 3.12 \
+            --no-deps --only-binary :all: \
+            -d /tmp/ort-dl
           # Extract libonnxruntime from wheel
           python3 -c "
-          import zipfile, glob, os
-          whl = '/tmp/ort.whl' if os.path.exists('/tmp/ort.whl') else glob.glob('/tmp/ort-dl/*.whl')[0]
+          import zipfile, glob
+          whl = glob.glob('/tmp/ort-dl/*.whl')[0]
+          print(f'Using wheel: {whl}')
           with zipfile.ZipFile(whl) as z:
               for name in z.namelist():
-                  if 'libonnxruntime' in name and '.so' in name and 'providers' not in name:
-                      z.extract(name, '/tmp/ort-extracted')
-                      print(f'Extracted: {name}')
-                  elif 'libonnxruntime' in name and '.dylib' in name and 'providers' not in name:
-                      z.extract(name, '/tmp/ort-extracted')
-                      print(f'Extracted: {name}')
+                  if 'libonnxruntime' in name and ('providers' not in name):
+                      if name.endswith('.so') or '.so.' in name or name.endswith('.dylib') or '.dylib.' in name:
+                          z.extract(name, '/tmp/ort-extracted')
+                          print(f'Extracted: {name}')
           "
 
       - name: Package
