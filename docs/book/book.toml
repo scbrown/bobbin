@@ -9,7 +9,7 @@ language = "en"
 build-dir = "book"
 
 [preprocessor.strip-frontmatter]
-command = "python3 strip-frontmatter.py"
+command = "bash -c 'for p in strip-frontmatter.py docs/book/strip-frontmatter.py; do [ -f \"$p\" ] && exec python3 \"$p\" \"$@\"; done' _"
 
 [output.html]
 default-theme = "coal"
