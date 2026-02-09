@@ -68,7 +68,7 @@ Related to src/auth/middleware.rs:
 
 📦 **Task-Aware Context** — `bobbin context "fix the login bug"` builds a budget-controlled bundle from search results + coupled files. Feed it straight to an AI agent.
 
-🤖 **MCP Server** — `bobbin serve` exposes 5 tools to Claude Code, Cursor, and any MCP-compatible agent.
+🤖 **MCP Server** — `bobbin serve` exposes 12 tools to Claude Code, Cursor, and any MCP-compatible agent.
 
 🌐 **Multi-Repo** — Index multiple repositories into one database. Search across all or filter by name.
 
@@ -118,7 +118,7 @@ Add to your Claude Code or Cursor MCP config:
 }
 ```
 
-Exposes five tools: `search`, `grep`, `context`, `related`, and `read_chunk`.
+Exposes 12 tools: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `impact`, `review`, `similar`, and `prime`.
 
 ## Supported Languages
 
@@ -136,17 +136,14 @@ Other file types use line-based chunking with overlap.
 
 ## Documentation
 
-📚 **[Full Documentation](https://scbrown.github.io/bobbin/)** — Comprehensive guides, CLI reference, architecture, and more
+📚 **[The Bobbin Book](https://scbrown.github.io/bobbin/)** — Comprehensive guides, CLI reference, architecture, and more
 
-📖 **[CLI Reference](docs/commands.md)** — All commands, flags, and examples
-
-⚙️ **[Configuration](docs/configuration.md)** — `.bobbin/config.toml` reference
-
-🏗️ **[Architecture](docs/architecture.md)** — System design, data flow, storage schema
-
-🗺️ **[Roadmap](docs/roadmap.md)** — Development phases and planned features
-
-🤝 **[Contributing](CONTRIBUTING.md)** — Build, test, and development setup
+- [Getting Started](https://scbrown.github.io/bobbin/getting-started/quick-start.html) — Installation and first index
+- [CLI Reference](https://scbrown.github.io/bobbin/cli/overview.html) — All commands, flags, and examples
+- [MCP Tools](https://scbrown.github.io/bobbin/mcp/overview.html) — AI agent integration reference
+- [Configuration](https://scbrown.github.io/bobbin/config/reference.html) — `.bobbin/config.toml` reference
+- [Architecture](https://scbrown.github.io/bobbin/architecture/overview.html) — System design, data flow, storage schema
+- [Contributing](CONTRIBUTING.md) — Build, test, and development setup
 
 ## License
 

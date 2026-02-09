@@ -60,3 +60,17 @@ The `context` command is the "everything relevant in one shot" command. It combi
 - [ ] Are there new CLI flags that `context` should also expose?
 
 **Task specs for the context command live in `docs/tasks/context-*.md`.**
+
+## Documentation Checklist
+
+When adding or modifying features, update documentation alongside code changes.
+
+**Before merging, check:**
+
+- [ ] Does the CLI `--help` text accurately describe the new/changed flags?
+- [ ] Is the relevant `docs/book/src/cli/<command>.md` page updated?
+- [ ] If a new MCP tool was added, is `docs/book/src/mcp/tools.md` updated?
+- [ ] Are new concepts explained in the appropriate guide (`docs/book/src/guides/`)?
+- [ ] Does `README.md` need updating? (e.g., feature list, MCP tool count, examples)
+- [ ] Does the book build cleanly? (`mdbook build docs/book`)
+- [ ] Do CI doc checks pass? (`npx markdownlint-cli2 "docs/book/src/**/*.md" "README.md" "CONTRIBUTING.md"`)

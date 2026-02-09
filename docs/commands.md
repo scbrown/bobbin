@@ -1,5 +1,7 @@
 # CLI Reference
 
+> **Note:** This file is kept for reference. The authoritative CLI documentation is in [The Bobbin Book](https://scbrown.github.io/bobbin/cli/overview.html).
+
 All commands support these global flags:
 
 | Flag | Description |

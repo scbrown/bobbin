@@ -34,12 +34,17 @@
 - [related](cli/related.md)
 - [history](cli/history.md)
 - [hotspots](cli/hotspots.md)
+- [impact](cli/impact.md)
+- [review](cli/review.md)
+- [similar](cli/similar.md)
 - [status](cli/status.md)
 - [serve](cli/serve.md)
 - [benchmark](cli/benchmark.md)
 - [watch](cli/watch.md)
 - [completions](cli/completions.md)
 - [hook](cli/hook.md)
+- [tour](cli/tour.md)
+- [prime](cli/prime.md)
 
 # MCP Integration
 
