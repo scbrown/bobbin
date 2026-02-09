@@ -1,3 +1,6 @@
+/* Intel One Mono font for code */
+@import url('https://fonts.googleapis.com/css2?family=Intel+One+Mono:wght@400;700&display=swap');
+
 /* Bobbin Documentation — Dracula Theme Override
    Applied to the Coal theme (default) */
 
@@ -71,7 +74,11 @@ pre {
 }
 
 code {
-    font-family: 'Fira Code', 'Consolas', monospace;
+    font-family: 'Intel One Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+pre code {
+    font-family: 'Intel One Mono', 'Fira Code', 'Consolas', monospace;
 }
 
 /* Blockquote callouts */

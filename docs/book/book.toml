@@ -9,7 +9,7 @@ language = "en"
 build-dir = "book"
 
 [preprocessor.strip-frontmatter]
-command = "python3 docs/book/strip-frontmatter.py"
+command = "python3 strip-frontmatter.py"
 
 [output.html]
 default-theme = "coal"
