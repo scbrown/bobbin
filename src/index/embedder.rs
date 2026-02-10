@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use ndarray::Array2;
+use ort::ep::{ExecutionProvider, CUDA};
 use ort::session::Session;
 use ort::value::Tensor;
 use std::path::{Path, PathBuf};
@@ -85,7 +86,7 @@ enum EmbedderBackend {
 impl Embedder {
     /// Load an ONNX embedding model from the cache directory (backward-compatible)
     pub fn load(cache_dir: &Path, model_name: &str) -> Result<Self> {
-        let onnx = OnnxEmbedder::load_builtin(cache_dir, model_name)?;
+        let onnx = OnnxEmbedder::load_builtin(cache_dir, model_name, false)?;
         Ok(Self {
             backend: EmbedderBackend::Onnx(onnx),
         })
@@ -93,6 +94,7 @@ impl Embedder {
 
     /// Create an embedder from full embedding config
     pub fn from_config(config: &EmbeddingConfig, cache_dir: &Path) -> Result<Self> {
+        let use_gpu = config.use_gpu();
         match config.backend {
             EmbeddingBackend::Onnx => {
                 let onnx = if let Some(ref custom) = config.custom_model {
@@ -101,9 +103,10 @@ impl Embedder {
                         Path::new(&custom.tokenizer_path),
                         config.dimensions.unwrap_or(384),
                         custom.max_seq_len.unwrap_or(512),
+                        use_gpu,
                     )?
                 } else {
-                    OnnxEmbedder::load_builtin(cache_dir, &config.model)?
+                    OnnxEmbedder::load_builtin(cache_dir, &config.model, use_gpu)?
                 };
                 Ok(Self {
                     backend: EmbedderBackend::Onnx(onnx),
@@ -225,7 +228,7 @@ struct OnnxEmbedder {
 
 impl OnnxEmbedder {
     /// Load a built-in model from the cache directory
-    fn load_builtin(cache_dir: &Path, model_name: &str) -> Result<Self> {
+    fn load_builtin(cache_dir: &Path, model_name: &str, use_gpu: bool) -> Result<Self> {
         let config = ModelConfig::get(model_name)?;
         let model_dir = cache_dir.join(&config.name);
         let model_path = model_dir.join(&config.onnx_path);
@@ -238,7 +241,7 @@ impl OnnxEmbedder {
             );
         }
 
-        Self::load_from_files(&model_path, &tokenizer_path, config.dim, config.max_seq, &config.name)
+        Self::load_from_files(&model_path, &tokenizer_path, config.dim, config.max_seq, &config.name, use_gpu)
     }
 
     /// Load a custom ONNX model from specified paths
@@ -247,6 +250,7 @@ impl OnnxEmbedder {
         tokenizer_path: &Path,
         dim: usize,
         max_seq: usize,
+        use_gpu: bool,
     ) -> Result<Self> {
         if !model_path.exists() {
             anyhow::bail!("Custom ONNX model not found at: {}", model_path.display());
@@ -263,7 +267,7 @@ impl OnnxEmbedder {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "custom".to_string());
 
-        Self::load_from_files(model_path, tokenizer_path, dim, max_seq, &name)
+        Self::load_from_files(model_path, tokenizer_path, dim, max_seq, &name, use_gpu)
     }
 
     fn load_from_files(
@@ -272,6 +276,7 @@ impl OnnxEmbedder {
         dim: usize,
         max_seq: usize,
         name: &str,
+        use_gpu: bool,
     ) -> Result<Self> {
         // Use BOBBIN_ONNX_THREADS env var, or default to half available cores (min 2)
         let num_threads: usize = std::env::var("BOBBIN_ONNX_THREADS")
@@ -284,8 +289,26 @@ impl OnnxEmbedder {
                 (cpus / 2).max(2)
             });
 
-        let session = Session::builder()
-            .map_err(|e| anyhow::anyhow!("Failed to create ONNX session builder: {}", e))?
+        let mut builder = Session::builder()
+            .map_err(|e| anyhow::anyhow!("Failed to create ONNX session builder: {}", e))?;
+
+        // Register CUDA execution provider if GPU requested.
+        // Falls back to CPU silently if CUDA is not available at runtime.
+        let mut gpu_active = false;
+        if use_gpu {
+            let cuda_ep = CUDA::default();
+            let cuda_available = cuda_ep.is_available().unwrap_or(false);
+            if cuda_available {
+                builder = builder
+                    .with_execution_providers([cuda_ep.build()])
+                    .map_err(|e| anyhow::anyhow!("Failed to register CUDA EP: {}", e))?;
+                gpu_active = true;
+            } else {
+                eprintln!("warning: GPU requested but CUDA execution provider not available, falling back to CPU");
+            }
+        }
+
+        let session = builder
             .with_intra_threads(num_threads)
             .map_err(|e| anyhow::anyhow!("Failed to set thread count: {}", e))?
             .commit_from_file(model_path)
@@ -296,6 +319,10 @@ impl OnnxEmbedder {
                     e
                 )
             })?;
+
+        if gpu_active {
+            eprintln!("ONNX session using CUDA GPU acceleration");
+        }
 
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}", e))?;

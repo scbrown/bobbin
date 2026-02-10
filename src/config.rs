@@ -64,6 +64,9 @@ pub struct EmbeddingConfig {
     pub batch_size: usize,
     /// Embedding dimensions (auto-detected for built-in ONNX models, required for custom/API)
     pub dimensions: Option<usize>,
+    /// Enable GPU acceleration for ONNX inference (CUDA).
+    /// Also controllable via BOBBIN_GPU=1 env var.
+    pub gpu: bool,
     /// OpenAI-compatible API settings (required when backend = "openai-api")
     pub api: Option<ApiEmbeddingConfig>,
     /// Custom local ONNX model settings (optional, for non-built-in models)
@@ -130,10 +133,21 @@ impl Default for EmbeddingConfig {
             model: "all-MiniLM-L6-v2".into(),
             batch_size: 32,
             dimensions: None,
+            gpu: false,
             api: None,
             custom_model: None,
             context: ContextualEmbeddingConfig::default(),
         }
+    }
+}
+
+impl EmbeddingConfig {
+    /// Check if GPU should be used (config field or BOBBIN_GPU env var)
+    pub fn use_gpu(&self) -> bool {
+        self.gpu
+            || std::env::var("BOBBIN_GPU")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false)
     }
 }
 
@@ -547,6 +561,7 @@ budget = 150
             }),
             custom_model: None,
             context: ContextualEmbeddingConfig::default(),
+            ..Default::default()
         };
         let serialized = toml::to_string_pretty(&config).unwrap();
         let deserialized: EmbeddingConfig = toml::from_str(&serialized).unwrap();
