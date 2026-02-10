@@ -1,0 +1,170 @@
+{
+  "task_id": "ruff-005",
+  "approach": "no-bobbin",
+  "attempt": 0,
+  "status": "completed",
+  "timestamp": "2026-02-10T20:46:48.332160+00:00",
+  "task": {
+    "repo": "astral-sh/ruff",
+    "commit": "aa9c9bf01fc32260359a1c0e727ed57c90fc642c",
+    "test_command": "cargo test -p ruff -- format",
+    "language": "rust",
+    "difficulty": "easy"
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 221.31,
+    "timed_out": false
+  },
+  "test_result": {
+    "passed": true,
+    "total": 0,
+    "failures": 0,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0
+    }
+  },
+  "diff_result": {
+    "file_precision": 1.0,
+    "file_recall": 1.0,
+    "f1": 1.0,
+    "files_touched": [
+      "crates/ruff/src/commands/format.rs",
+      "crates/ruff/tests/cli/format.rs"
+    ],
+    "ground_truth_files": [
+      "crates/ruff/src/commands/format.rs",
+      "crates/ruff/tests/cli/format.rs"
+    ],
+    "exact_file_match": true
+  },
+  "agent_diff": "diff --git a/crates/ruff/src/commands/format.rs b/crates/ruff/src/commands/format.rs\nindex b6619442ec..e62b7449c0 100644\n--- a/crates/ruff/src/commands/format.rs\n+++ b/crates/ruff/src/commands/format.rs\n@@ -208,10 +208,12 @@ pub(crate) fn format(\n     match mode {\n         FormatMode::Write => {}\n         FormatMode::Check => {\n-            if preview.is_enabled() {\n-                results.write_changed_preview(&mut stdout().lock(), output_format, &errors)?;\n-            } else {\n-                results.write_changed(&mut stdout().lock())?;\n+            if config_arguments.log_level > LogLevel::Silent {\n+                if preview.is_enabled() {\n+                    results.write_changed_preview(&mut stdout().lock(), output_format, &errors)?;\n+                } else {\n+                    results.write_changed(&mut stdout().lock())?;\n+                }\n             }\n         }\n         FormatMode::Diff => {\ndiff --git a/crates/ruff/tests/cli/format.rs b/crates/ruff/tests/cli/format.rs\nindex 7fe9453613..5991ba6182 100644\n--- a/crates/ruff/tests/cli/format.rs\n+++ b/crates/ruff/tests/cli/format.rs\n@@ -2463,3 +2463,47 @@ fn markdown_formatting_stdin() -> Result<()> {\n     \"#);\n     Ok(())\n }\n+\n+#[test]\n+fn format_check_silent() -> Result<()> {\n+    let test = CliTest::with_files([\n+        (\"foo.py\", r#\"foo =     \"needs formatting\"\"#),\n+        (\"bar.py\", r#\"bar =     \"needs formatting\"\"#),\n+    ])?;\n+\n+    assert_cmd_snapshot!(test.format_command()\n+        .arg(\"--isolated\")\n+        .arg(\"--check\")\n+        .arg(\"--silent\"), @\"\n+    success: false\n+    exit_code: 1\n+    ----- stdout -----\n+\n+    ----- stderr -----\n+    \");\n+\n+    Ok(())\n+}\n+\n+#[test]\n+fn format_check_quiet() -> Result<()> {\n+    let test = CliTest::with_files([\n+        (\"foo.py\", r#\"foo =     \"needs formatting\"\"#),\n+        (\"bar.py\", r#\"bar =     \"needs formatting\"\"#),\n+    ])?;\n+\n+    assert_cmd_snapshot!(test.format_command()\n+        .arg(\"--isolated\")\n+        .arg(\"--check\")\n+        .arg(\"--quiet\"), @\"\n+    success: false\n+    exit_code: 1\n+    ----- stdout -----\n+    Would reformat: bar.py\n+    Would reformat: foo.py\n+\n+    ----- stderr -----\n+    \");\n+\n+    Ok(())\n+}\n",
+  "ground_truth_diff": "diff --git a/crates/ruff/src/commands/format.rs b/crates/ruff/src/commands/format.rs\nindex b6619442ec..9571591425 100644\n--- a/crates/ruff/src/commands/format.rs\n+++ b/crates/ruff/src/commands/format.rs\n@@ -205,17 +205,19 @@ pub(crate) fn format(\n     }\n \n     let results = FormatResults::new(results.as_slice(), mode);\n-    match mode {\n-        FormatMode::Write => {}\n-        FormatMode::Check => {\n-            if preview.is_enabled() {\n-                results.write_changed_preview(&mut stdout().lock(), output_format, &errors)?;\n-            } else {\n-                results.write_changed(&mut stdout().lock())?;\n+    if config_arguments.log_level > LogLevel::Silent {\n+        match mode {\n+            FormatMode::Write => {}\n+            FormatMode::Check => {\n+                if preview.is_enabled() {\n+                    results.write_changed_preview(&mut stdout().lock(), output_format, &errors)?;\n+                } else {\n+                    results.write_changed(&mut stdout().lock())?;\n+                }\n+            }\n+            FormatMode::Diff => {\n+                results.write_diff(&mut stdout().lock())?;\n             }\n-        }\n-        FormatMode::Diff => {\n-            results.write_diff(&mut stdout().lock())?;\n         }\n     }\n \ndiff --git a/crates/ruff/tests/cli/format.rs b/crates/ruff/tests/cli/format.rs\nindex 7fe9453613..6e7c8a8117 100644\n--- a/crates/ruff/tests/cli/format.rs\n+++ b/crates/ruff/tests/cli/format.rs\n@@ -720,6 +720,55 @@ if __name__ == \"__main__\":\n     Ok(())\n }\n \n+#[test]\n+fn check_silent_mode_no_output() -> Result<()> {\n+    // Write code that requires formatting,\n+    // but there should be no \"reformat\" output in silent mode\n+    let test = CliTest::with_file(\"main.py\", \"def     foo():\\n                pass\\n\")?;\n+\n+    assert_cmd_snapshot!(test.format_command().args([\"--check\", \"--silent\"]), @r\"\n+    success: false\n+    exit_code: 1\n+    ----- stdout -----\n+\n+    ----- stderr -----\n+    \");\n+    Ok(())\n+}\n+\n+#[test]\n+fn check_quiet_mode_shows_diagnostics_only() -> Result<()> {\n+    // should show diagnostics but not summary\n+    let test = CliTest::with_file(\"main.py\", \"def     foo():\\n                pass\\n\")?;\n+\n+    assert_cmd_snapshot!(test.format_command().args([\"--check\", \"--quiet\"]), @r\"\n+    success: false\n+    exit_code: 1\n+    ----- stdout -----\n+    Would reformat: main.py\n+\n+    ----- stderr -----\n+    \");\n+    Ok(())\n+}\n+\n+#[test]\n+fn check_default_mode_shows_diagnostics_and_summary() -> Result<()> {\n+    // default mode should show both diagnostics and summary\n+    let test = CliTest::with_file(\"main.py\", \"def     foo():\\n                pass\\n\")?;\n+\n+    assert_cmd_snapshot!(test.format_command().args([\"--check\"]), @r\"\n+    success: false\n+    exit_code: 1\n+    ----- stdout -----\n+    Would reformat: main.py\n+    1 file would be reformatted\n+\n+    ----- stderr -----\n+    \");\n+    Ok(())\n+}\n+\n #[test]\n fn force_exclude() -> Result<()> {\n     let test = CliTest::with_files([\n",
+  "project_metadata": {
+    "CSS": {
+      "files": 3,
+      "lines": 377,
+      "code": 322,
+      "comments": 6,
+      "blanks": 49
+    },
+    "Dockerfile": {
+      "files": 1,
+      "lines": 38,
+      "code": 26,
+      "comments": 7,
+      "blanks": 5
+    },
+    "HTML": {
+      "files": 2,
+      "lines": 81,
+      "code": 81,
+      "comments": 0,
+      "blanks": 0
+    },
+    "JavaScript": {
+      "files": 2,
+      "lines": 97,
+      "code": 77,
+      "comments": 11,
+      "blanks": 9
+    },
+    "JSON": {
+      "files": 134,
+      "lines": 15798,
+      "code": 15788,
+      "comments": 0,
+      "blanks": 10
+    },
+    "Jupyter Notebooks": {
+      "files": 35,
+      "lines": 511,
+      "code": 289,
+      "comments": 154,
+      "blanks": 68
+    },
+    "Markdown": {
+      "files": 396,
+      "lines": 121826,
+      "code": 0,
+      "comments": 88725,
+      "blanks": 33101
+    },
+    "Python": {
+      "files": 3688,
+      "lines": 266905,
+      "code": 212005,
+      "comments": 12808,
+      "blanks": 42092
+    },
+    "Rust": {
+      "files": 1748,
+      "lines": 518446,
+      "code": 438650,
+      "comments": 25607,
+      "blanks": 54189
+    },
+    "Shell": {
+      "files": 15,
+      "lines": 489,
+      "code": 274,
+      "comments": 143,
+      "blanks": 72
+    },
+    "SVG": {
+      "files": 28,
+      "lines": 1445,
+      "code": 1308,
+      "comments": 71,
+      "blanks": 66
+    },
+    "Plain Text": {
+      "files": 43,
+      "lines": 188649,
+      "code": 0,
+      "comments": 188648,
+      "blanks": 1
+    },
+    "TOML": {
+      "files": 145,
+      "lines": 4352,
+      "code": 3651,
+      "comments": 219,
+      "blanks": 482
+    },
+    "TSX": {
+      "files": 30,
+      "lines": 5526,
+      "code": 4810,
+      "comments": 163,
+      "blanks": 553
+    },
+    "TypeScript": {
+      "files": 14,
+      "lines": 480,
+      "code": 363,
+      "comments": 61,
+      "blanks": 56
+    },
+    "YAML": {
+      "files": 24,
+      "lines": 3741,
+      "code": 3130,
+      "comments": 287,
+      "blanks": 324
+    },
+    "Total": {
+      "files": 0,
+      "lines": 1207938,
+      "code": 693737,
+      "comments": 368694,
+      "blanks": 145507
+    }
+  },
+  "bobbin_metadata": null,
+  "run_id": "20260210-204254-ecf9"
+}
