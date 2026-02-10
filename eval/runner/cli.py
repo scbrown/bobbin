@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 _EVAL_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_SETTINGS = _EVAL_ROOT / "settings-with-bobbin.json"
+_NO_BOBBIN_SETTINGS = _EVAL_ROOT / "settings-no-bobbin.json"
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -224,10 +225,16 @@ def _run_single(
         # 3. Run agent.
         prompt = _build_prompt(task)
         click.echo(f"    Running Claude Code (model={model}, budget=${budget:.2f})...")
+        # Always pass a settings file to isolate from user's global hooks.
+        # no-bobbin gets a clean settings file; with-bobbin gets the bobbin one.
+        if approach == "with-bobbin":
+            run_settings = settings_file
+        else:
+            run_settings = str(_NO_BOBBIN_SETTINGS) if _NO_BOBBIN_SETTINGS.exists() else None
         agent_result = run_agent(
             str(ws),
             prompt,
-            settings_file=settings_file if approach == "with-bobbin" else None,
+            settings_file=run_settings,
             model=model,
             max_budget_usd=budget,
             timeout=timeout,
