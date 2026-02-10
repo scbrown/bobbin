@@ -1,0 +1,166 @@
+{
+  "task_id": "flask-004",
+  "approach": "with-bobbin",
+  "attempt": 0,
+  "status": "completed",
+  "timestamp": "2026-02-10T06:29:55.680527+00:00",
+  "task": {
+    "repo": "pallets/flask",
+    "commit": "eb5dd9f5ef255c578cbbe13c1cb4dd11389d5519",
+    "test_command": ".venv/bin/pytest tests/test_helpers.py -x -k abort",
+    "language": "python",
+    "difficulty": "medium"
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 177.21,
+    "timed_out": false
+  },
+  "test_result": {
+    "passed": false,
+    "total": 0,
+    "failures": 0,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0
+    }
+  },
+  "diff_result": {
+    "file_precision": 1.0,
+    "file_recall": 0.6,
+    "f1": 0.75,
+    "files_touched": [
+      "src/flask/__init__.py",
+      "src/flask/app.py",
+      "src/flask/helpers.py"
+    ],
+    "ground_truth_files": [
+      "CHANGES.rst",
+      "src/flask/__init__.py",
+      "src/flask/app.py",
+      "src/flask/helpers.py",
+      "tests/test_helpers.py"
+    ],
+    "exact_file_match": false
+  },
+  "agent_diff": "diff --git a/src/flask/__init__.py b/src/flask/__init__.py\nindex f71a7d42..3dbdd1be 100644\n--- a/src/flask/__init__.py\n+++ b/src/flask/__init__.py\n@@ -1,7 +1,5 @@\n from markupsafe import escape\n from markupsafe import Markup\n-from werkzeug.exceptions import abort as abort\n-\n from . import json as json\n from .app import Flask as Flask\n from .app import Request as Request\n@@ -18,6 +16,7 @@ from .globals import current_app as current_app\n from .globals import g as g\n from .globals import request as request\n from .globals import session as session\n+from .helpers import abort as abort\n from .helpers import flash as flash\n from .helpers import get_flashed_messages as get_flashed_messages\n from .helpers import get_template_attribute as get_template_attribute\ndiff --git a/src/flask/app.py b/src/flask/app.py\nindex 8ce14301..3237a192 100644\n--- a/src/flask/app.py\n+++ b/src/flask/app.py\n@@ -12,6 +12,7 @@ from types import TracebackType\n \n from werkzeug.datastructures import Headers\n from werkzeug.datastructures import ImmutableDict\n+from werkzeug.exceptions import Aborter\n from werkzeug.exceptions import BadRequest\n from werkzeug.exceptions import BadRequestKeyError\n from werkzeug.exceptions import HTTPException\n@@ -362,6 +363,12 @@ class Flask(Scaffold):\n     #: .. versionadded:: 1.1.0\n     url_map_class = Map\n \n+    #: The class that is used for the :attr:`aborter`. Defaults to\n+    #: :class:`werkzeug.exceptions.Aborter`.\n+    #:\n+    #: .. versionadded:: 2.2\n+    aborter_class = Aborter\n+\n     #: The :meth:`test_client` method creates an instance of this test\n     #: client class. Defaults to :class:`~flask.testing.FlaskClient`.\n     #:\n@@ -492,6 +499,14 @@ class Flask(Scaffold):\n         self.url_map.host_matching = host_matching\n         self.subdomain_matching = subdomain_matching\n \n+        #: An instance of :attr:`aborter_class` created by\n+        #: :meth:`make_aborter`. This is called by :func:`flask.abort`\n+        #: to raise HTTP errors, and can be used to register custom\n+        #: exceptions for HTTP error codes.\n+        #:\n+        #: .. versionadded:: 2.2\n+        self.aborter = self.make_aborter()\n+\n         # tracks internally if the application already handled at least one\n         # request.\n         self._got_first_request = False\n@@ -628,6 +643,18 @@ class Flask(Scaffold):\n         defaults[\"DEBUG\"] = get_debug_flag()\n         return self.config_class(root_path, defaults)\n \n+    def make_aborter(self) -> Aborter:\n+        \"\"\"Create the object to assign to :attr:`aborter`. That object\n+        is called by :func:`flask.abort` to raise HTTP errors, and can\n+        be used to register additional exceptions for custom HTTP codes.\n+\n+        The default implementation creates an instance of\n+        :attr:`aborter_class`.\n+\n+        .. versionadded:: 2.2\n+        \"\"\"\n+        return self.aborter_class()\n+\n     def auto_find_instance_path(self) -> str:\n         \"\"\"Tries to locate the instance path if it was not provided to the\n         constructor of the application class.  It will basically calculate\ndiff --git a/src/flask/helpers.py b/src/flask/helpers.py\nindex e3883ed6..67f1b126 100644\n--- a/src/flask/helpers.py\n+++ b/src/flask/helpers.py\n@@ -10,6 +10,7 @@ from functools import update_wrapper\n from threading import RLock\n \n import werkzeug.utils\n+from werkzeug.exceptions import abort as _wz_abort\n from werkzeug.routing import BuildError\n from werkzeug.urls import url_quote\n from werkzeug.utils import redirect as _wz_redirect\n@@ -364,6 +365,27 @@ def redirect(\n     return _wz_redirect(location, code=code, Response=Response)\n \n \n+def abort(status: t.Union[int, \"BaseResponse\"], *args: t.Any, **kwargs: t.Any) -> \"t.NoReturn\":\n+    \"\"\"Raise an :exc:`~werkzeug.exceptions.HTTPException` for the given\n+    status code.\n+\n+    If :data:`~flask.current_app` is available, it will call its\n+    :attr:`~flask.Flask.aborter` object, otherwise it will use\n+    :func:`werkzeug.exceptions.abort`.\n+\n+    :param status: The status code for the exception, which must be\n+        registered in ``app.aborter``.\n+    :param args: Passed to the exception.\n+    :param kwargs: Passed to the exception.\n+\n+    .. versionadded:: 2.2\n+    \"\"\"\n+    if current_app:\n+        current_app.aborter(status, *args, **kwargs)\n+\n+    _wz_abort(status, *args, **kwargs)\n+\n+\n def get_template_attribute(template_name: str, attribute: str) -> t.Any:\n     \"\"\"Loads a macro (or variable) a template exports.  This can be used to\n     invoke a macro from within Python code.  If you for example have a\n",
+  "ground_truth_diff": "diff --git a/CHANGES.rst b/CHANGES.rst\nindex 71100355..153e964b 100644\n--- a/CHANGES.rst\n+++ b/CHANGES.rst\n@@ -5,6 +5,10 @@ Version 2.2.0\n \n Unreleased\n \n+-   Add ``aborter_class`` and ``aborter`` attributes to the Flask app\n+    object. ``flask.abort`` will call ``app.aborter``. This makes it\n+    possible for an app to override how aborts work, including custom\n+    status codes. :issue:`4567`\n -   Add an ``app.redirect`` method, which ``flask.redirect`` will call.\n     This makes it possible for an app to override how redirects work.\n     :issue:`4569`\ndiff --git a/src/flask/__init__.py b/src/flask/__init__.py\nindex f71a7d42..bc93e0a3 100644\n--- a/src/flask/__init__.py\n+++ b/src/flask/__init__.py\n@@ -1,6 +1,5 @@\n from markupsafe import escape\n from markupsafe import Markup\n-from werkzeug.exceptions import abort as abort\n \n from . import json as json\n from .app import Flask as Flask\n@@ -18,6 +17,7 @@ from .globals import current_app as current_app\n from .globals import g as g\n from .globals import request as request\n from .globals import session as session\n+from .helpers import abort as abort\n from .helpers import flash as flash\n from .helpers import get_flashed_messages as get_flashed_messages\n from .helpers import get_template_attribute as get_template_attribute\ndiff --git a/src/flask/app.py b/src/flask/app.py\nindex 8ce14301..219cde24 100644\n--- a/src/flask/app.py\n+++ b/src/flask/app.py\n@@ -12,6 +12,7 @@ from types import TracebackType\n \n from werkzeug.datastructures import Headers\n from werkzeug.datastructures import ImmutableDict\n+from werkzeug.exceptions import Aborter\n from werkzeug.exceptions import BadRequest\n from werkzeug.exceptions import BadRequestKeyError\n from werkzeug.exceptions import HTTPException\n@@ -201,6 +202,16 @@ class Flask(Scaffold):\n     #: :class:`~flask.Response` for more information.\n     response_class = Response\n \n+    #: The class of the object assigned to :attr:`aborter`, created by\n+    #: :meth:`create_aborter`. That object is called by\n+    #: :func:`flask.abort` to raise HTTP errors, and can be\n+    #: called directly as well.\n+    #:\n+    #: Defaults to :class:`werkzeug.exceptions.Aborter`.\n+    #:\n+    #: .. versionadded:: 2.2\n+    aborter_class = Aborter\n+\n     #: The class that is used for the Jinja environment.\n     #:\n     #: .. versionadded:: 0.11\n@@ -421,6 +432,13 @@ class Flask(Scaffold):\n         #: to load a config from files.\n         self.config = self.make_config(instance_relative_config)\n \n+        #: An instance of :attr:`aborter_class` created by\n+        #: :meth:`make_aborter`. This is called by :func:`flask.abort`\n+        #: to raise HTTP errors, and can be called directly as well.\n+        #:\n+        #: .. versionadded:: 2.2\n+        self.aborter = self.make_aborter()\n+\n         #: A list of functions that are called when :meth:`url_for` raises a\n         #: :exc:`~werkzeug.routing.BuildError`.  Each function registered here\n         #: is called with `error`, `endpoint` and `values`.  If a function\n@@ -628,6 +646,18 @@ class Flask(Scaffold):\n         defaults[\"DEBUG\"] = get_debug_flag()\n         return self.config_class(root_path, defaults)\n \n+    def make_aborter(self) -> Aborter:\n+        \"\"\"Create the object to assign to :attr:`aborter`. That object\n+        is called by :func:`flask.abort` to raise HTTP errors, and can\n+        be called directly as well.\n+\n+        By default, this creates an instance of :attr:`aborter_class`,\n+        which defaults to :class:`werkzeug.exceptions.Aborter`.\n+\n+        .. versionadded:: 2.2\n+        \"\"\"\n+        return self.aborter_class()\n+\n     def auto_find_instance_path(self) -> str:\n         \"\"\"Tries to locate the instance path if it was not provided to the\n         constructor of the application class.  It will basically calculate\ndiff --git a/src/flask/helpers.py b/src/flask/helpers.py\nindex e3883ed6..070a4daf 100644\n--- a/src/flask/helpers.py\n+++ b/src/flask/helpers.py\n@@ -10,6 +10,7 @@ from functools import update_wrapper\n from threading import RLock\n \n import werkzeug.utils\n+from werkzeug.exceptions import abort as _wz_abort\n from werkzeug.routing import BuildError\n from werkzeug.urls import url_quote\n from werkzeug.utils import redirect as _wz_redirect\n@@ -24,6 +25,7 @@ from .signals import message_flashed\n if t.TYPE_CHECKING:  # pragma: no cover\n     from werkzeug.wrappers import Response as BaseResponse\n     from .wrappers import Response\n+    import typing_extensions as te\n \n \n def get_env() -> str:\n@@ -364,6 +366,31 @@ def redirect(\n     return _wz_redirect(location, code=code, Response=Response)\n \n \n+def abort(  # type: ignore[misc]\n+    code: t.Union[int, \"BaseResponse\"], *args: t.Any, **kwargs: t.Any\n+) -> \"te.NoReturn\":\n+    \"\"\"Raise an :exc:`~werkzeug.exceptions.HTTPException` for the given\n+    status code.\n+\n+    If :data:`~flask.current_app` is available, it will call its\n+    :attr:`~flask.Flask.aborter` object, otherwise it will use\n+    :func:`werkzeug.exceptions.abort`.\n+\n+    :param code: The status code for the exception, which must be\n+        registered in ``app.aborter``.\n+    :param args: Passed to the exception.\n+    :param kwargs: Passed to the exception.\n+\n+    .. versionadded:: 2.2\n+        Calls ``current_app.aborter`` if available instead of always\n+        using Werkzeug's default ``abort``.\n+    \"\"\"\n+    if current_app:\n+        current_app.aborter(code, *args, **kwargs)\n+\n+    _wz_abort(code, *args, **kwargs)\n+\n+\n def get_template_attribute(template_name: str, attribute: str) -> t.Any:\n     \"\"\"Loads a macro (or variable) a template exports.  This can be used to\n     invoke a macro from within Python code.  If you for example have a\ndiff --git a/tests/test_helpers.py b/tests/test_helpers.py\nindex 63dbbc13..0893893f 100644\n--- a/tests/test_helpers.py\n+++ b/tests/test_helpers.py\n@@ -2,6 +2,7 @@ import io\n import os\n \n import pytest\n+import werkzeug.exceptions\n \n import flask\n from flask.helpers import get_debug_flag\n@@ -174,6 +175,35 @@ def test_redirect_with_app(app):\n         flask.redirect(\"other\")\n \n \n+def test_abort_no_app():\n+    with pytest.raises(werkzeug.exceptions.Unauthorized):\n+        flask.abort(401)\n+\n+    with pytest.raises(LookupError):\n+        flask.abort(900)\n+\n+\n+def test_app_aborter_class():\n+    class MyAborter(werkzeug.exceptions.Aborter):\n+        pass\n+\n+    class MyFlask(flask.Flask):\n+        aborter_class = MyAborter\n+\n+    app = MyFlask(__name__)\n+    assert isinstance(app.aborter, MyAborter)\n+\n+\n+def test_abort_with_app(app):\n+    class My900Error(werkzeug.exceptions.HTTPException):\n+        code = 900\n+\n+    app.aborter.mapping[900] = My900Error\n+\n+    with app.app_context(), pytest.raises(My900Error):\n+        flask.abort(900)\n+\n+\n class TestNoImports:\n     \"\"\"Test Flasks are created without import.\n \n",
+  "project_metadata": {
+    "Autoconf": {
+      "files": 9,
+      "lines": 52,
+      "code": 52,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Batch": {
+      "files": 1,
+      "lines": 35,
+      "code": 26,
+      "comments": 1,
+      "blanks": 8
+    },
+    "CSS": {
+      "files": 2,
+      "lines": 135,
+      "code": 109,
+      "comments": 1,
+      "blanks": 25
+    },
+    "Forge Config": {
+      "files": 3,
+      "lines": 175,
+      "code": 135,
+      "comments": 20,
+      "blanks": 20
+    },
+    "HTML": {
+      "files": 19,
+      "lines": 235,
+      "code": 221,
+      "comments": 0,
+      "blanks": 14
+    },
+    "INI": {
+      "files": 1,
+      "lines": 33,
+      "code": 25,
+      "comments": 3,
+      "blanks": 5
+    },
+    "JSON": {
+      "files": 1,
+      "lines": 4,
+      "code": 4,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Makefile": {
+      "files": 1,
+      "lines": 20,
+      "code": 9,
+      "comments": 7,
+      "blanks": 4
+    },
+    "Markdown": {
+      "files": 1,
+      "lines": 76,
+      "code": 0,
+      "comments": 57,
+      "blanks": 19
+    },
+    "Python": {
+      "files": 75,
+      "lines": 16982,
+      "code": 12861,
+      "comments": 843,
+      "blanks": 3278
+    },
+    "ReStructuredText": {
+      "files": 83,
+      "lines": 15603,
+      "code": 11496,
+      "comments": 0,
+      "blanks": 4107
+    },
+    "SQL": {
+      "files": 2,
+      "lines": 28,
+      "code": 22,
+      "comments": 2,
+      "blanks": 4
+    },
+    "SVG": {
+      "files": 2,
+      "lines": 455,
+      "code": 451,
+      "comments": 2,
+      "blanks": 2
+    },
+    "Plain Text": {
+      "files": 12,
+      "lines": 243,
+      "code": 0,
+      "comments": 242,
+      "blanks": 1
+    },
+    "Total": {
+      "files": 0,
+      "lines": 34097,
+      "code": 25430,
+      "comments": 1178,
+      "blanks": 7489
+    }
+  },
+  "bobbin_metadata": {
+    "index_duration_seconds": 27.81,
+    "total_files": null,
+    "total_chunks": null,
+    "total_embeddings": null,
+    "languages": []
+  },
+  "run_id": "20260210-062428-5d94"
+}
