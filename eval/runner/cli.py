@@ -844,11 +844,13 @@ def judge(results_dir: str, judge_model: str, pairs: str, run_id: str | None):
     help="Output directory for generated pages (default: docs/book/src/eval).",
 )
 @click.option("--tasks-dir", default="tasks", help="Directory containing task YAML files.")
-def publish(results_dir: str, output_dir: str | None, tasks_dir: str):
+@click.option("--run", "run_id", default=None, help="Publish a specific run (default: latest).")
+@click.option("--all-runs", is_flag=True, help="Include historical trends from all runs.")
+def publish(results_dir: str, output_dir: str | None, tasks_dir: str, run_id: str | None, all_runs: bool):
     """Generate mdbook pages from eval results.
 
     Reads results JSON files and task definitions, then generates markdown
-    pages with inline SVG charts for the documentation site.
+    pages with matplotlib SVG charts for the documentation site.
     """
     from analysis.mdbook_pages import PageGenError, generate_all_pages
 
@@ -858,7 +860,13 @@ def publish(results_dir: str, output_dir: str | None, tasks_dir: str):
     tasks_path = _resolve_tasks_dir(tasks_dir)
 
     try:
-        generated = generate_all_pages(results_dir, str(tasks_path), output_dir)
+        generated = generate_all_pages(
+            results_dir,
+            str(tasks_path),
+            output_dir,
+            run_id=run_id,
+            include_trends=all_runs,
+        )
     except PageGenError as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)

@@ -1,7 +1,7 @@
 """Generate mdbook-compatible markdown pages from eval results.
 
 Reads result JSON files and task YAML definitions, then produces markdown
-pages with inline SVG charts for the bobbin documentation site.
+pages with matplotlib SVG charts for the bobbin documentation site.
 """
 
 from __future__ import annotations
@@ -13,11 +13,14 @@ from typing import Any
 
 import yaml
 
-from analysis.svg_charts import (
-    GREEN,
-    PURPLE,
+from analysis.mpl_charts import (
+    apply_dracula_theme,
+    box_plot_chart,
+    duration_chart,
     grouped_bar_chart,
-    horizontal_bar,
+    heatmap_chart,
+    multi_metric_chart,
+    trend_chart,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,6 +59,31 @@ def _load_results(results_dir: Path) -> list[dict[str, Any]]:
             pass
 
     return results
+
+
+def _load_all_runs(results_dir: Path) -> dict[str, list[dict[str, Any]]]:
+    """Load results grouped by run_id.
+
+    Returns ``{run_id: [results]}`` with ``"legacy"`` as the key for
+    results that lack a run_id.
+    """
+    by_run: dict[str, list[dict[str, Any]]] = {}
+    for r in _load_results(results_dir):
+        run_id = r.get("run_id", "legacy")
+        by_run.setdefault(run_id, []).append(r)
+    return dict(sorted(by_run.items()))
+
+
+def _get_latest_run(results_dir: Path) -> tuple[str, list[dict[str, Any]]]:
+    """Return the most recent (run_id, results) pair.
+
+    Run IDs sort chronologically by design (YYYYMMDD-HHMMSS-XXXX).
+    """
+    all_runs = _load_all_runs(results_dir)
+    if not all_runs:
+        return ("", [])
+    run_id = max(all_runs.keys())
+    return (run_id, all_runs[run_id])
 
 
 def _load_judge_results(results_dir: Path) -> list[dict[str, Any]]:
@@ -141,6 +169,8 @@ def _compute_approach_stats(results: list[dict]) -> dict[str, Any]:
         "avg_file_recall": _safe_avg(recalls),
         "avg_f1": _safe_avg(f1s),
         "avg_duration_seconds": _safe_avg(durations),
+        "f1_values": f1s,
+        "duration_values": durations,
     }
 
 
@@ -153,15 +183,6 @@ def _pick_best(runs: list[dict]) -> dict | None:
     return max(pool, key=lambda r: r.get("diff_result", {}).get("f1", 0.0))
 
 
-def _delta_str(baseline: float, treatment: float) -> str:
-    """Format delta with arrow indicator."""
-    diff = treatment - baseline
-    if abs(diff) < 0.001:
-        return "—"
-    arrow = "↑" if diff > 0 else "↓"
-    return f"{arrow} {abs(diff):+.1%}"[2:]  # strip the +
-
-
 def _format_pct(val: float) -> str:
     return f"{val * 100:.1f}%"
 
@@ -172,6 +193,15 @@ def _format_duration(seconds: float) -> str:
     return f"{seconds / 60:.1f}m"
 
 
+def _save_chart(svg: str, charts_dir: Path, filename: str) -> str:
+    """Save an SVG chart and return the markdown image reference."""
+    if not svg:
+        return ""
+    charts_dir.mkdir(parents=True, exist_ok=True)
+    (charts_dir / filename).write_text(svg, encoding="utf-8")
+    return f"![{filename}](./charts/{filename})"
+
+
 # -- Page generators --
 
 
@@ -179,6 +209,9 @@ def generate_summary_page(
     results: list[dict],
     judge_results: list[dict],
     tasks: dict[str, dict],
+    *,
+    charts_dir: Path | None = None,
+    all_runs: dict[str, list[dict]] | None = None,
 ) -> str:
     """Generate the results summary page."""
     by_approach = _group_by_approach(results)
@@ -247,6 +280,21 @@ def generate_summary_page(
 
     lines.append("")
 
+    # Multi-metric chart: precision/recall/F1 overview.
+    if charts_dir and stats:
+        apply_dracula_theme()
+        svg = multi_metric_chart(stats, title="Precision / Recall / F1")
+        ref = _save_chart(svg, charts_dir, "summary_metrics.svg")
+        if ref:
+            lines.append("## Metric Overview")
+            lines.append("")
+            lines.append('<div class="eval-chart">')
+            lines.append("")
+            lines.append(ref)
+            lines.append("")
+            lines.append("</div>")
+            lines.append("")
+
     # Grouped bar chart: F1 scores by task.
     chart_groups = []
     for task_id, task_results in by_task.items():
@@ -261,12 +309,95 @@ def generate_summary_page(
     if chart_groups:
         lines.append("## F1 Score by Task")
         lines.append("")
-        lines.append('<div class="eval-chart">')
-        lines.append("")
-        lines.append(grouped_bar_chart(chart_groups, title="F1 Score Comparison"))
-        lines.append("")
-        lines.append("</div>")
-        lines.append("")
+        if charts_dir:
+            apply_dracula_theme()
+            svg = grouped_bar_chart(chart_groups, title="F1 Score Comparison")
+            ref = _save_chart(svg, charts_dir, "summary_f1_by_task.svg")
+            if ref:
+                lines.append('<div class="eval-chart">')
+                lines.append("")
+                lines.append(ref)
+                lines.append("")
+                lines.append("</div>")
+                lines.append("")
+        else:
+            # Inline fallback (no charts dir).
+            apply_dracula_theme()
+            svg = grouped_bar_chart(chart_groups, title="F1 Score Comparison")
+            if svg:
+                lines.append('<div class="eval-chart">')
+                lines.append("")
+                lines.append(svg)
+                lines.append("")
+                lines.append("</div>")
+                lines.append("")
+
+    # Box plot: F1 distribution when multiple attempts exist.
+    f1_by_approach: dict[str, list[float]] = {}
+    for a in approaches:
+        f1_by_approach[a] = stats[a].get("f1_values", [])
+    has_multiple = any(len(v) > 1 for v in f1_by_approach.values())
+    if charts_dir and has_multiple:
+        apply_dracula_theme()
+        svg = box_plot_chart(f1_by_approach, metric_name="F1", title="F1 Score Distribution")
+        ref = _save_chart(svg, charts_dir, "summary_f1_boxplot.svg")
+        if ref:
+            lines.append("## Score Distribution")
+            lines.append("")
+            lines.append('<div class="eval-chart">')
+            lines.append("")
+            lines.append(ref)
+            lines.append("")
+            lines.append("</div>")
+            lines.append("")
+
+    # Duration chart.
+    dur_by_approach: dict[str, list[float]] = {}
+    for a in approaches:
+        dur_by_approach[a] = stats[a].get("duration_values", [])
+    has_durations = any(dur_by_approach.values())
+    if charts_dir and has_durations:
+        apply_dracula_theme()
+        svg = duration_chart(dur_by_approach, title="Duration Comparison")
+        ref = _save_chart(svg, charts_dir, "summary_duration.svg")
+        if ref:
+            lines.append("## Duration")
+            lines.append("")
+            lines.append('<div class="eval-chart">')
+            lines.append("")
+            lines.append(ref)
+            lines.append("")
+            lines.append("</div>")
+            lines.append("")
+
+    # Quick trend: last 5 runs (if historical data available).
+    if charts_dir and all_runs and len(all_runs) > 1:
+        recent_ids = sorted(all_runs.keys())[-5:]
+        runs_data = []
+        for rid in recent_ids:
+            run_results = all_runs[rid]
+            run_by_approach = _group_by_approach(run_results)
+            values = {}
+            for a, a_results in run_by_approach.items():
+                a_stats = _compute_approach_stats(a_results)
+                values[a] = a_stats["avg_f1"]
+            date = rid[:8] if len(rid) >= 8 else rid
+            runs_data.append({"run_id": rid, "date": date, "values": values})
+
+        apply_dracula_theme()
+        svg = trend_chart(runs_data, metric="avg_f1", title="F1 Trend (Recent)")
+        ref = _save_chart(svg, charts_dir, "summary_trend.svg")
+        if ref:
+            lines.append("## Recent Trend")
+            lines.append("")
+            lines.append('<div class="eval-chart">')
+            lines.append("")
+            lines.append(ref)
+            lines.append("")
+            lines.append("</div>")
+            lines.append("")
+            lines.append("[Full historical trends](./trends.md)")
+            lines.append("")
 
     # Per-task mini-table.
     lines.append("## Per-Task Results")
@@ -376,11 +507,11 @@ def generate_project_page(
                 reverse=True,
             )
             total_files = sum(v.get("files", 0) for _, v in sorted_langs)
-            for lang, stats in sorted_langs[:10]:
+            for lang, lang_stats in sorted_langs[:10]:
                 lines.append(
-                    f"| {lang} | {stats.get('files', 0):,} | {stats.get('code', 0):,} "
-                    f"| {stats.get('comments', 0):,} | {stats.get('blanks', 0):,} "
-                    f"| {stats.get('lines', 0):,} |"
+                    f"| {lang} | {lang_stats.get('files', 0):,} | {lang_stats.get('code', 0):,} "
+                    f"| {lang_stats.get('comments', 0):,} | {lang_stats.get('blanks', 0):,} "
+                    f"| {lang_stats.get('lines', 0):,} |"
                 )
             if total_code:
                 lines.append(f"| **Total** | **{total_files:,}** | **{total_code:,}** | | | **{total_lines:,}** |")
@@ -417,6 +548,8 @@ def generate_task_detail_page(
     results: list[dict],
     tasks: dict[str, dict],
     judge_results: list[dict],
+    *,
+    charts_dir: Path | None = None,
 ) -> str:
     """Generate a per-project task detail page (e.g. flask.md, ruff.md)."""
     lines = [
@@ -476,6 +609,43 @@ def generate_task_detail_page(
 
         lines.append("")
 
+        # Box plot: score distributions (when multiple attempts).
+        if charts_dir:
+            f1_data: dict[str, list[float]] = {}
+            for a in approaches:
+                a_stats = _compute_approach_stats(task_by_approach[a])
+                f1_data[a] = a_stats.get("f1_values", [])
+            has_multiple = any(len(v) > 1 for v in f1_data.values())
+            if has_multiple:
+                apply_dracula_theme()
+                svg = box_plot_chart(f1_data, metric_name="F1", title=f"{task_id} F1 Distribution")
+                safe_id = task_id.replace("/", "_")
+                ref = _save_chart(svg, charts_dir, f"{safe_id}_f1_boxplot.svg")
+                if ref:
+                    lines.append('<div class="eval-chart">')
+                    lines.append("")
+                    lines.append(ref)
+                    lines.append("")
+                    lines.append("</div>")
+                    lines.append("")
+
+            # Duration chart per task.
+            dur_data: dict[str, list[float]] = {}
+            for a in approaches:
+                a_stats = _compute_approach_stats(task_by_approach[a])
+                dur_data[a] = a_stats.get("duration_values", [])
+            if any(dur_data.values()):
+                apply_dracula_theme()
+                svg = duration_chart(dur_data, title=f"{task_id} Duration")
+                ref = _save_chart(svg, charts_dir, f"{safe_id}_duration.svg")
+                if ref:
+                    lines.append('<div class="eval-chart">')
+                    lines.append("")
+                    lines.append(ref)
+                    lines.append("")
+                    lines.append("</div>")
+                    lines.append("")
+
         # Files touched vs ground truth.
         best_per_approach: dict[str, dict] = {}
         for a in approaches:
@@ -496,25 +666,6 @@ def generate_task_detail_page(
                 if touched:
                     lines.append(f"**Files touched ({a})**: " + ", ".join(f"`{f}`" for f in touched))
 
-            lines.append("")
-
-        # Mini bar chart for this task.
-        if len(approaches) >= 2:
-            chart_values = {}
-            for a in approaches:
-                s = _compute_approach_stats(task_by_approach[a])
-                chart_values[a] = s["avg_f1"]
-            chart = grouped_bar_chart(
-                [{"label": task_id, "values": chart_values}],
-                width=300,
-                height=180,
-                title=f"{task_id} F1 Score",
-            )
-            lines.append('<div class="eval-chart">')
-            lines.append("")
-            lines.append(chart)
-            lines.append("")
-            lines.append("</div>")
             lines.append("")
 
         # Judge results for this task.
@@ -538,12 +689,162 @@ def generate_task_detail_page(
     return "\n".join(lines) + "\n"
 
 
+def generate_trends_page(
+    all_runs: dict[str, list[dict]],
+    *,
+    charts_dir: Path | None = None,
+) -> str:
+    """Generate the historical trends page (trends.md)."""
+    lines = [
+        "# Historical Trends",
+        "",
+    ]
+
+    if len(all_runs) < 2:
+        lines.append("*Not enough runs for trend analysis. Run more evaluations to see trends.*")
+        while lines and lines[-1] == "":
+            lines.pop()
+        return "\n".join(lines) + "\n"
+
+    run_ids = sorted(all_runs.keys())
+
+    # Build trend data.
+    f1_runs_data = []
+    pass_rate_runs_data = []
+    duration_runs_data = []
+    heatmap_runs_data = []
+
+    for rid in run_ids:
+        run_results = all_runs[rid]
+        run_by_approach = _group_by_approach(run_results)
+        date = rid[:8] if len(rid) >= 8 else rid
+
+        f1_values: dict[str, float] = {}
+        pass_values: dict[str, float] = {}
+        dur_values: dict[str, float] = {}
+        for a, a_results in run_by_approach.items():
+            a_stats = _compute_approach_stats(a_results)
+            f1_values[a] = a_stats["avg_f1"]
+            pass_values[a] = a_stats["test_pass_rate"]
+            dur_values[a] = a_stats["avg_duration_seconds"]
+
+        f1_runs_data.append({"run_id": rid, "date": date, "values": f1_values})
+        pass_rate_runs_data.append({"run_id": rid, "date": date, "values": pass_values})
+        duration_runs_data.append({"run_id": rid, "date": date, "values": dur_values})
+
+        # Heatmap data: per-task F1 for this run.
+        run_by_task = _group_by_task(run_results)
+        task_f1s = {}
+        for tid, task_results in run_by_task.items():
+            task_stats = _compute_approach_stats(task_results)
+            task_f1s[tid] = task_stats["avg_f1"]
+        heatmap_runs_data.append({"run_id": rid, "date": date, "tasks": task_f1s})
+
+    # F1 trend.
+    if charts_dir:
+        apply_dracula_theme()
+        svg = trend_chart(f1_runs_data, metric="avg_f1", title="F1 Score Over Time")
+        ref = _save_chart(svg, charts_dir, "trend_f1.svg")
+        if ref:
+            lines.append("## F1 Trend")
+            lines.append("")
+            lines.append('<div class="eval-chart">')
+            lines.append("")
+            lines.append(ref)
+            lines.append("")
+            lines.append("</div>")
+            lines.append("")
+
+    # Test pass rate trend.
+    if charts_dir:
+        apply_dracula_theme()
+        svg = trend_chart(pass_rate_runs_data, metric="test_pass_rate", title="Test Pass Rate Over Time")
+        ref = _save_chart(svg, charts_dir, "trend_pass_rate.svg")
+        if ref:
+            lines.append("## Test Pass Rate Trend")
+            lines.append("")
+            lines.append('<div class="eval-chart">')
+            lines.append("")
+            lines.append(ref)
+            lines.append("")
+            lines.append("</div>")
+            lines.append("")
+
+    # Duration trend.
+    if charts_dir:
+        apply_dracula_theme()
+        svg = trend_chart(duration_runs_data, metric="duration (s)", title="Duration Over Time")
+        ref = _save_chart(svg, charts_dir, "trend_duration.svg")
+        if ref:
+            lines.append("## Duration Trend")
+            lines.append("")
+            lines.append('<div class="eval-chart">')
+            lines.append("")
+            lines.append(ref)
+            lines.append("")
+            lines.append("</div>")
+            lines.append("")
+
+    # Per-run comparison table.
+    lines.append("## Run Comparison")
+    lines.append("")
+    lines.append("| Run | Completed | Pass Rate | Avg F1 | Avg Duration |")
+    lines.append("|-----|-----------|:---------:|:------:|:------------:|")
+    for rid in run_ids:
+        run_results = all_runs[rid]
+        run_stats = _compute_approach_stats(run_results)
+        date = rid[:8] if len(rid) >= 8 else rid
+        lines.append(
+            f"| {date} | {run_stats['count']} "
+            f"| {_format_pct(run_stats['test_pass_rate'])} "
+            f"| {_format_pct(run_stats['avg_f1'])} "
+            f"| {_format_duration(run_stats['avg_duration_seconds'])} |"
+        )
+    lines.append("")
+
+    # Task heatmap.
+    if charts_dir and heatmap_runs_data:
+        apply_dracula_theme()
+        svg = heatmap_chart(heatmap_runs_data, metric="F1", title="F1 by Task x Run")
+        ref = _save_chart(svg, charts_dir, "heatmap_f1.svg")
+        if ref:
+            lines.append("## Task Heatmap")
+            lines.append("")
+            lines.append('<div class="eval-chart">')
+            lines.append("")
+            lines.append(ref)
+            lines.append("")
+            lines.append("</div>")
+            lines.append("")
+
+    # Strip trailing blank lines to avoid MD012 (no-multiple-blanks).
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines) + "\n"
+
+
 def generate_all_pages(
     results_dir: str,
     tasks_dir: str,
     output_dir: str,
+    *,
+    run_id: str | None = None,
+    include_trends: bool = False,
 ) -> list[str]:
     """Generate all mdbook pages from eval results.
+
+    Parameters
+    ----------
+    results_dir:
+        Path to the results directory.
+    tasks_dir:
+        Path to the tasks directory.
+    output_dir:
+        Path to write generated markdown and charts.
+    run_id:
+        Specific run to publish. Default: latest.
+    include_trends:
+        If True, generate trends page from all historical runs.
 
     Returns a list of generated file paths (relative to output_dir).
     """
@@ -551,8 +852,19 @@ def generate_all_pages(
     tdir = Path(tasks_dir)
     odir = Path(output_dir)
     odir.mkdir(parents=True, exist_ok=True)
+    charts_dir = odir / "charts"
+    charts_dir.mkdir(parents=True, exist_ok=True)
 
-    results = _load_results(rdir)
+    # Load all runs for trends; pick target run for main pages.
+    all_runs = _load_all_runs(rdir)
+
+    if run_id:
+        results = all_runs.get(run_id, [])
+        if not results:
+            raise PageGenError(f"No completed results for run {run_id} in {rdir}")
+    else:
+        results = _load_results(rdir)
+
     if not results:
         raise PageGenError(f"No completed results in {rdir}")
 
@@ -562,7 +874,13 @@ def generate_all_pages(
     generated = []
 
     # Summary page.
-    summary = generate_summary_page(results, judge_results, tasks)
+    summary = generate_summary_page(
+        results,
+        judge_results,
+        tasks,
+        charts_dir=charts_dir,
+        all_runs=all_runs if include_trends or len(all_runs) > 1 else None,
+    )
     (odir / "summary.md").write_text(summary, encoding="utf-8")
     generated.append("summary.md")
 
@@ -572,7 +890,6 @@ def generate_all_pages(
     generated.append("projects.md")
 
     # Per-project detail pages.
-    # Group tasks by repo → project.
     by_project: dict[str, list[str]] = {}
     for task_id, task in tasks.items():
         repo = task.get("repo", "")
@@ -580,12 +897,10 @@ def generate_all_pages(
         by_project.setdefault(project_name, []).append(task_id)
 
     for project_name, task_ids in sorted(by_project.items()):
-        # Filter results for this project's tasks.
         project_results = [r for r in results if r.get("task_id") in task_ids]
         if not project_results:
             continue
 
-        # Determine language from first task.
         first_task = tasks.get(task_ids[0], {})
         language = first_task.get("language", "").capitalize() or project_name
 
@@ -596,10 +911,17 @@ def generate_all_pages(
             project_results,
             tasks,
             judge_results,
+            charts_dir=charts_dir,
         )
         filename = f"{project_name}.md"
         (odir / filename).write_text(page, encoding="utf-8")
         generated.append(filename)
+
+    # Trends page (when multiple runs exist or explicitly requested).
+    if include_trends or len(all_runs) > 1:
+        trends = generate_trends_page(all_runs, charts_dir=charts_dir)
+        (odir / "trends.md").write_text(trends, encoding="utf-8")
+        generated.append("trends.md")
 
     logger.info("Generated %d pages in %s", len(generated), odir)
     return generated
