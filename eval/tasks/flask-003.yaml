@@ -8,7 +8,7 @@ description: |
   checks for current_app and calls app.redirect if available, otherwise
   falls back to werkzeug.utils.redirect. Update flask.__init__ to export
   redirect from helpers instead of werkzeug.
-setup_command: "uv venv .venv --python 3.11 && uv pip install -e . 'werkzeug<3' pytest --quiet"
+setup_command: "uv venv .venv --python 3.12 && uv pip install -e . 'werkzeug<3' pytest --quiet"
 test_command: ".venv/bin/pytest tests/test_helpers.py -x -k redirect"
 language: python
 difficulty: medium

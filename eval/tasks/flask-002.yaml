@@ -7,7 +7,7 @@ description: |
   module level. This avoids import errors and unnecessary imports when the
   optional dependencies are not installed, and moves version-conditional
   importlib.metadata handling into the method that actually uses it.
-setup_command: "uv venv .venv --python 3.11 && uv pip install -e . 'werkzeug<3' pytest --quiet"
+setup_command: "uv venv .venv --python 3.12 && uv pip install -e . 'werkzeug<3' pytest --quiet"
 test_command: ".venv/bin/pytest tests/test_cli.py -x"
 language: python
 difficulty: medium
