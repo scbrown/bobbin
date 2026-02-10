@@ -111,6 +111,9 @@ def _write_manifest(
     started_at: str,
     completed_at: str,
     model: str,
+    budget: float,
+    timeout: int,
+    index_timeout: int,
     attempts_per_approach: int,
     approaches: list[str],
     tasks: list[str],
@@ -124,7 +127,12 @@ def _write_manifest(
         "run_id": run_id,
         "started_at": started_at,
         "completed_at": completed_at,
-        "model": model,
+        "agent_config": {
+            "model": model,
+            "budget_usd": budget,
+            "timeout_seconds": timeout,
+            "index_timeout_seconds": index_timeout,
+        },
         "attempts_per_approach": attempts_per_approach,
         "approaches": approaches,
         "tasks": tasks,
@@ -144,10 +152,10 @@ def _run_single(
     *,
     run_id: str | None = None,
     settings_file: str | None = None,
-    model: str = "claude-sonnet-4-5-20250929",
-    budget: float = 2.00,
-    timeout: int = 600,
-    index_timeout: int = 1800,
+    model: str = "claude-opus-4-6",
+    budget: float = 100.00,
+    timeout: int = 1800,
+    index_timeout: int = 600,
     skip_verify: bool = False,
 ) -> dict:
     """Execute a single task × approach × attempt evaluation run.
@@ -268,6 +276,12 @@ def _run_single(
                 "language": task.get("language"),
                 "difficulty": task.get("difficulty"),
             },
+            "agent_config": {
+                "model": model,
+                "budget_usd": budget,
+                "timeout_seconds": timeout,
+                "index_timeout_seconds": index_timeout,
+            },
             "agent_result": {
                 "exit_code": agent_result["exit_code"],
                 "duration_seconds": agent_result["duration_seconds"],
@@ -331,10 +345,10 @@ def cli(verbose: bool):
 @click.option("--tasks-dir", default="tasks", help="Directory containing task YAML files.")
 @click.option("--results-dir", default="results", help="Directory to store result JSON files.")
 @click.option("--settings-file", default=None, help="Claude Code settings file for with-bobbin.")
-@click.option("--model", default="claude-sonnet-4-5-20250929", help="Claude model to use.")
-@click.option("--budget", default=2.00, type=float, help="Max budget per run (USD).")
-@click.option("--timeout", default=600, type=int, help="Agent timeout in seconds.")
-@click.option("--index-timeout", default=1800, type=int, help="Bobbin index timeout in seconds.")
+@click.option("--model", default="claude-opus-4-6", help="Claude model to use.")
+@click.option("--budget", default=100.00, type=float, help="Max budget per run (USD).")
+@click.option("--timeout", default=1800, type=int, help="Agent timeout in seconds.")
+@click.option("--index-timeout", default=600, type=int, help="Bobbin index timeout in seconds.")
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
 def run_task(
     task_id: str,
@@ -402,6 +416,9 @@ def run_task(
         started_at=started_at,
         completed_at=completed_at,
         model=model,
+        budget=budget,
+        timeout=timeout,
+        index_timeout=index_timeout,
         attempts_per_approach=attempts,
         approaches=approach_list,
         tasks=[task_id],
@@ -423,10 +440,10 @@ def run_task(
     type=click.Choice(["no-bobbin", "with-bobbin", "both"]),
 )
 @click.option("--settings-file", default=None, help="Claude Code settings file for with-bobbin.")
-@click.option("--model", default="claude-sonnet-4-5-20250929", help="Claude model to use.")
-@click.option("--budget", default=2.00, type=float, help="Max budget per run (USD).")
-@click.option("--timeout", default=600, type=int, help="Agent timeout in seconds.")
-@click.option("--index-timeout", default=1800, type=int, help="Bobbin index timeout in seconds.")
+@click.option("--model", default="claude-opus-4-6", help="Claude model to use.")
+@click.option("--budget", default=100.00, type=float, help="Max budget per run (USD).")
+@click.option("--timeout", default=1800, type=int, help="Agent timeout in seconds.")
+@click.option("--index-timeout", default=600, type=int, help="Bobbin index timeout in seconds.")
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
 def run_all(
     tasks_dir: str,
@@ -493,6 +510,9 @@ def run_all(
         started_at=started_at,
         completed_at=completed_at,
         model=model,
+        budget=budget,
+        timeout=timeout,
+        index_timeout=index_timeout,
         attempts_per_approach=attempts,
         approaches=approach_list,
         tasks=task_ids,
