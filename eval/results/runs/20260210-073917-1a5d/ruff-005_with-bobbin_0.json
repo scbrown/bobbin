@@ -1,0 +1,9 @@
+{
+  "task_id": "ruff-005",
+  "approach": "with-bobbin",
+  "attempt": 0,
+  "status": "bobbin_setup_error",
+  "error": "bobbin index timed out after 900s",
+  "timestamp": "2026-02-10T07:56:20.837489+00:00",
+  "run_id": "20260210-073917-1a5d"
+}
