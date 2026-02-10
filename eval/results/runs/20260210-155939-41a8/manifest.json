@@ -1,0 +1,15 @@
+{
+  "run_id": "20260210-155939-41a8",
+  "started_at": "2026-02-10T15:59:39.362047+00:00",
+  "completed_at": "2026-02-10T16:14:58.358949+00:00",
+  "model": "claude-sonnet-4-5-20250929",
+  "attempts_per_approach": 1,
+  "approaches": [
+    "with-bobbin"
+  ],
+  "tasks": [
+    "ruff-001"
+  ],
+  "total_results": 1,
+  "completed_results": 0
+}
