@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import subprocess
 import time
@@ -26,6 +27,44 @@ def _find_bobbin() -> str:
     if cargo_bin.exists():
         return str(cargo_bin)
     raise BobbinSetupError("bobbin binary not found. Install with: cargo install bobbin")
+
+
+def _parse_profile(output: str) -> dict[str, Any] | None:
+    """Extract profiling data from ``bobbin index -v`` output.
+
+    Parses the ``Profile:`` block emitted when verbose mode is enabled.
+    Returns a dict of phase timings (in ms) or None if no profile found.
+    """
+    profile: dict[str, Any] = {}
+    in_profile = False
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Profile:"):
+            in_profile = True
+            continue
+        if not in_profile:
+            continue
+        # TOTAL line: "  TOTAL:           310ms"
+        m = re.match(r"^TOTAL:\s+(\d+)ms", stripped)
+        if m:
+            profile["total_ms"] = int(m.group(1))
+            continue
+        # embed throughput line: "  embed throughput: 123.4 chunks/s"
+        m = re.match(r"^embed throughput:\s+([\d.]+)\s+chunks/s", stripped)
+        if m:
+            profile["embed_throughput_chunks_per_sec"] = float(m.group(1))
+            continue
+        # Each line looks like: "  file I/O:       123ms"
+        # or "  embed:          456ms  (100 chunks in 2 batches)"
+        m = re.match(r"^(\S[^:]+):\s+(\d+)ms", stripped)
+        if m:
+            key = m.group(1).strip().replace(" ", "_").lower()
+            profile[key] = int(m.group(2))
+            continue
+        # Non-matching line after Profile block → end of profile
+        if in_profile and stripped:
+            break
+    return profile if profile else None
 
 
 def setup_bobbin(workspace: str, *, timeout: int = 900) -> dict[str, Any]:
@@ -61,8 +100,8 @@ def setup_bobbin(workspace: str, *, timeout: int = 900) -> dict[str, Any]:
     logger.info("Indexing workspace %s", ws)
     t0 = time.monotonic()
     try:
-        subprocess.run(
-            [bobbin, "index"],
+        index_result = subprocess.run(
+            [bobbin, "index", "--verbose"],
             cwd=ws,
             check=True,
             capture_output=True,
@@ -77,6 +116,11 @@ def setup_bobbin(workspace: str, *, timeout: int = 900) -> dict[str, Any]:
 
     # Capture bobbin status for metadata.
     metadata: dict[str, Any] = {"index_duration_seconds": round(index_duration, 2)}
+
+    # Parse profiling data from verbose output.
+    profile = _parse_profile(index_result.stdout)
+    if profile:
+        metadata["profile"] = profile
     try:
         status_result = subprocess.run(
             [bobbin, "status", "--json"],

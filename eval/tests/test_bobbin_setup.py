@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from runner.bobbin_setup import BobbinSetupError, _find_bobbin, setup_bobbin
+from runner.bobbin_setup import BobbinSetupError, _find_bobbin, _parse_profile, setup_bobbin
 
 
 class TestFindBobbin:
@@ -60,7 +60,7 @@ class TestSetupBobbin:
         index_cmd = mock_bobbin.call_args_list[1][0][0]
         status_cmd = mock_bobbin.call_args_list[2][0][0]
         assert init_cmd == ["/usr/bin/bobbin", "init"]
-        assert index_cmd == ["/usr/bin/bobbin", "index"]
+        assert index_cmd == ["/usr/bin/bobbin", "index", "--verbose"]
         assert status_cmd == ["/usr/bin/bobbin", "status", "--json"]
         assert isinstance(result, dict)
         assert "index_duration_seconds" in result
@@ -125,3 +125,77 @@ class TestSetupBobbin:
         # The index call should use the custom timeout.
         index_call = mock_bobbin.call_args_list[1]
         assert index_call[1]["timeout"] == 120
+
+    def test_returns_profile_when_available(self, mock_bobbin: MagicMock, tmp_path: Path):
+        """setup_bobbin captures profiling data from -v output."""
+        verbose_output = (
+            "  Checking embedding model...\n"
+            "  Found 50 files matching patterns\n"
+            "\n"
+            "Profile:\n"
+            "  file I/O:         10ms\n"
+            "  parse:            20ms\n"
+            "  context:           5ms\n"
+            "  embed:           100ms  (200 chunks in 4 batches)\n"
+            "  lance delete:     15ms\n"
+            "  lance insert:     30ms\n"
+            "  git coupling:     50ms\n"
+            "  git commits:      25ms\n"
+            "  deps:             10ms\n"
+            "  compact:          40ms\n"
+            "  other/overhead:    5ms\n"
+            "  TOTAL:           310ms\n"
+            "  embed throughput: 2000.0 chunks/s\n"
+        )
+        mock_bobbin.side_effect = [
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout=verbose_output, stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="{}", stderr=""),
+        ]
+        result = setup_bobbin(str(tmp_path))
+        assert "profile" in result
+        assert result["profile"]["file_i/o"] == 10
+        assert result["profile"]["embed"] == 100
+        assert result["profile"]["total_ms"] == 310
+        assert result["profile"]["embed_throughput_chunks_per_sec"] == 2000.0
+
+
+class TestParseProfile:
+    def test_parses_full_output(self):
+        output = (
+            "Profile:\n"
+            "  file I/O:         10ms\n"
+            "  parse:            20ms\n"
+            "  context:           5ms\n"
+            "  embed:           100ms  (200 chunks in 4 batches)\n"
+            "  lance delete:     15ms\n"
+            "  lance insert:     30ms\n"
+            "  git coupling:     50ms\n"
+            "  git commits:      25ms\n"
+            "  deps:             10ms\n"
+            "  compact:          40ms\n"
+            "  other/overhead:    5ms\n"
+            "  TOTAL:           310ms\n"
+            "  embed throughput: 2000.0 chunks/s\n"
+        )
+        result = _parse_profile(output)
+        assert result is not None
+        assert result["file_i/o"] == 10
+        assert result["parse"] == 20
+        assert result["context"] == 5
+        assert result["embed"] == 100
+        assert result["lance_delete"] == 15
+        assert result["lance_insert"] == 30
+        assert result["git_coupling"] == 50
+        assert result["git_commits"] == 25
+        assert result["deps"] == 10
+        assert result["compact"] == 40
+        assert result["other/overhead"] == 5
+        assert result["total_ms"] == 310
+        assert result["embed_throughput_chunks_per_sec"] == 2000.0
+
+    def test_returns_none_for_no_profile(self):
+        assert _parse_profile("just some output\nno profile here") is None
+
+    def test_returns_none_for_empty_string(self):
+        assert _parse_profile("") is None
