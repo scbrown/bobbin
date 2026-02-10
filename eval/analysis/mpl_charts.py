@@ -425,10 +425,14 @@ def trend_chart(
 
     fig, ax = plt.subplots(figsize=figsize)
 
+    _markers = ["o", "s", "D", "^", "v", "P"]
+    _linestyles = ["-", "--", "-.", ":"]
     for i, approach in enumerate(all_approaches):
         values = [rd.get("values", {}).get(approach) for rd in runs_data]
         color = _get_approach_color(approach, i)
-        ax.plot(x, values, marker="o", color=color, label=approach, linewidth=2, markersize=6)
+        marker = _markers[i % len(_markers)]
+        ls = _linestyles[i % len(_linestyles)]
+        ax.plot(x, values, marker=marker, linestyle=ls, color=color, label=approach, linewidth=2, markersize=6)
 
     ax.set_xticks(x)
     ax.set_xticklabels(dates, rotation=45, ha="right")

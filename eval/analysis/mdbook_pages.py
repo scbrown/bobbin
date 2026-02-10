@@ -582,8 +582,8 @@ def generate_task_detail_page(
         # Prompt (collapsible).
         desc = task_def.get("description", "").strip()
         if desc:
-            # Escape double underscores to prevent markdown bold interpretation.
-            desc_escaped = desc.replace("__", r"\_\_")
+            # Escape underscores to prevent markdown emphasis interpretation.
+            desc_escaped = desc.replace("_", r"\_")
             lines.append("<details>")
             lines.append("<summary>Task prompt</summary>")
             lines.append("")
@@ -613,6 +613,7 @@ def generate_task_detail_page(
 
         # Box plot: score distributions (when multiple attempts).
         if charts_dir:
+            safe_id = task_id.replace("/", "_")
             f1_data: dict[str, list[float]] = {}
             for a in approaches:
                 a_stats = _compute_approach_stats(task_by_approach[a])
@@ -621,7 +622,6 @@ def generate_task_detail_page(
             if has_multiple:
                 apply_dracula_theme()
                 svg = box_plot_chart(f1_data, metric_name="F1", title=f"{task_id} F1 Distribution")
-                safe_id = task_id.replace("/", "_")
                 ref = _save_chart(svg, charts_dir, f"{safe_id}_f1_boxplot.svg")
                 if ref:
                     lines.append('<div class="eval-chart">')
