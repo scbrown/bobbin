@@ -137,6 +137,9 @@ class TestSetupBobbin:
             "  parse:            20ms\n"
             "  context:           5ms\n"
             "  embed:           100ms  (200 chunks in 4 batches)\n"
+            "    tokenize:       30ms\n"
+            "    inference:      65ms\n"
+            "    pooling:         5ms\n"
             "  lance delete:     15ms\n"
             "  lance insert:     30ms\n"
             "  git coupling:     50ms\n"
@@ -156,6 +159,7 @@ class TestSetupBobbin:
         assert "profile" in result
         assert result["profile"]["file_i/o"] == 10
         assert result["profile"]["embed"] == 100
+        assert result["profile"]["inference"] == 65
         assert result["profile"]["total_ms"] == 310
         assert result["profile"]["embed_throughput_chunks_per_sec"] == 2000.0
 
@@ -168,6 +172,9 @@ class TestParseProfile:
             "  parse:            20ms\n"
             "  context:           5ms\n"
             "  embed:           100ms  (200 chunks in 4 batches)\n"
+            "    tokenize:       30ms\n"
+            "    inference:      65ms\n"
+            "    pooling:         5ms\n"
             "  lance delete:     15ms\n"
             "  lance insert:     30ms\n"
             "  git coupling:     50ms\n"
@@ -184,6 +191,9 @@ class TestParseProfile:
         assert result["parse"] == 20
         assert result["context"] == 5
         assert result["embed"] == 100
+        assert result["tokenize"] == 30
+        assert result["inference"] == 65
+        assert result["pooling"] == 5
         assert result["lance_delete"] == 15
         assert result["lance_insert"] == 30
         assert result["git_coupling"] == 50

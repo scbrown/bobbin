@@ -56,6 +56,7 @@ def _parse_profile(output: str) -> dict[str, Any] | None:
             continue
         # Each line looks like: "  file I/O:       123ms"
         # or "  embed:          456ms  (100 chunks in 2 batches)"
+        # or sub-phase: "    tokenize:     123ms"
         m = re.match(r"^(\S[^:]+):\s+(\d+)ms", stripped)
         if m:
             key = m.group(1).strip().replace(" ", "_").lower()

@@ -78,6 +78,9 @@ struct ProfileStats {
     parse_ms: u128,
     context_ms: u128,
     embed_ms: u128,
+    embed_tokenize_ms: u128,
+    embed_inference_ms: u128,
+    embed_pooling_ms: u128,
     delete_ms: u128,
     insert_ms: u128,
     git_coupling_ms: u128,
@@ -657,6 +660,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             "  embed:          {:>7}ms  ({} chunks in {} batches)",
             profile.embed_ms, profile.total_chunks_embedded, profile.total_batches
         );
+        println!("    tokenize:     {:>7}ms", profile.embed_tokenize_ms);
+        println!("    inference:    {:>7}ms", profile.embed_inference_ms);
+        println!("    pooling:      {:>7}ms", profile.embed_pooling_ms);
         println!("  lance delete:   {:>7}ms", profile.delete_ms);
         println!("  lance insert:   {:>7}ms", profile.insert_ms);
         println!("  git coupling:   {:>7}ms", profile.git_coupling_ms);
@@ -817,7 +823,10 @@ fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-/// Process a batch of files: generate embeddings and store in LanceDB
+/// Process a batch of files: generate embeddings and store in LanceDB.
+///
+/// Collects all chunks across files into one big embedding batch to minimize
+/// ONNX session overhead, then splits results back to per-file for storage.
 async fn process_batch(
     results: &mut Vec<FileIndexResult>,
     vector_store: &mut VectorStore,
@@ -831,12 +840,12 @@ async fn process_batch(
 
     let now = chrono::Utc::now().timestamp().to_string();
 
-    let mut indexed_count = 0;
-    let mut chunks_count = 0;
+    // Collect all embed texts across files into one batch
+    let mut all_texts: Vec<String> = Vec::new();
+    let mut file_chunk_counts: Vec<usize> = Vec::new();
 
-    for result in results.drain(..) {
-        // Build text to embed: use full_context when available, fall back to content
-        let embed_texts: Vec<String> = result
+    for result in results.iter() {
+        let texts: Vec<String> = result
             .contexts
             .iter()
             .zip(result.chunks.iter())
@@ -844,29 +853,45 @@ async fn process_batch(
                 ctx.as_ref().cloned().unwrap_or_else(|| chunk.content.clone())
             })
             .collect();
-        let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
+        file_chunk_counts.push(texts.len());
+        all_texts.extend(texts);
+    }
 
-        let t_embed = Instant::now();
-        let embeddings = embed
-            .embed_batch(&embed_refs)
-            .await
-            .context("Failed to generate embeddings")?;
-        profile.embed_ms += t_embed.elapsed().as_millis();
-        profile.total_chunks_embedded += embed_refs.len();
-        profile.total_batches += 1;
+    let all_refs: Vec<&str> = all_texts.iter().map(|s| s.as_str()).collect();
 
-        // Delete existing chunks for this file, then insert new ones
-        let t_del = Instant::now();
-        vector_store
-            .delete_by_file(&[result.path.clone()])
-            .await?;
-        profile.delete_ms += t_del.elapsed().as_millis();
+    // Embed all chunks in one batch
+    let t_embed = Instant::now();
+    let (all_embeddings, embed_timing) = embed
+        .embed_batch_timed(&all_refs)
+        .await
+        .context("Failed to generate embeddings")?;
+    profile.embed_ms += t_embed.elapsed().as_millis();
+    profile.embed_tokenize_ms += embed_timing.tokenize_ms;
+    profile.embed_inference_ms += embed_timing.inference_ms;
+    profile.embed_pooling_ms += embed_timing.pooling_ms;
+    profile.total_chunks_embedded += all_refs.len();
+    profile.total_batches += 1;
+
+    // Batch-delete all files at once
+    let t_del = Instant::now();
+    let file_paths: Vec<String> = results.iter().map(|r| r.path.clone()).collect();
+    vector_store.delete_by_file(&file_paths).await?;
+    profile.delete_ms += t_del.elapsed().as_millis();
+
+    // Split embeddings back to per-file and insert
+    let mut embed_offset = 0;
+    let mut indexed_count = 0;
+    let mut chunks_count = 0;
+
+    for (result, &chunk_count) in results.drain(..).zip(file_chunk_counts.iter()) {
+        let file_embeddings = all_embeddings[embed_offset..embed_offset + chunk_count].to_vec();
+        embed_offset += chunk_count;
 
         let t_ins = Instant::now();
         vector_store
             .insert(
                 &result.chunks,
-                &embeddings,
+                &file_embeddings,
                 &result.contexts,
                 repo,
                 &result.hash,
@@ -876,7 +901,7 @@ async fn process_batch(
             .context("Failed to store chunks")?;
         profile.insert_ms += t_ins.elapsed().as_millis();
 
-        chunks_count += result.chunks.len();
+        chunks_count += chunk_count;
         indexed_count += 1;
     }
 

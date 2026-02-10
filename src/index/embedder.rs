@@ -6,7 +6,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokenizers::Tokenizer;
 
+use std::time::Instant;
+
 use crate::config::{EmbeddingBackend, EmbeddingConfig};
+
+/// Sub-phase timing breakdown for embedding operations.
+#[derive(Default, Debug, Clone)]
+pub struct EmbedTiming {
+    pub tokenize_ms: u128,
+    pub inference_ms: u128,
+    pub pooling_ms: u128,
+}
 
 // ── Built-in model registry ──────────────────────────────────────────
 
@@ -123,8 +133,19 @@ impl Embedder {
     /// Generate embeddings for a batch of texts
     pub async fn embed_batch(&mut self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         match &mut self.backend {
-            EmbedderBackend::Onnx(onnx) => onnx.embed_batch(texts),
+            EmbedderBackend::Onnx(onnx) => onnx.embed_batch(texts).map(|(vecs, _)| vecs),
             EmbedderBackend::Api(api) => api.embed_batch(texts).await,
+        }
+    }
+
+    /// Generate embeddings with sub-phase timing breakdown
+    pub async fn embed_batch_timed(&mut self, texts: &[&str]) -> Result<(Vec<Vec<f32>>, EmbedTiming)> {
+        match &mut self.backend {
+            EmbedderBackend::Onnx(onnx) => onnx.embed_batch(texts),
+            EmbedderBackend::Api(api) => {
+                let vecs = api.embed_batch(texts).await?;
+                Ok((vecs, EmbedTiming::default()))
+            }
         }
     }
 
@@ -141,7 +162,8 @@ impl Embedder {
     pub fn embed_sync(&mut self, text: &str) -> Result<Vec<f32>> {
         match &mut self.backend {
             EmbedderBackend::Onnx(onnx) => onnx
-                .embed_batch(&[text])?
+                .embed_batch(&[text])
+                .map(|(vecs, _)| vecs)?
                 .into_iter()
                 .next()
                 .context("embed_batch returned empty results for single input"),
@@ -154,7 +176,7 @@ impl Embedder {
     /// Synchronous embed_batch for backward compatibility (ONNX only)
     pub fn embed_batch_sync(&mut self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         match &mut self.backend {
-            EmbedderBackend::Onnx(onnx) => onnx.embed_batch(texts),
+            EmbedderBackend::Onnx(onnx) => onnx.embed_batch(texts).map(|(vecs, _)| vecs),
             EmbedderBackend::Api(_) => {
                 anyhow::bail!(
                     "Synchronous embed_batch not supported for API backend; use embed_batch().await"
@@ -251,9 +273,20 @@ impl OnnxEmbedder {
         max_seq: usize,
         name: &str,
     ) -> Result<Self> {
+        // Use BOBBIN_ONNX_THREADS env var, or default to half available cores (min 2)
+        let num_threads: usize = std::env::var("BOBBIN_ONNX_THREADS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| {
+                let cpus = std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4);
+                (cpus / 2).max(2)
+            });
+
         let session = Session::builder()
             .map_err(|e| anyhow::anyhow!("Failed to create ONNX session builder: {}", e))?
-            .with_intra_threads(4)
+            .with_intra_threads(num_threads)
             .map_err(|e| anyhow::anyhow!("Failed to set thread count: {}", e))?
             .commit_from_file(model_path)
             .map_err(|e| {
@@ -276,11 +309,14 @@ impl OnnxEmbedder {
         })
     }
 
-    fn embed_batch(&mut self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+    fn embed_batch(&mut self, texts: &[&str]) -> Result<(Vec<Vec<f32>>, EmbedTiming)> {
+        let mut timing = EmbedTiming::default();
+
         if texts.is_empty() {
-            return Ok(vec![]);
+            return Ok((vec![], timing));
         }
 
+        let t_tok = Instant::now();
         let encodings = self
             .tokenizer
             .encode_batch(texts.to_vec(), true)
@@ -320,7 +356,9 @@ impl OnnxEmbedder {
             .map_err(|e| anyhow::anyhow!("Failed to create attention_mask tensor: {}", e))?;
         let token_type_ids_tensor = Tensor::from_array(token_type_ids)
             .map_err(|e| anyhow::anyhow!("Failed to create token_type_ids tensor: {}", e))?;
+        timing.tokenize_ms = t_tok.elapsed().as_millis();
 
+        let t_inf = Instant::now();
         let outputs = self
             .session
             .run(ort::inputs![
@@ -329,7 +367,9 @@ impl OnnxEmbedder {
                 "token_type_ids" => token_type_ids_tensor,
             ])
             .map_err(|e| anyhow::anyhow!("ONNX inference failed: {}", e))?;
+        timing.inference_ms = t_inf.elapsed().as_millis();
 
+        let t_pool = Instant::now();
         // Get the last hidden state (batch_size, seq_len, hidden_dim)
         let (shape, data) = outputs["last_hidden_state"]
             .try_extract_tensor::<f32>()
@@ -373,8 +413,9 @@ impl OnnxEmbedder {
 
             embeddings.push(sum);
         }
+        timing.pooling_ms = t_pool.elapsed().as_millis();
 
-        Ok(embeddings)
+        Ok((embeddings, timing))
     }
 }
 
