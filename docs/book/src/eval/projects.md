@@ -2,6 +2,24 @@
 
 Projects used in bobbin evaluations, with codebase statistics.
 
+## astral-sh/ruff
+
+### Lines of Code
+
+| Language | Files | Code | Comments | Blanks | Total |
+|----------|------:|-----:|---------:|-------:|------:|
+| Rust | 1,750 | 440,633 | 25,755 | 54,388 | 520,776 |
+| Python | 3,690 | 212,248 | 12,844 | 42,183 | 267,275 |
+| JSON | 134 | 15,801 | 0 | 10 | 15,811 |
+| TSX | 30 | 4,810 | 163 | 553 | 5,526 |
+| TOML | 145 | 3,654 | 220 | 484 | 4,358 |
+| YAML | 25 | 3,194 | 292 | 339 | 3,825 |
+| SVG | 28 | 1,308 | 71 | 66 | 1,445 |
+| TypeScript | 14 | 363 | 61 | 56 | 480 |
+| CSS | 3 | 322 | 6 | 49 | 377 |
+| Jupyter Notebooks | 35 | 289 | 154 | 68 | 511 |
+| **Total** | **5,874** | **696,104** | | | **1,212,699** |
+
 ## pallets/flask
 
 ### Lines of Code

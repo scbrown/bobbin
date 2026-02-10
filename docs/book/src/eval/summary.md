@@ -4,12 +4,12 @@
 
 | Metric | no-bobbin | with-bobbin | Delta |
 |--------|:---:|:---:|:---:|
-| Runs | 5 | 5 | |
-| Test Pass Rate | 0.0% | 0.0% | — |
-| Avg Precision | 100.0% | 100.0% | — |
-| Avg Recall | 59.0% | 54.0% | -5.0pp |
+| Runs | 10 | 5 | |
+| Test Pass Rate | 50.0% | 0.0% | -50.0pp |
+| Avg Precision | 89.3% | 100.0% | +10.7pp |
+| Avg Recall | 66.8% | 54.0% | -12.8pp |
 | Avg F1 | 73.1% | 69.3% | -3.8pp |
-| Avg Duration | 2.1m | 2.3m | +8% |
+| Avg Duration | 3.9m | 2.3m | -41% |
 
 ## Metric Overview
 
@@ -67,3 +67,8 @@
 | flask-004 | python | medium | with-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 3.0m |
 | flask-005 | python | easy | no-bobbin | 0.0% | 100.0% | 75.0% | 85.7% | 2.0m |
 | flask-005 | python | easy | with-bobbin | 0.0% | 100.0% | 50.0% | 66.7% | 2.3m |
+| ruff-001 | rust | medium | no-bobbin | 100.0% | 33.3% | 33.3% | 33.3% | 5.7m |
+| ruff-002 | rust | easy | no-bobbin | 100.0% | 100.0% | 40.0% | 57.1% | 4.4m |
+| ruff-003 | rust | medium | no-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 8.7m |
+| ruff-004 | rust | easy | no-bobbin | 100.0% | 60.0% | 100.0% | 75.0% | 5.9m |
+| ruff-005 | rust | easy | no-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 3.5m |

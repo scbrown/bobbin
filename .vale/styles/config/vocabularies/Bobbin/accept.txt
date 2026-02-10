@@ -22,6 +22,7 @@ configs
 debounce
 debouncing
 dedup
+dunder
 deduplicate
 deduplicates
 deduplication
@@ -46,6 +47,7 @@ middleware
 monorepo
 OAuth
 protoc
+pylint
 read_chunk
 reindex
 repo
@@ -56,6 +58,7 @@ save_session
 serverless
 ssl
 stderr
+stringized
 stdout
 subcommand
 subcommands
@@ -63,6 +66,7 @@ subprocess
 systemd
 tmux
 tokenization
+tokenizer
 tokei
 toolchain
 unstaged
