@@ -1,0 +1,184 @@
+{
+  "task_id": "flask-001",
+  "approach": "with-bobbin",
+  "attempt": 0,
+  "status": "completed",
+  "timestamp": "2026-02-10T15:59:06.965672+00:00",
+  "task": {
+    "repo": "pallets/flask",
+    "commit": "8646edca6f47e2cd57464081b3911218d4734f8d",
+    "test_command": ".venv/bin/pytest tests/test_basic.py -x -k session",
+    "language": "python",
+    "difficulty": "medium"
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 89.88,
+    "timed_out": false
+  },
+  "test_result": {
+    "passed": false,
+    "total": 1,
+    "failures": 1,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "total": 1
+    }
+  },
+  "diff_result": {
+    "file_precision": 1.0,
+    "file_recall": 0.3333,
+    "f1": 0.5,
+    "files_touched": [
+      "src/flask/sessions.py"
+    ],
+    "ground_truth_files": [
+      "CHANGES.rst",
+      "src/flask/sessions.py",
+      "tests/test_basic.py"
+    ],
+    "exact_file_match": false
+  },
+  "agent_diff": "diff --git a/src/flask/sessions.py b/src/flask/sessions.py\nindex 02b8cf76..527aa419 100644\n--- a/src/flask/sessions.py\n+++ b/src/flask/sessions.py\n@@ -383,6 +383,10 @@ class SecureCookieSessionInterface(SessionInterface):\n         samesite = self.get_cookie_samesite(app)\n         httponly = self.get_cookie_httponly(app)\n \n+        # Add a \"Vary: Cookie\" header if the session was accessed at all.\n+        if session.accessed:\n+            response.vary.add(\"Cookie\")\n+\n         # If the session is modified to be empty, remove the cookie.\n         # If the session is empty, return without setting the cookie.\n         if not session:\n@@ -398,10 +402,6 @@ class SecureCookieSessionInterface(SessionInterface):\n \n             return\n \n-        # Add a \"Vary: Cookie\" header if the session was accessed at all.\n-        if session.accessed:\n-            response.vary.add(\"Cookie\")\n-\n         if not self.should_set_cookie(app, session):\n             return\n \n",
+  "ground_truth_diff": "diff --git a/CHANGES.rst b/CHANGES.rst\nindex ee9acf77..e95ae429 100644\n--- a/CHANGES.rst\n+++ b/CHANGES.rst\n@@ -4,6 +4,7 @@ Version 2.2.5\n Unreleased\n \n -   Update for compatibility with Werkzeug 2.3.3.\n+-   Set ``Vary: Cookie`` header when the session is accessed, modified, or refreshed.\n \n \n Version 2.2.4\ndiff --git a/src/flask/sessions.py b/src/flask/sessions.py\nindex 02b8cf76..201593f2 100644\n--- a/src/flask/sessions.py\n+++ b/src/flask/sessions.py\n@@ -383,6 +383,10 @@ class SecureCookieSessionInterface(SessionInterface):\n         samesite = self.get_cookie_samesite(app)\n         httponly = self.get_cookie_httponly(app)\n \n+        # Add a \"Vary: Cookie\" header if the session was accessed at all.\n+        if session.accessed:\n+            response.vary.add(\"Cookie\")\n+\n         # If the session is modified to be empty, remove the cookie.\n         # If the session is empty, return without setting the cookie.\n         if not session:\n@@ -395,13 +399,10 @@ class SecureCookieSessionInterface(SessionInterface):\n                     samesite=samesite,\n                     httponly=httponly,\n                 )\n+                response.vary.add(\"Cookie\")\n \n             return\n \n-        # Add a \"Vary: Cookie\" header if the session was accessed at all.\n-        if session.accessed:\n-            response.vary.add(\"Cookie\")\n-\n         if not self.should_set_cookie(app, session):\n             return\n \n@@ -417,3 +418,4 @@ class SecureCookieSessionInterface(SessionInterface):\n             secure=secure,\n             samesite=samesite,\n         )\n+        response.vary.add(\"Cookie\")\ndiff --git a/tests/test_basic.py b/tests/test_basic.py\nindex a622fa93..3e5e4120 100644\n--- a/tests/test_basic.py\n+++ b/tests/test_basic.py\n@@ -560,6 +560,11 @@ def test_session_vary_cookie(app, client):\n     def setdefault():\n         return flask.session.setdefault(\"test\", \"default\")\n \n+    @app.route(\"/clear\")\n+    def clear():\n+        flask.session.clear()\n+        return \"\"\n+\n     @app.route(\"/vary-cookie-header-set\")\n     def vary_cookie_header_set():\n         response = flask.Response()\n@@ -592,11 +597,29 @@ def test_session_vary_cookie(app, client):\n     expect(\"/get\")\n     expect(\"/getitem\")\n     expect(\"/setdefault\")\n+    expect(\"/clear\")\n     expect(\"/vary-cookie-header-set\")\n     expect(\"/vary-header-set\", \"Accept-Encoding, Accept-Language, Cookie\")\n     expect(\"/no-vary-header\", None)\n \n \n+def test_session_refresh_vary(app, client):\n+    @app.get(\"/login\")\n+    def login():\n+        flask.session[\"user_id\"] = 1\n+        flask.session.permanent = True\n+        return \"\"\n+\n+    @app.get(\"/ignored\")\n+    def ignored():\n+        return \"\"\n+\n+    rv = client.get(\"/login\")\n+    assert rv.headers[\"Vary\"] == \"Cookie\"\n+    rv = client.get(\"/ignored\")\n+    assert rv.headers[\"Vary\"] == \"Cookie\"\n+\n+\n def test_flashes(app, req_ctx):\n     assert not flask.session.modified\n     flask.flash(\"Zap\")\n",
+  "project_metadata": {
+    "Autoconf": {
+      "files": 9,
+      "lines": 50,
+      "code": 48,
+      "comments": 2,
+      "blanks": 0
+    },
+    "Batch": {
+      "files": 1,
+      "lines": 35,
+      "code": 26,
+      "comments": 1,
+      "blanks": 8
+    },
+    "CSS": {
+      "files": 2,
+      "lines": 135,
+      "code": 109,
+      "comments": 1,
+      "blanks": 25
+    },
+    "Forge Config": {
+      "files": 3,
+      "lines": 153,
+      "code": 126,
+      "comments": 7,
+      "blanks": 20
+    },
+    "HTML": {
+      "files": 20,
+      "lines": 274,
+      "code": 256,
+      "comments": 0,
+      "blanks": 18
+    },
+    "INI": {
+      "files": 1,
+      "lines": 50,
+      "code": 43,
+      "comments": 3,
+      "blanks": 4
+    },
+    "JSON": {
+      "files": 1,
+      "lines": 4,
+      "code": 4,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Makefile": {
+      "files": 1,
+      "lines": 20,
+      "code": 9,
+      "comments": 7,
+      "blanks": 4
+    },
+    "Markdown": {
+      "files": 2,
+      "lines": 97,
+      "code": 0,
+      "comments": 72,
+      "blanks": 25
+    },
+    "Python": {
+      "files": 83,
+      "lines": 18207,
+      "code": 13856,
+      "comments": 836,
+      "blanks": 3515
+    },
+    "ReStructuredText": {
+      "files": 84,
+      "lines": 15028,
+      "code": 11089,
+      "comments": 0,
+      "blanks": 3939
+    },
+    "SQL": {
+      "files": 2,
+      "lines": 28,
+      "code": 22,
+      "comments": 2,
+      "blanks": 4
+    },
+    "SVG": {
+      "files": 2,
+      "lines": 455,
+      "code": 451,
+      "comments": 2,
+      "blanks": 2
+    },
+    "Plain Text": {
+      "files": 13,
+      "lines": 280,
+      "code": 0,
+      "comments": 279,
+      "blanks": 1
+    },
+    "TOML": {
+      "files": 1,
+      "lines": 11,
+      "code": 10,
+      "comments": 0,
+      "blanks": 1
+    },
+    "Total": {
+      "files": 0,
+      "lines": 34921,
+      "code": 26132,
+      "comments": 1212,
+      "blanks": 7577
+    }
+  },
+  "bobbin_metadata": {
+    "index_duration_seconds": 33.55,
+    "profile": {
+      "file_i/o": 0,
+      "parse": 46,
+      "context": 0,
+      "embed": 15823,
+      "lance_delete": 3151,
+      "lance_insert": 3524,
+      "git_coupling": 85,
+      "git_commits": 10353,
+      "deps": 3,
+      "compact": 35,
+      "other/overhead": 397,
+      "total_ms": 33417,
+      "embed_throughput_chunks_per_sec": 102.8
+    },
+    "total_files": null,
+    "total_chunks": null,
+    "total_embeddings": null,
+    "languages": []
+  },
+  "run_id": "20260210-155659-ee3a"
+}
