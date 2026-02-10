@@ -162,12 +162,24 @@ impl VectorStore {
         file_hash: &str,
         indexed_at: &str,
     ) -> Result<RecordBatch> {
+        let file_hashes: Vec<&str> = chunks.iter().map(|_| file_hash).collect();
+        self.to_record_batch_bulk(chunks, embeddings, full_contexts, repo, &file_hashes, indexed_at)
+    }
+
+    fn to_record_batch_bulk(
+        &self,
+        chunks: &[Chunk],
+        embeddings: &[Vec<f32>],
+        full_contexts: &[Option<String>],
+        repo: &str,
+        file_hashes: &[&str],
+        indexed_at: &str,
+    ) -> Result<RecordBatch> {
         let schema = Arc::new(self.schema());
 
         let ids: Vec<&str> = chunks.iter().map(|c| c.id.as_str()).collect();
         let repos: Vec<&str> = chunks.iter().map(|_| repo).collect();
         let file_paths: Vec<&str> = chunks.iter().map(|c| c.file_path.as_str()).collect();
-        let file_hashes: Vec<&str> = chunks.iter().map(|_| file_hash).collect();
         let languages: Vec<&str> = chunks.iter().map(|c| c.language.as_str()).collect();
         let chunk_types: Vec<&str> = chunks
             .iter()
@@ -199,7 +211,7 @@ impl VectorStore {
             Arc::new(vector_array),
             Arc::new(StringArray::from(repos)),
             Arc::new(StringArray::from(file_paths)),
-            Arc::new(StringArray::from(file_hashes)),
+            Arc::new(StringArray::from(file_hashes.to_vec())),
             Arc::new(StringArray::from(languages)),
             Arc::new(StringArray::from(chunk_types)),
             Arc::new(StringArray::from(chunk_names)),
@@ -289,6 +301,65 @@ impl VectorStore {
         // Invalidate FTS index since data changed
         self.fts_indexed = false;
 
+        Ok(())
+    }
+
+    /// Bulk insert chunks from multiple files in a single Lance write.
+    ///
+    /// Unlike `insert`, this accepts per-chunk file hashes to support mixed-file
+    /// batches. Callers must pre-delete stale rows (e.g. via `delete_by_file`).
+    pub async fn insert_bulk(
+        &mut self,
+        chunks: &[Chunk],
+        embeddings: &[Vec<f32>],
+        full_contexts: &[Option<String>],
+        repo: &str,
+        file_hashes: &[&str],
+        indexed_at: &str,
+    ) -> Result<()> {
+        if chunks.is_empty() {
+            return Ok(());
+        }
+
+        if chunks.len() != embeddings.len()
+            || chunks.len() != full_contexts.len()
+            || chunks.len() != file_hashes.len()
+        {
+            anyhow::bail!(
+                "insert_bulk: length mismatch — chunks={}, embeddings={}, contexts={}, hashes={}",
+                chunks.len(),
+                embeddings.len(),
+                full_contexts.len(),
+                file_hashes.len()
+            );
+        }
+
+        let schema = Arc::new(self.schema());
+        let batch =
+            self.to_record_batch_bulk(chunks, embeddings, full_contexts, repo, file_hashes, indexed_at)?;
+
+        match &self.table {
+            Some(table) => {
+                let reader = Self::batch_to_reader(batch, schema);
+                table
+                    .add(reader)
+                    .execute()
+                    .await
+                    .context("Failed to bulk-add chunks")?;
+            }
+            None => {
+                let reader = Self::batch_to_reader(batch, schema);
+                let table = self
+                    .conn
+                    .create_table(TABLE_NAME, reader)
+                    .execute()
+                    .await
+                    .context("Failed to create chunks table")?;
+                self.table = Some(table);
+            }
+        }
+
+        self.fts_indexed = false;
         Ok(())
     }
 

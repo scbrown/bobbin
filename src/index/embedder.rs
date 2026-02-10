@@ -211,6 +211,14 @@ impl Embedder {
             EmbedderBackend::Api(_) => "openai-api",
         }
     }
+
+    /// Returns true if this embedder is using GPU acceleration
+    pub fn is_gpu(&self) -> bool {
+        match &self.backend {
+            EmbedderBackend::Onnx(onnx) => onnx.gpu_active,
+            EmbedderBackend::Api(_) => false,
+        }
+    }
 }
 
 /// Thread-safe wrapper for the embedder
@@ -224,6 +232,7 @@ struct OnnxEmbedder {
     model_name: String,
     dim: usize,
     max_seq: usize,
+    gpu_active: bool,
 }
 
 impl OnnxEmbedder {
@@ -333,6 +342,7 @@ impl OnnxEmbedder {
             model_name: name.to_string(),
             dim,
             max_seq,
+            gpu_active,
         })
     }
 

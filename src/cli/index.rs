@@ -286,7 +286,16 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let mut errors = Vec::new();
     let mut profile = ProfileStats::default();
 
-    let batch_size = config.embedding.batch_size;
+    // Adaptive batch size: GPU benefits from larger batches for throughput.
+    let batch_size = if embed.is_gpu() {
+        let gpu_batch = config.embedding.batch_size * 4;
+        if output.verbose && !output.quiet && !output.json {
+            println!("  GPU detected — batch size {} ({}×4)", gpu_batch, config.embedding.batch_size);
+        }
+        gpu_batch
+    } else {
+        config.embedding.batch_size
+    };
     let mut pending_results: Vec<FileIndexResult> = Vec::new();
     let mut all_imports: Vec<ImportEdge> = Vec::new();
 
@@ -878,32 +887,38 @@ async fn process_batch(
     vector_store.delete_by_file(&file_paths).await?;
     profile.delete_ms += t_del.elapsed().as_millis();
 
-    // Split embeddings back to per-file and insert
-    let mut embed_offset = 0;
+    // Accumulate all chunks, embeddings, contexts, and per-chunk file hashes
+    // for a single bulk Lance insert instead of per-file inserts.
+    let mut all_chunks: Vec<Chunk> = Vec::new();
+    let mut all_contexts: Vec<Option<String>> = Vec::new();
+    let mut all_hashes: Vec<String> = Vec::new();
     let mut indexed_count = 0;
     let mut chunks_count = 0;
 
     for (result, &chunk_count) in results.drain(..).zip(file_chunk_counts.iter()) {
-        let file_embeddings = all_embeddings[embed_offset..embed_offset + chunk_count].to_vec();
-        embed_offset += chunk_count;
-
-        let t_ins = Instant::now();
-        vector_store
-            .insert(
-                &result.chunks,
-                &file_embeddings,
-                &result.contexts,
-                repo,
-                &result.hash,
-                &now,
-            )
-            .await
-            .context("Failed to store chunks")?;
-        profile.insert_ms += t_ins.elapsed().as_millis();
-
+        for _ in 0..chunk_count {
+            all_hashes.push(result.hash.clone());
+        }
+        all_chunks.extend(result.chunks);
+        all_contexts.extend(result.contexts);
         chunks_count += chunk_count;
         indexed_count += 1;
     }
+
+    let t_ins = Instant::now();
+    let hash_refs: Vec<&str> = all_hashes.iter().map(|s| s.as_str()).collect();
+    vector_store
+        .insert_bulk(
+            &all_chunks,
+            &all_embeddings,
+            &all_contexts,
+            repo,
+            &hash_refs,
+            &now,
+        )
+        .await
+        .context("Failed to store chunks")?;
+    profile.insert_ms += t_ins.elapsed().as_millis();
 
     Ok((indexed_count, chunks_count))
 }
