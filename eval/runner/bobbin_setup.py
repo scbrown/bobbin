@@ -28,7 +28,7 @@ def _find_bobbin() -> str:
     raise BobbinSetupError("bobbin binary not found. Install with: cargo install bobbin")
 
 
-def setup_bobbin(workspace: str, *, timeout: int = 300) -> dict[str, Any]:
+def setup_bobbin(workspace: str, *, timeout: int = 900) -> dict[str, Any]:
     """Run bobbin init and index on the given workspace.
 
     Parameters
