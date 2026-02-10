@@ -212,9 +212,11 @@ mark {
     overflow-x: auto;
 }
 
-.eval-chart svg {
+.eval-chart svg,
+.eval-chart img {
     max-width: 100%;
     height: auto;
+    border-radius: 6px;
 }
 
 .eval-delta-positive {
