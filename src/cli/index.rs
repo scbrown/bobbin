@@ -71,6 +71,23 @@ struct FileIndexResult {
     contexts: Vec<Option<String>>,
 }
 
+/// Accumulated timing stats for profiling the index pipeline.
+#[derive(Default)]
+struct ProfileStats {
+    file_read_ms: u128,
+    parse_ms: u128,
+    context_ms: u128,
+    embed_ms: u128,
+    delete_ms: u128,
+    insert_ms: u128,
+    git_coupling_ms: u128,
+    git_commits_ms: u128,
+    deps_ms: u128,
+    compact_ms: u128,
+    total_chunks_embedded: usize,
+    total_batches: usize,
+}
+
 pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let start_time = Instant::now();
 
@@ -264,6 +281,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let mut indexed_files = 0;
     let mut total_chunks = 0;
     let mut errors = Vec::new();
+    let mut profile = ProfileStats::default();
 
     let batch_size = config.embedding.batch_size;
     let mut pending_results: Vec<FileIndexResult> = Vec::new();
@@ -276,6 +294,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .to_string_lossy()
             .to_string();
 
+        let t_read = Instant::now();
         let content = match std::fs::read_to_string(file_path) {
             Ok(c) => c,
             Err(e) => {
@@ -286,6 +305,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 continue;
             }
         };
+        profile.file_read_ms += t_read.elapsed().as_millis();
 
         if content.trim().is_empty() {
             if let Some(pb) = &progress {
@@ -294,6 +314,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             continue;
         }
 
+        let t_parse = Instant::now();
         let chunks = match parser.parse_file(file_path, &content) {
             Ok(c) => c,
             Err(e) => {
@@ -304,6 +325,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 continue;
             }
         };
+        profile.parse_ms += t_parse.elapsed().as_millis();
 
         // Extract imports from this file (if dependency tracking enabled)
         if config.dependencies.enabled {
@@ -325,7 +347,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         let hash = compute_hash(&content);
 
         // Compute contextual embeddings for enabled languages
+        let t_ctx = Instant::now();
         let contexts = build_context_windows(&chunks, &content, &config.embedding.context);
+        profile.context_ms += t_ctx.elapsed().as_millis();
 
         pending_results.push(FileIndexResult {
             path: rel_path,
@@ -341,6 +365,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 &mut vector_store,
                 &mut embed,
                 repo_name,
+                &mut profile,
             )
             .await?;
 
@@ -360,6 +385,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             &mut vector_store,
             &mut embed,
             repo_name,
+            &mut profile,
         )
         .await?;
 
@@ -376,6 +402,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     }
 
     // Analyze and store git coupling if enabled
+    let t_coupling = Instant::now();
     if config.git.coupling_enabled {
         if output.verbose && !output.quiet && !output.json {
             println!("  Analyzing git coupling...");
@@ -411,7 +438,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
+    profile.git_coupling_ms = t_coupling.elapsed().as_millis();
+
     // Analyze and store import dependencies
+    let t_deps = Instant::now();
     let mut dep_count: usize = 0;
     let mut resolved_count: usize = 0;
     if config.dependencies.enabled && !all_imports.is_empty() {
@@ -466,7 +496,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
+    profile.deps_ms = t_deps.elapsed().as_millis();
+
     // Index git commits as searchable chunks
+    let t_commits = Instant::now();
     let mut commits_indexed: usize = 0;
     if config.git.commits_enabled {
         if output.verbose && !output.quiet && !output.json {
@@ -588,14 +621,60 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
+    profile.git_commits_ms = t_commits.elapsed().as_millis();
+
     // Compact fragmented lance data after indexing — each file insert creates a
     // new fragment, and compaction merges them for better read performance.
     // Stats queries on heavily fragmented tables return incomplete results.
+    let t_compact = Instant::now();
     if let Err(e) = vector_store.compact().await {
         eprintln!("warning: lance compaction failed: {e:#}");
     }
+    profile.compact_ms = t_compact.elapsed().as_millis();
 
     let elapsed = start_time.elapsed();
+
+    // Print profiling summary when verbose
+    if output.verbose && !output.json {
+        let total_ms = elapsed.as_millis();
+        let accounted = profile.file_read_ms
+            + profile.parse_ms
+            + profile.context_ms
+            + profile.embed_ms
+            + profile.delete_ms
+            + profile.insert_ms
+            + profile.git_coupling_ms
+            + profile.deps_ms
+            + profile.git_commits_ms
+            + profile.compact_ms;
+        let other_ms = total_ms.saturating_sub(accounted);
+
+        println!("\n{}", "Profile:".bold());
+        println!("  file I/O:       {:>7}ms", profile.file_read_ms);
+        println!("  parse:          {:>7}ms", profile.parse_ms);
+        println!("  context:        {:>7}ms", profile.context_ms);
+        println!(
+            "  embed:          {:>7}ms  ({} chunks in {} batches)",
+            profile.embed_ms, profile.total_chunks_embedded, profile.total_batches
+        );
+        println!("  lance delete:   {:>7}ms", profile.delete_ms);
+        println!("  lance insert:   {:>7}ms", profile.insert_ms);
+        println!("  git coupling:   {:>7}ms", profile.git_coupling_ms);
+        println!("  git commits:    {:>7}ms", profile.git_commits_ms);
+        println!("  deps:           {:>7}ms", profile.deps_ms);
+        println!("  compact:        {:>7}ms", profile.compact_ms);
+        println!("  other/overhead: {:>7}ms", other_ms);
+        println!("  TOTAL:          {:>7}ms", total_ms);
+
+        if profile.total_chunks_embedded > 0 && profile.embed_ms > 0 {
+            let chunks_per_sec =
+                profile.total_chunks_embedded as f64 / (profile.embed_ms as f64 / 1000.0);
+            println!(
+                "  embed throughput: {:.1} chunks/s",
+                chunks_per_sec
+            );
+        }
+    }
 
     // Build import stats for output (only if deps were processed)
     let (imports_total, imports_resolved, imports_unresolved) = if dep_count > 0 {
@@ -744,6 +823,7 @@ async fn process_batch(
     vector_store: &mut VectorStore,
     embed: &mut Embedder,
     repo: &str,
+    profile: &mut ProfileStats,
 ) -> Result<(usize, usize)> {
     if results.is_empty() {
         return Ok((0, 0));
@@ -766,16 +846,23 @@ async fn process_batch(
             .collect();
         let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
 
+        let t_embed = Instant::now();
         let embeddings = embed
             .embed_batch(&embed_refs)
             .await
             .context("Failed to generate embeddings")?;
+        profile.embed_ms += t_embed.elapsed().as_millis();
+        profile.total_chunks_embedded += embed_refs.len();
+        profile.total_batches += 1;
 
         // Delete existing chunks for this file, then insert new ones
+        let t_del = Instant::now();
         vector_store
             .delete_by_file(&[result.path.clone()])
             .await?;
+        profile.delete_ms += t_del.elapsed().as_millis();
 
+        let t_ins = Instant::now();
         vector_store
             .insert(
                 &result.chunks,
@@ -787,6 +874,7 @@ async fn process_batch(
             )
             .await
             .context("Failed to store chunks")?;
+        profile.insert_ms += t_ins.elapsed().as_millis();
 
         chunks_count += result.chunks.len();
         indexed_count += 1;
