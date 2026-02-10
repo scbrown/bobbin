@@ -109,3 +109,52 @@ docs cmd="build":
         check)    just docs lint && just docs vale && just docs validate && just docs build ;;
         *)        echo "Unknown: {{cmd}}. Try: build serve lint fix fmt vale validate coverage check" ;;
     esac
+
+# === Eval Framework ===
+
+# Default eval model
+eval_model := "claude-opus-4-6"
+eval_attempts := "1"
+eval_approaches := "both"
+
+# Run a single eval task: just eval-task flask-001
+eval-task task_id:
+    cd eval && python3 -m runner.cli run-task {{task_id}} --attempts {{eval_attempts}} --approaches {{eval_approaches}} --model {{eval_model}} --skip-verify
+
+# Run all eval tasks sequentially
+eval-all:
+    cd eval && python3 -m runner.cli run-all --attempts {{eval_attempts}} --approaches {{eval_approaches}} --model {{eval_model}} --skip-verify
+
+# Score existing eval results
+eval-score:
+    cd eval && python3 -m runner.cli score results
+
+# Generate eval report
+eval-report:
+    cd eval && python3 -m runner.cli report results
+
+# Publish eval results to mdbook
+eval-publish run_id="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd eval
+    if [ -n "{{run_id}}" ]; then
+        python3 -m runner.cli publish --run "{{run_id}}" --all-runs
+    else
+        python3 -m runner.cli publish --all-runs
+    fi
+
+# Run LLM judge on eval results
+eval-judge run_id="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd eval
+    if [ -n "{{run_id}}" ]; then
+        python3 -m runner.cli judge results --run "{{run_id}}"
+    else
+        python3 -m runner.cli judge results
+    fi
+
+# Setup eval prerequisites
+eval-setup:
+    cd eval && bash setup-eval.sh
