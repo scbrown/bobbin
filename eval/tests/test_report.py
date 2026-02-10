@@ -150,7 +150,7 @@ class TestGenerateReport:
         (rdir / "bad1.json").write_text("nope")
         (rdir / "bad2.json").write_text("{broken")
 
-        with pytest.raises(ReportError, match="No valid results"):
+        with pytest.raises(ReportError, match="No.*result.*JSON.*files.*found"):
             generate_report(str(rdir), str(tmp_path / "out.md"))
 
     def test_report_metrics_accuracy(self, tmp_path):

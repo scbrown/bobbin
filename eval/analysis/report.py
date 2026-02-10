@@ -18,22 +18,36 @@ class ReportError(Exception):
 def _load_results(results_dir: Path) -> list[dict[str, Any]]:
     """Load all JSON result files from the results directory.
 
-    Skips non-result files (e.g. judge_results.json which contains a list)
-    by checking that each file is a dict with a ``task_id`` key.
+    Scans ``results/runs/*/*.json`` (run-based layout) first, then falls
+    back to ``results/*.json`` (legacy flat layout).  Skips non-result
+    files (e.g. judge_results.json, manifest.json) by checking that each
+    file is a dict with a ``task_id`` key.
     """
-    json_files = sorted(results_dir.glob("*.json"))
-    if not json_files:
-        raise ReportError(f"No result JSON files found in {results_dir}")
+    results: list[dict[str, Any]] = []
 
-    results = []
-    for f in json_files:
+    # Run-based layout.
+    runs_dir = results_dir / "runs"
+    if runs_dir.is_dir():
+        for f in sorted(runs_dir.glob("*/*.json")):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                if isinstance(data, dict) and "task_id" in data:
+                    results.append(data)
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("Skipping invalid result file %s: %s", f.name, exc)
+
+    # Legacy flat layout.
+    for f in sorted(results_dir.glob("*.json")):
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
-            # Only include per-run result dicts, not other JSON files.
             if isinstance(data, dict) and "task_id" in data:
                 results.append(data)
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Skipping invalid result file %s: %s", f.name, exc)
+
+    if not results:
+        raise ReportError(f"No result JSON files found in {results_dir}")
+
     return results
 
 

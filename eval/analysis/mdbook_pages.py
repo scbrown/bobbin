@@ -28,8 +28,25 @@ class PageGenError(Exception):
 
 
 def _load_results(results_dir: Path) -> list[dict[str, Any]]:
-    """Load all completed result JSON files."""
-    results = []
+    """Load all completed result JSON files.
+
+    Scans ``results/runs/*/*.json`` (run-based layout) first, then falls
+    back to ``results/*.json`` (legacy flat layout).
+    """
+    results: list[dict[str, Any]] = []
+
+    # Run-based layout.
+    runs_dir = results_dir / "runs"
+    if runs_dir.is_dir():
+        for f in sorted(runs_dir.glob("*/*.json")):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                if isinstance(data, dict) and data.get("status") == "completed":
+                    results.append(data)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # Legacy flat layout.
     for f in sorted(results_dir.glob("*.json")):
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
@@ -37,19 +54,39 @@ def _load_results(results_dir: Path) -> list[dict[str, Any]]:
                 results.append(data)
         except (json.JSONDecodeError, OSError):
             pass
+
     return results
 
 
 def _load_judge_results(results_dir: Path) -> list[dict[str, Any]]:
-    """Load judge results if available."""
+    """Load judge results if available.
+
+    Checks run directories first, then falls back to legacy flat layout.
+    """
+    all_judgements: list[dict[str, Any]] = []
+
+    # Run-based layout.
+    runs_dir = results_dir / "runs"
+    if runs_dir.is_dir():
+        for f in sorted(runs_dir.glob("*/judge_results.json")):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    all_judgements.extend(data)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # Legacy flat layout.
     judge_file = results_dir / "judge_results.json"
-    if not judge_file.exists():
-        return []
-    try:
-        data = json.loads(judge_file.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except (json.JSONDecodeError, OSError):
-        return []
+    if judge_file.exists():
+        try:
+            data = json.loads(judge_file.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                all_judgements.extend(data)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return all_judgements
 
 
 def _load_tasks(tasks_dir: Path) -> dict[str, dict[str, Any]]:

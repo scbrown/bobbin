@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -68,18 +69,69 @@ def _build_prompt(task: dict) -> str:
     )
 
 
-def _save_result(result: dict, results_dir: Path) -> Path:
+def _generate_run_id() -> str:
+    """Generate a unique run ID in ``YYYYMMDD-HHMMSS-XXXX`` format.
+
+    Uses UTC time and 4 random hex characters for uniqueness.
+    """
+    now = datetime.now(timezone.utc)
+    return f"{now.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
+
+
+def _save_result(result: dict, results_dir: Path, *, run_id: str | None = None) -> Path:
     """Save a single run result as a JSON file.
 
     Filename format: ``<task_id>_<approach>_<attempt>.json``
+
+    When *run_id* is provided the file is saved under
+    ``results/runs/<run_id>/`` and the ``run_id`` field is added to the
+    result dict.  Otherwise the legacy flat layout is used.
     """
-    results_dir.mkdir(parents=True, exist_ok=True)
+    if run_id is not None:
+        result["run_id"] = run_id
+        target_dir = results_dir / "runs" / run_id
+    else:
+        target_dir = results_dir
+
+    target_dir.mkdir(parents=True, exist_ok=True)
     task_id = result.get("task_id", "unknown")
     approach = result.get("approach", "unknown")
     attempt = result.get("attempt", 0)
     filename = f"{task_id}_{approach}_{attempt}.json"
-    path = results_dir / filename
+    path = target_dir / filename
     path.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
+    return path
+
+
+def _write_manifest(
+    results_dir: Path,
+    run_id: str,
+    *,
+    started_at: str,
+    completed_at: str,
+    model: str,
+    attempts_per_approach: int,
+    approaches: list[str],
+    tasks: list[str],
+    total_results: int,
+    completed_results: int,
+) -> Path:
+    """Write ``manifest.json`` into the run directory."""
+    run_dir = results_dir / "runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "run_id": run_id,
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "model": model,
+        "attempts_per_approach": attempts_per_approach,
+        "approaches": approaches,
+        "tasks": tasks,
+        "total_results": total_results,
+        "completed_results": completed_results,
+    }
+    path = run_dir / "manifest.json"
+    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return path
 
 
@@ -89,6 +141,7 @@ def _run_single(
     attempt: int,
     results_dir: Path,
     *,
+    run_id: str | None = None,
     settings_file: str | None = None,
     model: str = "claude-sonnet-4-5-20250929",
     budget: float = 2.00,
@@ -134,7 +187,7 @@ def _run_single(
                 "error": str(exc),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
-            _save_result(result, results_dir)
+            _save_result(result, results_dir, run_id=run_id)
             return result
 
         # 2a. Collect LOC stats via tokei.
@@ -161,7 +214,7 @@ def _run_single(
                     "error": str(exc),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
-                _save_result(result, results_dir)
+                _save_result(result, results_dir, run_id=run_id)
                 return result
             # Snapshot after bobbin setup so diff scoring excludes bobbin
             # infrastructure files (.bobbin/, .gitignore changes).
@@ -232,7 +285,7 @@ def _run_single(
             "bobbin_metadata": bobbin_metadata,
         }
 
-        path = _save_result(result, results_dir)
+        path = _save_result(result, results_dir, run_id=run_id)
         status = "PASS" if test_result["passed"] else "FAIL"
         click.echo(
             f"    {status} | precision={diff_result['file_precision']:.2f} "
@@ -305,7 +358,13 @@ def run_task(
 
     approach_list = _resolve_approaches(approaches)
     total = len(approach_list) * attempts
-    click.echo(f"Running task {task_id}: {total} runs ({len(approach_list)} approaches × {attempts} attempts)")
+    run_id = _generate_run_id()
+    started_at = datetime.now(timezone.utc).isoformat()
+    click.echo(
+        f"Running task {task_id}: {total} runs "
+        f"({len(approach_list)} approaches × {attempts} attempts) "
+        f"[run {run_id}]"
+    )
 
     results = []
     for approach in approach_list:
@@ -315,6 +374,7 @@ def run_task(
                 approach,
                 attempt,
                 rdir,
+                run_id=run_id,
                 settings_file=settings_file,
                 model=model,
                 budget=budget,
@@ -323,8 +383,23 @@ def run_task(
             )
             results.append(result)
 
+    completed_at = datetime.now(timezone.utc).isoformat()
+    completed_count = sum(1 for r in results if r.get("status") == "completed")
+    _write_manifest(
+        rdir,
+        run_id,
+        started_at=started_at,
+        completed_at=completed_at,
+        model=model,
+        attempts_per_approach=attempts,
+        approaches=approach_list,
+        tasks=[task_id],
+        total_results=len(results),
+        completed_results=completed_count,
+    )
+
     passed = sum(1 for r in results if r.get("test_result", {}).get("passed"))
-    click.echo(f"\nDone: {passed}/{len(results)} runs passed tests")
+    click.echo(f"\nDone: {passed}/{len(results)} runs passed tests [run {run_id}]")
 
 
 @cli.command()
@@ -368,9 +443,12 @@ def run_all(
 
     approach_list = _resolve_approaches(approaches)
     total = len(tasks) * len(approach_list) * attempts
+    run_id = _generate_run_id()
+    started_at = datetime.now(timezone.utc).isoformat()
     click.echo(
         f"Running {len(tasks)} tasks: {total} total runs "
-        f"({len(approach_list)} approaches × {attempts} attempts)"
+        f"({len(approach_list)} approaches × {attempts} attempts) "
+        f"[run {run_id}]"
     )
 
     all_results = []
@@ -383,6 +461,7 @@ def run_all(
                     approach,
                     attempt,
                     rdir,
+                    run_id=run_id,
                     settings_file=settings_file,
                     model=model,
                     budget=budget,
@@ -391,8 +470,24 @@ def run_all(
                 )
                 all_results.append(result)
 
+    completed_at = datetime.now(timezone.utc).isoformat()
+    completed_count = sum(1 for r in all_results if r.get("status") == "completed")
+    task_ids = [t["id"] for t in tasks]
+    _write_manifest(
+        rdir,
+        run_id,
+        started_at=started_at,
+        completed_at=completed_at,
+        model=model,
+        attempts_per_approach=attempts,
+        approaches=approach_list,
+        tasks=task_ids,
+        total_results=len(all_results),
+        completed_results=completed_count,
+    )
+
     passed = sum(1 for r in all_results if r.get("test_result", {}).get("passed"))
-    click.echo(f"\nAll done: {passed}/{len(all_results)} runs passed tests")
+    click.echo(f"\nAll done: {passed}/{len(all_results)} runs passed tests [run {run_id}]")
 
 
 @cli.command()
@@ -407,17 +502,28 @@ def score(results_dir: str):
         click.echo(f"Error: Results directory not found: {rdir}", err=True)
         sys.exit(1)
 
-    json_files = sorted(rdir.glob("*.json"))
-    if not json_files:
-        click.echo(f"No result files found in {rdir}", err=True)
-        sys.exit(1)
-
-    results = []
-    for f in json_files:
+    # Load from run-based and legacy layouts.
+    results: list[dict] = []
+    runs_dir = rdir / "runs"
+    if runs_dir.is_dir():
+        for f in sorted(runs_dir.glob("*/*.json")):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                if isinstance(data, dict) and "task_id" in data:
+                    results.append(data)
+            except (json.JSONDecodeError, OSError) as exc:
+                click.echo(f"Warning: skipping {f.name}: {exc}", err=True)
+    for f in sorted(rdir.glob("*.json")):
         try:
-            results.append(json.loads(f.read_text(encoding="utf-8")))
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "task_id" in data:
+                results.append(data)
         except (json.JSONDecodeError, OSError) as exc:
             click.echo(f"Warning: skipping {f.name}: {exc}", err=True)
+
+    if not results:
+        click.echo(f"No result files found in {rdir}", err=True)
+        sys.exit(1)
 
     # Group by approach and compute stats.
     by_approach: dict[str, list[dict]] = {}
@@ -490,16 +596,38 @@ def report(results_dir: str, output: str | None):
 
 
 def _load_results(results_dir: Path) -> list[dict]:
-    """Load all JSON result files from the results directory."""
-    json_files = sorted(results_dir.glob("*.json"))
-    results = []
-    for f in json_files:
+    """Load all JSON result files from the results directory.
+
+    Scans ``results/runs/*/*.json`` first (run-based layout), then falls
+    back to ``results/*.json`` (legacy flat layout).  Manifest and judge
+    files are skipped via the ``task_id`` check.
+    """
+    results: list[dict] = []
+    seen_paths: set[Path] = set()
+
+    # Run-based layout: results/runs/<run_id>/<task>_<approach>_<attempt>.json
+    runs_dir = results_dir / "runs"
+    if runs_dir.is_dir():
+        for f in sorted(runs_dir.glob("*/*.json")):
+            seen_paths.add(f.resolve())
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                if isinstance(data, dict) and data.get("status") == "completed":
+                    results.append(data)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # Legacy flat layout: results/*.json
+    for f in sorted(results_dir.glob("*.json")):
+        if f.resolve() in seen_paths:
+            continue
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
-            if data.get("status") == "completed":
+            if isinstance(data, dict) and data.get("status") == "completed":
                 results.append(data)
         except (json.JSONDecodeError, OSError):
             pass
+
     return results
 
 
@@ -541,7 +669,8 @@ def _pick_best_attempt(runs: list[dict]) -> dict | None:
     type=click.Choice(["all", "ai-vs-ai", "human-vs-ai", "human-vs-bobbin"]),
     help="Which pairs to judge.",
 )
-def judge(results_dir: str, judge_model: str, pairs: str):
+@click.option("--run", "run_id", default=None, help="Run ID to load/save results from.")
+def judge(results_dir: str, judge_model: str, pairs: str, run_id: str | None):
     """Run LLM-as-judge pairwise comparison on stored results.
 
     Compares three pairs per task:
@@ -559,7 +688,16 @@ def judge(results_dir: str, judge_model: str, pairs: str):
         click.echo(f"Error: Results directory not found: {rdir}", err=True)
         sys.exit(1)
 
-    results = _load_results(rdir)
+    # When --run is specified, scope loading and saving to that run directory.
+    if run_id:
+        run_dir = rdir / "runs" / run_id
+        if not run_dir.is_dir():
+            click.echo(f"Error: Run directory not found: {run_dir}", err=True)
+            sys.exit(1)
+        results = _load_results(run_dir)
+    else:
+        results = _load_results(rdir)
+
     if not results:
         click.echo(f"Error: No completed results in {rdir}", err=True)
         sys.exit(1)
@@ -671,7 +809,9 @@ def judge(results_dir: str, judge_model: str, pairs: str):
 
     # Save all judgements.
     if all_judgements:
-        judge_file = rdir / "judge_results.json"
+        save_dir = rdir / "runs" / run_id if run_id else rdir
+        save_dir.mkdir(parents=True, exist_ok=True)
+        judge_file = save_dir / "judge_results.json"
         judge_file.write_text(
             json.dumps(all_judgements, indent=2, default=str),
             encoding="utf-8",
