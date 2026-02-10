@@ -1,0 +1,160 @@
+{
+  "task_id": "flask-003",
+  "approach": "no-bobbin",
+  "attempt": 0,
+  "status": "completed",
+  "timestamp": "2026-02-10T06:22:02.453621+00:00",
+  "task": {
+    "repo": "pallets/flask",
+    "commit": "fdab801fbbd9de5adbdb3320ca4a1cb116c892f5",
+    "test_command": ".venv/bin/pytest tests/test_helpers.py -x -k redirect",
+    "language": "python",
+    "difficulty": "medium"
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 144.54,
+    "timed_out": false
+  },
+  "test_result": {
+    "passed": false,
+    "total": 0,
+    "failures": 0,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0
+    }
+  },
+  "diff_result": {
+    "file_precision": 1.0,
+    "file_recall": 0.6,
+    "f1": 0.75,
+    "files_touched": [
+      "src/flask/__init__.py",
+      "src/flask/app.py",
+      "src/flask/helpers.py"
+    ],
+    "ground_truth_files": [
+      "CHANGES.rst",
+      "src/flask/__init__.py",
+      "src/flask/app.py",
+      "src/flask/helpers.py",
+      "tests/test_helpers.py"
+    ],
+    "exact_file_match": false
+  },
+  "agent_diff": "diff --git a/src/flask/__init__.py b/src/flask/__init__.py\nindex f4b8c75c..0eef5f26 100644\n--- a/src/flask/__init__.py\n+++ b/src/flask/__init__.py\n@@ -1,7 +1,7 @@\n from markupsafe import escape\n from markupsafe import Markup\n from werkzeug.exceptions import abort as abort\n-from werkzeug.utils import redirect as redirect\n+from .helpers import redirect as redirect\n \n from . import json as json\n from .app import Flask as Flask\ndiff --git a/src/flask/app.py b/src/flask/app.py\nindex ac82f72a..ecdc8bb4 100644\n--- a/src/flask/app.py\n+++ b/src/flask/app.py\n@@ -22,6 +22,7 @@ from werkzeug.routing import MapAdapter\n from werkzeug.routing import RequestRedirect\n from werkzeug.routing import RoutingException\n from werkzeug.routing import Rule\n+from werkzeug.utils import redirect as _wz_redirect\n from werkzeug.wrappers import Response as BaseResponse\n \n from . import cli\n@@ -1752,6 +1753,15 @@ class Flask(Scaffold):\n \n         return rv\n \n+    def redirect(self, location: str, code: int = 302) -> BaseResponse:\n+        \"\"\"Create a redirect response to ``location`` with status\n+        ``code``. This can be overridden on a subclass to change\n+        redirect behavior.\n+\n+        .. versionadded:: 2.2\n+        \"\"\"\n+        return _wz_redirect(location, code=code, Response=self.response_class)\n+\n     def create_url_adapter(\n         self, request: t.Optional[Request]\n     ) -> t.Optional[MapAdapter]:\ndiff --git a/src/flask/helpers.py b/src/flask/helpers.py\nindex 656dab76..096005f2 100644\n--- a/src/flask/helpers.py\n+++ b/src/flask/helpers.py\n@@ -12,6 +12,7 @@ from threading import RLock\n import werkzeug.utils\n from werkzeug.routing import BuildError\n from werkzeug.urls import url_quote\n+from werkzeug.utils import redirect as _wz_redirect\n \n from .globals import _app_ctx_stack\n from .globals import _request_ctx_stack\n@@ -189,6 +190,25 @@ def make_response(*args: t.Any) -> \"Response\":\n     return current_app.make_response(args)  # type: ignore\n \n \n+def redirect(location: str, code: int = 302) -> \"Response\":\n+    \"\"\"Create a redirect response object.\n+\n+    If :data:`~flask.current_app` is available, its\n+    :meth:`~flask.Flask.redirect` method is called, which can be\n+    overridden in subclasses to change redirect behavior. Otherwise,\n+    :func:`werkzeug.utils.redirect` is called directly.\n+\n+    :param location: The URL to redirect to.\n+    :param code: The status code for the redirect.\n+\n+    .. versionadded:: 2.2\n+    \"\"\"\n+    if _app_ctx_stack.top is not None:\n+        return current_app.redirect(location, code=code)\n+\n+    return _wz_redirect(location, code=code)\n+\n+\n def url_for(endpoint: str, **values: t.Any) -> str:\n     \"\"\"Generates a URL to the given endpoint with the method provided.\n \n",
+  "ground_truth_diff": "diff --git a/CHANGES.rst b/CHANGES.rst\nindex 285d6326..71100355 100644\n--- a/CHANGES.rst\n+++ b/CHANGES.rst\n@@ -5,6 +5,9 @@ Version 2.2.0\n \n Unreleased\n \n+-   Add an ``app.redirect`` method, which ``flask.redirect`` will call.\n+    This makes it possible for an app to override how redirects work.\n+    :issue:`4569`\n -   Refactor ``register_error_handler`` to consolidate error checking.\n     Rewrite some error messages to be more consistent. :issue:`4559`\n \ndiff --git a/src/flask/__init__.py b/src/flask/__init__.py\nindex f4b8c75c..f71a7d42 100644\n--- a/src/flask/__init__.py\n+++ b/src/flask/__init__.py\n@@ -1,7 +1,6 @@\n from markupsafe import escape\n from markupsafe import Markup\n from werkzeug.exceptions import abort as abort\n-from werkzeug.utils import redirect as redirect\n \n from . import json as json\n from .app import Flask as Flask\n@@ -23,6 +22,7 @@ from .helpers import flash as flash\n from .helpers import get_flashed_messages as get_flashed_messages\n from .helpers import get_template_attribute as get_template_attribute\n from .helpers import make_response as make_response\n+from .helpers import redirect as redirect\n from .helpers import send_file as send_file\n from .helpers import send_from_directory as send_from_directory\n from .helpers import stream_with_context as stream_with_context\ndiff --git a/src/flask/app.py b/src/flask/app.py\nindex ac82f72a..8ce14301 100644\n--- a/src/flask/app.py\n+++ b/src/flask/app.py\n@@ -22,6 +22,7 @@ from werkzeug.routing import MapAdapter\n from werkzeug.routing import RequestRedirect\n from werkzeug.routing import RoutingException\n from werkzeug.routing import Rule\n+from werkzeug.utils import redirect as _wz_redirect\n from werkzeug.wrappers import Response as BaseResponse\n \n from . import cli\n@@ -1630,6 +1631,16 @@ class Flask(Scaffold):\n \n         return asgiref_async_to_sync(func)\n \n+    def redirect(self, location: str, code: int = 302) -> BaseResponse:\n+        \"\"\"Create a redirect response object.\n+\n+        :param location: the url of the redirect\n+        :param code: http return code\n+\n+        .. versionadded:: 2.2\n+        \"\"\"\n+        return _wz_redirect(location, code=code, Response=self.response_class)\n+\n     def make_response(self, rv: ResponseReturnValue) -> Response:\n         \"\"\"Convert the return value from a view function to an instance of\n         :attr:`response_class`.\ndiff --git a/src/flask/helpers.py b/src/flask/helpers.py\nindex 656dab76..e3883ed6 100644\n--- a/src/flask/helpers.py\n+++ b/src/flask/helpers.py\n@@ -12,6 +12,7 @@ from threading import RLock\n import werkzeug.utils\n from werkzeug.routing import BuildError\n from werkzeug.urls import url_quote\n+from werkzeug.utils import redirect as _wz_redirect\n \n from .globals import _app_ctx_stack\n from .globals import _request_ctx_stack\n@@ -21,6 +22,7 @@ from .globals import session\n from .signals import message_flashed\n \n if t.TYPE_CHECKING:  # pragma: no cover\n+    from werkzeug.wrappers import Response as BaseResponse\n     from .wrappers import Response\n \n \n@@ -340,6 +342,28 @@ def url_for(endpoint: str, **values: t.Any) -> str:\n     return rv\n \n \n+def redirect(\n+    location: str, code: int = 302, Response: t.Optional[t.Type[\"BaseResponse\"]] = None\n+) -> \"BaseResponse\":\n+    \"\"\"Create a redirect response object.\n+\n+    If :data:`~flask.current_app` is available, it will use\n+    :meth:`~flask.app.Flask.redirect`, otherwise it will use\n+    :func:`werkzeug.utils.redirect`.\n+\n+    :param location: The URL to redirect to.\n+    :param code: The status code for the redirect.\n+    :param Response: The response class to use. Not used when\n+        ``current_app`` is active, which uses ``app.response_class``.\n+\n+    .. versionadded:: 2.2\n+    \"\"\"\n+    if current_app:\n+        return current_app.redirect(location, code=code)\n+\n+    return _wz_redirect(location, code=code, Response=Response)\n+\n+\n def get_template_attribute(template_name: str, attribute: str) -> t.Any:\n     \"\"\"Loads a macro (or variable) a template exports.  This can be used to\n     invoke a macro from within Python code.  If you for example have a\ndiff --git a/tests/test_helpers.py b/tests/test_helpers.py\nindex 58bf3c0b..63dbbc13 100644\n--- a/tests/test_helpers.py\n+++ b/tests/test_helpers.py\n@@ -158,6 +158,22 @@ class TestUrlFor:\n         assert flask.url_for(\"myview\", _method=\"POST\") == \"/myview/create\"\n \n \n+def test_redirect_no_app():\n+    response = flask.redirect(\"https://localhost\", 307)\n+    assert response.location == \"https://localhost\"\n+    assert response.status_code == 307\n+\n+\n+def test_redirect_with_app(app):\n+    def redirect(location, code=302):\n+        raise ValueError\n+\n+    app.redirect = redirect\n+\n+    with app.app_context(), pytest.raises(ValueError):\n+        flask.redirect(\"other\")\n+\n+\n class TestNoImports:\n     \"\"\"Test Flasks are created without import.\n \n",
+  "project_metadata": {
+    "Autoconf": {
+      "files": 9,
+      "lines": 52,
+      "code": 52,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Batch": {
+      "files": 1,
+      "lines": 35,
+      "code": 26,
+      "comments": 1,
+      "blanks": 8
+    },
+    "CSS": {
+      "files": 2,
+      "lines": 135,
+      "code": 109,
+      "comments": 1,
+      "blanks": 25
+    },
+    "Forge Config": {
+      "files": 3,
+      "lines": 175,
+      "code": 135,
+      "comments": 20,
+      "blanks": 20
+    },
+    "HTML": {
+      "files": 19,
+      "lines": 235,
+      "code": 221,
+      "comments": 0,
+      "blanks": 14
+    },
+    "INI": {
+      "files": 1,
+      "lines": 33,
+      "code": 25,
+      "comments": 3,
+      "blanks": 5
+    },
+    "JSON": {
+      "files": 1,
+      "lines": 4,
+      "code": 4,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Makefile": {
+      "files": 1,
+      "lines": 20,
+      "code": 9,
+      "comments": 7,
+      "blanks": 4
+    },
+    "Markdown": {
+      "files": 1,
+      "lines": 76,
+      "code": 0,
+      "comments": 57,
+      "blanks": 19
+    },
+    "Python": {
+      "files": 75,
+      "lines": 16924,
+      "code": 12815,
+      "comments": 841,
+      "blanks": 3268
+    },
+    "ReStructuredText": {
+      "files": 84,
+      "lines": 15712,
+      "code": 11584,
+      "comments": 0,
+      "blanks": 4128
+    },
+    "SQL": {
+      "files": 2,
+      "lines": 28,
+      "code": 22,
+      "comments": 2,
+      "blanks": 4
+    },
+    "SVG": {
+      "files": 2,
+      "lines": 455,
+      "code": 451,
+      "comments": 2,
+      "blanks": 2
+    },
+    "Plain Text": {
+      "files": 12,
+      "lines": 243,
+      "code": 0,
+      "comments": 242,
+      "blanks": 1
+    },
+    "Total": {
+      "files": 0,
+      "lines": 34148,
+      "code": 25472,
+      "comments": 1176,
+      "blanks": 7500
+    }
+  },
+  "bobbin_metadata": null,
+  "run_id": "20260210-061949-26fb"
+}
