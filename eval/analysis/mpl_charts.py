@@ -17,6 +17,8 @@ import matplotlib
 matplotlib.use("Agg")  # Headless backend — must be before pyplot import
 
 import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
 # Dracula palette
@@ -94,7 +96,14 @@ def fig_to_svg(fig: Figure) -> str:
     str
         SVG markup string.
     """
-    raise NotImplementedError("fig_to_svg: render Figure to SVG via BytesIO, strip XML declaration")
+    buf = io.BytesIO()
+    fig.savefig(buf, format="svg", bbox_inches="tight")
+    plt.close(fig)
+    svg = buf.getvalue().decode("utf-8")
+    # Strip XML declaration for inline embedding.
+    if svg.startswith("<?xml"):
+        svg = svg[svg.index("?>") + 2:].lstrip()
+    return svg
 
 
 def grouped_bar_chart(
@@ -124,10 +133,48 @@ def grouped_bar_chart(
     str
         SVG string, or empty string if groups is empty.
     """
-    raise NotImplementedError(
-        "grouped_bar_chart: create Figure with grouped bars, "
-        "X-axis = task labels, bars grouped by approach/series"
-    )
+    if not groups:
+        return ""
+
+    apply_dracula_theme()
+
+    labels = [g["label"] for g in groups]
+    # Collect all series names across groups.
+    series_names: list[str] = []
+    for g in groups:
+        for name in g["values"]:
+            if name not in series_names:
+                series_names.append(name)
+
+    if metric_names is None:
+        metric_names = series_names
+
+    n_groups = len(labels)
+    n_series = len(series_names)
+    if n_series == 0:
+        return ""
+
+    x = np.arange(n_groups)
+    width = 0.8 / n_series
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for i, name in enumerate(series_names):
+        values = [g["values"].get(name, 0) for g in groups]
+        offset = (i - (n_series - 1) / 2) * width
+        color = _get_approach_color(name, i)
+        label = metric_names[i] if i < len(metric_names) else name
+        ax.bar(x + offset, values, width, label=label, color=color)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    ax.set_ylabel("Score")
+    if title:
+        ax.set_title(title)
+    ax.legend()
+    ax.set_ylim(0, 1.05)
+
+    return fig_to_svg(fig)
 
 
 def multi_metric_chart(
@@ -155,10 +202,38 @@ def multi_metric_chart(
     str
         SVG string, or empty string if stats_by_approach is empty.
     """
-    raise NotImplementedError(
-        "multi_metric_chart: three bar clusters (precision, recall, F1), "
-        "one bar per approach, Y-axis 0-100%"
-    )
+    if not stats_by_approach:
+        return ""
+
+    apply_dracula_theme()
+
+    metrics = ["avg_file_precision", "avg_file_recall", "avg_f1"]
+    metric_labels = ["Precision", "Recall", "F1"]
+    approaches = list(stats_by_approach.keys())
+    n_approaches = len(approaches)
+    n_metrics = len(metrics)
+
+    x = np.arange(n_metrics)
+    width = 0.8 / n_approaches
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for i, approach in enumerate(approaches):
+        stats = stats_by_approach[approach]
+        values = [stats.get(m, 0) * 100 for m in metrics]
+        offset = (i - (n_approaches - 1) / 2) * width
+        color = _get_approach_color(approach, i)
+        ax.bar(x + offset, values, width, label=approach, color=color)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(metric_labels)
+    ax.set_ylabel("Score (%)")
+    ax.set_ylim(0, 105)
+    if title:
+        ax.set_title(title)
+    ax.legend()
+
+    return fig_to_svg(fig)
 
 
 def box_plot_chart(
@@ -186,10 +261,53 @@ def box_plot_chart(
     str
         SVG string, or empty string if data_by_approach is empty.
     """
-    raise NotImplementedError(
-        "box_plot_chart: box plots with jittered strip plot overlay, "
-        "X-axis = approaches, Y-axis = metric values"
+    if not data_by_approach:
+        return ""
+
+    apply_dracula_theme()
+
+    if not title:
+        title = f"{metric_name} Distribution"
+
+    approaches = list(data_by_approach.keys())
+    data = [data_by_approach[a] for a in approaches]
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    bp = ax.boxplot(
+        data,
+        tick_labels=approaches,
+        patch_artist=True,
+        widths=0.5,
+        medianprops={"color": DRACULA["fg"], "linewidth": 2},
+        whiskerprops={"color": DRACULA["comment"]},
+        capprops={"color": DRACULA["comment"]},
+        flierprops={"markerfacecolor": DRACULA["red"], "markeredgecolor": DRACULA["red"]},
     )
+
+    for i, (box, approach) in enumerate(zip(bp["boxes"], approaches)):
+        color = _get_approach_color(approach, i)
+        box.set_facecolor(color)
+        box.set_alpha(0.7)
+
+    # Jittered strip plot overlay.
+    rng = np.random.default_rng(42)
+    for i, values in enumerate(data):
+        if values:
+            jitter = rng.uniform(-0.15, 0.15, size=len(values))
+            ax.scatter(
+                np.full(len(values), i + 1) + jitter,
+                values,
+                color=DRACULA["fg"],
+                alpha=0.6,
+                s=20,
+                zorder=3,
+            )
+
+    ax.set_ylabel(metric_name)
+    ax.set_title(title)
+
+    return fig_to_svg(fig)
 
 
 def duration_chart(
@@ -216,10 +334,47 @@ def duration_chart(
     str
         SVG string, or empty string if durations_by_approach is empty.
     """
-    raise NotImplementedError(
-        "duration_chart: horizontal bars with error bars, "
-        "Y-axis = approaches, X-axis = seconds"
+    if not durations_by_approach:
+        return ""
+
+    apply_dracula_theme()
+
+    approaches = list(durations_by_approach.keys())
+    means = []
+    errors_low = []
+    errors_high = []
+    colors = []
+
+    for i, approach in enumerate(approaches):
+        vals = durations_by_approach[approach]
+        mean = sum(vals) / len(vals) if vals else 0
+        lo = mean - min(vals) if vals else 0
+        hi = max(vals) - mean if vals else 0
+        means.append(mean)
+        errors_low.append(lo)
+        errors_high.append(hi)
+        colors.append(_get_approach_color(approach, i))
+
+    y = np.arange(len(approaches))
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.barh(
+        y,
+        means,
+        xerr=[errors_low, errors_high],
+        color=colors,
+        capsize=4,
+        error_kw={"ecolor": DRACULA["fg"], "capthick": 1.5},
+        height=0.5,
     )
+    ax.set_yticks(y)
+    ax.set_yticklabels(approaches)
+    ax.set_xlabel("Duration (seconds)")
+    if title:
+        ax.set_title(title)
+    ax.invert_yaxis()
+
+    return fig_to_svg(fig)
 
 
 def trend_chart(
@@ -250,10 +405,39 @@ def trend_chart(
     str
         SVG string, or empty string if runs_data is empty.
     """
-    raise NotImplementedError(
-        "trend_chart: line chart with markers, "
-        "X-axis = run dates, one line per approach"
-    )
+    if not runs_data:
+        return ""
+
+    apply_dracula_theme()
+
+    if not title:
+        title = f"{metric} Over Time"
+
+    # Collect all approach names across runs.
+    all_approaches: list[str] = []
+    for rd in runs_data:
+        for approach in rd.get("values", {}):
+            if approach not in all_approaches:
+                all_approaches.append(approach)
+
+    dates = [rd.get("date", rd.get("run_id", "")) for rd in runs_data]
+    x = np.arange(len(dates))
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for i, approach in enumerate(all_approaches):
+        values = [rd.get("values", {}).get(approach) for rd in runs_data]
+        color = _get_approach_color(approach, i)
+        ax.plot(x, values, marker="o", color=color, label=approach, linewidth=2, markersize=6)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(dates, rotation=45, ha="right")
+    ax.set_ylabel(metric)
+    ax.set_title(title)
+    ax.legend()
+    fig.tight_layout()
+
+    return fig_to_svg(fig)
 
 
 def heatmap_chart(
@@ -284,7 +468,62 @@ def heatmap_chart(
     str
         SVG string, or empty string if runs_data is empty.
     """
-    raise NotImplementedError(
-        "heatmap_chart: tasks on Y-axis, runs on X-axis, "
-        "color intensity = metric value, Dracula diverging colormap"
+    if not runs_data:
+        return ""
+
+    apply_dracula_theme()
+
+    if not title:
+        title = f"{metric} Heatmap"
+
+    # Collect all task IDs.
+    all_tasks: list[str] = []
+    for rd in runs_data:
+        for task_id in rd.get("tasks", {}):
+            if task_id not in all_tasks:
+                all_tasks.append(task_id)
+
+    if not all_tasks:
+        return ""
+
+    # Build data matrix: rows = tasks, columns = runs.
+    data = np.full((len(all_tasks), len(runs_data)), np.nan)
+    for j, rd in enumerate(runs_data):
+        for i, task_id in enumerate(all_tasks):
+            val = rd.get("tasks", {}).get(task_id)
+            if val is not None:
+                data[i, j] = val
+
+    run_labels = [rd.get("date", rd.get("run_id", "")) for rd in runs_data]
+
+    # Dracula-themed colormap: red → purple → green.
+    cmap = LinearSegmentedColormap.from_list(
+        "dracula",
+        [DRACULA["red"], DRACULA["purple"], DRACULA["green"]],
     )
+
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(data, cmap=cmap, aspect="auto", vmin=0, vmax=1)
+
+    ax.set_xticks(np.arange(len(run_labels)))
+    ax.set_xticklabels(run_labels, rotation=45, ha="right")
+    ax.set_yticks(np.arange(len(all_tasks)))
+    ax.set_yticklabels(all_tasks)
+
+    # Annotate cells with values.
+    for i in range(len(all_tasks)):
+        for j in range(len(runs_data)):
+            val = data[i, j]
+            if not np.isnan(val):
+                text_color = DRACULA["bg"] if val > 0.6 else DRACULA["fg"]
+                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=9)
+
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label(metric, color=DRACULA["fg"])
+    cbar.ax.yaxis.set_tick_params(color=DRACULA["fg"])
+    plt.setp(cbar.ax.yaxis.get_ticklabels(), color=DRACULA["fg"])
+
+    ax.set_title(title)
+    fig.tight_layout()
+
+    return fig_to_svg(fig)
