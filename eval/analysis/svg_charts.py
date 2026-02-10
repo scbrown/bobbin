@@ -1,5 +1,9 @@
 """Pure-Python SVG chart generation for eval mdbook pages.
 
+.. deprecated::
+    Use :mod:`analysis.mpl_charts` instead. This module will be removed
+    after all callers are migrated to matplotlib-based charts.
+
 No external dependencies — generates inline SVG strings using the Dracula
 color palette for consistent theming with the mdbook site.
 """

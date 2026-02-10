@@ -72,6 +72,7 @@
 
 - [Methodology](eval/overview.md)
 - [Results Summary](eval/summary.md)
+- [Historical Trends](eval/trends.md)
 - [Project Catalog](eval/projects.md)
 - [Flask (Python)](eval/flask.md)
 - [Ruff (Rust)](eval/ruff.md)
