@@ -282,6 +282,9 @@ def generate_summary_page(
 
         lines.append("")
 
+    # Strip trailing blank lines to avoid MD012 (no-multiple-blanks).
+    while lines and lines[-1] == "":
+        lines.pop()
     return "\n".join(lines) + "\n"
 
 
@@ -364,6 +367,9 @@ def generate_project_page(
             lines.append("*No metadata available. Re-run evals to collect project stats.*")
             lines.append("")
 
+    # Strip trailing blank lines to avoid MD012 (no-multiple-blanks).
+    while lines and lines[-1] == "":
+        lines.pop()
     return "\n".join(lines) + "\n"
 
 
@@ -489,6 +495,9 @@ def generate_task_detail_page(
         lines.append("---")
         lines.append("")
 
+    # Strip trailing blank lines to avoid MD012 (no-multiple-blanks).
+    while lines and lines[-1] == "":
+        lines.pop()
     return "\n".join(lines) + "\n"
 
 

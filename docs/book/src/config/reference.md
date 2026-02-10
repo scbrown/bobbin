@@ -107,6 +107,7 @@ semantic_weight = 0.8        # Favor semantic search for natural-language querie
 ```
 
 Key differences from the defaults:
+
 - **Include** restricted to `**/*.md` to skip non-documentation files
 - **Exclude** adds common doc-tool build output directories
 - **Semantic weight** raised to 0.8 since documentation queries tend to be natural language

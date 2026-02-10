@@ -12,6 +12,7 @@ Each evaluation task is based on a real bug fix from a well-tested open-source p
 4. **Measure** whether the agent can reproduce the fix
 
 This approach has several advantages:
+
 - **Ground truth exists** — the actual commit shows exactly what needed to change
 - **Tests are authoritative** — the project's own test suite validates correctness
 - **Difficulty is natural** — real bugs have realistic complexity and cross-file dependencies
@@ -30,18 +31,23 @@ The with-bobbin approach injects relevant code snippets automatically when the a
 ## Scoring Dimensions
 
 ### Test Pass Rate
+
 Does the agent's fix make the test suite pass? This is the primary success metric.
 
 ### File-Level Precision
+
 Of the files the agent modified, what fraction were in the ground truth? High precision means the agent didn't touch unnecessary files.
 
 ### File-Level Recall
+
 Of the files in the ground truth, what fraction did the agent modify? High recall means the agent found all the files that needed changing.
 
 ### F1 Score
+
 Harmonic mean of precision and recall. Balances surgical accuracy with completeness.
 
 ### Duration
+
 Wall-clock time for the agent to complete its work. Faster is better, all else equal.
 
 ## LLM Judge
@@ -57,6 +63,7 @@ The judge uses a flip-and-draw protocol (running comparison in both orders) to d
 ## Task Selection Criteria
 
 Tasks are curated to be:
+
 - **Self-contained** — fixable without external documentation or API access
 - **Well-tested** — the project's test suite reliably catches the bug
 - **Cross-file** — the fix typically touches 2-5 files (not trivial single-line changes)

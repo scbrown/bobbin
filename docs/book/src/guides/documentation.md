@@ -72,7 +72,7 @@ Bobbin uses pulldown-cmark to parse markdown into structural chunks. Understandi
 
 Every heading creates a section chunk containing the heading and all content up to the next heading of the same or higher level. Section names include the full heading hierarchy:
 
-```
+```text
 # API Reference            → "API Reference"
 ## Authentication          → "API Reference > Authentication"
 ### OAuth Flow             → "API Reference > Authentication > OAuth Flow"

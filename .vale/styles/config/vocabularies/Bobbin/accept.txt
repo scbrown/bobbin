@@ -1,6 +1,10 @@
+Autoconf
 Bobbin
 bobbin
+code_block
+Docusaurus
 LanceDB
+LLMs
 Tree-sitter
 MCP
 ONNX
@@ -34,6 +38,7 @@ lookups
 mdbook
 middleware
 monorepo
+OAuth
 protoc
 read_chunk
 reindex
@@ -41,6 +46,7 @@ repo
 repos
 rmcp
 rustup
+save_session
 serverless
 stderr
 stdout
@@ -50,7 +56,9 @@ subprocess
 systemd
 tmux
 tokenization
+tokei
 toolchain
+unstaged
 upserts
 walkthrough
 worktrees
