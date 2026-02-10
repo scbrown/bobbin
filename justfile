@@ -113,19 +113,24 @@ docs cmd="build":
 # === Eval Framework ===
 
 # Default eval settings
-eval_model := "claude-opus-4-6"
+eval_model := "claude-sonnet-4-5-20250929"
 eval_attempts := "1"
 eval_approaches := "both"
-eval_budget := "100.00"
+eval_budget := "5.00"
 eval_timeout := "900"
+eval_index_timeout := "600"
+
+# GPU env for bobbin index during evals (auto-detected, but ORT_DYLIB_PATH needed for GPU .so)
+export ORT_DYLIB_PATH := "/usr/local/lib/onnxruntime-gpu/libonnxruntime.so"
+export LD_LIBRARY_PATH := "/usr/local/cuda-12.8/lib64:/usr/local/lib/onnxruntime-gpu"
 
 # Run a single eval task: just eval-task flask-001
 eval-task task_id:
-    cd eval && python3 -m runner.cli run-task {{task_id}} --attempts {{eval_attempts}} --approaches {{eval_approaches}} --model {{eval_model}} --budget {{eval_budget}} --timeout {{eval_timeout}} --skip-verify
+    cd eval && python3 -m runner.cli run-task {{task_id}} --attempts {{eval_attempts}} --approaches {{eval_approaches}} --model {{eval_model}} --budget {{eval_budget}} --timeout {{eval_timeout}} --index-timeout {{eval_index_timeout}} --skip-verify
 
 # Run all eval tasks sequentially
 eval-all:
-    cd eval && python3 -m runner.cli run-all --attempts {{eval_attempts}} --approaches {{eval_approaches}} --model {{eval_model}} --budget {{eval_budget}} --timeout {{eval_timeout}} --skip-verify
+    cd eval && python3 -m runner.cli run-all --attempts {{eval_attempts}} --approaches {{eval_approaches}} --model {{eval_model}} --budget {{eval_budget}} --timeout {{eval_timeout}} --index-timeout {{eval_index_timeout}} --skip-verify
 
 # Score existing eval results
 eval-score:

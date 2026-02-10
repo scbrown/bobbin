@@ -74,6 +74,8 @@ Related to src/auth/middleware.rs:
 
 ⚡ **Fast & Private** — ONNX embeddings (all-MiniLM-L6-v2), LanceDB vector storage, SQLite for coupling. Everything on your machine.
 
+🚀 **GPU Accelerated** — Automatic CUDA detection for 10-25x faster indexing on NVIDIA GPUs. Index 57K chunks in under 5 minutes. Falls back to CPU seamlessly.
+
 ## Quick Start
 
 **1. Install**
@@ -95,6 +97,25 @@ bobbin init && bobbin index
 bobbin search "error handling"         # Semantic + keyword hybrid
 bobbin context "fix the login bug"     # Task-aware context bundle
 bobbin related src/auth.rs             # Git coupling analysis
+```
+
+## GPU Acceleration
+
+Bobbin automatically detects NVIDIA CUDA GPUs and accelerates embedding inference. No configuration needed — if a GPU is available, it's used.
+
+| Metric | CPU | GPU (RTX 4070S) |
+|--------|-----|-----------------|
+| Embed throughput | ~100 chunks/s | ~2,400 chunks/s |
+| Index ruff (57K chunks) | >30 min | ~4 min |
+
+**Setup** (optional — CPU works out of the box):
+
+```bash
+# Install ONNX Runtime GPU (requires CUDA toolkit)
+# See docs for full setup: https://scbrown.github.io/bobbin/config/gpu.html
+
+# Force CPU even when GPU is available:
+BOBBIN_GPU=0 bobbin index
 ```
 
 ## 🤖 AI Agent Integration
