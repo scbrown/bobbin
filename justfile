@@ -116,7 +116,7 @@ docs cmd="build":
 eval_model := "claude-opus-4-6"
 eval_attempts := "1"
 eval_approaches := "both"
-eval_budget := "20.00"
+eval_budget := "100.00"
 eval_timeout := "900"
 
 # Run a single eval task: just eval-task flask-001
