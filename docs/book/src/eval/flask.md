@@ -18,42 +18,125 @@ refresh without modification.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 100.0% | 100.0% | 33.3% | 50.0% | 1.1m |
-| with-bobbin | 100.0% | 100.0% | 33.3% | 50.0% | 1.2m |
+| no-bobbin | 50.0% | 100.0% | 33.3% | 50.0% | 57s |
+| with-bobbin | 50.0% | 100.0% | 33.3% | 50.0% | 1.4m |
+
+<div class="eval-chart">
+
+![flask-001_f1_boxplot.svg](./charts/flask-001_f1_boxplot.svg)
+
+</div>
+
+<div class="eval-chart">
+
+![flask-001_duration.svg](./charts/flask-001_duration.svg)
+
+</div>
 
 **Ground truth files**: `CHANGES.rst`, `src/flask/sessions.py`, `tests/test_basic.py`
 
 **Files touched (no-bobbin)**: `src/flask/sessions.py`
 **Files touched (with-bobbin)**: `src/flask/sessions.py`
 
+---
+
+## flask-002 <span class="eval-medium">medium</span>
+
+**Commit**: [1232d69860](https://github.com/pallets/flask/commit/1232d698600e11dcb83bb5dc349ca785eae02d2f)
+
+<details>
+<summary>Task prompt</summary>
+
+> Refactor the CLI module to inline conditional imports (dotenv, ssl,
+importlib.metadata) at their point of use instead of importing them at
+module level. This avoids import errors and unnecessary imports when the
+optional dependencies are not installed, and moves version-conditional
+importlib.metadata handling into the method that actually uses it.
+
+</details>
+
+| Approach | Tests Pass | Precision | Recall | F1 | Duration |
+|----------|:----------:|:---------:|:------:|:--:|:--------:|
+| no-bobbin | 0.0% | 100.0% | 66.7% | 80.0% | 2.9m |
+| with-bobbin | 0.0% | 100.0% | 66.7% | 80.0% | 2.7m |
+
 <div class="eval-chart">
 
-<svg width="300" height="180" xmlns="http://www.w3.org/2000/svg">
-<rect width="300" height="180" fill="#282a36" rx="6"/>
-<text x="150.0" y="24" text-anchor="middle" fill="#f8f8f2" font-size="14" font-weight="600">flask-001 F1 Score</text>
-<line x1="50" y1="120.0" x2="280" y2="120.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="124.0" text-anchor="end" fill="#6272a4" font-size="10">0%</text>
-<line x1="50" y1="104.0" x2="280" y2="104.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="108.0" text-anchor="end" fill="#6272a4" font-size="10">10%</text>
-<line x1="50" y1="88.0" x2="280" y2="88.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="92.0" text-anchor="end" fill="#6272a4" font-size="10">20%</text>
-<line x1="50" y1="72.0" x2="280" y2="72.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="76.0" text-anchor="end" fill="#6272a4" font-size="10">30%</text>
-<line x1="50" y1="56.0" x2="280" y2="56.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="60.0" text-anchor="end" fill="#6272a4" font-size="10">40%</text>
-<line x1="50" y1="40.0" x2="280" y2="40.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="44.0" text-anchor="end" fill="#6272a4" font-size="10">50%</text>
-<rect x="54.0" y="40.0" width="109.0" height="80.0" fill="#bd93f9" rx="2"/>
-<text x="108.5" y="36.0" text-anchor="middle" fill="#bd93f9" font-size="9">50%</text>
-<rect x="167.0" y="40.0" width="109.0" height="80.0" fill="#50fa7b" rx="2"/>
-<text x="221.5" y="36.0" text-anchor="middle" fill="#50fa7b" font-size="9">50%</text>
-<text x="165.0" y="136.0" text-anchor="middle" fill="#f8f8f2" font-size="11">flask-001</text>
-<rect x="50" y="160" width="12" height="12" rx="2" fill="#bd93f9"/>
-<text x="66" y="170" fill="#f8f8f2" font-size="11">no-bobbin</text>
-<rect x="190" y="160" width="12" height="12" rx="2" fill="#50fa7b"/>
-<text x="206" y="170" fill="#f8f8f2" font-size="11">with-bobbin</text>
-</svg>
+![flask-001_duration.svg](./charts/flask-001_duration.svg)
 
 </div>
+
+**Ground truth files**: `setup.cfg`, `src/flask/cli.py`, `tests/test_cli.py`
+
+**Files touched (no-bobbin)**: `src/flask/cli.py`, `tests/test_cli.py`
+**Files touched (with-bobbin)**: `src/flask/cli.py`, `tests/test_cli.py`
+
+---
+
+## flask-003 <span class="eval-medium">medium</span>
+
+**Commit**: [fdab801fbb](https://github.com/pallets/flask/commit/fdab801fbbd9de5adbdb3320ca4a1cb116c892f5)
+
+<details>
+<summary>Task prompt</summary>
+
+> Add a redirect method to the Flask app object and a new flask.redirect
+helper function that delegates to it. This allows applications to customize
+redirect behavior by overriding app.redirect. The flask.redirect function
+checks for current_app and calls app.redirect if available, otherwise
+falls back to werkzeug.utils.redirect. Update flask.\_\_init\_\_ to export
+redirect from helpers instead of werkzeug.
+
+</details>
+
+| Approach | Tests Pass | Precision | Recall | F1 | Duration |
+|----------|:----------:|:---------:|:------:|:--:|:--------:|
+| no-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.4m |
+| with-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.0m |
+
+<div class="eval-chart">
+
+![flask-001_duration.svg](./charts/flask-001_duration.svg)
+
+</div>
+
+**Ground truth files**: `CHANGES.rst`, `src/flask/__init__.py`, `src/flask/app.py`, `src/flask/helpers.py`, `tests/test_helpers.py`
+
+**Files touched (no-bobbin)**: `src/flask/__init__.py`, `src/flask/app.py`, `src/flask/helpers.py`
+**Files touched (with-bobbin)**: `src/flask/__init__.py`, `src/flask/app.py`, `src/flask/helpers.py`
+
+---
+
+## flask-004 <span class="eval-medium">medium</span>
+
+**Commit**: [eb5dd9f5ef](https://github.com/pallets/flask/commit/eb5dd9f5ef255c578cbbe13c1cb4dd11389d5519)
+
+<details>
+<summary>Task prompt</summary>
+
+> Add an aborter_class attribute and aborter instance to the Flask app object,
+along with a make_aborter factory method. Create a new flask.abort helper
+function that delegates to app.aborter when current_app is available,
+otherwise falls back to werkzeug.exceptions.abort. This allows applications
+to customize abort behavior, including registering custom HTTP error codes.
+Update flask.\_\_init\_\_ to export abort from helpers instead of werkzeug.
+
+</details>
+
+| Approach | Tests Pass | Precision | Recall | F1 | Duration |
+|----------|:----------:|:---------:|:------:|:--:|:--------:|
+| no-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.5m |
+| with-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 3.0m |
+
+<div class="eval-chart">
+
+![flask-001_duration.svg](./charts/flask-001_duration.svg)
+
+</div>
+
+**Ground truth files**: `CHANGES.rst`, `src/flask/__init__.py`, `src/flask/app.py`, `src/flask/helpers.py`, `tests/test_helpers.py`
+
+**Files touched (no-bobbin)**: `src/flask/__init__.py`, `src/flask/app.py`, `src/flask/helpers.py`
+**Files touched (with-bobbin)**: `src/flask/__init__.py`, `src/flask/app.py`, `src/flask/helpers.py`
 
 ---

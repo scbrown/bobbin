@@ -22,4 +22,4 @@ Projects used in bobbin evaluations, with codebase statistics.
 
 ### Bobbin Index Stats
 
-- **Index duration**: 33.2s
+- **Index duration**: 29.33s

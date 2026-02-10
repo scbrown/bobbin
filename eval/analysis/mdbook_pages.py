@@ -582,10 +582,12 @@ def generate_task_detail_page(
         # Prompt (collapsible).
         desc = task_def.get("description", "").strip()
         if desc:
+            # Escape double underscores to prevent markdown bold interpretation.
+            desc_escaped = desc.replace("__", r"\_\_")
             lines.append("<details>")
             lines.append("<summary>Task prompt</summary>")
             lines.append("")
-            lines.append(f"> {desc}")
+            lines.append(f"> {desc_escaped}")
             lines.append("")
             lines.append("</details>")
             lines.append("")

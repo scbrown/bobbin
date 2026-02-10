@@ -4,48 +4,64 @@
 
 | Metric | no-bobbin | with-bobbin | Delta |
 |--------|:---:|:---:|:---:|
-| Runs | 1 | 1 | |
-| Test Pass Rate | 100.0% | 100.0% | — |
+| Runs | 5 | 5 | |
+| Test Pass Rate | 20.0% | 20.0% | — |
 | Avg Precision | 100.0% | 100.0% | — |
-| Avg Recall | 33.3% | 33.3% | — |
-| Avg F1 | 50.0% | 50.0% | — |
-| Avg Duration | 1.1m | 1.2m | +12% |
+| Avg Recall | 50.7% | 50.7% | — |
+| Avg F1 | 66.0% | 66.0% | — |
+| Avg Duration | 2.0m | 2.1m | +6% |
+
+## Metric Overview
+
+<div class="eval-chart">
+
+![summary_metrics.svg](./charts/summary_metrics.svg)
+
+</div>
 
 ## F1 Score by Task
 
 <div class="eval-chart">
 
-<svg width="600" height="300" xmlns="http://www.w3.org/2000/svg">
-<rect width="600" height="300" fill="#282a36" rx="6"/>
-<text x="300.0" y="24" text-anchor="middle" fill="#f8f8f2" font-size="14" font-weight="600">F1 Score Comparison</text>
-<line x1="50" y1="240.0" x2="580" y2="240.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="244.0" text-anchor="end" fill="#6272a4" font-size="10">0%</text>
-<line x1="50" y1="200.0" x2="580" y2="200.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="204.0" text-anchor="end" fill="#6272a4" font-size="10">10%</text>
-<line x1="50" y1="160.0" x2="580" y2="160.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="164.0" text-anchor="end" fill="#6272a4" font-size="10">20%</text>
-<line x1="50" y1="120.0" x2="580" y2="120.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="124.0" text-anchor="end" fill="#6272a4" font-size="10">30%</text>
-<line x1="50" y1="80.0" x2="580" y2="80.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="84.0" text-anchor="end" fill="#6272a4" font-size="10">40%</text>
-<line x1="50" y1="40.0" x2="580" y2="40.0" stroke="#44475a" stroke-width="1"/>
-<text x="44" y="44.0" text-anchor="end" fill="#6272a4" font-size="10">50%</text>
-<rect x="54.0" y="40.0" width="259.0" height="200.0" fill="#bd93f9" rx="2"/>
-<text x="183.5" y="36.0" text-anchor="middle" fill="#bd93f9" font-size="9">50%</text>
-<rect x="317.0" y="40.0" width="259.0" height="200.0" fill="#50fa7b" rx="2"/>
-<text x="446.5" y="36.0" text-anchor="middle" fill="#50fa7b" font-size="9">50%</text>
-<text x="315.0" y="256.0" text-anchor="middle" fill="#f8f8f2" font-size="11">flask-001</text>
-<rect x="50" y="280" width="12" height="12" rx="2" fill="#bd93f9"/>
-<text x="66" y="290" fill="#f8f8f2" font-size="11">no-bobbin</text>
-<rect x="190" y="280" width="12" height="12" rx="2" fill="#50fa7b"/>
-<text x="206" y="290" fill="#f8f8f2" font-size="11">with-bobbin</text>
-</svg>
+![summary_f1_by_task.svg](./charts/summary_f1_by_task.svg)
 
 </div>
+
+## Score Distribution
+
+<div class="eval-chart">
+
+![summary_f1_boxplot.svg](./charts/summary_f1_boxplot.svg)
+
+</div>
+
+## Duration
+
+<div class="eval-chart">
+
+![summary_duration.svg](./charts/summary_duration.svg)
+
+</div>
+
+## Recent Trend
+
+<div class="eval-chart">
+
+![summary_trend.svg](./charts/summary_trend.svg)
+
+</div>
+
+[Full historical trends](./trends.md)
 
 ## Per-Task Results
 
 | Task | Language | Difficulty | Approach | Tests | Precision | Recall | F1 | Duration |
 |------|----------|:----------:|----------|:-----:|:---------:|:------:|:--:|:--------:|
-| flask-001 | python | medium | no-bobbin | 100.0% | 100.0% | 33.3% | 50.0% | 1.1m |
-| flask-001 | python | medium | with-bobbin | 100.0% | 100.0% | 33.3% | 50.0% | 1.2m |
+| flask-001 | python | medium | no-bobbin | 50.0% | 100.0% | 33.3% | 50.0% | 57s |
+| flask-001 | python | medium | with-bobbin | 50.0% | 100.0% | 33.3% | 50.0% | 1.4m |
+| flask-002 | python | medium | no-bobbin | 0.0% | 100.0% | 66.7% | 80.0% | 2.9m |
+| flask-002 | python | medium | with-bobbin | 0.0% | 100.0% | 66.7% | 80.0% | 2.7m |
+| flask-003 | python | medium | no-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.4m |
+| flask-003 | python | medium | with-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.0m |
+| flask-004 | python | medium | no-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.5m |
+| flask-004 | python | medium | with-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 3.0m |

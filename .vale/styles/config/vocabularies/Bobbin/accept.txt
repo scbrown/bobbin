@@ -1,8 +1,12 @@
+aborter
+aborter_class
 Autoconf
 Bobbin
 bobbin
 code_block
+current_app
 Docusaurus
+dotenv
 LanceDB
 LLMs
 Tree-sitter
@@ -28,6 +32,7 @@ enums
 frontend
 find_refs
 frontmatter
+[Hh]eatmap
 FSEvents
 hotspot
 hotspots
@@ -35,6 +40,7 @@ impl
 inotify
 list_symbols
 lookups
+make_aborter
 mdbook
 middleware
 monorepo
@@ -48,6 +54,7 @@ rmcp
 rustup
 save_session
 serverless
+ssl
 stderr
 stdout
 subcommand
@@ -61,6 +68,7 @@ toolchain
 unstaged
 upserts
 walkthrough
+werkzeug
 worktrees
 xcode
 zsh
