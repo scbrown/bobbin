@@ -1,0 +1,172 @@
+{
+  "task_id": "ruff-003",
+  "approach": "no-bobbin",
+  "attempt": 0,
+  "status": "completed",
+  "timestamp": "2026-02-10T07:05:54.324044+00:00",
+  "task": {
+    "repo": "astral-sh/ruff",
+    "commit": "80dbc62a7654bfc6165f3f4dff46df10c94abb8a",
+    "test_command": "cargo test -p ruff_linter -- PLC2701",
+    "language": "rust",
+    "difficulty": "medium"
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 524.84,
+    "timed_out": false
+  },
+  "test_result": {
+    "passed": true,
+    "total": 0,
+    "failures": 0,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0
+    }
+  },
+  "diff_result": {
+    "file_precision": 1.0,
+    "file_recall": 1.0,
+    "f1": 1.0,
+    "files_touched": [
+      "crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py",
+      "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+      "crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap"
+    ],
+    "ground_truth_files": [
+      "crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py",
+      "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+      "crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap"
+    ],
+    "exact_file_match": true
+  },
+  "agent_diff": "diff --git a/crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py b/crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py\nindex dcfad46602..b5076b5d47 100644\n--- a/crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py\n+++ b/crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py\n@@ -6,6 +6,8 @@ from i import _j\n from k import _l as m\n import _aaa\n import bbb.ccc._ddd as eee  # Panicked in https://github.com/astral-sh/ruff/pull/5920\n+from __pb import x  # Not a dunder, just double-underscore-prefixed private name.\n+from i import __pb  # Not a dunder, just double-underscore-prefixed private name.\n \n # Non-errors.\n import n\ndiff --git a/crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs b/crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs\nindex e60ad913fc..adc8d9d29a 100644\n--- a/crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs\n+++ b/crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs\n@@ -3,9 +3,13 @@ use std::borrow::Cow;\n use itertools::Itertools;\n \n use ruff_macros::{ViolationMetadata, derive_message_formats};\n+use ruff_python_ast::helpers::is_dunder;\n use ruff_python_ast::name::QualifiedName;\n-use ruff_python_semantic::{FromImport, Import, Imported, ResolvedReference, Scope};\n-use ruff_text_size::Ranged;\n+use ruff_python_ast::Stmt;\n+use ruff_python_semantic::{\n+    Binding, FromImport, Import, Imported, ResolvedReference, Scope, SemanticModel,\n+};\n+use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};\n \n use crate::Violation;\n use crate::checkers::ast::Checker;\n@@ -96,7 +100,7 @@ pub(crate) fn import_private_name(checker: &Checker, scope: &Scope) {\n         // We can also ignore dunder names.\n         // Ex) `from __future__ import annotations`\n         // Ex) `from foo import __version__`\n-        if root_module.starts_with(\"__\") || import_info.member_name.starts_with(\"__\") {\n+        if is_dunder(root_module) || is_dunder(&import_info.member_name) {\n             continue;\n         }\n \n@@ -137,7 +141,16 @@ pub(crate) fn import_private_name(checker: &Checker, scope: &Scope) {\n         } else {\n             None\n         };\n-        checker.report_diagnostic(ImportPrivateName { name, module }, binding.range());\n+        let range = private_name_range(\n+            &import_info,\n+            index,\n+            private_name,\n+            binding,\n+            checker.semantic(),\n+            checker.source(),\n+        )\n+        .unwrap_or(binding.range());\n+        checker.report_diagnostic(ImportPrivateName { name, module }, range);\n     }\n }\n \n@@ -149,6 +162,66 @@ fn is_typing(reference: &ResolvedReference) -> bool {\n         || reference.in_runtime_evaluated_annotation()\n }\n \n+/// Returns the [`TextRange`] of the private name segment within the import statement.\n+///\n+/// For `from` imports where the private segment is in the module path (e.g., `from _a import b`\n+/// or `from c._d import e`), this locates the segment within the module identifier. For imported\n+/// members (e.g., `from i import _j`), this returns the name range from the alias. For straight\n+/// imports (e.g., `import bbb.ccc._ddd as eee`), this locates the segment within the alias name.\n+fn private_name_range(\n+    import_info: &ImportInfo,\n+    index: usize,\n+    private_name: &str,\n+    binding: &Binding,\n+    semantic: &SemanticModel,\n+    source: &str,\n+) -> Option<TextRange> {\n+    let stmt = binding.statement(semantic)?;\n+    match stmt {\n+        Stmt::ImportFrom(stmt_import_from) => {\n+            if index < import_info.module_name.len() {\n+                // The private segment is in the module path.\n+                let module_id = stmt_import_from.module.as_ref()?;\n+                find_name_in_range(private_name, module_id.range(), source)\n+            } else {\n+                // The private segment is the imported member name.\n+                let alias = stmt_import_from\n+                    .names\n+                    .iter()\n+                    .find(|alias| alias.name.as_str() == import_info.member_name.as_ref())?;\n+                Some(alias.name.range())\n+            }\n+        }\n+        Stmt::Import(stmt_import) => {\n+            // For `import X.Y._Z as W`, find the private segment within the alias name range.\n+            let alias = stmt_import.names.iter().find(|alias| {\n+                alias.name.as_str() == import_info.qualified_name.segments().join(\".\")\n+            })?;\n+            find_name_in_range(private_name, alias.name.range(), source)\n+        }\n+        _ => None,\n+    }\n+}\n+\n+/// Finds the [`TextRange`] of a dotted name segment within the given range of source text.\n+///\n+/// Tokenizes the source within `range` and matches name tokens against `name` to locate the\n+/// exact position of a specific segment in a dotted path like `a.b._c`.\n+fn find_name_in_range(name: &str, range: TextRange, source: &str) -> Option<TextRange> {\n+    let range_source = &source[range];\n+    // Walk through the dotted segments of the identifier text.\n+    let mut offset = TextSize::new(0);\n+    for segment in range_source.split('.') {\n+        if segment == name {\n+            let start = range.start() + offset;\n+            return Some(TextRange::at(start, segment.text_len()));\n+        }\n+        // Advance past this segment and the dot.\n+        offset += segment.text_len() + TextSize::new(1);\n+    }\n+    None\n+}\n+\n #[expect(clippy::struct_field_names)]\n struct ImportInfo<'a> {\n     module_name: &'a [&'a str],\ndiff --git a/crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap b/crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap\nindex 4176de7454..c73d6aec53 100644\n--- a/crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap\n+++ b/crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap\n@@ -1,34 +1,35 @@\n ---\n source: crates/ruff_linter/src/rules/pylint/mod.rs\n+assertion_line: 252\n ---\n PLC2701 Private name import `_a`\n- --> __main__.py:2:16\n+ --> __main__.py:2:6\n   |\n 1 | # Errors.\n 2 | from _a import b\n-  |                ^\n+  |      ^^\n 3 | from c._d import e\n 4 | from _f.g import h\n   |\n \n PLC2701 Private name import `_d` from external module `c`\n- --> __main__.py:3:18\n+ --> __main__.py:3:8\n   |\n 1 | # Errors.\n 2 | from _a import b\n 3 | from c._d import e\n-  |                  ^\n+  |        ^^\n 4 | from _f.g import h\n 5 | from i import _j\n   |\n \n PLC2701 Private name import `_f`\n- --> __main__.py:4:18\n+ --> __main__.py:4:6\n   |\n 2 | from _a import b\n 3 | from c._d import e\n 4 | from _f.g import h\n-  |                  ^\n+  |      ^^\n 5 | from i import _j\n 6 | from k import _l as m\n   |\n@@ -45,12 +46,12 @@ PLC2701 Private name import `_j` from external module `i`\n   |\n \n PLC2701 Private name import `_l` from external module `k`\n- --> __main__.py:6:21\n+ --> __main__.py:6:15\n   |\n 4 | from _f.g import h\n 5 | from i import _j\n 6 | from k import _l as m\n-  |                     ^\n+  |               ^^\n 7 | import _aaa\n 8 | import bbb.ccc._ddd as eee  # Panicked in https://github.com/astral-sh/ruff/pull/5920\n   |\n@@ -63,15 +64,37 @@ PLC2701 Private name import `_aaa`\n 7 | import _aaa\n   |        ^^^^\n 8 | import bbb.ccc._ddd as eee  # Panicked in https://github.com/astral-sh/ruff/pull/5920\n+9 | from __pb import x  # Not a dunder, just double-underscore-prefixed private name.\n   |\n \n PLC2701 Private name import `_ddd` from external module `bbb.ccc`\n-  --> __main__.py:8:24\n+  --> __main__.py:8:16\n    |\n  6 | from k import _l as m\n  7 | import _aaa\n  8 | import bbb.ccc._ddd as eee  # Panicked in https://github.com/astral-sh/ruff/pull/5920\n-   |                        ^^^\n- 9 |\n-10 | # Non-errors.\n+   |                ^^^^\n+ 9 | from __pb import x  # Not a dunder, just double-underscore-prefixed private name.\n+10 | from i import __pb  # Not a dunder, just double-underscore-prefixed private name.\n+   |\n+\n+PLC2701 Private name import `__pb`\n+  --> __main__.py:9:6\n+   |\n+ 7 | import _aaa\n+ 8 | import bbb.ccc._ddd as eee  # Panicked in https://github.com/astral-sh/ruff/pull/5920\n+ 9 | from __pb import x  # Not a dunder, just double-underscore-prefixed private name.\n+   |      ^^^^\n+10 | from i import __pb  # Not a dunder, just double-underscore-prefixed private name.\n+   |\n+\n+PLC2701 Private name import `__pb` from external module `i`\n+  --> __main__.py:10:15\n+   |\n+ 8 | import bbb.ccc._ddd as eee  # Panicked in https://github.com/astral-sh/ruff/pull/5920\n+ 9 | from __pb import x  # Not a dunder, just double-underscore-prefixed private name.\n+10 | from i import __pb  # Not a dunder, just double-underscore-prefixed private name.\n+   |               ^^^^\n+11 |\n+12 | # Non-errors.\n    |\n",
+  "ground_truth_diff": "diff --git a/crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py b/crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py\nindex dcfad46602..deb4bdd009 100644\n--- a/crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py\n+++ b/crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py\n@@ -44,3 +44,5 @@ class Class:\n \n     def __init__(self, arg: vv) -> \"zz\":\n         pass\n+\n+from foo.    _bar import baz\ndiff --git a/crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs b/crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs\nindex e60ad913fc..054f839a66 100644\n--- a/crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs\n+++ b/crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs\n@@ -3,8 +3,9 @@ use std::borrow::Cow;\n use itertools::Itertools;\n \n use ruff_macros::{ViolationMetadata, derive_message_formats};\n-use ruff_python_ast::name::QualifiedName;\n+use ruff_python_ast::{self as ast, helpers::is_dunder, name::QualifiedName};\n use ruff_python_semantic::{FromImport, Import, Imported, ResolvedReference, Scope};\n+use ruff_python_trivia::{SimpleTokenKind, SimpleTokenizer};\n use ruff_text_size::Ranged;\n \n use crate::Violation;\n@@ -96,7 +97,7 @@ pub(crate) fn import_private_name(checker: &Checker, scope: &Scope) {\n         // We can also ignore dunder names.\n         // Ex) `from __future__ import annotations`\n         // Ex) `from foo import __version__`\n-        if root_module.starts_with(\"__\") || import_info.member_name.starts_with(\"__\") {\n+        if is_dunder(root_module) || is_dunder(&import_info.member_name) {\n             continue;\n         }\n \n@@ -116,7 +117,7 @@ pub(crate) fn import_private_name(checker: &Checker, scope: &Scope) {\n             .qualified_name\n             .segments()\n             .iter()\n-            .find_position(|name| name.starts_with('_'))\n+            .find_position(|name| name.starts_with('_') && !is_dunder(name))\n         else {\n             continue;\n         };\n@@ -137,7 +138,29 @@ pub(crate) fn import_private_name(checker: &Checker, scope: &Scope) {\n         } else {\n             None\n         };\n-        checker.report_diagnostic(ImportPrivateName { name, module }, binding.range());\n+        let range = match binding.source.map(|id| checker.semantic().statement(id)) {\n+            Some(ast::Stmt::ImportFrom(ast::StmtImportFrom { module, names, .. })) => {\n+                if index < import_info.module_name.len() {\n+                    module.as_ref().map_or(binding.range(), |module| {\n+                        SimpleTokenizer::starts_at(module.start(), checker.locator().contents())\n+                            .skip_trivia()\n+                            .find(|token| {\n+                                token.kind == SimpleTokenKind::Name\n+                                    && checker.locator().slice(token.range()) == *private_name\n+                            })\n+                            .map_or(binding.range(), |token| token.range())\n+                    })\n+                } else {\n+                    names\n+                        .iter()\n+                        .find(|alias| alias.name.as_str() == import_info.member_name)\n+                        .map_or(binding.range(), |alias| alias.name.range())\n+                }\n+            }\n+            _ => binding.range(),\n+        };\n+\n+        checker.report_diagnostic(ImportPrivateName { name, module }, range);\n     }\n }\n \ndiff --git a/crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap b/crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap\nindex 4176de7454..3354389e49 100644\n--- a/crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap\n+++ b/crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap\n@@ -2,33 +2,33 @@\n source: crates/ruff_linter/src/rules/pylint/mod.rs\n ---\n PLC2701 Private name import `_a`\n- --> __main__.py:2:16\n+ --> __main__.py:2:6\n   |\n 1 | # Errors.\n 2 | from _a import b\n-  |                ^\n+  |      ^^\n 3 | from c._d import e\n 4 | from _f.g import h\n   |\n \n PLC2701 Private name import `_d` from external module `c`\n- --> __main__.py:3:18\n+ --> __main__.py:3:8\n   |\n 1 | # Errors.\n 2 | from _a import b\n 3 | from c._d import e\n-  |                  ^\n+  |        ^^\n 4 | from _f.g import h\n 5 | from i import _j\n   |\n \n PLC2701 Private name import `_f`\n- --> __main__.py:4:18\n+ --> __main__.py:4:6\n   |\n 2 | from _a import b\n 3 | from c._d import e\n 4 | from _f.g import h\n-  |                  ^\n+  |      ^^\n 5 | from i import _j\n 6 | from k import _l as m\n   |\n@@ -45,12 +45,12 @@ PLC2701 Private name import `_j` from external module `i`\n   |\n \n PLC2701 Private name import `_l` from external module `k`\n- --> __main__.py:6:21\n+ --> __main__.py:6:15\n   |\n 4 | from _f.g import h\n 5 | from i import _j\n 6 | from k import _l as m\n-  |                     ^\n+  |               ^^\n 7 | import _aaa\n 8 | import bbb.ccc._ddd as eee  # Panicked in https://github.com/astral-sh/ruff/pull/5920\n   |\n@@ -75,3 +75,12 @@ PLC2701 Private name import `_ddd` from external module `bbb.ccc`\n  9 |\n 10 | # Non-errors.\n    |\n+\n+PLC2701 Private name import `_bar` from external module `foo`\n+  --> __main__.py:48:14\n+   |\n+46 |         pass\n+47 |\n+48 | from foo.    _bar import baz\n+   |              ^^^^\n+   |\n",
+  "project_metadata": {
+    "CSS": {
+      "files": 3,
+      "lines": 377,
+      "code": 322,
+      "comments": 6,
+      "blanks": 49
+    },
+    "Dockerfile": {
+      "files": 1,
+      "lines": 38,
+      "code": 26,
+      "comments": 7,
+      "blanks": 5
+    },
+    "HTML": {
+      "files": 2,
+      "lines": 81,
+      "code": 81,
+      "comments": 0,
+      "blanks": 0
+    },
+    "JavaScript": {
+      "files": 2,
+      "lines": 97,
+      "code": 77,
+      "comments": 11,
+      "blanks": 9
+    },
+    "JSON": {
+      "files": 134,
+      "lines": 15798,
+      "code": 15788,
+      "comments": 0,
+      "blanks": 10
+    },
+    "Jupyter Notebooks": {
+      "files": 35,
+      "lines": 511,
+      "code": 289,
+      "comments": 154,
+      "blanks": 68
+    },
+    "Markdown": {
+      "files": 398,
+      "lines": 122378,
+      "code": 0,
+      "comments": 89137,
+      "blanks": 33241
+    },
+    "Python": {
+      "files": 3688,
+      "lines": 266905,
+      "code": 212005,
+      "comments": 12808,
+      "blanks": 42092
+    },
+    "Rust": {
+      "files": 1748,
+      "lines": 519460,
+      "code": 439533,
+      "comments": 25660,
+      "blanks": 54267
+    },
+    "Shell": {
+      "files": 15,
+      "lines": 489,
+      "code": 274,
+      "comments": 143,
+      "blanks": 72
+    },
+    "SVG": {
+      "files": 28,
+      "lines": 1445,
+      "code": 1308,
+      "comments": 71,
+      "blanks": 66
+    },
+    "Plain Text": {
+      "files": 43,
+      "lines": 188649,
+      "code": 0,
+      "comments": 188648,
+      "blanks": 1
+    },
+    "TOML": {
+      "files": 145,
+      "lines": 4356,
+      "code": 3653,
+      "comments": 219,
+      "blanks": 484
+    },
+    "TSX": {
+      "files": 30,
+      "lines": 5526,
+      "code": 4810,
+      "comments": 163,
+      "blanks": 553
+    },
+    "TypeScript": {
+      "files": 14,
+      "lines": 480,
+      "code": 363,
+      "comments": 61,
+      "blanks": 56
+    },
+    "YAML": {
+      "files": 24,
+      "lines": 3741,
+      "code": 3130,
+      "comments": 287,
+      "blanks": 324
+    },
+    "Total": {
+      "files": 0,
+      "lines": 1209556,
+      "code": 694624,
+      "comments": 369203,
+      "blanks": 145729
+    }
+  },
+  "bobbin_metadata": null,
+  "run_id": "20260210-065745-62b3"
+}
