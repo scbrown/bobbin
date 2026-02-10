@@ -1,0 +1,18 @@
+id: polars-005
+repo: pola-rs/polars
+commit: 8f60a2d641daf7f9eeac69694b5c952f4cc34099
+description: |
+  Fix inconsistent behavior when dividing literals by zero. Currently,
+  `pl.lit(1) // pl.lit(0)` produces different results depending on the
+  dtype: panics for unsigned types, returns 0 for same-type signed ints,
+  and returns null for mixed types. The correct behavior is to always
+  return null when dividing by zero, matching standard SQL/dataframe
+  semantics. Fix the literal simplification logic in the optimizer to
+  handle division-by-zero cases consistently.
+
+  Implement the fix. Run the test suite with the test command to verify.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install maturin pytest --quiet && .venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml"
+test_command: ".venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pytest py-polars/tests/unit/expr/test_literal.py -x -k test_floordiv_mod"
+language: rust
+difficulty: medium
+tags: [bug-fix, literals, division-by-zero, optimizer, cross-file]

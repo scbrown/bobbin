@@ -1,0 +1,16 @@
+id: polars-001
+repo: pola-rs/polars
+commit: f3b583e52d0c8892f69992ae004576b9db17ed66
+description: |
+  Fix the negative slice bug in group-by slicing. When `tail(n)` is called
+  with `n` larger than the number of unique values in a group, the slicing
+  offset calculation is incorrect, producing wrong results. The issue is in
+  the position-based group slicing logic that doesn't handle the case where
+  the requested tail exceeds the group size.
+
+  Implement the fix. Run the test suite with the test command to verify.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install maturin pytest --quiet && .venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml"
+test_command: ".venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pytest py-polars/tests/unit/operations/test_group_by.py -x -k test_unique_head_tail_26429"
+language: rust
+difficulty: easy
+tags: [bug-fix, group-by, slicing, dataframe]

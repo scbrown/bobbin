@@ -48,6 +48,7 @@ middleware
 monorepo
 OAuth
 protoc
+polars
 pylint
 read_chunk
 reindex

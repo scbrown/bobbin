@@ -1,0 +1,18 @@
+id: polars-002
+repo: pola-rs/polars
+commit: e3795ebaf0c07896fd95cd489809d76794c58c7c
+description: |
+  Fix the optimizer panic that occurs in right joins with type coercion.
+  When a right join is performed between columns of different types (e.g.
+  i64 and i32), the optimizer wraps the join key in a Cast node. Later,
+  when the predicate pushdown optimizer tries to rewrite a right join to
+  an inner join (because a filter eliminates nulls), it directly accesses
+  the join key node expecting a Column, but finds a Cast instead, causing
+  a panic. Add Cast-unwrapping logic in the join rewrite paths.
+
+  Implement the fix. Run the test suite with the test command to verify.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install maturin pytest --quiet && .venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml"
+test_command: ".venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pytest py-polars/tests/unit/operations/test_join.py -x -k 'test_join_right_with_cast_predicate_pushdown or test_full_join_rewrite_to_right_with_cast'"
+language: rust
+difficulty: medium
+tags: [bug-fix, optimizer, joins, type-coercion, panic]

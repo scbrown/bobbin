@@ -126,7 +126,8 @@ Tasks are curated to be:
 
 Current task suites:
 
-| Suite | Project | Language | Tasks | Difficulty |
-|-------|---------|----------|-------|------------|
-| flask | pallets/flask | Python | 5 | easy-medium |
-| ruff | astral-sh/ruff | Rust | 5 | easy-medium |
+| Suite | Project | Language | Files | Tasks | Difficulty |
+|-------|---------|----------|-------|-------|------------|
+| flask | pallets/flask | Python | ~50 | 5 | easy-medium |
+| polars | pola-rs/polars | Rust+Python | ~2,000 | 5 | easy-medium |
+| ruff | astral-sh/ruff | Rust | ~5,000 | 5 | easy-medium |

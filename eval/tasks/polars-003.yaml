@@ -1,0 +1,16 @@
+id: polars-003
+repo: pola-rs/polars
+commit: 7b2ef66f004062d680e907ffc9d42cb12f57611d
+description: |
+  Fix nested strict casts to properly raise errors instead of silently
+  returning null. When a strict cast fails inside a nested type (e.g.
+  a struct containing a field that can't be cast), the failure is silently
+  converted to null instead of raising a ComputeError. The fix needs to
+  propagate cast errors through nested type handling in the cast logic.
+
+  Implement the fix. Run the test suite with the test command to verify.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install maturin pytest --quiet && .venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml"
+test_command: ".venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pytest py-polars/tests/unit/operations/test_cast.py -x -k test_strict_cast_nested"
+language: rust
+difficulty: medium
+tags: [bug-fix, casting, nested-types, error-handling, cross-file]

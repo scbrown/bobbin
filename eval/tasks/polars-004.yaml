@@ -1,0 +1,17 @@
+id: polars-004
+repo: pola-rs/polars
+commit: 052e68fc47a7be9500c99da063eac41afa180449
+description: |
+  Fix the sortedness tracking for `concat_str` with multiple inputs. The
+  optimizer incorrectly marks the output of `concat_str` on multiple
+  columns as sorted, which can cause wrong results in downstream operations
+  that rely on sorted invariants. The fix should not propagate sortedness
+  metadata when concat_str operates on multiple input columns, since
+  concatenating multiple sorted columns does not produce a sorted result.
+
+  Implement the fix. Run the test suite with the test command to verify.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install maturin pytest --quiet && .venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml"
+test_command: ".venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pytest py-polars/tests/unit/lazyframe/test_optimizations.py -x -k test_concat_str_sortedness_26466"
+language: rust
+difficulty: medium
+tags: [bug-fix, optimizer, sortedness, metadata, cross-file]
