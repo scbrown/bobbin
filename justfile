@@ -112,18 +112,20 @@ docs cmd="build":
 
 # === Eval Framework ===
 
-# Default eval model
+# Default eval settings
 eval_model := "claude-opus-4-6"
 eval_attempts := "1"
 eval_approaches := "both"
+eval_budget := "20.00"
+eval_timeout := "900"
 
 # Run a single eval task: just eval-task flask-001
 eval-task task_id:
-    cd eval && python3 -m runner.cli run-task {{task_id}} --attempts {{eval_attempts}} --approaches {{eval_approaches}} --model {{eval_model}} --skip-verify
+    cd eval && python3 -m runner.cli run-task {{task_id}} --attempts {{eval_attempts}} --approaches {{eval_approaches}} --model {{eval_model}} --budget {{eval_budget}} --timeout {{eval_timeout}} --skip-verify
 
 # Run all eval tasks sequentially
 eval-all:
-    cd eval && python3 -m runner.cli run-all --attempts {{eval_attempts}} --approaches {{eval_approaches}} --model {{eval_model}} --skip-verify
+    cd eval && python3 -m runner.cli run-all --attempts {{eval_attempts}} --approaches {{eval_approaches}} --model {{eval_model}} --budget {{eval_budget}} --timeout {{eval_timeout}} --skip-verify
 
 # Score existing eval results
 eval-score:
