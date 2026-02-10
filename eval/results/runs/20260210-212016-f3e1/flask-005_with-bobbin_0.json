@@ -1,0 +1,182 @@
+{
+  "task_id": "flask-005",
+  "approach": "with-bobbin",
+  "attempt": 0,
+  "status": "completed",
+  "timestamp": "2026-02-10T21:25:02.255948+00:00",
+  "task": {
+    "repo": "pallets/flask",
+    "commit": "1e5dd430223369d13ea94ffffe22bca53a98e730",
+    "test_command": ".venv/bin/pytest tests/test_basic.py tests/test_user_error_handler.py -x",
+    "language": "python",
+    "difficulty": "easy"
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 119.14,
+    "timed_out": false
+  },
+  "test_result": {
+    "passed": false,
+    "total": 1,
+    "failures": 1,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "total": 1
+    }
+  },
+  "diff_result": {
+    "file_precision": 1.0,
+    "file_recall": 0.5,
+    "f1": 0.6667,
+    "files_touched": [
+      "src/flask/scaffold.py",
+      "tests/test_user_error_handler.py"
+    ],
+    "ground_truth_files": [
+      "CHANGES.rst",
+      "src/flask/scaffold.py",
+      "tests/test_basic.py",
+      "tests/test_user_error_handler.py"
+    ],
+    "exact_file_match": false
+  },
+  "agent_diff": "diff --git a/src/flask/scaffold.py b/src/flask/scaffold.py\nindex acf8708b..24592903 100644\n--- a/src/flask/scaffold.py\n+++ b/src/flask/scaffold.py\n@@ -704,15 +704,7 @@ class Scaffold:\n                 \" registered for exception classes or HTTP error codes.\"\n             )\n \n-        try:\n-            exc_class, code = self._get_exc_class_and_code(code_or_exception)\n-        except KeyError:\n-            raise KeyError(\n-                f\"'{code_or_exception}' is not a recognized HTTP error\"\n-                \" code. Use a subclass of HTTPException with that code\"\n-                \" instead.\"\n-            ) from None\n-\n+        exc_class, code = self._get_exc_class_and_code(code_or_exception)\n         self.error_handler_spec[None][code][exc_class] = f\n \n     @staticmethod\n@@ -728,13 +720,30 @@ class Scaffold:\n         \"\"\"\n         exc_class: t.Type[Exception]\n         if isinstance(exc_class_or_code, int):\n-            exc_class = default_exceptions[exc_class_or_code]\n+            try:\n+                exc_class = default_exceptions[exc_class_or_code]\n+            except KeyError:\n+                raise KeyError(\n+                    f\"'{exc_class_or_code}' is not a recognized HTTP error\"\n+                    \" code. Use a subclass of HTTPException with that code\"\n+                    \" instead.\"\n+                ) from None\n         else:\n             exc_class = exc_class_or_code\n \n-        assert issubclass(\n-            exc_class, Exception\n-        ), \"Custom exceptions must be subclasses of Exception.\"\n+        # Check if an exception instance was passed instead of a class\n+        if not isinstance(exc_class, type):\n+            raise TypeError(\n+                f\"'{exc_class!r}' is an exception instance, not a class.\"\n+                \" Handlers can only be registered for exception classes or HTTP error codes.\"\n+            )\n+\n+        # Check if the exception class is a subclass of Exception\n+        if not issubclass(exc_class, Exception):\n+            raise ValueError(\n+                f\"'{exc_class.__name__}' is not a subclass of Exception.\"\n+                \" Custom exception classes must inherit from Exception.\"\n+            )\n \n         if issubclass(exc_class, HTTPException):\n             return exc_class, exc_class.code\ndiff --git a/tests/test_user_error_handler.py b/tests/test_user_error_handler.py\nindex d9f94a3f..f8554348 100644\n--- a/tests/test_user_error_handler.py\n+++ b/tests/test_user_error_handler.py\n@@ -20,7 +20,7 @@ def test_error_handler_no_match(app, client):\n         return \"custom\"\n \n     with pytest.raises(\n-        AssertionError, match=\"Custom exceptions must be subclasses of Exception.\"\n+        ValueError, match=\"'UnacceptableCustomException' is not a subclass of Exception.\"\n     ):\n         app.register_error_handler(UnacceptableCustomException, None)\n \n",
+  "ground_truth_diff": "diff --git a/CHANGES.rst b/CHANGES.rst\nindex aa2bddc1..285d6326 100644\n--- a/CHANGES.rst\n+++ b/CHANGES.rst\n@@ -5,6 +5,9 @@ Version 2.2.0\n \n Unreleased\n \n+-   Refactor ``register_error_handler`` to consolidate error checking.\n+    Rewrite some error messages to be more consistent. :issue:`4559`\n+\n \n Version 2.1.2\n -------------\ndiff --git a/src/flask/scaffold.py b/src/flask/scaffold.py\nindex acf8708b..f8819ccf 100644\n--- a/src/flask/scaffold.py\n+++ b/src/flask/scaffold.py\n@@ -697,22 +697,7 @@ class Scaffold:\n \n         .. versionadded:: 0.7\n         \"\"\"\n-        if isinstance(code_or_exception, HTTPException):  # old broken behavior\n-            raise ValueError(\n-                \"Tried to register a handler for an exception instance\"\n-                f\" {code_or_exception!r}. Handlers can only be\"\n-                \" registered for exception classes or HTTP error codes.\"\n-            )\n-\n-        try:\n-            exc_class, code = self._get_exc_class_and_code(code_or_exception)\n-        except KeyError:\n-            raise KeyError(\n-                f\"'{code_or_exception}' is not a recognized HTTP error\"\n-                \" code. Use a subclass of HTTPException with that code\"\n-                \" instead.\"\n-            ) from None\n-\n+        exc_class, code = self._get_exc_class_and_code(code_or_exception)\n         self.error_handler_spec[None][code][exc_class] = f\n \n     @staticmethod\n@@ -727,14 +712,32 @@ class Scaffold:\n             code as an integer.\n         \"\"\"\n         exc_class: t.Type[Exception]\n+\n         if isinstance(exc_class_or_code, int):\n-            exc_class = default_exceptions[exc_class_or_code]\n+            try:\n+                exc_class = default_exceptions[exc_class_or_code]\n+            except KeyError:\n+                raise ValueError(\n+                    f\"'{exc_class_or_code}' is not a recognized HTTP\"\n+                    \" error code. Use a subclass of HTTPException with\"\n+                    \" that code instead.\"\n+                ) from None\n         else:\n             exc_class = exc_class_or_code\n \n-        assert issubclass(\n-            exc_class, Exception\n-        ), \"Custom exceptions must be subclasses of Exception.\"\n+        if isinstance(exc_class, Exception):\n+            raise TypeError(\n+                f\"{exc_class!r} is an instance, not a class. Handlers\"\n+                \" can only be registered for Exception classes or HTTP\"\n+                \" error codes.\"\n+            )\n+\n+        if not issubclass(exc_class, Exception):\n+            raise ValueError(\n+                f\"'{exc_class.__name__}' is not a subclass of Exception.\"\n+                \" Handlers can only be registered for Exception classes\"\n+                \" or HTTP error codes.\"\n+            )\n \n         if issubclass(exc_class, HTTPException):\n             return exc_class, exc_class.code\ndiff --git a/tests/test_basic.py b/tests/test_basic.py\nindex 3dc3a0e9..c4be6621 100644\n--- a/tests/test_basic.py\n+++ b/tests/test_basic.py\n@@ -899,13 +899,6 @@ def test_error_handling(app, client):\n     assert b\"forbidden\" == rv.data\n \n \n-def test_error_handler_unknown_code(app):\n-    with pytest.raises(KeyError) as exc_info:\n-        app.register_error_handler(999, lambda e: (\"999\", 999))\n-\n-    assert \"Use a subclass\" in exc_info.value.args[0]\n-\n-\n def test_error_handling_processing(app, client):\n     app.testing = False\n \ndiff --git a/tests/test_user_error_handler.py b/tests/test_user_error_handler.py\nindex d9f94a3f..79c5a73c 100644\n--- a/tests/test_user_error_handler.py\n+++ b/tests/test_user_error_handler.py\n@@ -11,29 +11,35 @@ def test_error_handler_no_match(app, client):\n     class CustomException(Exception):\n         pass\n \n-    class UnacceptableCustomException(BaseException):\n-        pass\n-\n     @app.errorhandler(CustomException)\n     def custom_exception_handler(e):\n         assert isinstance(e, CustomException)\n         return \"custom\"\n \n-    with pytest.raises(\n-        AssertionError, match=\"Custom exceptions must be subclasses of Exception.\"\n-    ):\n-        app.register_error_handler(UnacceptableCustomException, None)\n+    with pytest.raises(TypeError) as exc_info:\n+        app.register_error_handler(CustomException(), None)\n+\n+    assert \"CustomException() is an instance, not a class.\" in str(exc_info.value)\n+\n+    with pytest.raises(ValueError) as exc_info:\n+        app.register_error_handler(list, None)\n+\n+    assert \"'list' is not a subclass of Exception.\" in str(exc_info.value)\n \n     @app.errorhandler(500)\n     def handle_500(e):\n         assert isinstance(e, InternalServerError)\n-        original = getattr(e, \"original_exception\", None)\n \n-        if original is not None:\n-            return f\"wrapped {type(original).__name__}\"\n+        if e.original_exception is not None:\n+            return f\"wrapped {type(e.original_exception).__name__}\"\n \n         return \"direct\"\n \n+    with pytest.raises(ValueError) as exc_info:\n+        app.register_error_handler(999, None)\n+\n+    assert \"Use a subclass of HTTPException\" in str(exc_info.value)\n+\n     @app.route(\"/custom\")\n     def custom_test():\n         raise CustomException()\n",
+  "project_metadata": {
+    "Autoconf": {
+      "files": 9,
+      "lines": 52,
+      "code": 52,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Batch": {
+      "files": 1,
+      "lines": 35,
+      "code": 26,
+      "comments": 1,
+      "blanks": 8
+    },
+    "CSS": {
+      "files": 2,
+      "lines": 135,
+      "code": 109,
+      "comments": 1,
+      "blanks": 25
+    },
+    "Forge Config": {
+      "files": 3,
+      "lines": 175,
+      "code": 135,
+      "comments": 20,
+      "blanks": 20
+    },
+    "HTML": {
+      "files": 19,
+      "lines": 235,
+      "code": 221,
+      "comments": 0,
+      "blanks": 14
+    },
+    "INI": {
+      "files": 1,
+      "lines": 33,
+      "code": 25,
+      "comments": 3,
+      "blanks": 5
+    },
+    "JSON": {
+      "files": 1,
+      "lines": 4,
+      "code": 4,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Makefile": {
+      "files": 1,
+      "lines": 20,
+      "code": 9,
+      "comments": 7,
+      "blanks": 4
+    },
+    "Markdown": {
+      "files": 1,
+      "lines": 76,
+      "code": 0,
+      "comments": 57,
+      "blanks": 19
+    },
+    "Python": {
+      "files": 75,
+      "lines": 16922,
+      "code": 12814,
+      "comments": 841,
+      "blanks": 3267
+    },
+    "ReStructuredText": {
+      "files": 84,
+      "lines": 15709,
+      "code": 11582,
+      "comments": 0,
+      "blanks": 4127
+    },
+    "SQL": {
+      "files": 2,
+      "lines": 28,
+      "code": 22,
+      "comments": 2,
+      "blanks": 4
+    },
+    "SVG": {
+      "files": 2,
+      "lines": 455,
+      "code": 451,
+      "comments": 2,
+      "blanks": 2
+    },
+    "Plain Text": {
+      "files": 12,
+      "lines": 243,
+      "code": 0,
+      "comments": 242,
+      "blanks": 1
+    },
+    "Total": {
+      "files": 0,
+      "lines": 34143,
+      "code": 25469,
+      "comments": 1176,
+      "blanks": 7498
+    }
+  },
+  "bobbin_metadata": {
+    "index_duration_seconds": 1.59,
+    "profile": {
+      "file_i/o": 0,
+      "parse": 26,
+      "context": 0,
+      "embed": 500,
+      "tokenize": 66,
+      "inference": 409,
+      "pooling": 6,
+      "lance_delete": 42,
+      "lance_insert": 12,
+      "git_coupling": 41,
+      "git_commits": 402,
+      "deps": 2,
+      "compact": 13,
+      "other/overhead": 451,
+      "total_ms": 1489,
+      "embed_throughput_chunks_per_sec": 3112.0
+    },
+    "total_files": null,
+    "total_chunks": null,
+    "total_embeddings": null,
+    "languages": []
+  },
+  "run_id": "20260210-212016-f3e1"
+}
