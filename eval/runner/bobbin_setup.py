@@ -68,7 +68,7 @@ def _parse_profile(output: str) -> dict[str, Any] | None:
     return profile if profile else None
 
 
-def setup_bobbin(workspace: str, *, timeout: int = 900) -> dict[str, Any]:
+def setup_bobbin(workspace: str, *, timeout: int = 1800) -> dict[str, Any]:
     """Run bobbin init and index on the given workspace.
 
     Parameters

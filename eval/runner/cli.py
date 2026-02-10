@@ -146,6 +146,7 @@ def _run_single(
     model: str = "claude-sonnet-4-5-20250929",
     budget: float = 2.00,
     timeout: int = 600,
+    index_timeout: int = 1800,
     skip_verify: bool = False,
 ) -> dict:
     """Execute a single task × approach × attempt evaluation run.
@@ -203,7 +204,7 @@ def _run_single(
         if approach == "with-bobbin":
             click.echo("    Running bobbin init + index...")
             try:
-                bobbin_metadata = setup_bobbin(str(ws))
+                bobbin_metadata = setup_bobbin(str(ws), timeout=index_timeout)
             except Exception as exc:
                 click.echo(f"    Bobbin setup failed: {exc}", err=True)
                 result = {
@@ -326,6 +327,7 @@ def cli(verbose: bool):
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="Claude model to use.")
 @click.option("--budget", default=2.00, type=float, help="Max budget per run (USD).")
 @click.option("--timeout", default=600, type=int, help="Agent timeout in seconds.")
+@click.option("--index-timeout", default=1800, type=int, help="Bobbin index timeout in seconds.")
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
 def run_task(
     task_id: str,
@@ -337,6 +339,7 @@ def run_task(
     model: str,
     budget: float,
     timeout: int,
+    index_timeout: int,
     skip_verify: bool,
 ):
     """Run evaluation for a single task.
@@ -379,6 +382,7 @@ def run_task(
                 model=model,
                 budget=budget,
                 timeout=timeout,
+                index_timeout=index_timeout,
                 skip_verify=skip_verify,
             )
             results.append(result)
@@ -415,6 +419,7 @@ def run_task(
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="Claude model to use.")
 @click.option("--budget", default=2.00, type=float, help="Max budget per run (USD).")
 @click.option("--timeout", default=600, type=int, help="Agent timeout in seconds.")
+@click.option("--index-timeout", default=1800, type=int, help="Bobbin index timeout in seconds.")
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
 def run_all(
     tasks_dir: str,
@@ -425,6 +430,7 @@ def run_all(
     model: str,
     budget: float,
     timeout: int,
+    index_timeout: int,
     skip_verify: bool,
 ):
     """Run evaluation for all tasks in the tasks directory."""
@@ -466,6 +472,7 @@ def run_all(
                     model=model,
                     budget=budget,
                     timeout=timeout,
+                    index_timeout=index_timeout,
                     skip_verify=skip_verify,
                 )
                 all_results.append(result)
