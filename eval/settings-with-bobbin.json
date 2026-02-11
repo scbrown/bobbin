@@ -11,6 +11,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "bobbin hook prime-context",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
     ]
   }
 }

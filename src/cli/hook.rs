@@ -35,6 +35,9 @@ enum HookCommands {
     /// Handle SessionStart compact events (internal, called by Claude Code)
     SessionContext(SessionContextArgs),
 
+    /// Output bobbin primer + live stats at SessionStart (internal, called by Claude Code)
+    PrimeContext(PrimeContextArgs),
+
     /// Install a post-commit git hook for automatic indexing
     InstallGitHook(InstallGitHookArgs),
 
@@ -109,6 +112,9 @@ struct SessionContextArgs {
 }
 
 #[derive(Args)]
+struct PrimeContextArgs {}
+
+#[derive(Args)]
 struct InstallGitHookArgs {}
 
 #[derive(Args)]
@@ -152,6 +158,7 @@ pub async fn run(args: HookArgs, output: OutputConfig) -> Result<()> {
         HookCommands::Status(a) => run_status(a, output).await,
         HookCommands::InjectContext(a) => run_inject_context(a, output).await,
         HookCommands::SessionContext(a) => run_session_context(a, output).await,
+        HookCommands::PrimeContext(a) => run_prime_context(a, output).await,
         HookCommands::InstallGitHook(a) => run_install_git_hook(a, output).await,
         HookCommands::UninstallGitHook(a) => run_uninstall_git_hook(a, output).await,
         HookCommands::HotTopics(a) => run_hot_topics(a, output).await,
@@ -987,6 +994,122 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+async fn run_prime_context(_args: PrimeContextArgs, _output: OutputConfig) -> Result<()> {
+    // Never block session start — swallow all errors
+    match run_prime_context_inner().await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            eprintln!("bobbin prime-context: {}", e);
+            Ok(())
+        }
+    }
+}
+
+async fn run_prime_context_inner() -> Result<()> {
+    let hook_start = std::time::Instant::now();
+
+    // 1. Read stdin JSON (may be empty for some Claude Code versions)
+    let input_str = std::io::read_to_string(std::io::stdin())
+        .context("Failed to read stdin")?;
+
+    let session_id = if input_str.trim().is_empty() {
+        String::new()
+    } else {
+        let input: SessionStartInput =
+            serde_json::from_str(&input_str).unwrap_or(SessionStartInput {
+                source: String::new(),
+                cwd: String::new(),
+                session_id: String::new(),
+            });
+        input.session_id
+    };
+
+    // 2. Find repo root
+    let cwd = std::env::current_dir().context("Failed to get cwd")?;
+    let repo_root = find_bobbin_root(&cwd).context("Bobbin not initialized")?;
+
+    let metrics_source = crate::metrics::resolve_source(
+        None,
+        if session_id.is_empty() { None } else { Some(&session_id) },
+    );
+
+    // 3. Build primer text (brief version + live stats)
+    let primer = include_str!("../../docs/primer.md");
+    let brief = extract_brief(primer);
+
+    // 4. Gather live stats
+    let lance_path = Config::lance_path(&repo_root);
+    let stats_text = if let Ok(store) = VectorStore::open(&lance_path).await {
+        if let Ok(stats) = store.get_stats(None).await {
+            let mut lines = vec![
+                format!("- {} files, {} chunks indexed", stats.total_files, stats.total_chunks),
+            ];
+            if !stats.languages.is_empty() {
+                let langs: Vec<String> = stats.languages.iter()
+                    .map(|l| format!("{} ({} files)", l.language, l.file_count))
+                    .collect();
+                lines.push(format!("- Languages: {}", langs.join(", ")));
+            }
+            lines.join("\n")
+        } else {
+            "- Index stats unavailable".to_string()
+        }
+    } else {
+        "- Vector store not accessible".to_string()
+    };
+
+    // 5. Compose output
+    let context = format!(
+        "{}\n\n## Index Status\n{}\n\n## Available Commands\n\
+        - `bobbin search <query>` — semantic + keyword hybrid search\n\
+        - `bobbin context <query>` — task-aware context assembly with budget control\n\
+        - `bobbin grep <pattern>` — keyword/regex search\n\
+        - `bobbin related <file>` — find co-changing files via git coupling\n\
+        - `bobbin refs <symbol>` — find symbol definitions and references\n\
+        - `bobbin impact <file>` — predict affected files\n\
+        - `bobbin hotspots` — high-churn, high-complexity files",
+        brief, stats_text,
+    );
+
+    // 6. Output hook response JSON
+    let response = HookResponse {
+        hook_specific_output: HookSpecificOutput {
+            hook_event_name: "SessionStart".to_string(),
+            additional_context: context,
+        },
+    };
+
+    println!("{}", serde_json::to_string(&response)?);
+
+    // 7. Emit metric
+    crate::metrics::emit(&repo_root, &crate::metrics::event(
+        &metrics_source,
+        "hook_prime_context",
+        "hook prime-context",
+        hook_start.elapsed().as_millis() as u64,
+        serde_json::Value::Null,
+    ));
+
+    Ok(())
+}
+
+/// Extract brief primer text (title + first section only).
+fn extract_brief(primer: &str) -> String {
+    let mut result = String::new();
+    let mut heading_count = 0;
+    for line in primer.lines() {
+        if line.starts_with("## ") {
+            heading_count += 1;
+            if heading_count > 1 {
+                break;
+            }
+        }
+        result.push_str(line);
+        result.push('\n');
+    }
+    result.trim_end().to_string()
 }
 
 async fn run_session_context(args: SessionContextArgs, _output: OutputConfig) -> Result<()> {
