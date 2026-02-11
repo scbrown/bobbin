@@ -44,9 +44,7 @@
   <line x1="55" y1="120" x2="145" y2="120" stroke="#c4b5fd" stroke-width="0.5" opacity="0.5"/>
   <!-- Bottom flange — juts out beyond body like a real bobbin -->
   <ellipse cx="100" cy="152" rx="72" ry="14" fill="url(#flangeGrad)" opacity="0.9"/>
-  <!-- Side edges connecting flanges -->
-  <line x1="28" y1="28" x2="28" y2="152" stroke="#6366f1" stroke-width="1" opacity="0.4"/>
-  <line x1="172" y1="28" x2="172" y2="152" stroke="#6366f1" stroke-width="1" opacity="0.4"/>
+  <!-- Side edges of core cylinder only -->
   <line x1="45" y1="28" x2="45" y2="152" stroke="#6366f1" stroke-width="1.5"/>
   <line x1="155" y1="28" x2="155" y2="152" stroke="#6366f1" stroke-width="1.5"/>
   <!-- Code symbols the thread weaves through -->
@@ -56,14 +54,16 @@
   <text x="247" y="104" class="code" font-size="12">&lt;/&gt;</text>
   <text x="310" y="104" class="code" font-size="12">///</text>
   <text x="355" y="96" class="code" font-size="14">()</text>
-  <!-- Thread weaving through code symbols -->
-  <path d="M 145 90 C 165 90, 185 78, 220 78 C 250 78, 258 95, 280 95 C 302 95, 315 74, 340 74 C 358 74, 365 88, 375 88" stroke="url(#threadGrad)" stroke-width="2" fill="none" stroke-linecap="round"/>
-  <!-- Needle at the end of the thread -->
-  <line x1="375" y1="88" x2="393" y2="82" stroke="url(#needleGrad)" stroke-width="2" stroke-linecap="round"/>
-  <line x1="393" y1="82" x2="390" y2="80" stroke="#e0e7ff" stroke-width="1.5" stroke-linecap="round"/>
-  <line x1="393" y1="82" x2="391" y2="85" stroke="#e0e7ff" stroke-width="1.5" stroke-linecap="round"/>
-  <!-- Needle eye (small opening) -->
-  <ellipse cx="377" cy="87" rx="1.5" ry="2.5" stroke="#c4b5fd" stroke-width="0.8" fill="none" transform="rotate(-15 377 87)"/>
+  <!-- Thread weaving through code symbols, ending at needle eye -->
+  <path d="M 145 90 C 165 90, 185 78, 220 78 C 250 78, 258 95, 280 95 C 302 95, 315 74, 340 74 C 352 74, 355 80, 358 82" stroke="url(#threadGrad)" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <!-- Needle — long tapered shaft with eye at back -->
+  <!-- Needle body (tapered from eye to point) -->
+  <path d="M 355 84 L 393 76" stroke="#d4d4d8" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M 393 76 L 398 74.5" stroke="#e4e4e7" stroke-width="1.6" stroke-linecap="round"/>
+  <!-- Needle point (sharp taper) -->
+  <path d="M 398 74.5 L 400 74" stroke="#f4f4f5" stroke-width="0.8" stroke-linecap="round"/>
+  <!-- Needle eye (oval hole near the back where thread enters) -->
+  <ellipse cx="357" cy="83" rx="2" ry="3.5" stroke="#a1a1aa" stroke-width="0.9" fill="#1e1b4b" transform="rotate(-12 357 83)"/>
   <!-- Labels on the right -->
   <text x="200" y="130" class="label-bright">threading context</text>
   <text x="200" y="148" class="label">through your codebase</text>
