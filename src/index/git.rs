@@ -262,9 +262,10 @@ impl GitAnalyzer {
 
         if let Some(commit) = since_commit {
             args.push(format!("{}..HEAD", commit));
-        } else {
+        } else if depth > 0 {
             args.push(format!("-{}", depth));
         }
+        // depth == 0 means "all commits" — no -N flag needed
 
         let output = Command::new("git")
             .args(&args)
