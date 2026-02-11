@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "bobbin hook inject-context",
+            "command": "bobbin hook inject-context --gate-threshold 0.45",
             "statusMessage": "Loading code context...",
             "timeout": 10,
             "type": "command"

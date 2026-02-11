@@ -13,6 +13,21 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_WORKSPACE_CLAUDE_MD = """\
+# Project Tools
+
+This project is indexed by **bobbin**, a code context engine.
+Use these commands to explore the codebase:
+
+- `bobbin search <query>` — find code by meaning (semantic search)
+- `bobbin context <query>` — get a focused context bundle for a task
+- `bobbin related <file>` — find files that frequently change together
+- `bobbin refs <symbol>` — find definitions and usages of a symbol
+- `bobbin grep <pattern>` — regex/keyword search across all files
+
+Prefer bobbin tools over manual grep/find for navigating unfamiliar code.
+"""
+
 
 class BobbinSetupError(Exception):
     """Raised when bobbin init or index fails."""
@@ -97,6 +112,13 @@ def setup_bobbin(workspace: str, *, timeout: int = 1800) -> dict[str, Any]:
         )
     except subprocess.CalledProcessError as exc:
         raise BobbinSetupError(f"bobbin init failed: {exc.stderr.strip()}") from exc
+
+    # Write workspace CLAUDE.md for agent guidance.
+    claude_dir = ws / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    claude_md = claude_dir / "CLAUDE.md"
+    claude_md.write_text(_WORKSPACE_CLAUDE_MD, encoding="utf-8")
+    logger.info("Wrote CLAUDE.md to %s", claude_md)
 
     logger.info("Indexing workspace %s", ws)
     t0 = time.monotonic()

@@ -108,6 +108,22 @@ def _compute_approach_stats(results: list[dict]) -> dict[str, Any]:
         if r.get("agent_result", {}).get("duration_seconds") is not None
     ]
 
+    costs = [
+        r["token_usage"]["total_cost_usd"]
+        for r in results
+        if r.get("token_usage", {}).get("total_cost_usd") is not None
+    ]
+    input_toks = [
+        r["token_usage"]["input_tokens"]
+        for r in results
+        if r.get("token_usage", {}).get("input_tokens") is not None
+    ]
+    output_toks = [
+        r["token_usage"]["output_tokens"]
+        for r in results
+        if r.get("token_usage", {}).get("output_tokens") is not None
+    ]
+
     return {
         "count": len(results),
         "test_pass_rate": pass_rate,
@@ -115,6 +131,9 @@ def _compute_approach_stats(results: list[dict]) -> dict[str, Any]:
         "avg_file_recall": _safe_avg(recalls),
         "avg_f1": _safe_avg(f1s),
         "avg_duration_seconds": _safe_avg(durations),
+        "avg_cost_usd": _safe_avg(costs),
+        "avg_input_tokens": _safe_avg(input_toks),
+        "avg_output_tokens": _safe_avg(output_toks),
     }
 
 
@@ -156,6 +175,9 @@ def _build_summary_table(
         ("Avg File Recall", "avg_file_recall", True, True),
         ("Avg F1", "avg_f1", True, True),
         ("Avg Duration (s)", "avg_duration_seconds", False, False),
+        ("Avg Cost ($)", "avg_cost_usd", False, False),
+        ("Avg Input Tokens", "avg_input_tokens", False, False),
+        ("Avg Output Tokens", "avg_output_tokens", False, False),
     ]
 
     for label, key, is_pct, show_as_pct in metrics:
@@ -168,6 +190,10 @@ def _build_summary_table(
                 row += f" {_pct(val)} |"
             elif key == "count":
                 row += f" {int(val)} |"
+            elif key == "avg_cost_usd":
+                row += f" ${val:.2f} |"
+            elif key in ("avg_input_tokens", "avg_output_tokens"):
+                row += f" {int(val):,} |"
             else:
                 row += f" {val:.1f} |"
 
@@ -187,21 +213,23 @@ def _build_per_task_table(
     by_task = _group_by_task(results)
 
     lines = [
-        "| Task | Approach | Tests Passed | File Precision | File Recall | F1 | Duration |",
-        "|------|----------|:---:|:---:|:---:|:---:|---:|",
+        "| Task | Approach | Tests Passed | File Precision | File Recall | F1 | Duration | Cost |",
+        "|------|----------|:---:|:---:|:---:|:---:|---:|---:|",
     ]
 
     for task_id, task_results in by_task.items():
         by_approach = _group_by_approach(task_results)
         for approach, approach_results in by_approach.items():
             stats = _compute_approach_stats(approach_results)
+            cost_str = f"${stats['avg_cost_usd']:.2f}" if stats['avg_cost_usd'] else "n/a"
             lines.append(
                 f"| {task_id} | {approach} "
                 f"| {_pct(stats['test_pass_rate'])} "
                 f"| {_pct(stats['avg_file_precision'])} "
                 f"| {_pct(stats['avg_file_recall'])} "
                 f"| {_pct(stats['avg_f1'])} "
-                f"| {stats['avg_duration_seconds']:.1f}s |"
+                f"| {stats['avg_duration_seconds']:.1f}s "
+                f"| {cost_str} |"
             )
 
     return "\n".join(lines)

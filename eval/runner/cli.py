@@ -59,16 +59,41 @@ def _resolve_tasks_dir(tasks_dir: str) -> Path:
     return p  # Let downstream raise the error.
 
 
-def _build_prompt(task: dict) -> str:
+def _build_prompt(task: dict, approach: str = "no-bobbin") -> str:
     """Build the agent prompt from a task definition."""
     repo = task["repo"]
     desc = task["description"].strip()
     test_cmd = task["test_command"]
-    return (
+    base = (
         f"You are working on the {repo} project.\n\n"
         f"{desc}\n\n"
         f"Implement the fix. Run the test suite with `{test_cmd}` to verify."
     )
+    if approach == "with-bobbin":
+        base += (
+            "\n\nThis project has bobbin installed (a code context engine). "
+            "Use `bobbin search <query>` to find relevant code by meaning, "
+            "`bobbin context <query>` for task-aware context assembly, "
+            "and `bobbin related <file>` to discover co-changing files. "
+            "These tools can help you navigate the codebase efficiently."
+        )
+    return base
+
+
+def _extract_token_usage(result: dict | None) -> dict | None:
+    """Extract token usage and cost info from the agent's JSON result."""
+    if not result or not isinstance(result, dict):
+        return None
+    usage = result.get("usage", {})
+    return {
+        "total_cost_usd": result.get("total_cost_usd"),
+        "input_tokens": usage.get("input_tokens", 0),
+        "output_tokens": usage.get("output_tokens", 0),
+        "cache_creation_tokens": usage.get("cache_creation_input_tokens", 0),
+        "cache_read_tokens": usage.get("cache_read_input_tokens", 0),
+        "num_turns": result.get("num_turns"),
+        "model_usage": result.get("modelUsage"),
+    }
 
 
 def _generate_run_id() -> str:
@@ -233,7 +258,7 @@ def _run_single(
             pre_agent_baseline = snapshot(ws)
 
         # 3. Run agent.
-        prompt = _build_prompt(task)
+        prompt = _build_prompt(task, approach=approach)
         click.echo(f"    Running Claude Code (model={model}, budget=${budget:.2f})...")
         # Always pass a settings file to isolate from user's global hooks.
         # no-bobbin gets a clean settings file; with-bobbin gets the bobbin one.
@@ -302,6 +327,12 @@ def _run_single(
                 "timed_out": agent_result["timed_out"],
             },
             "token_usage": _extract_token_usage(agent_result.get("result")),
+            "agent_output": {
+                "num_turns": (agent_result.get("result") or {}).get("num_turns"),
+                "session_id": (agent_result.get("result") or {}).get("session_id"),
+                "stop_reason": (agent_result.get("result") or {}).get("stop_reason"),
+            },
+            "agent_stderr": (agent_result.get("stderr") or "")[:5000],
             "test_result": {
                 "passed": test_result["passed"],
                 "total": test_result["total"],
@@ -372,6 +403,16 @@ def _read_bobbin_metrics(
     commands = [e for e in events if e.get("event_type") == "command"]
     prime_events = [e for e in events if e.get("event_type") == "hook_prime_context"]
 
+    # Extract gate skip details (scores, queries, thresholds).
+    gate_skip_details = []
+    for gs in gate_skips:
+        meta = gs.get("metadata", {})
+        gate_skip_details.append({
+            "query": meta.get("query", ""),
+            "top_score": meta.get("top_score"),
+            "gate_threshold": meta.get("gate_threshold"),
+        })
+
     # Collect all injected files across all injections.
     injected_files: set[str] = set()
     for inj in injections:
@@ -381,6 +422,7 @@ def _read_bobbin_metrics(
     result: dict = {
         "injection_count": len(injections),
         "gate_skip_count": len(gate_skips),
+        "gate_skip_details": gate_skip_details,
         "dedup_skip_count": len(dedup_skips),
         "prime_context_fired": len(prime_events) > 0,
         "command_invocations": [
