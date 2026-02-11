@@ -6,7 +6,7 @@ import json
 
 from click.testing import CliRunner
 
-from runner.cli import cli
+from runner.cli import _extract_token_usage, cli
 
 
 def _make_result(
@@ -141,6 +141,60 @@ class TestRunTaskCommand:
         assert result.exit_code == 0
         assert "TASK_ID" in result.output
         assert "--attempts" in result.output
+
+
+class TestExtractTokenUsage:
+    def test_full_result(self):
+        result = {
+            "total_cost_usd": 1.23,
+            "usage": {
+                "input_tokens": 5000,
+                "output_tokens": 2000,
+                "cache_creation_input_tokens": 100,
+                "cache_read_input_tokens": 300,
+            },
+            "num_turns": 7,
+            "modelUsage": {"claude-opus-4-6": {"input": 5000, "output": 2000}},
+        }
+        usage = _extract_token_usage(result)
+        assert usage is not None
+        assert usage["total_cost_usd"] == 1.23
+        assert usage["input_tokens"] == 5000
+        assert usage["output_tokens"] == 2000
+        assert usage["cache_creation_tokens"] == 100
+        assert usage["cache_read_tokens"] == 300
+        assert usage["num_turns"] == 7
+        assert usage["model_usage"] == {"claude-opus-4-6": {"input": 5000, "output": 2000}}
+
+    def test_none_input(self):
+        assert _extract_token_usage(None) is None
+
+    def test_non_dict_input(self):
+        assert _extract_token_usage("not a dict") is None
+
+    def test_empty_dict(self):
+        """Empty dict is falsy — no token data to extract."""
+        assert _extract_token_usage({}) is None
+
+    def test_partial_usage(self):
+        result = {
+            "total_cost_usd": 0.50,
+            "usage": {"input_tokens": 1000},
+        }
+        usage = _extract_token_usage(result)
+        assert usage["total_cost_usd"] == 0.50
+        assert usage["input_tokens"] == 1000
+        assert usage["output_tokens"] == 0
+        assert usage["cache_creation_tokens"] == 0
+        assert usage["cache_read_tokens"] == 0
+
+    def test_raw_text_fallback(self):
+        """When JSON parsing fails, agent_runner stores {"raw_text": ...}."""
+        result = {"raw_text": "some output"}
+        usage = _extract_token_usage(result)
+        assert usage is not None
+        assert usage["total_cost_usd"] is None
+        assert usage["input_tokens"] == 0
 
 
 class TestRunAllCommand:

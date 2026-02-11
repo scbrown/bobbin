@@ -301,6 +301,7 @@ def _run_single(
                 "duration_seconds": agent_result["duration_seconds"],
                 "timed_out": agent_result["timed_out"],
             },
+            "token_usage": _extract_token_usage(agent_result.get("result")),
             "test_result": {
                 "passed": test_result["passed"],
                 "total": test_result["total"],
@@ -401,6 +402,28 @@ def _read_bobbin_metrics(
         }
 
     return result
+
+
+def _extract_token_usage(result: dict | None) -> dict | None:
+    """Extract token usage and cost data from Claude Code JSON output.
+
+    Claude Code's ``--output-format json`` includes ``total_cost_usd``,
+    ``usage`` (input/output/cache token counts), ``num_turns``, and
+    per-model breakdowns in ``modelUsage``.  This helper pulls them into
+    a flat structure suitable for report generation.
+    """
+    if not result or not isinstance(result, dict):
+        return None
+    usage = result.get("usage", {})
+    return {
+        "total_cost_usd": result.get("total_cost_usd"),
+        "input_tokens": usage.get("input_tokens", 0),
+        "output_tokens": usage.get("output_tokens", 0),
+        "cache_creation_tokens": usage.get("cache_creation_input_tokens", 0),
+        "cache_read_tokens": usage.get("cache_read_input_tokens", 0),
+        "num_turns": result.get("num_turns"),
+        "model_usage": result.get("modelUsage"),
+    }
 
 
 def _resolve_approaches(approaches: str) -> list[str]:
