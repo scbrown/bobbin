@@ -3,8 +3,9 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
 use crate::index::Embedder;
+use crate::index::git::GitAnalyzer;
 use crate::storage::{MetadataStore, VectorStore};
-use crate::types::{Chunk, ChunkType, MatchType};
+use crate::types::{Chunk, ChunkType, FileCategory, MatchType, classify_file};
 
 /// Configuration for context assembly
 pub struct ContextConfig {
@@ -43,6 +44,7 @@ pub struct ContextFile {
     pub path: String,
     pub language: String,
     pub relevance: FileRelevance,
+    pub category: FileCategory,
     pub score: f32,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub coupled_to: Vec<String>,
@@ -78,6 +80,9 @@ pub struct ContextSummary {
     pub total_chunks: usize,
     pub direct_hits: usize,
     pub coupled_additions: usize,
+    pub bridged_additions: usize,
+    pub source_files: usize,
+    pub doc_files: usize,
     /// Raw cosine similarity of the top semantic search result (before RRF normalization).
     /// Used by the gate_threshold check to decide whether to inject context at all.
     pub top_semantic_score: f32,
@@ -89,6 +94,8 @@ pub struct ContextSummary {
 pub enum FileRelevance {
     Direct,
     Coupled,
+    /// Found via git blame provenance bridging from a documentation chunk
+    Bridged,
 }
 
 /// How a seed chunk was discovered
@@ -125,6 +132,7 @@ pub struct ContextAssembler {
     vector_store: VectorStore,
     metadata_store: MetadataStore,
     config: ContextConfig,
+    git_analyzer: Option<GitAnalyzer>,
 }
 
 /// Internal struct for seed search results
@@ -167,7 +175,14 @@ impl ContextAssembler {
             vector_store,
             metadata_store,
             config,
+            git_analyzer: None,
         }
+    }
+
+    /// Set the git analyzer for doc→source provenance bridging
+    pub fn with_git_analyzer(mut self, git_analyzer: GitAnalyzer) -> Self {
+        self.git_analyzer = Some(git_analyzer);
+        self
     }
 
     /// Assemble a context bundle for the given query using hybrid search.
@@ -247,8 +262,99 @@ impl ContextAssembler {
             .expand_coupling(&seed_files, repo)
             .await?;
 
+        // Phase 2b: Bridge docs to source via git blame provenance
+        let bridged_chunks = self
+            .bridge_docs_via_provenance(&seed_results, repo)
+            .await?;
+
         // Phase 3: Assemble with budget
-        assemble_bundle(query, &self.config, seed_results, coupled_chunks)
+        assemble_bundle(query, &self.config, seed_results, coupled_chunks, bridged_chunks)
+    }
+
+    /// Bridge documentation chunks to source files via git blame provenance.
+    ///
+    /// For each seed that is a documentation file, blame its line range to find
+    /// the commits that introduced those lines, then find source files changed
+    /// in those same commits. Returns additional SeedChunks for the discovered
+    /// source files, marked with Bridged relevance.
+    async fn bridge_docs_via_provenance(
+        &mut self,
+        seeds: &[SeedResult],
+        repo: Option<&str>,
+    ) -> Result<Vec<CoupledChunkInfo>> {
+        let git = match &self.git_analyzer {
+            Some(g) => g,
+            None => return Ok(vec![]),
+        };
+
+        let mut bridged_chunks: Vec<CoupledChunkInfo> = Vec::new();
+        let mut seen_files: HashSet<String> = HashSet::new();
+
+        // Collect files already in seeds to avoid re-adding them
+        for seed in seeds {
+            seen_files.insert(seed.file_path.clone());
+        }
+
+        for seed in seeds {
+            let category = classify_file(&seed.file_path);
+            if category != FileCategory::Documentation {
+                continue;
+            }
+
+            // Blame the matching chunk's line range
+            let blame_entries = match git.blame_lines(&seed.file_path, seed.start_line, seed.end_line) {
+                Ok(entries) => entries,
+                Err(_) => continue, // Silent fail — never block injection
+            };
+
+            // Deduplicate commit hashes
+            let commit_hashes: HashSet<String> = blame_entries
+                .into_iter()
+                .map(|e| e.commit_hash)
+                .collect();
+
+            for hash in &commit_hashes {
+                // Find source files changed in the same commit
+                let commit_files = match git.get_commit_files(hash) {
+                    Ok(files) => files,
+                    Err(_) => continue,
+                };
+
+                for file_path in commit_files {
+                    let file_category = classify_file(&file_path);
+                    if file_category != FileCategory::Source {
+                        continue;
+                    }
+                    if seen_files.contains(&file_path) {
+                        continue;
+                    }
+                    seen_files.insert(file_path.clone());
+
+                    // Fetch chunks for the bridged source file
+                    let chunks = match self.vector_store.get_chunks_for_file(&file_path, repo).await {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+
+                    for chunk in chunks {
+                        bridged_chunks.push(CoupledChunkInfo {
+                            chunk_id: chunk.id.clone(),
+                            file_path: chunk.file_path.clone(),
+                            language: chunk.language.clone(),
+                            name: chunk.name.clone(),
+                            chunk_type: chunk.chunk_type,
+                            start_line: chunk.start_line,
+                            end_line: chunk.end_line,
+                            content: chunk.content.clone(),
+                            coupling_score: seed.score, // Use doc chunk's score as proxy
+                            coupled_to: seed.file_path.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(bridged_chunks)
     }
 
     /// Expand seed files via temporal coupling relationships.
@@ -437,12 +543,13 @@ fn format_content(content: &str, mode: ContentMode) -> Option<String> {
     }
 }
 
-/// Assemble a context bundle from seed and coupled results (pure logic, no I/O)
+/// Assemble a context bundle from seed, coupled, and bridged results (pure logic, no I/O)
 fn assemble_bundle(
     query: &str,
     config: &ContextConfig,
     seed_results: Vec<SeedResult>,
     coupled_chunks: Vec<CoupledChunkInfo>,
+    bridged_chunks: Vec<CoupledChunkInfo>,
 ) -> Result<ContextBundle> {
     let budget = config.budget_lines;
     let max_chunk_lines = budget / 2; // Cap individual chunks at 50% of budget
@@ -522,9 +629,10 @@ fn assemble_bundle(
 
         if !file_chunks.is_empty() {
             context_files.push(ContextFile {
-                path: file_path,
+                path: file_path.clone(),
                 language,
                 relevance: FileRelevance::Direct,
+                category: classify_file(&file_path),
                 score: file_score,
                 coupled_to: vec![],
                 chunks: file_chunks,
@@ -616,9 +724,89 @@ fn assemble_bundle(
             coupled_to.sort();
 
             context_files.push(ContextFile {
-                path: file_path,
+                path: file_path.clone(),
                 language,
                 relevance: FileRelevance::Coupled,
+                category: classify_file(&file_path),
+                score: file_score,
+                coupled_to,
+                chunks: file_chunks,
+            });
+        }
+    }
+
+    // Group bridged chunks by file (same structure as coupled)
+    let mut bridged_files: HashMap<String, (Vec<CoupledChunkInfo>, HashSet<String>)> =
+        HashMap::new();
+    for chunk in bridged_chunks {
+        let entry = bridged_files
+            .entry(chunk.file_path.clone())
+            .or_insert_with(|| (Vec::new(), HashSet::new()));
+        entry.1.insert(chunk.coupled_to.clone());
+        entry.0.push(chunk);
+    }
+
+    let mut bridged_file_list: Vec<(String, Vec<CoupledChunkInfo>, HashSet<String>)> =
+        bridged_files
+            .into_iter()
+            .map(|(path, (chunks, sources))| (path, chunks, sources))
+            .collect();
+    bridged_file_list.sort_by(|a, b| {
+        let max_a = a.1.iter().map(|c| c.coupling_score).fold(f32::NEG_INFINITY, f32::max);
+        let max_b = b.1.iter().map(|c| c.coupling_score).fold(f32::NEG_INFINITY, f32::max);
+        max_b.partial_cmp(&max_a).unwrap()
+    });
+
+    let mut bridged_addition_count: usize = 0;
+
+    // Add bridged chunks (source files discovered via doc provenance)
+    for (file_path, mut chunks, sources) in bridged_file_list {
+        if used_lines >= budget {
+            break;
+        }
+
+        chunks.sort_by_key(|c| c.start_line);
+
+        let language = chunks.first().map(|c| c.language.clone()).unwrap_or_default();
+        let file_score = chunks.iter().map(|c| c.coupling_score).fold(f32::NEG_INFINITY, f32::max);
+
+        let mut file_chunks = Vec::new();
+        for chunk in chunks {
+            if seen_chunk_ids.contains(&chunk.chunk_id) {
+                continue;
+            }
+
+            let chunk_lines = (chunk.end_line - chunk.start_line + 1) as usize;
+            let capped_lines = chunk_lines.min(max_chunk_lines);
+
+            if used_lines + capped_lines > budget {
+                break;
+            }
+
+            seen_chunk_ids.insert(chunk.chunk_id.clone());
+            used_lines += capped_lines;
+            bridged_addition_count += 1;
+
+            file_chunks.push(ContextChunk {
+                name: chunk.name.clone(),
+                chunk_type: chunk.chunk_type,
+                start_line: chunk.start_line,
+                end_line: chunk.end_line,
+                score: chunk.coupling_score,
+                match_type: None,
+                content: format_content(&chunk.content, config.content_mode),
+            });
+        }
+
+        if !file_chunks.is_empty() {
+            let mut coupled_to: Vec<String> = sources.into_iter().collect();
+            coupled_to.sort();
+
+            context_files.push(ContextFile {
+                path: file_path.clone(),
+                language,
+                relevance: FileRelevance::Bridged,
+                category: classify_file(&file_path),
                 score: file_score,
                 coupled_to,
                 chunks: file_chunks,
@@ -628,6 +816,8 @@ fn assemble_bundle(
 
     let total_chunks = context_files.iter().map(|f| f.chunks.len()).sum();
     let total_files = context_files.len();
+    let source_files = context_files.iter().filter(|f| f.category == FileCategory::Source || f.category == FileCategory::Test).count();
+    let doc_files = context_files.iter().filter(|f| f.category == FileCategory::Documentation).count();
 
     Ok(ContextBundle {
         query: query.to_string(),
@@ -641,6 +831,9 @@ fn assemble_bundle(
             total_chunks,
             direct_hits: direct_hit_count,
             coupled_additions: coupled_addition_count,
+            bridged_additions: bridged_addition_count,
+            source_files,
+            doc_files,
             top_semantic_score: 0.0,
         },
     })
@@ -695,7 +888,7 @@ mod tests {
             make_seed("c3", "c.rs", 1, 3, 0.7),  // 3 lines - fits (6+3 = 9 <= 10)
         ];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
 
         assert!(bundle.budget.used_lines <= bundle.budget.max_lines);
         assert_eq!(bundle.budget.max_lines, 10);
@@ -718,7 +911,7 @@ mod tests {
             make_seed("c1", "a.rs", 1, 5, 0.8), // duplicate chunk ID
         ];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
         assert_eq!(bundle.summary.total_chunks, 1);
     }
 
@@ -736,7 +929,7 @@ mod tests {
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
         assert_eq!(bundle.summary.coupled_additions, 0);
     }
 
@@ -755,7 +948,7 @@ mod tests {
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
         let coupled = vec![make_coupled("c2", "b.rs", 1, 5, 0.5, "a.rs")];
 
-        let bundle = assemble_bundle("test", &config, seeds, coupled).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, coupled, vec![]).unwrap();
 
         assert_eq!(bundle.files.len(), 2);
         assert_eq!(bundle.files[0].relevance, FileRelevance::Direct);
@@ -779,7 +972,7 @@ mod tests {
             make_seed("c1", "a.rs", 1, 10, 0.9),
         ];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
         assert_eq!(bundle.files.len(), 1);
         assert_eq!(bundle.files[0].chunks[0].start_line, 1);
         assert_eq!(bundle.files[0].chunks[1].start_line, 20);
@@ -800,7 +993,7 @@ mod tests {
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)
         let seeds = vec![make_seed("c1", "a.rs", 1, 15, 0.9)];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
         // The chunk uses min(15, 10) = 10 lines of budget
         assert_eq!(bundle.budget.used_lines, 10);
     }

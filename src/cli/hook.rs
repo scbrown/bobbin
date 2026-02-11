@@ -878,7 +878,10 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         search_limit: 20,
     };
 
-    let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    if let Ok(git) = crate::index::git::GitAnalyzer::new(&repo_root) {
+        assembler = assembler.with_git_analyzer(git);
+    }
     let bundle = assembler
         .assemble(prompt, None)
         .await
@@ -1679,7 +1682,7 @@ async fn run_uninstall_git_hook(_args: UninstallGitHookArgs, output: OutputConfi
 mod tests {
     use super::*;
     use crate::search::context::*;
-    use crate::types::{ChunkType, MatchType};
+    use crate::types::{ChunkType, FileCategory, MatchType, classify_file};
 
     #[test]
     fn test_hook_config_output_serialization() {
@@ -1804,6 +1807,9 @@ mod tests {
                 total_chunks: 0,
                 direct_hits: 0,
                 coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
                 top_semantic_score: 0.0,
             },
         };
@@ -1819,6 +1825,7 @@ mod tests {
                 path: "src/auth.rs".to_string(),
                 language: "rust".to_string(),
                 relevance: FileRelevance::Direct,
+                category: classify_file("src/auth.rs"),
                 score: 0.85,
                 coupled_to: vec![],
                 chunks: vec![ContextChunk {
@@ -1840,6 +1847,9 @@ mod tests {
                 total_chunks: 1,
                 direct_hits: 1,
                 coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
                 top_semantic_score: 0.0,
             },
         };
@@ -1858,6 +1868,7 @@ mod tests {
                 path: "src/low.rs".to_string(),
                 language: "rust".to_string(),
                 relevance: FileRelevance::Direct,
+                category: classify_file("src/low.rs"),
                 score: 0.3,
                 coupled_to: vec![],
                 chunks: vec![ContextChunk {
@@ -1879,6 +1890,9 @@ mod tests {
                 total_chunks: 1,
                 direct_hits: 1,
                 coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
                 top_semantic_score: 0.0,
             },
         };
@@ -2076,6 +2090,7 @@ mod tests {
                     path: "src/a.rs".to_string(),
                     language: "rust".to_string(),
                     relevance: FileRelevance::Direct,
+                    category: classify_file("src/a.rs"),
                     score: 0.9,
                     coupled_to: vec![],
                     chunks: vec![
@@ -2109,6 +2124,9 @@ mod tests {
                 total_chunks: 2,
                 direct_hits: 2,
                 coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
                 top_semantic_score: 0.0,
             },
         };
@@ -2133,6 +2151,7 @@ mod tests {
                 path: "src/x.rs".to_string(),
                 language: "rust".to_string(),
                 relevance: FileRelevance::Direct,
+                category: classify_file("src/x.rs"),
                 score: 0.85,
                 coupled_to: vec![],
                 chunks: vec![ContextChunk {
@@ -2154,6 +2173,9 @@ mod tests {
                 total_chunks: 1,
                 direct_hits: 1,
                 coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
                 top_semantic_score: 0.0,
             },
         };
@@ -2738,6 +2760,7 @@ mod tests {
                 path: "src/a.rs".to_string(),
                 language: "rust".to_string(),
                 relevance: FileRelevance::Direct,
+                category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
                 chunks: vec![
@@ -2770,6 +2793,9 @@ mod tests {
                 total_chunks: 2,
                 direct_hits: 2,
                 coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
                 top_semantic_score: 0.9,
             },
         };
@@ -2788,6 +2814,7 @@ mod tests {
                 path: "src/a.rs".to_string(),
                 language: "rust".to_string(),
                 relevance: FileRelevance::Direct,
+                category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
                 chunks: vec![ContextChunk {
@@ -2809,6 +2836,9 @@ mod tests {
                 total_chunks: 1,
                 direct_hits: 1,
                 coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
                 top_semantic_score: 0.9,
             },
         };
@@ -2826,6 +2856,7 @@ mod tests {
                 path: "src/a.rs".to_string(),
                 language: "rust".to_string(),
                 relevance: FileRelevance::Direct,
+                category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
                 chunks: vec![
@@ -2858,6 +2889,9 @@ mod tests {
                 total_chunks: 2,
                 direct_hits: 2,
                 coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
                 top_semantic_score: 0.9,
             },
         };
@@ -2883,6 +2917,9 @@ mod tests {
                 total_chunks: 0,
                 direct_hits: 0,
                 coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
                 top_semantic_score: 0.0,
             },
         };
@@ -2912,6 +2949,7 @@ mod tests {
                 path: "src/a.rs".to_string(),
                 language: "rust".to_string(),
                 relevance: FileRelevance::Direct,
+                category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
                 chunks: chunks.clone(),
@@ -2925,6 +2963,9 @@ mod tests {
                 total_chunks: 15,
                 direct_hits: 15,
                 coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
                 top_semantic_score: 0.9,
             },
         };
@@ -2952,6 +2993,7 @@ mod tests {
                 path: "src/a.rs".to_string(),
                 language: "rust".to_string(),
                 relevance: FileRelevance::Direct,
+                category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
                 chunks: top_10_chunks,
@@ -2965,6 +3007,9 @@ mod tests {
                 total_chunks: 10,
                 direct_hits: 10,
                 coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
                 top_semantic_score: 0.9,
             },
         };

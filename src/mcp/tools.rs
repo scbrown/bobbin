@@ -190,6 +190,9 @@ pub struct ContextSummaryOutput {
     pub total_chunks: usize,
     pub direct_hits: usize,
     pub coupled_additions: usize,
+    pub bridged_additions: usize,
+    pub source_files: usize,
+    pub doc_files: usize,
 }
 
 /// Request for finding related files

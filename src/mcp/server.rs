@@ -596,6 +596,7 @@ impl BobbinMcpServer {
                 relevance: match f.relevance {
                     FileRelevance::Direct => "direct".to_string(),
                     FileRelevance::Coupled => "coupled".to_string(),
+                    FileRelevance::Bridged => "bridged".to_string(),
                 },
                 score: f.score,
                 coupled_to: f.coupled_to.clone(),
@@ -618,6 +619,9 @@ impl BobbinMcpServer {
                 total_chunks: bundle.summary.total_chunks,
                 direct_hits: bundle.summary.direct_hits,
                 coupled_additions: bundle.summary.coupled_additions,
+                bridged_additions: bundle.summary.bridged_additions,
+                source_files: bundle.summary.source_files,
+                doc_files: bundle.summary.doc_files,
             },
         };
 
@@ -1054,6 +1058,7 @@ impl BobbinMcpServer {
                 relevance: match f.relevance {
                     FileRelevance::Direct => "direct".to_string(),
                     FileRelevance::Coupled => "coupled".to_string(),
+                    FileRelevance::Bridged => "bridged".to_string(),
                 },
                 score: f.score,
                 coupled_to: f.coupled_to.clone(),
@@ -1076,6 +1081,9 @@ impl BobbinMcpServer {
                 total_chunks: bundle.summary.total_chunks,
                 direct_hits: bundle.summary.direct_hits,
                 coupled_additions: bundle.summary.coupled_additions,
+                bridged_additions: bundle.summary.bridged_additions,
+                source_files: bundle.summary.source_files,
+                doc_files: bundle.summary.doc_files,
             },
         };
 
