@@ -28,6 +28,13 @@ pub struct CommitEntry {
     pub timestamp: i64,
 }
 
+/// A single line from git blame output, mapping a line to its originating commit
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlameEntry {
+    pub commit_hash: String,
+    pub line_number: u32,
+}
+
 /// Specifies which diff to analyze
 #[derive(Debug, Clone)]
 pub enum DiffSpec {
@@ -430,6 +437,25 @@ impl GitAnalyzer {
 
         Ok(entries)
     }
+
+    /// Blame a specific line range to find the commits that introduced those lines.
+    /// Returns one BlameEntry per line with the commit hash that last modified it.
+    pub fn blame_lines(&self, file_path: &str, start: u32, end: u32) -> Result<Vec<BlameEntry>> {
+        let range = format!("{},{}", start, end);
+        let output = Command::new("git")
+            .args(["blame", "-L", &range, "--porcelain", "--", file_path])
+            .current_dir(&self.repo_root)
+            .output()
+            .context("Failed to run git blame")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("git blame failed for {}:{}-{}: {}", file_path, start, end, stderr.trim());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(parse_blame_porcelain(&stdout))
+    }
 }
 
 /// Parse file history log into entries
@@ -772,6 +798,29 @@ fn calculate_coupling_score(
     // Weighted combination: 70% frequency, 30% recency
     // This emphasizes pairs that change often, with a boost if they changed recently
     0.7 * freq_score + 0.3 * recency_score
+}
+
+/// Parse git blame --porcelain output into BlameEntry records.
+/// Porcelain format: each blamed line starts with "<hash> <orig_line> <final_line> [<group_lines>]"
+/// followed by header lines, then a tab-prefixed content line.
+fn parse_blame_porcelain(output: &str) -> Vec<BlameEntry> {
+    let mut entries = Vec::new();
+    for line in output.lines() {
+        // Porcelain blame lines start with a 40-char hex hash
+        if line.len() >= 40 && line.as_bytes()[0].is_ascii_hexdigit() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            // Format: <hash> <orig_line> <final_line> [<group_count>]
+            if parts.len() >= 3 {
+                if let Ok(final_line) = parts[2].parse::<u32>() {
+                    entries.push(BlameEntry {
+                        commit_hash: parts[0].to_string(),
+                        line_number: final_line,
+                    });
+                }
+            }
+        }
+    }
+    entries
 }
 
 #[cfg(test)]
@@ -1254,5 +1303,79 @@ diff --git a/b.rs b/b.rs
         let analyzer = GitAnalyzer::new(path).unwrap();
         let churn = analyzer.get_file_churn(None).unwrap();
         assert!(churn.is_empty());
+    }
+
+    #[test]
+    fn test_parse_blame_porcelain() {
+        let porcelain = "\
+abc1234567890123456789012345678901234567 1 1 3
+author John Doe
+author-mail <john@example.com>
+author-time 1700000000
+author-tz +0000
+committer John Doe
+committer-mail <john@example.com>
+committer-time 1700000000
+committer-tz +0000
+summary Initial commit
+filename src/main.rs
+\tline 1 content
+abc1234567890123456789012345678901234567 2 2
+\tline 2 content
+def9876543210987654321098765432109876543 3 3 1
+author Jane Doe
+author-mail <jane@example.com>
+author-time 1700001000
+author-tz +0000
+committer Jane Doe
+committer-mail <jane@example.com>
+committer-time 1700001000
+committer-tz +0000
+summary Fix bug
+filename src/main.rs
+\tline 3 content
+";
+        let entries = parse_blame_porcelain(porcelain);
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].commit_hash, "abc1234567890123456789012345678901234567");
+        assert_eq!(entries[0].line_number, 1);
+        assert_eq!(entries[1].commit_hash, "abc1234567890123456789012345678901234567");
+        assert_eq!(entries[1].line_number, 2);
+        assert_eq!(entries[2].commit_hash, "def9876543210987654321098765432109876543");
+        assert_eq!(entries[2].line_number, 3);
+    }
+
+    #[test]
+    fn test_parse_blame_porcelain_empty() {
+        let entries = parse_blame_porcelain("");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_blame_lines_integration() {
+        let dir = setup_test_repo();
+        let path = dir.path();
+
+        // Create a file with multiple lines
+        std::fs::write(path.join("src.rs"), "line1\nline2\nline3\nline4\nline5\n").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(path).output().unwrap();
+
+        // Modify lines 2-3 in a second commit
+        std::fs::write(path.join("src.rs"), "line1\nmodified2\nmodified3\nline4\nline5\n").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git").args(["commit", "-m", "modify lines"]).current_dir(path).output().unwrap();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let entries = analyzer.blame_lines("src.rs", 1, 5).unwrap();
+
+        assert_eq!(entries.len(), 5);
+        // Lines 1, 4, 5 should be from first commit; lines 2, 3 from second
+        let first_commit = &entries[0].commit_hash;
+        let second_commit = &entries[1].commit_hash;
+        assert_ne!(first_commit, second_commit);
+        assert_eq!(&entries[3].commit_hash, first_commit); // line 4 unchanged
+        assert_eq!(&entries[4].commit_hash, first_commit); // line 5 unchanged
+        assert_eq!(&entries[2].commit_hash, second_commit); // line 3 modified
     }
 }
