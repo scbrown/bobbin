@@ -1,25 +1,15 @@
-[![Crates.io](https://img.shields.io/crates/v/bobbin.svg)](https://crates.io/crates/bobbin)
-[![docs.rs](https://img.shields.io/docsrs/bobbin)](https://docs.rs/bobbin)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <img src="assets/bobbin-header.svg" alt="BOBBIN" width="700"/>
+</p>
 
-```text
-  ██████╗  ██████╗ ██████╗ ██████╗ ██╗███╗   ██╗
-  ██╔══██╗██╔═══██╗██╔══██╗██╔══██╗██║████╗  ██║
-  ██████╔╝██║   ██║██████╔╝██████╔╝██║██╔██╗ ██║
-  ██╔══██╗██║   ██║██╔══██╗██╔══██╗██║██║╚██╗██║
-  ██████╔╝╚██████╔╝██████╔╝██████╔╝██║██║ ╚████║
-  ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝
-```
+<p align="center">
+  <a href="https://github.com/scbrown/bobbin"><img src="https://img.shields.io/badge/github-bobbin-6366f1?logo=github" alt="GitHub"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
 
-```text
-     .============.
-    //  ~~~~~~~~~~  \\        threading context
-   ||  ~~~~~~~~~~~~  ||       through your codebase
-   ||  ~~~~~~~~~~~~  ||~~>
-   ||  ~~~~~~~~~~~~  ||       search · coupling · context
-    \\  ~~~~~~~~~~  //        local · private · fast
-     '============'
-```
+<p align="center">
+  <img src="assets/bobbin-spool.svg" alt="Thread bobbin spool" width="360"/>
+</p>
 
 **Local-first code context engine.** Semantic search, keyword search, and git coupling analysis — all running on your machine. No API keys. No cloud. Sub-100ms queries.
 

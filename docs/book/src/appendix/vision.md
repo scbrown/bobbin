@@ -11,6 +11,8 @@ related: [appendix/roadmap.md, architecture/overview.md]
 
 ## Mission Statement
 
+> **search · coupling · context — local · private · fast**
+
 Bobbin is a local-first context engine that gives developers and AI agents deep, structured access to codebases without sending data to the cloud.
 
 ## Vision
@@ -97,4 +99,4 @@ In the era of AI-assisted development, context is everything. Current tools trea
 
 ---
 
-*Bobbin: Local context for the age of AI-assisted development.*
+*Bobbin: search · coupling · context — local · private · fast.*

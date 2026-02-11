@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 200" fill="none">
+  <defs>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="50%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="threadGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#c4b5fd;stop-opacity:0.4"/>
+    </linearGradient>
+  </defs>
+  <style>
+    .title { font-family: 'Courier New', Courier, monospace; font-size: 72px; font-weight: bold; fill: url(#textGrad); }
+    .sub { font-family: 'Courier New', Courier, monospace; font-size: 16px; fill: #a78bfa; letter-spacing: 2px; }
+    .thread { stroke: url(#threadGrad); stroke-width: 2; fill: none; }
+    .dot { fill: #8b5cf6; }
+  </style>
+  <!-- BOBBIN title -->
+  <text x="410" y="90" text-anchor="middle" class="title">BOBBIN</text>
+  <!-- Decorative thread lines -->
+  <path d="M 120 120 Q 200 135, 280 120 Q 360 105, 410 120 Q 460 135, 540 120 Q 620 105, 700 120" class="thread" stroke-width="2.5"/>
+  <path d="M 140 130 Q 220 145, 300 130 Q 380 115, 410 130 Q 440 145, 520 130 Q 600 115, 680 130" class="thread" stroke-width="1.5" opacity="0.5"/>
+  <!-- Thread dots -->
+  <circle cx="120" cy="120" r="3" class="dot"/>
+  <circle cx="410" cy="120" r="3" class="dot"/>
+  <circle cx="700" cy="120" r="3" class="dot"/>
+  <!-- Taglines -->
+  <text x="410" y="168" text-anchor="middle" class="sub">search · coupling · context</text>
+  <text x="410" y="190" text-anchor="middle" class="sub" opacity="0.7">local · private · fast</text>
+</svg>
