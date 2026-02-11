@@ -75,6 +75,7 @@
 - [Historical Trends](eval/trends.md)
 - [Project Catalog](eval/projects.md)
 - [Flask (Python)](eval/flask.md)
+- [Polars (Rust)](eval/polars.md)
 - [Ruff (Rust)](eval/ruff.md)
 
 # Reference

@@ -43,6 +43,7 @@ inotify
 list_symbols
 lookups
 make_aborter
+maturin
 mdbook
 middleware
 monorepo
@@ -57,6 +58,7 @@ repos
 rmcp
 rustup
 save_session
+sortedness
 serverless
 ssl
 stderr
