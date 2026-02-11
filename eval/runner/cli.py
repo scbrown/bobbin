@@ -186,6 +186,7 @@ def _run_single(
                 tmpdir,
                 setup_command=task.get("setup_command"),
                 verify=not skip_verify,
+                setup_timeout=900,
             )
         except Exception as exc:
             click.echo(f"    Workspace setup failed: {exc}", err=True)
