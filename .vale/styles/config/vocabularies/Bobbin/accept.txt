@@ -7,6 +7,9 @@ code_block
 current_app
 Docusaurus
 dotenv
+env
+eval
+evals
 LanceDB
 GPUs
 LLMs
@@ -56,9 +59,11 @@ reformats
 reindex
 repo
 repos
+ripgrep
 rmcp
 rustup
 save_session
+Sourcegraph
 sortedness
 serverless
 ssl

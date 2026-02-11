@@ -2,7 +2,24 @@
 [![docs.rs](https://img.shields.io/docsrs/bobbin)](https://docs.rs/bobbin)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-# Bobbin
+```text
+  ██████╗  ██████╗ ██████╗ ██████╗ ██╗███╗   ██╗
+  ██╔══██╗██╔═══██╗██╔══██╗██╔══██╗██║████╗  ██║
+  ██████╔╝██║   ██║██████╔╝██████╔╝██║██╔██╗ ██║
+  ██╔══██╗██║   ██║██╔══██╗██╔══██╗██║██║╚██╗██║
+  ██████╔╝╚██████╔╝██████╔╝██████╔╝██║██║ ╚████║
+  ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝
+```
+
+```text
+     .============.
+    //  ~~~~~~~~~~  \\        threading context
+   ||  ~~~~~~~~~~~~  ||       through your codebase
+   ||  ~~~~~~~~~~~~  ||~~>
+   ||  ~~~~~~~~~~~~  ||       search · coupling · context
+    \\  ~~~~~~~~~~  //        local · private · fast
+     '============'
+```
 
 **Local-first code context engine.** Semantic search, keyword search, and git coupling analysis — all running on your machine. No API keys. No cloud. Sub-100ms queries.
 
@@ -76,6 +93,8 @@ Related to src/auth/middleware.rs:
 
 🚀 **GPU Accelerated** — Automatic CUDA detection for 10-25x faster indexing on NVIDIA GPUs. Index 57K chunks in under 5 minutes. Falls back to CPU seamlessly.
 
+🪝 **Claude Code Hooks** — Automatic context injection on every prompt via `UserPromptSubmit` hook. Session primer via `SessionStart` hook. Smart gating skips injection when context is irrelevant.
+
 ## Quick Start
 
 **1. Install**
@@ -118,7 +137,7 @@ Bobbin automatically detects NVIDIA CUDA GPUs and accelerates embedding inferenc
 BOBBIN_GPU=0 bobbin index
 ```
 
-## 🤖 AI Agent Integration
+## AI Agent Integration
 
 Bobbin ships an MCP server that gives AI agents direct access to your codebase:
 
@@ -140,6 +159,33 @@ Add to your Claude Code or Cursor MCP config:
 ```
 
 Exposes 12 tools: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `impact`, `review`, `similar`, and `prime`.
+
+### Claude Code Hooks
+
+For automatic context injection without MCP, add hooks to `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{
+      "hooks": [{
+        "command": "bobbin hook inject-context",
+        "timeout": 10,
+        "type": "command"
+      }]
+    }],
+    "SessionStart": [{
+      "hooks": [{
+        "command": "bobbin hook prime-context",
+        "timeout": 5,
+        "type": "command"
+      }]
+    }]
+  }
+}
+```
+
+The `inject-context` hook embeds your prompt, searches the index, and injects the most relevant code snippets. A relevance gate skips injection when the best match is too weak, and session dedup avoids re-injecting unchanged context.
 
 ## Supported Languages
 
@@ -164,6 +210,7 @@ Other file types use line-based chunking with overlap.
 - [MCP Tools](https://scbrown.github.io/bobbin/mcp/overview.html) — AI agent integration reference
 - [Configuration](https://scbrown.github.io/bobbin/config/reference.html) — `.bobbin/config.toml` reference
 - [Architecture](https://scbrown.github.io/bobbin/architecture/overview.html) — System design, data flow, storage schema
+- [Evaluation](https://scbrown.github.io/bobbin/eval/overview.html) — Methodology, results, and metrics
 - [Contributing](CONTRIBUTING.md) — Build, test, and development setup
 
 ## License

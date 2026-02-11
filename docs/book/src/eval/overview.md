@@ -99,11 +99,37 @@ The with-bobbin approach requires indexing the target codebase before the agent 
 
 | Project | Files | Chunks | CPU Index Time | GPU Index Time |
 |---------|-------|--------|----------------|----------------|
-| ruff | ~5,000 | ~57K | >30 min (timeout) | ~83s |
+| flask | 210 | ~700 | ~2s | ~2s |
+| polars | 3,089 | ~50K | Pending | Pending |
+| ruff | 5,874 | ~57K | >30 min (timeout) | ~83s |
 
 GPU acceleration makes large-codebase evaluation practical. Without it, indexing ruff's 57K chunks was the primary bottleneck — consistently timing out at the 30-minute mark. With GPU (RTX 4070 Super), embedding throughput jumps from ~100 chunks/s to ~2,400 chunks/s.
 
 The GPU is only used during the indexing phase. Search queries are sub-100ms regardless.
+
+## Native Metrics
+
+Each with-bobbin run captures detailed observability data via bobbin's metrics infrastructure:
+
+- **`BOBBIN_METRICS_SOURCE`** — The eval runner sets this env var before each agent invocation, tagging all metric events with a unique run identifier (e.g., `ruff-001_with-bobbin_1`).
+- **`.bobbin/metrics.jsonl`** — Append-only log of metric events emitted by bobbin commands and hooks during the run.
+
+Events captured include:
+
+| Event | Source | What It Captures |
+|-------|--------|-----------------|
+| `command` | CLI dispatch | Every `bobbin` invocation: command name, duration, success/failure |
+| `hook_injection` | inject-context hook | Files returned, chunks returned, top semantic score, budget lines used |
+| `hook_gate_skip` | inject-context hook | Query text, top score, gate threshold (when injection is skipped due to weak match) |
+| `hook_dedup_skip` | inject-context hook | When injection is skipped because context hasn't changed since last prompt |
+
+After each run, the eval runner reads the metrics log and computes:
+
+- **Injection count** — How many times bobbin injected context during the run
+- **Gate skip count** — How many prompts were below the relevance threshold
+- **Injection-to-ground-truth overlap** — Precision and recall of the files bobbin injected vs. the files that actually needed changing
+
+This data appears in the `bobbin_metrics` field of each result JSON, enabling analysis of *why* bobbin helped (or didn't) on a given task.
 
 ## LLM Judge
 
@@ -126,8 +152,40 @@ Tasks are curated to be:
 
 Current task suites:
 
-| Suite | Project | Language | Files | Tasks | Difficulty |
-|-------|---------|----------|-------|-------|------------|
-| flask | pallets/flask | Python | ~50 | 5 | easy-medium |
-| polars | pola-rs/polars | Rust+Python | ~2,000 | 5 | easy-medium |
-| ruff | astral-sh/ruff | Rust | ~5,000 | 5 | easy-medium |
+| Suite | Project | Language | Files | Code Lines | Tasks | Difficulty |
+|-------|---------|----------|-------|-----------|-------|------------|
+| flask | pallets/flask | Python | 210 | 26K | 5 | easy-medium |
+| polars | pola-rs/polars | Rust+Python | 3,089 | 606K | 5 | easy-medium |
+| ruff | astral-sh/ruff | Rust+Python | 5,874 | 696K | 5 | easy-medium |
+
+See [Project Catalog](projects.md) for full LOC breakdowns and index statistics.
+
+## Adding a New Project
+
+To add a new evaluation project:
+
+1. **Find bug-fix commits** — Look for commits in well-tested repos where the test suite catches the bug. The fix should touch 2-5 files.
+
+2. **Create task YAML files** — Add `eval/tasks/<project>-NNN.yaml` with:
+
+   ```yaml
+   id: project-001
+   repo: org/repo
+   commit: <full-sha>
+   description: |
+     Description of the bug and what the agent should fix.
+     Implement the fix. Run the test suite with the test command to verify.
+   setup_command: "<build/install steps>"
+   test_command: "<specific test command>"
+   language: rust
+   difficulty: easy
+   tags: [bug-fix, ...]
+   ```
+
+3. **Run `tokei`** on the cloned repo at the pinned commit and add a section to [Project Catalog](projects.md).
+
+4. **Create a results page** — Add `eval/<project>.md` to the book with task descriptions and a placeholder for results.
+
+5. **Update SUMMARY.md** — Add the new results page to the Evaluation section.
+
+6. **Run evals** — `just eval-task <project>-001` runs a single task. Results are written to `eval/results/runs/`.

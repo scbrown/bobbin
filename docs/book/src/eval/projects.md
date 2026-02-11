@@ -1,6 +1,6 @@
 # Project Catalog
 
-Projects used in bobbin evaluations, with codebase statistics.
+Projects used in bobbin evaluations, with codebase statistics. When adding a new project, run `tokei` on the cloned repo at the pinned commit and add a section below following the same format.
 
 ## astral-sh/ruff
 
@@ -23,6 +23,26 @@ Projects used in bobbin evaluations, with codebase statistics.
 ### Bobbin Index Stats
 
 - **Index duration**: 82.64s
+
+## pola-rs/polars
+
+### Lines of Code
+
+| Language | Files | Code | Comments | Blanks | Total |
+|----------|------:|-----:|---------:|-------:|------:|
+| Rust | 2,007 | 361,653 | 13,194 | 46,755 | 421,602 |
+| Python | 725 | 228,573 | 5,832 | 32,197 | 266,602 |
+| Markdown | 168 | 0 | 9,114 | 3,753 | 12,867 |
+| ReStructuredText | 102 | 6,592 | 0 | 1,469 | 8,061 |
+| TOML | 50 | 4,217 | 141 | 352 | 4,710 |
+| YAML | 2 | 743 | 10 | 11 | 764 |
+| Nix | 1 | 409 | 52 | 41 | 502 |
+| JSON | 8 | 409 | 0 | 0 | 409 |
+| **Total** | **3,089** | **606,482** | | | **738,864** |
+
+### Bobbin Index Stats
+
+- **Index duration**: Pending (maturin dev build + index, estimated ~5 min setup + ~60-90s index)
 
 ## pallets/flask
 
