@@ -154,7 +154,7 @@ def _run_single(
     settings_file: str | None = None,
     model: str = "claude-opus-4-6",
     budget: float = 100.00,
-    timeout: int = 1800,
+    timeout: int = 3600,
     index_timeout: int = 600,
     skip_verify: bool = False,
 ) -> dict:
@@ -347,7 +347,7 @@ def cli(verbose: bool):
 @click.option("--settings-file", default=None, help="Claude Code settings file for with-bobbin.")
 @click.option("--model", default="claude-opus-4-6", help="Claude model to use.")
 @click.option("--budget", default=100.00, type=float, help="Max budget per run (USD).")
-@click.option("--timeout", default=1800, type=int, help="Agent timeout in seconds.")
+@click.option("--timeout", default=3600, type=int, help="Agent timeout in seconds.")
 @click.option("--index-timeout", default=600, type=int, help="Bobbin index timeout in seconds.")
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
 def run_task(
@@ -442,7 +442,7 @@ def run_task(
 @click.option("--settings-file", default=None, help="Claude Code settings file for with-bobbin.")
 @click.option("--model", default="claude-opus-4-6", help="Claude model to use.")
 @click.option("--budget", default=100.00, type=float, help="Max budget per run (USD).")
-@click.option("--timeout", default=1800, type=int, help="Agent timeout in seconds.")
+@click.option("--timeout", default=3600, type=int, help="Agent timeout in seconds.")
 @click.option("--index-timeout", default=600, type=int, help="Bobbin index timeout in seconds.")
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
 def run_all(

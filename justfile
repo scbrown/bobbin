@@ -117,7 +117,7 @@ eval_model := "claude-opus-4-6"
 eval_attempts := "1"
 eval_approaches := "both"
 eval_budget := "100.00"
-eval_timeout := "1800"
+eval_timeout := "3600"
 eval_index_timeout := "600"
 
 # GPU env for bobbin index during evals (auto-detected, but ORT_DYLIB_PATH needed for GPU .so)
