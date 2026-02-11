@@ -419,6 +419,16 @@ def _read_bobbin_metrics(
         for f in inj.get("metadata", {}).get("files_returned", []):
             injected_files.add(f)
 
+    # Extract per-event gate skip details (score, query, threshold).
+    gate_skip_details = []
+    for gs in gate_skips:
+        meta = gs.get("metadata", {})
+        gate_skip_details.append({
+            "query": meta.get("query", ""),
+            "top_score": meta.get("top_score"),
+            "gate_threshold": meta.get("gate_threshold"),
+        })
+
     result: dict = {
         "injection_count": len(injections),
         "gate_skip_count": len(gate_skips),

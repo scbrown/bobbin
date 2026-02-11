@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from click.testing import CliRunner
 
-from runner.cli import _extract_token_usage, cli
+from runner.cli import _extract_token_usage, _read_bobbin_metrics, cli
 
 
 def _make_result(
@@ -215,3 +216,88 @@ class TestRunAllCommand:
         assert result.exit_code == 0
         assert "--tasks-dir" in result.output
         assert "--attempts" in result.output
+
+
+class TestReadBobbinMetrics:
+    """Tests for _read_bobbin_metrics gate_skip_details extraction."""
+
+    def _write_metrics(self, ws: Path, source: str, events: list[dict]) -> None:
+        bobbin_dir = ws / ".bobbin"
+        bobbin_dir.mkdir(parents=True, exist_ok=True)
+        lines = [json.dumps({"source": source, **e}) for e in events]
+        (bobbin_dir / "metrics.jsonl").write_text("\n".join(lines))
+
+    def test_gate_skip_details_extracted(self, tmp_path):
+        self._write_metrics(tmp_path, "run1", [
+            {
+                "event_type": "hook_gate_skip",
+                "metadata": {
+                    "query": "how does auth work",
+                    "top_score": 0.42,
+                    "gate_threshold": 0.75,
+                },
+            },
+            {
+                "event_type": "hook_gate_skip",
+                "metadata": {
+                    "query": "fix login bug",
+                    "top_score": 0.31,
+                    "gate_threshold": 0.75,
+                },
+            },
+        ])
+        result = _read_bobbin_metrics(tmp_path, "run1", [])
+        assert result is not None
+        assert result["gate_skip_count"] == 2
+        assert len(result["gate_skip_details"]) == 2
+        assert result["gate_skip_details"][0] == {
+            "query": "how does auth work",
+            "top_score": 0.42,
+            "gate_threshold": 0.75,
+        }
+        assert result["gate_skip_details"][1]["query"] == "fix login bug"
+
+    def test_gate_skip_details_empty_when_no_skips(self, tmp_path):
+        self._write_metrics(tmp_path, "run1", [
+            {
+                "event_type": "hook_injection",
+                "metadata": {"files_returned": ["src/main.py"]},
+            },
+        ])
+        result = _read_bobbin_metrics(tmp_path, "run1", [])
+        assert result is not None
+        assert result["gate_skip_count"] == 0
+        assert result["gate_skip_details"] == []
+
+    def test_gate_skip_details_missing_metadata(self, tmp_path):
+        self._write_metrics(tmp_path, "run1", [
+            {"event_type": "hook_gate_skip", "metadata": {}},
+        ])
+        result = _read_bobbin_metrics(tmp_path, "run1", [])
+        assert result is not None
+        assert result["gate_skip_details"] == [
+            {"query": "", "top_score": None, "gate_threshold": None},
+        ]
+
+    def test_returns_none_when_no_metrics_file(self, tmp_path):
+        result = _read_bobbin_metrics(tmp_path, "run1", [])
+        assert result is None
+
+    def test_filters_by_source_tag(self, tmp_path):
+        self._write_metrics(tmp_path, "run1", [
+            {
+                "event_type": "hook_gate_skip",
+                "metadata": {"query": "q1", "top_score": 0.3, "gate_threshold": 0.75},
+            },
+        ])
+        # Append an event with a different source.
+        with open(tmp_path / ".bobbin" / "metrics.jsonl", "a") as f:
+            f.write("\n" + json.dumps({
+                "source": "run2",
+                "event_type": "hook_gate_skip",
+                "metadata": {"query": "q2", "top_score": 0.5, "gate_threshold": 0.75},
+            }))
+        result = _read_bobbin_metrics(tmp_path, "run1", [])
+        assert result is not None
+        assert result["gate_skip_count"] == 1
+        assert result["gate_skip_details"][0]["query"] == "q1"
