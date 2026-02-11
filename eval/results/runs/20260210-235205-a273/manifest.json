@@ -1,0 +1,21 @@
+{
+  "run_id": "20260210-235205-a273",
+  "started_at": "2026-02-10T23:52:05.188005+00:00",
+  "completed_at": "2026-02-11T00:03:07.740900+00:00",
+  "agent_config": {
+    "model": "claude-opus-4-6",
+    "budget_usd": 100.0,
+    "timeout_seconds": 1800,
+    "index_timeout_seconds": 600
+  },
+  "attempts_per_approach": 1,
+  "approaches": [
+    "no-bobbin",
+    "with-bobbin"
+  ],
+  "tasks": [
+    "ruff-001"
+  ],
+  "total_results": 2,
+  "completed_results": 2
+}
