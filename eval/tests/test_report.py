@@ -36,7 +36,7 @@ def _make_result(
     if output_tokens is not None:
         agent_result["output_tokens"] = output_tokens
 
-    return {
+    result = {
         "task_id": task_id,
         "approach": approach,
         "attempt": attempt,
@@ -57,6 +57,15 @@ def _make_result(
             "exact_file_match": False,
         },
     }
+
+    if cost_usd is not None or input_tokens is not None or output_tokens is not None:
+        result["token_usage"] = {
+            "total_cost_usd": cost_usd,
+            "input_tokens": input_tokens or 0,
+            "output_tokens": output_tokens or 0,
+        }
+
+    return result
 
 
 def _write_results(results_dir: Path, results: list[dict]) -> None:

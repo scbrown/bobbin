@@ -42,75 +42,94 @@ class TestFindBobbin:
 class TestSetupBobbin:
     @pytest.fixture()
     def mock_bobbin(self):
-        """Patch _find_bobbin and subprocess.run."""
+        """Patch _find_bobbin, subprocess.run, and subprocess.Popen.
+
+        setup_bobbin uses subprocess.run for init and status, and
+        subprocess.Popen for index (to stream stderr progress).
+        """
+        popen_inst = MagicMock()
+        popen_inst.stderr = iter([])
+        popen_inst.stdout.read.return_value = ""
+        popen_inst.wait.return_value = None
+        popen_inst.returncode = 0
+
         with (
             patch("runner.bobbin_setup._find_bobbin", return_value="/usr/bin/bobbin"),
             patch("runner.bobbin_setup.subprocess.run") as mock_run,
+            patch("runner.bobbin_setup.subprocess.Popen") as mock_popen,
         ):
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="", stderr="",
             )
-            yield mock_run
+            mock_popen.return_value = popen_inst
+            yield mock_run, mock_popen
 
-    def test_runs_init_then_index(self, mock_bobbin: MagicMock, tmp_path: Path):
+    def test_runs_init_then_index(self, mock_bobbin, tmp_path: Path):
+        mock_run, mock_popen = mock_bobbin
         result = setup_bobbin(str(tmp_path))
 
-        assert mock_bobbin.call_count == 3  # init, index, status --json
-        init_cmd = mock_bobbin.call_args_list[0][0][0]
-        index_cmd = mock_bobbin.call_args_list[1][0][0]
-        status_cmd = mock_bobbin.call_args_list[2][0][0]
+        # init + status via subprocess.run
+        assert mock_run.call_count == 2
+        init_cmd = mock_run.call_args_list[0][0][0]
+        status_cmd = mock_run.call_args_list[1][0][0]
         assert init_cmd == ["/usr/bin/bobbin", "init"]
-        assert index_cmd == ["/usr/bin/bobbin", "index", "--verbose"]
         assert status_cmd == ["/usr/bin/bobbin", "status", "--json"]
+
+        # index via subprocess.Popen
+        assert mock_popen.call_count == 1
+        index_cmd = mock_popen.call_args[0][0]
+        assert index_cmd == ["/usr/bin/bobbin", "index", "--verbose"]
+
         assert isinstance(result, dict)
         assert "index_duration_seconds" in result
 
-    def test_workspace_used_as_cwd(self, mock_bobbin: MagicMock, tmp_path: Path):
+    def test_workspace_used_as_cwd(self, mock_bobbin, tmp_path: Path):
+        mock_run, mock_popen = mock_bobbin
         setup_bobbin(str(tmp_path))
 
-        for c in mock_bobbin.call_args_list:
+        for c in mock_run.call_args_list:
             assert c[1]["cwd"] == tmp_path
+        assert mock_popen.call_args[1]["cwd"] == tmp_path
 
-    def test_init_failure_raises(self, mock_bobbin: MagicMock, tmp_path: Path):
-        mock_bobbin.side_effect = subprocess.CalledProcessError(
+    def test_init_failure_raises(self, mock_bobbin, tmp_path: Path):
+        mock_run, mock_popen = mock_bobbin
+        mock_run.side_effect = subprocess.CalledProcessError(
             returncode=1, cmd=["bobbin", "init"], stderr="bad config",
         )
 
         with pytest.raises(BobbinSetupError, match="bobbin init failed"):
             setup_bobbin(str(tmp_path))
 
-    def test_index_failure_raises(self, mock_bobbin: MagicMock, tmp_path: Path):
-        # First call (init) succeeds, second (index) fails.
-        mock_bobbin.side_effect = [
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
-            subprocess.CalledProcessError(
-                returncode=1, cmd=["bobbin", "index"], stderr="no repo found",
-            ),
-        ]
+    def test_index_failure_raises(self, mock_bobbin, tmp_path: Path):
+        mock_run, mock_popen = mock_bobbin
+        # Make the Popen index step return non-zero.
+        popen_inst = mock_popen.return_value
+        popen_inst.returncode = 1
 
         with pytest.raises(BobbinSetupError, match="bobbin index failed"):
             setup_bobbin(str(tmp_path))
 
-    def test_index_timeout_raises(self, mock_bobbin: MagicMock, tmp_path: Path):
-        mock_bobbin.side_effect = [
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
-            subprocess.TimeoutExpired(cmd=["bobbin", "index"], timeout=300),
-        ]
+    def test_index_timeout_raises(self, mock_bobbin, tmp_path: Path):
+        mock_run, mock_popen = mock_bobbin
+        popen_inst = mock_popen.return_value
+        popen_inst.wait.side_effect = subprocess.TimeoutExpired(
+            cmd=["bobbin", "index"], timeout=300,
+        )
 
         with pytest.raises(BobbinSetupError, match="timed out"):
             setup_bobbin(str(tmp_path))
 
-    def test_returns_metadata_with_status(self, mock_bobbin: MagicMock, tmp_path: Path):
+    def test_returns_metadata_with_status(self, mock_bobbin, tmp_path: Path):
         """setup_bobbin returns metadata dict including bobbin status info."""
         import json
+        mock_run, mock_popen = mock_bobbin
         status_json = json.dumps({
             "total_files": 42,
             "total_chunks": 100,
             "total_embeddings": 100,
             "languages": ["Rust", "Python"],
         })
-        mock_bobbin.side_effect = [
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+        mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
             subprocess.CompletedProcess(args=[], returncode=0, stdout=status_json, stderr=""),
         ]
@@ -119,15 +138,17 @@ class TestSetupBobbin:
         assert result["total_chunks"] == 100
         assert result["languages"] == ["Rust", "Python"]
 
-    def test_custom_timeout(self, mock_bobbin: MagicMock, tmp_path: Path):
+    def test_custom_timeout(self, mock_bobbin, tmp_path: Path):
+        mock_run, mock_popen = mock_bobbin
         setup_bobbin(str(tmp_path), timeout=120)
 
-        # The index call should use the custom timeout.
-        index_call = mock_bobbin.call_args_list[1]
-        assert index_call[1]["timeout"] == 120
+        # The Popen.wait() call should use the custom timeout.
+        popen_inst = mock_popen.return_value
+        popen_inst.wait.assert_called_once_with(timeout=120)
 
-    def test_returns_profile_when_available(self, mock_bobbin: MagicMock, tmp_path: Path):
+    def test_returns_profile_when_available(self, mock_bobbin, tmp_path: Path):
         """setup_bobbin captures profiling data from -v output."""
+        mock_run, mock_popen = mock_bobbin
         verbose_output = (
             "  Checking embedding model...\n"
             "  Found 50 files matching patterns\n"
@@ -150,9 +171,11 @@ class TestSetupBobbin:
             "  TOTAL:           310ms\n"
             "  embed throughput: 2000.0 chunks/s\n"
         )
-        mock_bobbin.side_effect = [
+        popen_inst = mock_popen.return_value
+        popen_inst.stdout.read.return_value = verbose_output
+
+        mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout=verbose_output, stderr=""),
             subprocess.CompletedProcess(args=[], returncode=0, stdout="{}", stderr=""),
         ]
         result = setup_bobbin(str(tmp_path))

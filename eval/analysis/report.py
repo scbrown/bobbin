@@ -179,9 +179,6 @@ def _build_summary_table(
         ("Avg File Recall", "avg_file_recall", True, True),
         ("Avg F1", "avg_f1", True, True),
         ("Avg Duration (s)", "avg_duration_seconds", False, False),
-        ("Avg Cost ($)", "avg_cost_usd", False, False),
-        ("Avg Input Tokens", "avg_input_tokens", False, False),
-        ("Avg Output Tokens", "avg_output_tokens", False, False),
     ]
 
     if has_cost:
