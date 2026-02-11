@@ -285,6 +285,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let mut total_chunks = 0;
     let mut errors = Vec::new();
     let mut profile = ProfileStats::default();
+    let emit_progress = output.verbose && !std::io::IsTerminal::is_terminal(&std::io::stderr());
 
     // Adaptive batch size: GPU benefits from larger batches for throughput.
     let batch_size = if embed.is_gpu() {
@@ -387,6 +388,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             if let Some(pb) = &progress {
                 pb.inc(indexed as u64);
             }
+            if emit_progress {
+                eprintln!("progress: {}/{} files ({} chunks)", indexed_files, total_files, total_chunks);
+            }
         }
     }
 
@@ -406,6 +410,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
         if let Some(pb) = &progress {
             pb.inc(indexed as u64);
+        }
+        if emit_progress {
+            eprintln!("progress: {}/{} files ({} chunks)", indexed_files, total_files, total_chunks);
         }
     }
 

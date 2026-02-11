@@ -101,25 +101,40 @@ def setup_bobbin(workspace: str, *, timeout: int = 1800) -> dict[str, Any]:
     logger.info("Indexing workspace %s", ws)
     t0 = time.monotonic()
     try:
-        index_result = subprocess.run(
+        proc = subprocess.Popen(
             [bobbin, "index", "--verbose"],
             cwd=ws,
-            check=True,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
         )
+        # Stream stderr for real-time progress while accumulating stdout
+        stderr_lines: list[str] = []
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            stripped = line.rstrip("\n")
+            stderr_lines.append(stripped)
+            if stripped.startswith("progress:"):
+                logger.info("bobbin index %s", stripped)
+        stdout_text = proc.stdout.read() if proc.stdout else ""
+        proc.wait(timeout=timeout)
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(
+                proc.returncode, proc.args,
+                output=stdout_text, stderr="\n".join(stderr_lines),
+            )
     except subprocess.CalledProcessError as exc:
         raise BobbinSetupError(f"bobbin index failed: {exc.stderr.strip()}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise BobbinSetupError(f"bobbin index timed out after {timeout}s") from exc
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        raise BobbinSetupError(f"bobbin index timed out after {timeout}s")
     index_duration = time.monotonic() - t0
 
     # Capture bobbin status for metadata.
     metadata: dict[str, Any] = {"index_duration_seconds": round(index_duration, 2)}
 
     # Parse profiling data from verbose output.
-    profile = _parse_profile(index_result.stdout)
+    profile = _parse_profile(stdout_text)
     if profile:
         metadata["profile"] = profile
     try:
