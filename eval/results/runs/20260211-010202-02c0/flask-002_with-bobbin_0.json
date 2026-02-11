@@ -1,0 +1,187 @@
+{
+  "task_id": "flask-002",
+  "approach": "with-bobbin",
+  "attempt": 0,
+  "status": "completed",
+  "timestamp": "2026-02-11T01:08:01.588188+00:00",
+  "task": {
+    "repo": "pallets/flask",
+    "commit": "1232d698600e11dcb83bb5dc349ca785eae02d2f",
+    "test_command": ".venv/bin/pytest tests/test_cli.py -x",
+    "language": "python",
+    "difficulty": "medium"
+  },
+  "agent_config": {
+    "model": "claude-opus-4-6",
+    "budget_usd": 100.0,
+    "timeout_seconds": 3600,
+    "index_timeout_seconds": 600
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 176.41,
+    "timed_out": false
+  },
+  "test_result": {
+    "passed": false,
+    "total": 1,
+    "failures": 1,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "total": 1
+    }
+  },
+  "diff_result": {
+    "file_precision": 1.0,
+    "file_recall": 0.6667,
+    "f1": 0.8,
+    "files_touched": [
+      "src/flask/cli.py",
+      "tests/test_cli.py"
+    ],
+    "ground_truth_files": [
+      "setup.cfg",
+      "src/flask/cli.py",
+      "tests/test_cli.py"
+    ],
+    "exact_file_match": false
+  },
+  "agent_diff": "diff --git a/src/flask/cli.py b/src/flask/cli.py\nindex efcc0f99..eab63b24 100644\n--- a/src/flask/cli.py\n+++ b/src/flask/cli.py\n@@ -9,8 +9,6 @@ from functools import update_wrapper\n from operator import attrgetter\n from threading import Lock\n from threading import Thread\n-from typing import Any\n-from typing import TYPE_CHECKING\n \n import click\n from werkzeug.utils import import_string\n@@ -20,31 +18,6 @@ from .helpers import get_debug_flag\n from .helpers import get_env\n from .helpers import get_load_dotenv\n \n-try:\n-    import dotenv\n-except ImportError:\n-    dotenv = None\n-\n-try:\n-    import ssl\n-except ImportError:\n-    ssl = None  # type: ignore\n-\n-if sys.version_info >= (3, 10):\n-    from importlib import metadata\n-else:\n-    # Use a backport on Python < 3.10.\n-    #\n-    # We technically have importlib.metadata on 3.8+,\n-    # but the API changed in 3.10, so use the backport\n-    # for consistency.\n-    if TYPE_CHECKING:\n-        metadata: Any\n-    else:\n-        # we do this to avoid a version dependent mypy error\n-        # because importlib_metadata is not installed in python3.10+\n-        import importlib_metadata as metadata\n-\n \n class NoAppException(click.UsageError):\n     \"\"\"Raised if an application cannot be found or loaded.\"\"\"\n@@ -520,7 +493,12 @@ class FlaskGroup(AppGroup):\n         if self._loaded_plugin_commands:\n             return\n \n-        for ep in metadata.entry_points(group=\"flask.commands\"):\n+        if sys.version_info >= (3, 10):\n+            from importlib.metadata import entry_points\n+        else:\n+            from importlib_metadata import entry_points\n+\n+        for ep in entry_points(group=\"flask.commands\"):\n             self.add_command(ep.load(), ep.name)\n \n         self._loaded_plugin_commands = True\n@@ -615,7 +593,9 @@ def load_dotenv(path=None):\n \n     .. versionadded:: 1.0\n     \"\"\"\n-    if dotenv is None:\n+    try:\n+        import dotenv\n+    except ImportError:\n         if path or os.path.isfile(\".env\") or os.path.isfile(\".flaskenv\"):\n             click.secho(\n                 \" * Tip: There are .env or .flaskenv files present.\"\n@@ -691,7 +671,9 @@ class CertParamType(click.ParamType):\n         self.path_type = click.Path(exists=True, dir_okay=False, resolve_path=True)\n \n     def convert(self, value, param, ctx):\n-        if ssl is None:\n+        try:\n+            import ssl\n+        except ImportError:\n             raise click.BadParameter(\n                 'Using \"--cert\" requires Python to be compiled with SSL support.',\n                 ctx,\n@@ -727,9 +709,14 @@ def _validate_key(ctx, param, value):\n     \"\"\"The ``--key`` option must be specified when ``--cert`` is a file.\n     Modifies the ``cert`` param to be a ``(cert, key)`` pair if needed.\n     \"\"\"\n+    try:\n+        import ssl\n+    except ImportError:\n+        ssl = None  # type: ignore[assignment]\n+\n     cert = ctx.params.get(\"cert\")\n     is_adhoc = cert == \"adhoc\"\n-    is_context = ssl and isinstance(cert, ssl.SSLContext)\n+    is_context = ssl is not None and isinstance(cert, ssl.SSLContext)\n \n     if value is not None:\n         if is_adhoc:\ndiff --git a/tests/test_cli.py b/tests/test_cli.py\nindex 6e8b57f0..85430276 100644\n--- a/tests/test_cli.py\n+++ b/tests/test_cli.py\n@@ -18,7 +18,6 @@ from flask import current_app\n from flask import Flask\n from flask.cli import AppGroup\n from flask.cli import DispatchingApp\n-from flask.cli import dotenv\n from flask.cli import find_best_app\n from flask.cli import FlaskGroup\n from flask.cli import get_version\n@@ -492,7 +491,12 @@ class TestRoutes:\n         assert \"No routes were registered.\" in result.output\n \n \n-need_dotenv = pytest.mark.skipif(dotenv is None, reason=\"dotenv is not installed\")\n+try:\n+    import dotenv as _dotenv\n+except ImportError:\n+    _dotenv = None  # type: ignore[assignment]\n+\n+need_dotenv = pytest.mark.skipif(_dotenv is None, reason=\"dotenv is not installed\")\n \n \n @need_dotenv\n@@ -530,7 +534,16 @@ def test_dotenv_path(monkeypatch):\n \n \n def test_dotenv_optional(monkeypatch):\n-    monkeypatch.setattr(\"flask.cli.dotenv\", None)\n+    import builtins\n+\n+    real_import = builtins.__import__\n+\n+    def mock_import(name, *args, **kwargs):\n+        if name == \"dotenv\":\n+            raise ImportError\n+        return real_import(name, *args, **kwargs)\n+\n+    monkeypatch.setattr(builtins, \"__import__\", mock_import)\n     monkeypatch.chdir(test_path)\n     load_dotenv()\n     assert \"FOO\" not in os.environ\n@@ -602,7 +615,16 @@ def test_run_cert_import(monkeypatch):\n \n \n def test_run_cert_no_ssl(monkeypatch):\n-    monkeypatch.setattr(\"flask.cli.ssl\", None)\n+    import builtins\n+\n+    real_import = builtins.__import__\n+\n+    def mock_import(name, *args, **kwargs):\n+        if name == \"ssl\":\n+            raise ImportError\n+        return real_import(name, *args, **kwargs)\n+\n+    monkeypatch.setattr(builtins, \"__import__\", mock_import)\n     with pytest.raises(click.BadParameter):\n         run_command.make_context(\"run\", [\"--cert\", \"not_here\"])\n \n",
+  "ground_truth_diff": "diff --git a/setup.cfg b/setup.cfg\nindex 31a590a4..597eece1 100644\n--- a/setup.cfg\n+++ b/setup.cfg\n@@ -116,3 +116,6 @@ ignore_missing_imports = True\n \n [mypy-cryptography.*]\n ignore_missing_imports = True\n+\n+[mypy-importlib_metadata]\n+ignore_missing_imports = True\ndiff --git a/src/flask/cli.py b/src/flask/cli.py\nindex efcc0f99..77c1e25a 100644\n--- a/src/flask/cli.py\n+++ b/src/flask/cli.py\n@@ -9,8 +9,6 @@ from functools import update_wrapper\n from operator import attrgetter\n from threading import Lock\n from threading import Thread\n-from typing import Any\n-from typing import TYPE_CHECKING\n \n import click\n from werkzeug.utils import import_string\n@@ -20,31 +18,6 @@ from .helpers import get_debug_flag\n from .helpers import get_env\n from .helpers import get_load_dotenv\n \n-try:\n-    import dotenv\n-except ImportError:\n-    dotenv = None\n-\n-try:\n-    import ssl\n-except ImportError:\n-    ssl = None  # type: ignore\n-\n-if sys.version_info >= (3, 10):\n-    from importlib import metadata\n-else:\n-    # Use a backport on Python < 3.10.\n-    #\n-    # We technically have importlib.metadata on 3.8+,\n-    # but the API changed in 3.10, so use the backport\n-    # for consistency.\n-    if TYPE_CHECKING:\n-        metadata: Any\n-    else:\n-        # we do this to avoid a version dependent mypy error\n-        # because importlib_metadata is not installed in python3.10+\n-        import importlib_metadata as metadata\n-\n \n class NoAppException(click.UsageError):\n     \"\"\"Raised if an application cannot be found or loaded.\"\"\"\n@@ -520,6 +493,14 @@ class FlaskGroup(AppGroup):\n         if self._loaded_plugin_commands:\n             return\n \n+        if sys.version_info >= (3, 10):\n+            from importlib import metadata\n+        else:\n+            # Use a backport on Python < 3.10. We technically have\n+            # importlib.metadata on 3.8+, but the API changed in 3.10,\n+            # so use the backport for consistency.\n+            import importlib_metadata as metadata\n+\n         for ep in metadata.entry_points(group=\"flask.commands\"):\n             self.add_command(ep.load(), ep.name)\n \n@@ -615,7 +596,9 @@ def load_dotenv(path=None):\n \n     .. versionadded:: 1.0\n     \"\"\"\n-    if dotenv is None:\n+    try:\n+        import dotenv\n+    except ImportError:\n         if path or os.path.isfile(\".env\") or os.path.isfile(\".flaskenv\"):\n             click.secho(\n                 \" * Tip: There are .env or .flaskenv files present.\"\n@@ -691,12 +674,14 @@ class CertParamType(click.ParamType):\n         self.path_type = click.Path(exists=True, dir_okay=False, resolve_path=True)\n \n     def convert(self, value, param, ctx):\n-        if ssl is None:\n+        try:\n+            import ssl\n+        except ImportError:\n             raise click.BadParameter(\n                 'Using \"--cert\" requires Python to be compiled with SSL support.',\n                 ctx,\n                 param,\n-            )\n+            ) from None\n \n         try:\n             return self.path_type(value, param, ctx)\n@@ -729,7 +714,13 @@ def _validate_key(ctx, param, value):\n     \"\"\"\n     cert = ctx.params.get(\"cert\")\n     is_adhoc = cert == \"adhoc\"\n-    is_context = ssl and isinstance(cert, ssl.SSLContext)\n+\n+    try:\n+        import ssl\n+    except ImportError:\n+        is_context = False\n+    else:\n+        is_context = isinstance(cert, ssl.SSLContext)\n \n     if value is not None:\n         if is_adhoc:\ndiff --git a/tests/test_cli.py b/tests/test_cli.py\nindex 6e8b57f0..c9dd5ade 100644\n--- a/tests/test_cli.py\n+++ b/tests/test_cli.py\n@@ -18,7 +18,6 @@ from flask import current_app\n from flask import Flask\n from flask.cli import AppGroup\n from flask.cli import DispatchingApp\n-from flask.cli import dotenv\n from flask.cli import find_best_app\n from flask.cli import FlaskGroup\n from flask.cli import get_version\n@@ -492,7 +491,18 @@ class TestRoutes:\n         assert \"No routes were registered.\" in result.output\n \n \n-need_dotenv = pytest.mark.skipif(dotenv is None, reason=\"dotenv is not installed\")\n+def dotenv_not_available():\n+    try:\n+        import dotenv  # noqa: F401\n+    except ImportError:\n+        return True\n+\n+    return False\n+\n+\n+need_dotenv = pytest.mark.skipif(\n+    dotenv_not_available(), reason=\"dotenv is not installed\"\n+)\n \n \n @need_dotenv\n@@ -530,7 +540,7 @@ def test_dotenv_path(monkeypatch):\n \n \n def test_dotenv_optional(monkeypatch):\n-    monkeypatch.setattr(\"flask.cli.dotenv\", None)\n+    monkeypatch.setitem(sys.modules, \"dotenv\", None)\n     monkeypatch.chdir(test_path)\n     load_dotenv()\n     assert \"FOO\" not in os.environ\n@@ -602,7 +612,8 @@ def test_run_cert_import(monkeypatch):\n \n \n def test_run_cert_no_ssl(monkeypatch):\n-    monkeypatch.setattr(\"flask.cli.ssl\", None)\n+    monkeypatch.setitem(sys.modules, \"ssl\", None)\n+\n     with pytest.raises(click.BadParameter):\n         run_command.make_context(\"run\", [\"--cert\", \"not_here\"])\n \n",
+  "project_metadata": {
+    "Autoconf": {
+      "files": 9,
+      "lines": 52,
+      "code": 52,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Batch": {
+      "files": 1,
+      "lines": 35,
+      "code": 26,
+      "comments": 1,
+      "blanks": 8
+    },
+    "CSS": {
+      "files": 2,
+      "lines": 135,
+      "code": 109,
+      "comments": 1,
+      "blanks": 25
+    },
+    "Forge Config": {
+      "files": 3,
+      "lines": 175,
+      "code": 135,
+      "comments": 20,
+      "blanks": 20
+    },
+    "HTML": {
+      "files": 19,
+      "lines": 235,
+      "code": 221,
+      "comments": 0,
+      "blanks": 14
+    },
+    "INI": {
+      "files": 1,
+      "lines": 33,
+      "code": 25,
+      "comments": 3,
+      "blanks": 5
+    },
+    "JSON": {
+      "files": 1,
+      "lines": 4,
+      "code": 4,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Makefile": {
+      "files": 1,
+      "lines": 20,
+      "code": 9,
+      "comments": 7,
+      "blanks": 4
+    },
+    "Markdown": {
+      "files": 1,
+      "lines": 76,
+      "code": 0,
+      "comments": 57,
+      "blanks": 19
+    },
+    "Python": {
+      "files": 75,
+      "lines": 16929,
+      "code": 12819,
+      "comments": 843,
+      "blanks": 3267
+    },
+    "ReStructuredText": {
+      "files": 83,
+      "lines": 15591,
+      "code": 11488,
+      "comments": 0,
+      "blanks": 4103
+    },
+    "SQL": {
+      "files": 2,
+      "lines": 28,
+      "code": 22,
+      "comments": 2,
+      "blanks": 4
+    },
+    "SVG": {
+      "files": 2,
+      "lines": 455,
+      "code": 451,
+      "comments": 2,
+      "blanks": 2
+    },
+    "Plain Text": {
+      "files": 12,
+      "lines": 243,
+      "code": 0,
+      "comments": 242,
+      "blanks": 1
+    },
+    "Total": {
+      "files": 0,
+      "lines": 34032,
+      "code": 25380,
+      "comments": 1178,
+      "blanks": 7474
+    }
+  },
+  "bobbin_metadata": {
+    "index_duration_seconds": 1.77,
+    "profile": {
+      "file_i/o": 0,
+      "parse": 30,
+      "context": 0,
+      "embed": 549,
+      "tokenize": 71,
+      "inference": 448,
+      "pooling": 12,
+      "lance_delete": 44,
+      "lance_insert": 11,
+      "git_coupling": 52,
+      "git_commits": 418,
+      "deps": 2,
+      "compact": 13,
+      "other/overhead": 507,
+      "total_ms": 1626,
+      "embed_throughput_chunks_per_sec": 2834.2
+    },
+    "total_files": null,
+    "total_chunks": null,
+    "total_embeddings": null,
+    "languages": []
+  },
+  "run_id": "20260211-010202-02c0"
+}
