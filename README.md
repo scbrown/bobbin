@@ -3,7 +3,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/scbrown/bobbin"><img src="https://img.shields.io/badge/github-bobbin-6366f1?logo=github" alt="GitHub"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
