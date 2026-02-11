@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import secrets
+import shutil
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -128,6 +129,37 @@ def _save_result(result: dict, results_dir: Path, *, run_id: str | None = None) 
     path = target_dir / filename
     path.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
     return path
+
+
+def _preserve_raw_metrics(
+    ws: Path,
+    results_dir: Path,
+    *,
+    task_id: str,
+    approach: str,
+    attempt: int,
+    run_id: str | None = None,
+) -> Path | None:
+    """Copy raw metrics.jsonl from workspace to results directory.
+
+    Returns the destination path if the file was copied, ``None`` otherwise.
+    The file is saved as ``<task_id>_<approach>_<attempt>_metrics.jsonl``
+    alongside the result JSON.
+    """
+    raw_metrics_src = ws / ".bobbin" / "metrics.jsonl"
+    if not raw_metrics_src.exists():
+        return None
+
+    if run_id is not None:
+        target_dir = results_dir / "runs" / run_id
+    else:
+        target_dir = results_dir
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{task_id}_{approach}_{attempt}_metrics.jsonl"
+    dest = target_dir / filename
+    shutil.copy2(raw_metrics_src, dest)
+    return dest
 
 
 def _write_manifest(
@@ -301,6 +333,13 @@ def _run_single(
             bobbin_metrics = _read_bobbin_metrics(
                 ws, metrics_tag, diff_result.get("ground_truth_files", []),
             )
+
+        # 6. Preserve raw metrics.jsonl before temp workspace cleanup.
+        _preserve_raw_metrics(
+            ws, results_dir,
+            task_id=task_id, approach=approach, attempt=attempt,
+            run_id=run_id,
+        )
 
         result = {
             "task_id": task_id,

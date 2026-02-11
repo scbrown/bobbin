@@ -7,7 +7,13 @@ import re
 
 import pytest
 
-from runner.cli import _generate_run_id, _load_results, _save_result, _write_manifest
+from runner.cli import (
+    _generate_run_id,
+    _load_results,
+    _preserve_raw_metrics,
+    _save_result,
+    _write_manifest,
+)
 
 
 def test_generate_run_id_format():
@@ -151,3 +157,68 @@ def test_load_all_runs_groups_by_run_id(tmp_path):
     assert len(by_run) == 2
     assert "20260210-143052-a1b2" in by_run
     assert "20260215-091230-c3d4" in by_run
+
+
+# -- _preserve_raw_metrics tests ------------------------------------------
+
+
+def test_preserve_raw_metrics_copies_to_run_dir(tmp_path):
+    """Verify metrics.jsonl is copied alongside result JSON in run layout."""
+    # Create a fake workspace with .bobbin/metrics.jsonl.
+    ws = tmp_path / "workspace"
+    (ws / ".bobbin").mkdir(parents=True)
+    raw_content = '{"event_type":"hook_injection","source":"t1_with-bobbin_0"}\n'
+    (ws / ".bobbin" / "metrics.jsonl").write_text(raw_content, encoding="utf-8")
+
+    results_dir = tmp_path / "results"
+    run_id = "20260211-120000-abcd"
+
+    dest = _preserve_raw_metrics(
+        ws, results_dir,
+        task_id="ruff-001", approach="with-bobbin", attempt=0,
+        run_id=run_id,
+    )
+
+    assert dest is not None
+    assert dest.exists()
+    assert dest.parent == results_dir / "runs" / run_id
+    assert dest.name == "ruff-001_with-bobbin_0_metrics.jsonl"
+    assert dest.read_text(encoding="utf-8") == raw_content
+
+
+def test_preserve_raw_metrics_copies_to_flat_dir(tmp_path):
+    """Verify metrics.jsonl uses legacy flat layout when no run_id."""
+    ws = tmp_path / "workspace"
+    (ws / ".bobbin").mkdir(parents=True)
+    raw_content = '{"event_type":"command","source":"t1_no-bobbin_0"}\n'
+    (ws / ".bobbin" / "metrics.jsonl").write_text(raw_content, encoding="utf-8")
+
+    results_dir = tmp_path / "results"
+
+    dest = _preserve_raw_metrics(
+        ws, results_dir,
+        task_id="flask-001", approach="no-bobbin", attempt=2,
+    )
+
+    assert dest is not None
+    assert dest.exists()
+    assert dest.parent == results_dir
+    assert dest.name == "flask-001_no-bobbin_2_metrics.jsonl"
+    assert dest.read_text(encoding="utf-8") == raw_content
+
+
+def test_preserve_raw_metrics_returns_none_when_missing(tmp_path):
+    """Verify no error when workspace has no metrics.jsonl."""
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+
+    results_dir = tmp_path / "results"
+
+    dest = _preserve_raw_metrics(
+        ws, results_dir,
+        task_id="ruff-001", approach="with-bobbin", attempt=0,
+        run_id="20260211-120000-abcd",
+    )
+
+    assert dest is None
+    assert not (results_dir / "runs").exists()
