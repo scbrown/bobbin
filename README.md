@@ -3,10 +3,6 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
-</p>
-
-<p align="center">
   <img src="assets/bobbin-spool.svg" alt="Thread bobbin spool" width="360"/>
 </p>
 
