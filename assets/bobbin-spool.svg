@@ -44,9 +44,6 @@
   <line x1="55" y1="120" x2="145" y2="120" stroke="#c4b5fd" stroke-width="0.5" opacity="0.5"/>
   <!-- Bottom flange — juts out beyond body like a real bobbin -->
   <ellipse cx="100" cy="152" rx="72" ry="14" fill="url(#flangeGrad)" opacity="0.9"/>
-  <!-- Side edges of core cylinder only -->
-  <line x1="45" y1="28" x2="45" y2="152" stroke="#6366f1" stroke-width="1.5"/>
-  <line x1="155" y1="28" x2="155" y2="152" stroke="#6366f1" stroke-width="1.5"/>
   <!-- Code symbols the thread weaves through -->
   <text x="215" y="76" class="code" font-size="14">{</text>
   <text x="275" y="98" class="code" font-size="14">fn</text>
@@ -55,15 +52,16 @@
   <text x="310" y="104" class="code" font-size="12">///</text>
   <text x="355" y="96" class="code" font-size="14">()</text>
   <!-- Thread weaving through code symbols, ending at needle eye -->
-  <path d="M 145 90 C 165 90, 185 78, 220 78 C 250 78, 258 95, 280 95 C 302 95, 315 74, 340 74 C 352 74, 355 80, 358 82" stroke="url(#threadGrad)" stroke-width="2" fill="none" stroke-linecap="round"/>
-  <!-- Needle — long tapered shaft with eye at back -->
-  <!-- Needle body (tapered from eye to point) -->
-  <path d="M 355 84 L 393 76" stroke="#d4d4d8" stroke-width="2.2" stroke-linecap="round"/>
-  <path d="M 393 76 L 398 74.5" stroke="#e4e4e7" stroke-width="1.6" stroke-linecap="round"/>
-  <!-- Needle point (sharp taper) -->
-  <path d="M 398 74.5 L 400 74" stroke="#f4f4f5" stroke-width="0.8" stroke-linecap="round"/>
-  <!-- Needle eye (oval hole near the back where thread enters) -->
-  <ellipse cx="357" cy="83" rx="2" ry="3.5" stroke="#a1a1aa" stroke-width="0.9" fill="#1e1b4b" transform="rotate(-12 357 83)"/>
+  <path d="M 145 90 C 165 90, 185 78, 220 78 C 250 78, 258 95, 280 95 C 302 95, 315 74, 335 74 C 342 74, 345 76, 347 78" stroke="url(#threadGrad)" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <!-- Sewing needle — thin elongated shape tapering to a sharp point -->
+  <!-- Needle body: filled polygon, wide at eye end, tapering to point -->
+  <polygon points="345,75 345,83 398,77.5 398,76.5" fill="#c4c4cc" opacity="0.9"/>
+  <!-- Needle highlight (subtle shine along top edge) -->
+  <line x1="346" y1="76" x2="395" y2="76.8" stroke="#e8e8ee" stroke-width="0.6" opacity="0.7"/>
+  <!-- Needle point (last bit, very sharp) -->
+  <polygon points="398,77.5 398,76.5 400,77" fill="#e0e0e8"/>
+  <!-- Needle eye — narrow vertical slit near the back end -->
+  <line x1="348" y1="76.5" x2="348" y2="81.5" stroke="#1e1b4b" stroke-width="1.2" stroke-linecap="round"/>
   <!-- Labels on the right -->
   <text x="200" y="130" class="label-bright">threading context</text>
   <text x="200" y="148" class="label">through your codebase</text>
