@@ -104,13 +104,18 @@ impl GitAnalyzer {
         // Get commit log with files changed
         // Format: COMMIT:<hash>:<timestamp>
         // followed by list of files
+        let mut args = vec![
+            "log".to_string(),
+            "--pretty=format:COMMIT:%H:%ct".to_string(),
+            "--name-only".to_string(),
+            "--no-merges".to_string(),
+        ];
+        if depth > 0 {
+            args.push(format!("-{}", depth));
+        }
+
         let output = Command::new("git")
-            .args([
-                "log",
-                "--pretty=format:COMMIT:%H:%ct",
-                "--name-only",
-                &format!("-{}", depth),
-            ])
+            .args(&args)
             .current_dir(&self.repo_root)
             .output()
             .context("Failed to get git log")?;
@@ -118,30 +123,51 @@ impl GitAnalyzer {
         let log = String::from_utf8_lossy(&output.stdout);
         let commits = parse_git_log(&log);
 
-        // Build co-change matrix
-        let mut co_changes: HashMap<(String, String), u32> = HashMap::new();
-        let mut last_seen: HashMap<(String, String), i64> = HashMap::new();
+        // String interning: map paths to u32 IDs to avoid millions of String clones
+        let mut path_to_id: HashMap<String, u32> = HashMap::new();
+        let mut id_to_path: Vec<String> = Vec::new();
 
-        // Track max co-changes for normalization
-        let mut max_co_changes = 0;
+        let mut intern = |path: &str| -> u32 {
+            if let Some(&id) = path_to_id.get(path) {
+                id
+            } else {
+                let id = id_to_path.len() as u32;
+                id_to_path.push(path.to_string());
+                path_to_id.insert(path.to_string(), id);
+                id
+            }
+        };
+
+        // Build co-change matrix using interned IDs
+        let mut co_changes: HashMap<(u32, u32), u32> = HashMap::new();
+        let mut last_seen: HashMap<(u32, u32), i64> = HashMap::new();
+        let mut max_co_changes = 0u32;
+
+        /// Max files per commit before we skip it (avoids O(n²) from reformats)
+        const MAX_FILES_PER_COMMIT: usize = 50;
 
         for (commit_time, files) in commits {
-            // Count co-changes for all pairs of files in this commit
-            for i in 0..files.len() {
-                for j in (i + 1)..files.len() {
-                    let key = if files[i] < files[j] {
-                        (files[i].clone(), files[j].clone())
+            // Skip mega-commits (reformats, renames) to prevent pair explosion
+            if files.len() > MAX_FILES_PER_COMMIT {
+                continue;
+            }
+
+            let ids: Vec<u32> = files.iter().map(|f| intern(f)).collect();
+
+            for i in 0..ids.len() {
+                for j in (i + 1)..ids.len() {
+                    let key = if ids[i] < ids[j] {
+                        (ids[i], ids[j])
                     } else {
-                        (files[j].clone(), files[i].clone())
+                        (ids[j], ids[i])
                     };
 
-                    let count = co_changes.entry(key.clone()).or_insert(0);
+                    let count = co_changes.entry(key).or_insert(0);
                     *count += 1;
                     if *count > max_co_changes {
                         max_co_changes = *count;
                     }
 
-                    // Keep the most recent time
                     let last = last_seen.entry(key).or_insert(0);
                     if commit_time > *last {
                         *last = commit_time;
@@ -160,9 +186,11 @@ impl GitAnalyzer {
         let mut couplings: Vec<FileCoupling> = co_changes
             .into_iter()
             .filter(|(_, count)| *count >= threshold)
-            .map(|((file_a, file_b), count)| {
+            .map(|((id_a, id_b), count)| {
+                let file_a = id_to_path[id_a as usize].clone();
+                let file_b = id_to_path[id_b as usize].clone();
                 let last_co_change = last_seen
-                    .get(&(file_a.clone(), file_b.clone()))
+                    .get(&(id_a, id_b))
                     .copied()
                     .unwrap_or(0);
 

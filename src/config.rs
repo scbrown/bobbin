@@ -256,7 +256,7 @@ impl Default for GitConfig {
     fn default() -> Self {
         Self {
             coupling_enabled: true,
-            coupling_depth: 1000,
+            coupling_depth: 5000,
             coupling_threshold: 3,
             commits_enabled: true,
             commits_depth: 0,
