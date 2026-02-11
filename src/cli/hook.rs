@@ -102,6 +102,10 @@ struct InjectContextArgs {
     /// Force injection even if results match previous session (disables dedup)
     #[arg(long)]
     no_dedup: bool,
+
+    /// Include documentation files in injection output (overrides config)
+    #[arg(long)]
+    show_docs: Option<bool>,
 }
 
 #[derive(Args)]
@@ -538,23 +542,64 @@ fn find_bobbin_root(start: &Path) -> Option<PathBuf> {
 fn format_context_for_injection(
     bundle: &crate::search::context::ContextBundle,
     threshold: f32,
+    show_docs: bool,
 ) -> String {
+    use crate::types::FileCategory;
     use std::fmt::Write;
 
     let budget = bundle.budget.max_lines;
     let mut out = String::new();
 
     let header = format!(
-        "Bobbin found {} relevant files ({} chunks, {}/{} budget lines):",
+        "Bobbin found {} relevant files ({} source, {} docs, {}/{} budget lines):",
         bundle.summary.total_files,
-        bundle.summary.total_chunks,
+        bundle.summary.source_files,
+        bundle.summary.doc_files,
         bundle.budget.used_lines,
         bundle.budget.max_lines,
     );
     out.push_str(&header);
     out.push('\n');
 
-    for file in &bundle.files {
+    // Partition files: source/test first, then docs/config
+    let source_files: Vec<_> = bundle.files.iter()
+        .filter(|f| f.category == FileCategory::Source || f.category == FileCategory::Test)
+        .collect();
+    let doc_files: Vec<_> = bundle.files.iter()
+        .filter(|f| f.category == FileCategory::Documentation || f.category == FileCategory::Config)
+        .collect();
+
+    // Emit source files section
+    if !source_files.is_empty() {
+        let _ = write!(out, "\n=== Source Files ===\n");
+        format_file_chunks(&mut out, &source_files, threshold, budget);
+    }
+
+    // Emit documentation section (if show_docs is true)
+    if show_docs && !doc_files.is_empty() {
+        let _ = write!(out, "\n=== Documentation ===\n");
+        format_file_chunks(&mut out, &doc_files, threshold, budget);
+    }
+
+    // Final enforcement: trim to budget
+    let lines: Vec<&str> = out.lines().collect();
+    if lines.len() > budget {
+        lines[..budget].join("\n") + "\n"
+    } else {
+        out
+    }
+}
+
+/// Format chunks from a list of files into the output string, respecting budget.
+fn format_file_chunks(
+    out: &mut String,
+    files: &[&crate::search::context::ContextFile],
+    threshold: f32,
+    budget: usize,
+) {
+    use std::fmt::Write;
+
+    for file in files {
         for chunk in &file.chunks {
             if chunk.score < threshold {
                 continue;
@@ -586,18 +631,10 @@ fn format_context_for_injection(
             // Check if adding this chunk would exceed budget
             let candidate = format!("{}{}", out, chunk_section);
             if candidate.lines().count() > budget {
-                break;
+                return;
             }
             let _ = write!(out, "{}", chunk_section);
         }
-    }
-
-    // Final enforcement: trim to budget
-    let lines: Vec<&str> = out.lines().collect();
-    if lines.len() > budget {
-        lines[..budget].join("\n") + "\n"
-    } else {
-        out
     }
 }
 
@@ -934,7 +971,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         return Ok(());
     }
 
-    let context_text = format_context_for_injection(&bundle, threshold);
+    let show_docs = args.show_docs.unwrap_or(hooks_cfg.show_docs);
+    let context_text = format_context_for_injection(&bundle, threshold, show_docs);
     print!("{}", context_text);
 
     // 10. Update hook state
@@ -979,6 +1017,9 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             "chunks_returned": bundle.summary.total_chunks,
             "top_score": bundle.summary.top_semantic_score,
             "budget_lines_used": bundle.budget.used_lines,
+            "source_files": bundle.summary.source_files,
+            "doc_files": bundle.summary.doc_files,
+            "bridged_additions": bundle.summary.bridged_additions,
         }),
     ));
 
@@ -1813,7 +1854,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         assert!(result.contains("0 relevant files"));
     }
 
@@ -1853,7 +1894,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.5);
+        let result = format_context_for_injection(&bundle, 0.5, true);
         assert!(result.contains("src/auth.rs:10-25"));
         assert!(result.contains("authenticate"));
         assert!(result.contains("fn authenticate()"));
@@ -1897,7 +1938,7 @@ mod tests {
             },
         };
         // With high threshold, chunk content should be filtered out
-        let result = format_context_for_injection(&bundle, 0.5);
+        let result = format_context_for_injection(&bundle, 0.5, true);
         assert!(!result.contains("low_score_fn"));
     }
 
@@ -2130,7 +2171,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         let line_count = result.lines().count();
         // Must not exceed max_lines budget
         assert!(
@@ -2179,7 +2220,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         // Score should be 2 decimal places
         assert!(result.contains("score 0.86"), "Expected 2-decimal score in: {}", result);
     }

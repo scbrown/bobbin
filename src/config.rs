@@ -283,6 +283,10 @@ pub struct HooksConfig {
     pub gate_threshold: f32,
     /// Skip injection when search results haven't changed since last injection
     pub dedup_enabled: bool,
+    /// Include documentation files in injection output (default: true).
+    /// When false, doc files are excluded from output but still used for
+    /// provenance bridging to discover relevant source files.
+    pub show_docs: bool,
 }
 
 impl Default for HooksConfig {
@@ -294,6 +298,7 @@ impl Default for HooksConfig {
             min_prompt_length: 10,
             gate_threshold: 0.75,
             dedup_enabled: true,
+            show_docs: true,
         }
     }
 }
