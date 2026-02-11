@@ -13,6 +13,7 @@ from runner.cli import (
     _extract_output_summary,
     _extract_token_usage,
     _read_bobbin_metrics,
+    _save_raw_stream,
     cli,
 )
 
@@ -53,6 +54,12 @@ def _make_result(
             "files_touched": ["src/a.rs"],
             "ground_truth_files": ["src/a.rs"],
             "exact_file_match": True,
+        },
+        "tool_use_summary": {
+            "by_tool": {"Read": 3, "Edit": 2, "Bash": 1},
+            "tool_sequence": ["Read", "Read", "Bash", "Edit", "Read", "Edit"],
+            "first_edit_turn": 2,
+            "bobbin_commands": [],
         },
     }
 
@@ -152,6 +159,7 @@ class TestRunTaskCommand:
         assert result.exit_code == 0
         assert "TASK_ID" in result.output
         assert "--attempts" in result.output
+        assert "--save-stream" in result.output
 
 
 class TestExtractTokenUsage:
@@ -226,6 +234,7 @@ class TestRunAllCommand:
         assert result.exit_code == 0
         assert "--tasks-dir" in result.output
         assert "--attempts" in result.output
+        assert "--save-stream" in result.output
 
 
 class TestReadBobbinMetrics:
@@ -407,3 +416,40 @@ class TestExtractOutputSummary:
     def test_returns_none_when_no_result_key(self):
         agent_result = {"result": {"total_cost_usd": 1.0}, "exit_code": 0}
         assert _extract_output_summary(agent_result) is None
+
+
+class TestSaveRawStream:
+    def test_saves_stream_file(self, tmp_path):
+        raw = '{"type":"assistant"}\n{"type":"result"}\n'
+        dest = _save_raw_stream(
+            raw, tmp_path, task_id="ruff-001", approach="no-bobbin", attempt=0,
+        )
+        assert dest is not None
+        assert dest.name == "ruff-001_no-bobbin_0.stream.jsonl"
+        assert dest.read_text(encoding="utf-8") == raw
+
+    def test_saves_into_run_dir(self, tmp_path):
+        raw = '{"type":"result"}\n'
+        dest = _save_raw_stream(
+            raw, tmp_path, task_id="ruff-001", approach="with-bobbin", attempt=1,
+            run_id="20260101-120000-abcd",
+        )
+        assert dest is not None
+        assert "runs/20260101-120000-abcd" in str(dest)
+        assert dest.name == "ruff-001_with-bobbin_1.stream.jsonl"
+
+    def test_returns_none_for_empty_output(self, tmp_path):
+        dest = _save_raw_stream(
+            "", tmp_path, task_id="ruff-001", approach="no-bobbin", attempt=0,
+        )
+        assert dest is None
+
+    def test_never_raises_on_failure(self, tmp_path):
+        # Pass a read-only path that can't be written to (non-existent nested dir
+        # with a file blocking the mkdir).
+        blocker = tmp_path / "results"
+        blocker.write_text("not a dir")
+        dest = _save_raw_stream(
+            "data", blocker, task_id="t", approach="a", attempt=0, run_id="r",
+        )
+        assert dest is None

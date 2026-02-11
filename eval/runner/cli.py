@@ -131,6 +131,40 @@ def _save_result(result: dict, results_dir: Path, *, run_id: str | None = None) 
     return path
 
 
+def _save_raw_stream(
+    output_raw: str,
+    results_dir: Path,
+    *,
+    task_id: str,
+    approach: str,
+    attempt: int,
+    run_id: str | None = None,
+) -> Path | None:
+    """Save the raw JSONL stream output alongside the result JSON.
+
+    Writes ``<task_id>_<approach>_<attempt>.stream.jsonl`` into the same
+    directory as the result file.  Best-effort: logs warnings on failure
+    but never raises.
+    """
+    try:
+        if not output_raw:
+            return None
+
+        if run_id is not None:
+            target_dir = results_dir / "runs" / run_id
+        else:
+            target_dir = results_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        filename = f"{task_id}_{approach}_{attempt}.stream.jsonl"
+        dest = target_dir / filename
+        dest.write_text(output_raw, encoding="utf-8")
+        return dest
+    except Exception as exc:
+        logger.warning("Failed to save raw stream: %s", exc)
+        return None
+
+
 def _preserve_raw_metrics(
     ws: Path,
     results_dir: Path,
@@ -215,6 +249,7 @@ def _run_single(
     timeout: int = 3600,
     index_timeout: int = 600,
     skip_verify: bool = False,
+    save_stream: bool = True,
 ) -> dict:
     """Execute a single task × approach × attempt evaluation run.
 
@@ -341,6 +376,15 @@ def _run_single(
             run_id=run_id,
         )
 
+        # 6b. Save raw stream output alongside results.
+        if save_stream:
+            _save_raw_stream(
+                agent_result.get("output_raw", ""),
+                results_dir,
+                task_id=task_id, approach=approach, attempt=attempt,
+                run_id=run_id,
+            )
+
         result = {
             "task_id": task_id,
             "approach": approach,
@@ -395,6 +439,7 @@ def _run_single(
             "project_metadata": project_metadata,
             "bobbin_metadata": bobbin_metadata,
             "bobbin_metrics": bobbin_metrics,
+            "tool_use_summary": agent_result.get("tool_use_summary"),
             "output_summary": _extract_output_summary(agent_result),
         }
 
@@ -591,6 +636,7 @@ def cli(verbose: bool):
 @click.option("--timeout", default=3600, type=int, help="Agent timeout in seconds.")
 @click.option("--index-timeout", default=600, type=int, help="Bobbin index timeout in seconds.")
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
+@click.option("--save-stream/--no-save-stream", default=True, help="Save raw JSONL stream alongside results.")
 def run_task(
     task_id: str,
     attempts: int,
@@ -603,6 +649,7 @@ def run_task(
     timeout: int,
     index_timeout: int,
     skip_verify: bool,
+    save_stream: bool,
 ):
     """Run evaluation for a single task.
 
@@ -646,6 +693,7 @@ def run_task(
                 timeout=timeout,
                 index_timeout=index_timeout,
                 skip_verify=skip_verify,
+                save_stream=save_stream,
             )
             results.append(result)
 
@@ -686,6 +734,7 @@ def run_task(
 @click.option("--timeout", default=3600, type=int, help="Agent timeout in seconds.")
 @click.option("--index-timeout", default=600, type=int, help="Bobbin index timeout in seconds.")
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
+@click.option("--save-stream/--no-save-stream", default=True, help="Save raw JSONL stream alongside results.")
 def run_all(
     tasks_dir: str,
     results_dir: str,
@@ -697,6 +746,7 @@ def run_all(
     timeout: int,
     index_timeout: int,
     skip_verify: bool,
+    save_stream: bool,
 ):
     """Run evaluation for all tasks in the tasks directory."""
     tasks_path = _resolve_tasks_dir(tasks_dir)
@@ -739,6 +789,7 @@ def run_all(
                     timeout=timeout,
                     index_timeout=index_timeout,
                     skip_verify=skip_verify,
+                    save_stream=save_stream,
                 )
                 all_results.append(result)
 
