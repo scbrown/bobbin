@@ -46,6 +46,10 @@ pub struct Cli {
     /// Use a remote bobbin HTTP server instead of local storage
     #[arg(long, global = true, value_name = "URL")]
     server: Option<String>,
+
+    /// Metrics source identity (also reads BOBBIN_METRICS_SOURCE env var)
+    #[arg(long, global = true, env = "BOBBIN_METRICS_SOURCE")]
+    metrics_source: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -114,6 +118,34 @@ enum Commands {
     Prime(prime::PrimeArgs),
 }
 
+impl Commands {
+    fn name(&self) -> &'static str {
+        match self {
+            Commands::Init(_) => "init",
+            Commands::Index(_) => "index",
+            Commands::Search(_) => "search",
+            Commands::Context(_) => "context",
+            Commands::Deps(_) => "deps",
+            Commands::Grep(_) => "grep",
+            Commands::Refs(_) => "refs",
+            Commands::Related(_) => "related",
+            Commands::History(_) => "history",
+            Commands::Hotspots(_) => "hotspots",
+            Commands::Impact(_) => "impact",
+            Commands::Review(_) => "review",
+            Commands::Similar(_) => "similar",
+            Commands::Status(_) => "status",
+            Commands::Serve(_) => "serve",
+            Commands::Benchmark(_) => "benchmark",
+            Commands::Watch(_) => "watch",
+            Commands::Completions(_) => "completions",
+            Commands::Hook(_) => "hook",
+            Commands::Tour(_) => "tour",
+            Commands::Prime(_) => "prime",
+        }
+    }
+}
+
 impl Cli {
     pub async fn run(self) -> Result<()> {
         let output = OutputConfig {
@@ -123,7 +155,11 @@ impl Cli {
             server: self.server,
         };
 
-        match self.command {
+        let command_name = self.command.name();
+        let metrics_source = self.metrics_source.clone();
+        let start = std::time::Instant::now();
+
+        let result = match self.command {
             Commands::Init(args) => init::run(args, output).await,
             Commands::Index(args) => index::run(args, output).await,
             Commands::Search(args) => search::run(args, output).await,
@@ -148,6 +184,42 @@ impl Cli {
             Commands::Hook(args) => hook::run(args, output).await,
             Commands::Tour(args) => tour::run(args, output).await,
             Commands::Prime(args) => prime::run(args, output).await,
+        };
+
+        // Best-effort metrics emission (don't skip hooks — they emit their own events)
+        if command_name != "hook" {
+            if let Some(repo_root) = find_bobbin_root() {
+                let source = crate::metrics::resolve_source(
+                    metrics_source.as_deref(),
+                    None,
+                );
+                let ev = crate::metrics::event(
+                    &source,
+                    "command",
+                    command_name,
+                    start.elapsed().as_millis() as u64,
+                    serde_json::json!({
+                        "success": result.is_ok(),
+                    }),
+                );
+                crate::metrics::emit(&repo_root, &ev);
+            }
+        }
+
+        result
+    }
+}
+
+/// Walk up from cwd to find a directory containing `.bobbin/`.
+/// Returns None if not found (bobbin not initialized).
+fn find_bobbin_root() -> Option<std::path::PathBuf> {
+    let mut current = std::env::current_dir().ok()?;
+    loop {
+        if current.join(".bobbin").is_dir() {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None;
         }
     }
 }

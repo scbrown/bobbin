@@ -7,6 +7,7 @@ mod config;
 mod http;
 mod index;
 mod mcp;
+mod metrics;
 mod search;
 mod storage;
 mod types;
