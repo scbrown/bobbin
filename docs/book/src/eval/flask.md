@@ -18,8 +18,8 @@ refresh without modification.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 0.0% | 100.0% | 33.3% | 50.0% | 48s |
-| with-bobbin | 0.0% | 100.0% | 33.3% | 50.0% | 1.5m |
+| no-bobbin | 0.0% | 100.0% | 33.3% | 50.0% | 1.4m |
+| with-bobbin | 0.0% | 100.0% | 33.3% | 50.0% | 1.7m |
 
 <div class="eval-chart">
 
@@ -51,8 +51,8 @@ importlib.metadata handling into the method that actually uses it.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 0.0% | 100.0% | 66.7% | 80.0% | 2.9m |
-| with-bobbin | 0.0% | 100.0% | 66.7% | 80.0% | 2.7m |
+| no-bobbin | 0.0% | 100.0% | 66.7% | 80.0% | 3.6m |
+| with-bobbin | 0.0% | 100.0% | 33.3% | 50.0% | 5.0m |
 
 <div class="eval-chart">
 
@@ -63,7 +63,7 @@ importlib.metadata handling into the method that actually uses it.
 **Ground truth files**: `setup.cfg`, `src/flask/cli.py`, `tests/test_cli.py`
 
 **Files touched (no-bobbin)**: `src/flask/cli.py`, `tests/test_cli.py`
-**Files touched (with-bobbin)**: `src/flask/cli.py`, `tests/test_cli.py`
+**Files touched (with-bobbin)**: `src/flask/cli.py`
 
 ---
 
@@ -85,8 +85,8 @@ redirect from helpers instead of werkzeug.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.4m |
-| with-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.0m |
+| no-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.8m |
+| with-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 3.6m |
 
 <div class="eval-chart">
 
@@ -119,8 +119,8 @@ Update flask.\_\_init\_\_ to export abort from helpers instead of werkzeug.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.5m |
-| with-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 3.0m |
+| no-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 3.2m |
+| with-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 4.3m |
 
 <div class="eval-chart">
 
@@ -153,8 +153,8 @@ error messages to be more consistent and descriptive.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 0.0% | 100.0% | 75.0% | 85.7% | 2.0m |
-| with-bobbin | 0.0% | 100.0% | 50.0% | 66.7% | 2.3m |
+| no-bobbin | 0.0% | 100.0% | 50.0% | 66.7% | 2.6m |
+| with-bobbin | 0.0% | 100.0% | 50.0% | 66.7% | 2.0m |
 
 <div class="eval-chart">
 
@@ -164,7 +164,7 @@ error messages to be more consistent and descriptive.
 
 **Ground truth files**: `CHANGES.rst`, `src/flask/scaffold.py`, `tests/test_basic.py`, `tests/test_user_error_handler.py`
 
-**Files touched (no-bobbin)**: `src/flask/scaffold.py`, `tests/test_basic.py`, `tests/test_user_error_handler.py`
+**Files touched (no-bobbin)**: `src/flask/scaffold.py`, `tests/test_user_error_handler.py`
 **Files touched (with-bobbin)**: `src/flask/scaffold.py`, `tests/test_user_error_handler.py`
 
 ---

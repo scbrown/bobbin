@@ -20,6 +20,10 @@ Projects used in bobbin evaluations, with codebase statistics.
 | Jupyter Notebooks | 35 | 289 | 154 | 68 | 511 |
 | **Total** | **5,874** | **696,104** | | | **1,212,699** |
 
+### Bobbin Index Stats
+
+- **Index duration**: 82.64s
+
 ## pallets/flask
 
 ### Lines of Code
@@ -40,4 +44,4 @@ Projects used in bobbin evaluations, with codebase statistics.
 
 ### Bobbin Index Stats
 
-- **Index duration**: 29.33s
+- **Index duration**: 1.66s
