@@ -505,6 +505,9 @@ struct HookInput {
     /// Working directory when the hook was invoked
     #[serde(default)]
     cwd: String,
+    /// Claude Code session ID (used as metrics source identity)
+    #[serde(default)]
+    session_id: String,
 }
 
 /// Walk up from `start` looking for a directory containing `.bobbin/config.toml`.
@@ -788,6 +791,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     use crate::search::context::{ContentMode, ContextAssembler, ContextConfig};
     use crate::storage::{MetadataStore, VectorStore};
 
+    let hook_start = std::time::Instant::now();
+
     // 1. Read stdin JSON
     let input: HookInput = serde_json::from_reader(std::io::stdin().lock())
         .context("Failed to parse stdin JSON")?;
@@ -800,6 +805,10 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     };
 
     let repo_root = find_bobbin_root(&cwd).context("Bobbin not initialized")?;
+    let metrics_source = crate::metrics::resolve_source(
+        None, // no CLI flag in hook context
+        if input.session_id.is_empty() { None } else { Some(&input.session_id) },
+    );
     let config = Config::load(&Config::config_path(&repo_root))
         .context("Failed to load bobbin config")?;
     let hooks_cfg = &config.hooks;
@@ -875,16 +884,34 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             "bobbin: skipped (semantic={:.2} < gate={:.2})",
             bundle.summary.top_semantic_score, gate
         );
+        crate::metrics::emit(&repo_root, &crate::metrics::event(
+            &metrics_source,
+            "hook_gate_skip",
+            "hook inject-context",
+            hook_start.elapsed().as_millis() as u64,
+            serde_json::json!({
+                "query": prompt,
+                "top_score": bundle.summary.top_semantic_score,
+                "gate_threshold": gate,
+            }),
+        ));
         return Ok(());
     }
 
     // 8. Session dedup: skip if results haven't changed
     let dedup_enabled = !args.no_dedup && hooks_cfg.dedup_enabled;
-    let session_id = compute_session_id(&bundle, threshold);
+    let dedup_session_id = compute_session_id(&bundle, threshold);
     let mut state = if dedup_enabled {
         let s = load_hook_state(&repo_root);
-        if s.last_session_id == session_id && !session_id.is_empty() {
+        if s.last_session_id == dedup_session_id && !dedup_session_id.is_empty() {
             eprintln!("bobbin: skipped (session unchanged)");
+            crate::metrics::emit(&repo_root, &crate::metrics::event(
+                &metrics_source,
+                "hook_dedup_skip",
+                "hook inject-context",
+                hook_start.elapsed().as_millis() as u64,
+                serde_json::json!({ "query": prompt }),
+            ));
             return Ok(());
         }
         s
@@ -923,11 +950,27 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         })
         .collect();
 
-    state.last_session_id = session_id;
+    state.last_session_id = dedup_session_id;
     state.last_injected_chunks = chunk_keys;
     state.last_injection_time = chrono::Utc::now().to_rfc3339();
     state.injection_count += 1;
     save_hook_state(&repo_root, &state);
+
+    // 10b. Emit hook_injection metric
+    let injected_files: Vec<&str> = bundle.files.iter().map(|f| f.path.as_str()).collect();
+    crate::metrics::emit(&repo_root, &crate::metrics::event(
+        &metrics_source,
+        "hook_injection",
+        "hook inject-context",
+        hook_start.elapsed().as_millis() as u64,
+        serde_json::json!({
+            "query": prompt,
+            "files_returned": injected_files,
+            "chunks_returned": bundle.summary.total_chunks,
+            "top_score": bundle.summary.top_semantic_score,
+            "budget_lines_used": bundle.budget.used_lines,
+        }),
+    ));
 
     // 11. Auto-generate hot topics every 10 injections
     if state.injection_count % 10 == 0
@@ -964,6 +1007,9 @@ struct SessionStartInput {
     source: String,
     #[serde(default)]
     cwd: String,
+    /// Claude Code session ID (used as metrics source identity)
+    #[serde(default)]
+    session_id: String,
 }
 
 /// Output JSON for Claude Code hook response

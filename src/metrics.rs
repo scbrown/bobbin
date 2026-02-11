@@ -29,24 +29,28 @@ fn metrics_path(repo_root: &Path) -> std::path::PathBuf {
 
 /// Resolve the metrics source identity.
 ///
-/// Priority: CLI flag > env var > hook session_id > "unknown"
+/// Priority: CLI flag > BOBBIN_METRICS_SOURCE env var > hook session_id > "unknown"
 pub fn resolve_source(
     cli_flag: Option<&str>,
     hook_session_id: Option<&str>,
 ) -> String {
-    if let Some(s) = cli_flag {
-        if !s.is_empty() {
-            return s.to_string();
-        }
-    }
-    if let Ok(v) = std::env::var("BOBBIN_METRICS_SOURCE") {
-        if !v.is_empty() {
-            return v;
-        }
-    }
-    if let Some(s) = hook_session_id {
-        if !s.is_empty() {
-            return s.to_string();
+    resolve_source_with_env(
+        cli_flag,
+        std::env::var("BOBBIN_METRICS_SOURCE").ok().as_deref(),
+        hook_session_id,
+    )
+}
+
+fn resolve_source_with_env(
+    cli_flag: Option<&str>,
+    env_var: Option<&str>,
+    hook_session_id: Option<&str>,
+) -> String {
+    for val in [cli_flag, env_var, hook_session_id] {
+        if let Some(s) = val {
+            if !s.is_empty() {
+                return s.to_string();
+            }
         }
     }
     "unknown".to_string()
@@ -186,26 +190,28 @@ mod tests {
 
     #[test]
     fn test_resolve_source_cli_flag() {
-        assert_eq!(resolve_source(Some("cli-val"), Some("session-val")), "cli-val");
+        assert_eq!(resolve_source_with_env(Some("cli-val"), Some("env-val"), Some("session-val")), "cli-val");
     }
 
     #[test]
     fn test_resolve_source_env_var() {
-        std::env::set_var("BOBBIN_METRICS_SOURCE", "env-val");
-        assert_eq!(resolve_source(None, Some("session-val")), "env-val");
-        std::env::remove_var("BOBBIN_METRICS_SOURCE");
+        assert_eq!(resolve_source_with_env(None, Some("env-val"), Some("session-val")), "env-val");
     }
 
     #[test]
     fn test_resolve_source_session_id() {
-        std::env::remove_var("BOBBIN_METRICS_SOURCE");
-        assert_eq!(resolve_source(None, Some("session-123")), "session-123");
+        assert_eq!(resolve_source_with_env(None, None, Some("session-123")), "session-123");
     }
 
     #[test]
     fn test_resolve_source_fallback() {
-        std::env::remove_var("BOBBIN_METRICS_SOURCE");
-        assert_eq!(resolve_source(None, None), "unknown");
+        assert_eq!(resolve_source_with_env(None, None, None), "unknown");
+    }
+
+    #[test]
+    fn test_resolve_source_empty_values_skipped() {
+        assert_eq!(resolve_source_with_env(Some(""), Some(""), Some("session")), "session");
+        assert_eq!(resolve_source_with_env(Some(""), None, None), "unknown");
     }
 
     #[test]
