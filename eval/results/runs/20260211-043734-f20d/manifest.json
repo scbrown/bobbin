@@ -1,0 +1,20 @@
+{
+  "run_id": "20260211-043734-f20d",
+  "started_at": "2026-02-11T04:37:34.702855+00:00",
+  "completed_at": "2026-02-11T04:43:13.018608+00:00",
+  "agent_config": {
+    "model": "claude-opus-4-6",
+    "budget_usd": 100.0,
+    "timeout_seconds": 3600,
+    "index_timeout_seconds": 600
+  },
+  "attempts_per_approach": 1,
+  "approaches": [
+    "with-bobbin"
+  ],
+  "tasks": [
+    "flask-003"
+  ],
+  "total_results": 1,
+  "completed_results": 1
+}
