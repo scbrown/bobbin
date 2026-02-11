@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import subprocess
 import time
@@ -28,6 +29,65 @@ def _find_claude() -> str:
         if candidate.exists():
             return str(candidate)
     raise AgentRunnerError("claude CLI not found. Install Claude Code first.")
+
+
+def parse_stream_json(raw: str) -> dict:
+    """Parse JSONL output from ``claude --output-format stream-json --verbose``.
+
+    Extracts tool-use information and the final result summary from the stream.
+
+    Returns a dict with:
+        result_line   — parsed ``type:result`` line (same schema as ``--output-format json``)
+        tool_use_summary — dict with by_tool, tool_sequence, first_edit_turn, bobbin_commands
+    """
+    by_tool: dict[str, int] = {}
+    tool_sequence: list[str] = []
+    first_edit_turn: int | None = None
+    bobbin_commands: list[str] = []
+    result_line: dict | None = None
+    turn = -1  # incremented on each assistant message
+
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        msg_type = obj.get("type")
+
+        if msg_type == "assistant":
+            turn += 1
+            content = (obj.get("message") or {}).get("content") or []
+            for block in content:
+                if block.get("type") != "tool_use":
+                    continue
+                name = block.get("name", "unknown")
+                by_tool[name] = by_tool.get(name, 0) + 1
+                tool_sequence.append(name)
+
+                if first_edit_turn is None and name in ("Edit", "Write"):
+                    first_edit_turn = turn
+
+                if name == "Bash":
+                    cmd = (block.get("input") or {}).get("command", "")
+                    if re.search(r"\bbobbin\b", cmd):
+                        bobbin_commands.append(cmd)
+
+        elif msg_type == "result":
+            result_line = obj
+
+    return {
+        "result_line": result_line,
+        "tool_use_summary": {
+            "by_tool": by_tool,
+            "tool_sequence": tool_sequence,
+            "first_edit_turn": first_edit_turn,
+            "bobbin_commands": bobbin_commands,
+        },
+    }
 
 
 def run_agent(
@@ -63,12 +123,13 @@ def run_agent(
         which is required for unattended headless eval runs.
 
     Returns a dict with:
-        result        — parsed JSON output from Claude (or None on failure)
-        output_raw    — raw stdout text
+        result        — parsed result from Claude (type:result line, or JSON fallback)
+        output_raw    — raw stdout text (JSONL stream)
         stderr        — raw stderr text
         exit_code     — process return code (−1 on timeout)
         duration_seconds — wall-clock time
         timed_out     — whether the process was killed for timeout
+        tool_use_summary — dict with by_tool, tool_sequence, first_edit_turn, bobbin_commands
     """
     claude = _find_claude()
     ws = Path(workspace)
@@ -76,7 +137,8 @@ def run_agent(
     cmd = [
         claude,
         "-p", prompt,
-        "--output-format", "json",
+        "--output-format", "stream-json",
+        "--verbose",
         "--model", model,
         "--max-budget-usd", str(max_budget_usd),
         "--permission-mode", permission_mode,
@@ -121,13 +183,19 @@ def run_agent(
     if stderr:
         logger.debug("Agent stderr: %s", stderr[:500])
 
-    # Parse JSON output from Claude Code.
-    result = None
-    if stdout.strip():
+    # Parse stream-json JSONL output.
+    parsed = parse_stream_json(stdout)
+    result_line = parsed["result_line"]
+    tool_use_summary = parsed["tool_use_summary"]
+
+    # The type:result line contains the same data as --output-format json.
+    result = result_line
+    if result is None and stdout.strip():
+        # Fallback: try parsing entire stdout as single JSON (old format compat).
         try:
             result = json.loads(stdout)
         except json.JSONDecodeError:
-            logger.warning("Failed to parse agent JSON output, storing raw text")
+            logger.warning("No type:result line and failed JSON fallback, storing raw text")
             result = {"raw_text": stdout}
 
     return {
@@ -137,4 +205,5 @@ def run_agent(
         "exit_code": exit_code,
         "duration_seconds": round(duration, 2),
         "timed_out": timed_out,
+        "tool_use_summary": tool_use_summary,
     }
