@@ -423,37 +423,78 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     // Analyze and store git coupling if enabled
     let t_coupling = Instant::now();
     if config.git.coupling_enabled {
-        if output.verbose && !output.quiet && !output.json {
-            println!("  Analyzing git coupling...");
-        }
+        // Check if coupling results are cached (HEAD unchanged, same depth)
+        let head_hash = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&source_root)
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            });
 
-        match crate::index::git::GitAnalyzer::new(&source_root) {
-            Ok(analyzer) => {
-                match analyzer
-                    .analyze_coupling(config.git.coupling_depth, config.git.coupling_threshold)
-                {
-                    Ok(couplings) => {
-                        let mut count = 0;
-                        metadata_store.begin_transaction()?;
-                        for coupling in couplings {
-                            if metadata_store.upsert_coupling(&coupling).is_ok() {
-                                count += 1;
+        let depth_str = config.git.coupling_depth.to_string();
+        let cached_commit = metadata_store.get_meta("last_coupling_commit")?;
+        let cached_depth = metadata_store.get_meta("coupling_depth")?;
+
+        let coupling_cached = !args.force
+            && head_hash.is_some()
+            && cached_commit.as_deref() == head_hash.as_deref()
+            && cached_depth.as_deref() == Some(depth_str.as_str());
+
+        if coupling_cached {
+            if output.verbose && !output.quiet && !output.json {
+                println!("  Git coupling: cached (HEAD unchanged)");
+            }
+        } else {
+            if output.verbose && !output.quiet && !output.json {
+                println!("  Analyzing git coupling...");
+            }
+
+            match crate::index::git::GitAnalyzer::new(&source_root) {
+                Ok(analyzer) => {
+                    match analyzer.analyze_coupling(
+                        config.git.coupling_depth,
+                        config.git.coupling_threshold,
+                    ) {
+                        Ok(couplings) => {
+                            let mut count = 0;
+                            metadata_store.begin_transaction()?;
+                            for coupling in couplings {
+                                if metadata_store.upsert_coupling(&coupling).is_ok() {
+                                    count += 1;
+                                }
+                            }
+                            metadata_store.commit()?;
+
+                            if let Some(ref hash) = head_hash {
+                                metadata_store
+                                    .set_meta("last_coupling_commit", hash)?;
+                                metadata_store
+                                    .set_meta("coupling_depth", &depth_str)?;
+                            }
+
+                            if output.verbose && !output.quiet && !output.json {
+                                println!("  Stored {} coupling relations", count);
                             }
                         }
-                        metadata_store.commit()?;
-
-                        if output.verbose && !output.quiet && !output.json {
-                            println!("  Stored {} coupling relations", count);
-                        }
-                    }
-                    Err(e) => {
-                        if !output.quiet && !output.json {
-                            println!("{} Failed to analyze git coupling: {}", "!".yellow(), e);
+                        Err(e) => {
+                            if !output.quiet && !output.json {
+                                println!(
+                                    "{} Failed to analyze git coupling: {}",
+                                    "!".yellow(),
+                                    e
+                                );
+                            }
                         }
                     }
                 }
+                Err(_) => {}
             }
-            Err(_) => {}
         }
     }
 
