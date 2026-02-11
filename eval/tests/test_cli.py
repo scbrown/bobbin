@@ -42,6 +42,9 @@ def _make_result(
             "total": 10,
             "failures": 0 if passed else 2,
             "parsed": {},
+            "output": "",
+            "exit_code": 0 if passed else 1,
+            "timed_out": False,
         },
         "diff_result": {
             "file_precision": precision,

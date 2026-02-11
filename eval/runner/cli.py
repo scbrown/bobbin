@@ -339,6 +339,9 @@ def _run_single(
                 "total": test_result["total"],
                 "failures": test_result["failures"],
                 "parsed": test_result["parsed"],
+                "output": (test_result["output"] or "")[:50_000],
+                "exit_code": test_result["exit_code"],
+                "timed_out": test_result["timed_out"],
             },
             "diff_result": {
                 "file_precision": diff_result["file_precision"],
