@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -11,6 +12,35 @@ import time
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def _isolate_global_settings():
+    """Temporarily move ~/.claude/settings.json aside during eval runs.
+
+    Claude Code's ``--settings`` flag is additive — it merges with the
+    global settings rather than replacing them.  This means global hooks
+    (like a user's personal bobbin hook) would fire alongside the eval
+    settings, contaminating results.
+
+    This context manager renames the global settings to a .bak file
+    before the agent runs and restores it afterward.
+    """
+    global_settings = Path.home() / ".claude" / "settings.json"
+    backup = global_settings.with_suffix(".json.eval-bak")
+
+    if global_settings.exists():
+        logger.info("Isolating global settings: %s → %s", global_settings, backup)
+        global_settings.rename(backup)
+    else:
+        backup = None  # type: ignore[assignment]
+
+    try:
+        yield
+    finally:
+        if backup and backup.exists():
+            logger.info("Restoring global settings: %s → %s", backup, global_settings)
+            backup.rename(global_settings)
 
 
 class AgentRunnerError(Exception):
@@ -156,27 +186,28 @@ def run_agent(
     start = time.monotonic()
     timed_out = False
 
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=ws,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        exit_code = proc.returncode
-        stdout = proc.stdout
-        stderr = proc.stderr
-    except subprocess.TimeoutExpired as exc:
-        timed_out = True
-        exit_code = -1
-        stdout = exc.stdout or ""
-        stderr = exc.stderr or ""
-        if isinstance(stdout, bytes):
-            stdout = stdout.decode("utf-8", errors="replace")
-        if isinstance(stderr, bytes):
-            stderr = stderr.decode("utf-8", errors="replace")
-        logger.warning("Agent timed out after %ds in %s", timeout, ws)
+    with _isolate_global_settings():
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=ws,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            exit_code = proc.returncode
+            stdout = proc.stdout
+            stderr = proc.stderr
+        except subprocess.TimeoutExpired as exc:
+            timed_out = True
+            exit_code = -1
+            stdout = exc.stdout or ""
+            stderr = exc.stderr or ""
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="replace")
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode("utf-8", errors="replace")
+            logger.warning("Agent timed out after %ds in %s", timeout, ws)
 
     duration = time.monotonic() - start
 

@@ -495,16 +495,6 @@ def _read_bobbin_metrics(
     commands = [e for e in events if e.get("event_type") == "command"]
     prime_events = [e for e in events if e.get("event_type") == "hook_prime_context"]
 
-    # Extract gate skip details (scores, queries, thresholds).
-    gate_skip_details = []
-    for gs in gate_skips:
-        meta = gs.get("metadata", {})
-        gate_skip_details.append({
-            "query": meta.get("query", ""),
-            "top_score": meta.get("top_score"),
-            "gate_threshold": meta.get("gate_threshold"),
-        })
-
     # Collect all injected files across all injections.
     injected_files: set[str] = set()
     for inj in injections:
@@ -521,6 +511,16 @@ def _read_bobbin_metrics(
             "gate_threshold": meta.get("gate_threshold"),
         })
 
+    # Normalize injected file paths to workspace-relative for overlap comparison.
+    ws_str = str(ws)
+    injected_files_rel: set[str] = set()
+    for f in injected_files:
+        if f.startswith(ws_str):
+            rel = f[len(ws_str):].lstrip("/")
+            injected_files_rel.add(rel)
+        else:
+            injected_files_rel.add(f)
+
     result: dict = {
         "injection_count": len(injections),
         "gate_skip_count": len(gate_skips),
@@ -531,16 +531,16 @@ def _read_bobbin_metrics(
             {"command": e.get("command", ""), "duration_ms": e.get("duration_ms", 0)}
             for e in commands
         ],
-        "injected_files": sorted(injected_files),
+        "injected_files": sorted(injected_files_rel),
         "total_events": len(events),
     }
 
-    # Compute injection-to-ground-truth overlap.
-    if injected_files and ground_truth_files:
+    # Compute injection-to-ground-truth overlap using normalized relative paths.
+    if injected_files_rel and ground_truth_files:
         gt_set = set(ground_truth_files)
-        overlap = injected_files & gt_set
+        overlap = injected_files_rel & gt_set
         result["overlap"] = {
-            "injection_precision": round(len(overlap) / len(injected_files), 4) if injected_files else 0,
+            "injection_precision": round(len(overlap) / len(injected_files_rel), 4) if injected_files_rel else 0,
             "injection_recall": round(len(overlap) / len(gt_set), 4) if gt_set else 0,
             "overlap_files": sorted(overlap),
         }
