@@ -72,10 +72,16 @@ semantic_weight = 0.7
 coupling_enabled = true
 
 # Number of commits to analyze for coupling relationships
-coupling_depth = 1000
+coupling_depth = 5000
 
 # Minimum number of co-changes required to establish a coupling link
 coupling_threshold = 3
+
+# Enable semantic commit indexing (embed commit messages for search)
+commits_enabled = true
+
+# How many commits back to index for semantic search (0 = all)
+commits_depth = 0
 ```
 
 ## Documentation-Heavy Projects
@@ -131,5 +137,7 @@ See [Indexing Documentation](../guides/documentation.md) for a full walkthrough.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `coupling_enabled` | bool | `true` | Enable temporal coupling analysis |
-| `coupling_depth` | int | `1000` | How many commits back to analyze |
+| `coupling_depth` | int | `5000` | How many commits back to analyze for coupling |
 | `coupling_threshold` | int | `3` | Minimum co-changes to establish a coupling relationship |
+| `commits_enabled` | bool | `true` | Enable semantic commit indexing |
+| `commits_depth` | int | `0` | How many commits back to index for semantic search (0 = all) |

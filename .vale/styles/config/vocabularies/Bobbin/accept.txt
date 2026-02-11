@@ -52,6 +52,7 @@ protoc
 polars
 pylint
 read_chunk
+reformats
 reindex
 repo
 repos

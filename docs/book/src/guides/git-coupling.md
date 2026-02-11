@@ -130,20 +130,21 @@ Control coupling analysis in `.bobbin/config.toml`:
 coupling_enabled = true
 
 # How many commits to analyze (more = more accurate, slower indexing)
-coupling_depth = 1000
+coupling_depth = 5000
 
 # Minimum co-changes to establish a coupling link
 coupling_threshold = 3
 ```
 
-**`coupling_depth`** — for large repositories, you may want to increase this to capture longer-term patterns. For small repos, the default of 1000 is usually enough to cover the full history.
+**`coupling_depth`** — controls how far back to scan for co-change patterns. The default of 5000 covers most project histories. Set to 0 to scan the full history.
 
 **`coupling_threshold`** — raising this eliminates noise from files that coincidentally appeared in a few commits together. The default of 3 is a reasonable minimum.
 
 ## Limitations
 
 - **Squashed merges** lose information. If your workflow squashes feature branches into single commits, coupling analysis sees fewer data points.
-- **Large commits** (renames, formatting changes, dependency updates) can create false coupling. Bobbin doesn't currently filter these out.
+- **Merge commits** are excluded (`--no-merges`) since they don't represent real co-changes.
+- **Mega-commits** (>50 files) are skipped automatically to prevent false coupling from reformats, renames, and dependency updates.
 - **New files** have no history. Until a file has been modified in several commits, it won't show meaningful coupling data.
 
 ## Next steps
