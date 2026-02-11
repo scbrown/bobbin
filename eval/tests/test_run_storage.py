@@ -52,6 +52,9 @@ def test_save_result_writes_manifest(tmp_path):
         started_at="2026-02-10T14:30:52Z",
         completed_at="2026-02-10T15:45:12Z",
         model="claude-sonnet-4-5-20250929",
+        budget=100.0,
+        timeout=3600,
+        index_timeout=600,
         attempts_per_approach=3,
         approaches=["no-bobbin", "with-bobbin"],
         tasks=["flask-001"],
@@ -65,7 +68,10 @@ def test_save_result_writes_manifest(tmp_path):
 
     manifest = json.loads(path.read_text(encoding="utf-8"))
     assert manifest["run_id"] == run_id
-    assert manifest["model"] == "claude-sonnet-4-5-20250929"
+    assert manifest["agent_config"]["model"] == "claude-sonnet-4-5-20250929"
+    assert manifest["agent_config"]["budget_usd"] == 100.0
+    assert manifest["agent_config"]["timeout_seconds"] == 3600
+    assert manifest["agent_config"]["index_timeout_seconds"] == 600
     assert manifest["attempts_per_approach"] == 3
     assert manifest["approaches"] == ["no-bobbin", "with-bobbin"]
     assert manifest["tasks"] == ["flask-001"]

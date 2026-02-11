@@ -325,6 +325,7 @@ def _run_single(
                 "exit_code": agent_result["exit_code"],
                 "duration_seconds": agent_result["duration_seconds"],
                 "timed_out": agent_result["timed_out"],
+                **_extract_cost_metrics(agent_result),
             },
             "token_usage": _extract_token_usage(agent_result.get("result")),
             "agent_output": {
@@ -352,14 +353,18 @@ def _run_single(
             "project_metadata": project_metadata,
             "bobbin_metadata": bobbin_metadata,
             "bobbin_metrics": bobbin_metrics,
+            "output_summary": _extract_output_summary(agent_result),
         }
 
         path = _save_result(result, results_dir, run_id=run_id)
         status = "PASS" if test_result["passed"] else "FAIL"
+        cost_str = ""
+        if result["agent_result"].get("cost_usd") is not None:
+            cost_str = f" ${result['agent_result']['cost_usd']:.2f}"
         click.echo(
             f"    {status} | precision={diff_result['file_precision']:.2f} "
             f"recall={diff_result['file_recall']:.2f} "
-            f"f1={diff_result['f1']:.2f} | {agent_result['duration_seconds']:.0f}s"
+            f"f1={diff_result['f1']:.2f} | {agent_result['duration_seconds']:.0f}s{cost_str}"
         )
         click.echo(f"    Saved: {path.name}")
 
@@ -456,26 +461,61 @@ def _read_bobbin_metrics(
     return result
 
 
-def _extract_token_usage(result: dict | None) -> dict | None:
-    """Extract token usage and cost data from Claude Code JSON output.
+def _extract_cost_metrics(agent_result: dict) -> dict:
+    """Extract cost and token metrics from Claude Code's JSON output.
 
-    Claude Code's ``--output-format json`` includes ``total_cost_usd``,
-    ``usage`` (input/output/cache token counts), ``num_turns``, and
-    per-model breakdowns in ``modelUsage``.  This helper pulls them into
-    a flat structure suitable for report generation.
+    Claude Code returns ``total_cost_usd``, ``usage`` (with token counts),
+    and ``modelUsage`` (per-model breakdowns) in its JSON result.  We pull
+    these into flat keys suitable for aggregation in reports.
     """
-    if not result or not isinstance(result, dict):
+    parsed = agent_result.get("result") or {}
+    if not isinstance(parsed, dict):
+        return {}
+
+    metrics: dict = {}
+
+    # Total cost.
+    if "total_cost_usd" in parsed:
+        metrics["cost_usd"] = parsed["total_cost_usd"]
+
+    # Aggregate token counts from usage block.
+    usage = parsed.get("usage")
+    if isinstance(usage, dict):
+        input_tokens = usage.get("input_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0)
+        cache_read = usage.get("cache_read_input_tokens", 0)
+        cache_creation = usage.get("cache_creation_input_tokens", 0)
+        metrics["input_tokens"] = input_tokens + cache_read + cache_creation
+        metrics["output_tokens"] = output_tokens
+
+    # Per-model breakdown (for transparency).
+    model_usage = parsed.get("modelUsage")
+    if isinstance(model_usage, dict):
+        metrics["model_usage"] = model_usage
+
+    # Number of turns.
+    if "num_turns" in parsed:
+        metrics["num_turns"] = parsed["num_turns"]
+
+    return metrics
+
+
+def _extract_output_summary(agent_result: dict) -> str | None:
+    """Extract a short summary of what the agent did from its output.
+
+    Claude Code's JSON result includes a ``result`` field with the agent's
+    final text response.  We capture the first 2000 characters as a summary.
+    """
+    parsed = agent_result.get("result")
+    if not isinstance(parsed, dict):
         return None
-    usage = result.get("usage", {})
-    return {
-        "total_cost_usd": result.get("total_cost_usd"),
-        "input_tokens": usage.get("input_tokens", 0),
-        "output_tokens": usage.get("output_tokens", 0),
-        "cache_creation_tokens": usage.get("cache_creation_input_tokens", 0),
-        "cache_read_tokens": usage.get("cache_read_input_tokens", 0),
-        "num_turns": result.get("num_turns"),
-        "model_usage": result.get("modelUsage"),
-    }
+
+    # The agent's conversational output is in the "result" key of the
+    # parsed JSON (Claude Code nests it as result.result).
+    text = parsed.get("result", "")
+    if isinstance(text, str) and text.strip():
+        return text[:2000]
+    return None
 
 
 def _resolve_approaches(approaches: str) -> list[str]:

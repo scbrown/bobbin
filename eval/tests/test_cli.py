@@ -5,9 +5,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
-from runner.cli import _extract_token_usage, _read_bobbin_metrics, cli
+from runner.cli import (
+    _extract_cost_metrics,
+    _extract_output_summary,
+    _extract_token_usage,
+    _read_bobbin_metrics,
+    cli,
+)
 
 
 def _make_result(
@@ -301,3 +308,99 @@ class TestReadBobbinMetrics:
         assert result is not None
         assert result["gate_skip_count"] == 1
         assert result["gate_skip_details"][0]["query"] == "q1"
+
+
+class TestExtractCostMetrics:
+    def test_extracts_cost_from_claude_output(self):
+        agent_result = {
+            "result": {
+                "type": "result",
+                "total_cost_usd": 5.25,
+                "usage": {
+                    "input_tokens": 10000,
+                    "output_tokens": 2000,
+                    "cache_read_input_tokens": 5000,
+                    "cache_creation_input_tokens": 3000,
+                },
+                "num_turns": 7,
+                "modelUsage": {
+                    "claude-opus-4-6": {
+                        "inputTokens": 10000,
+                        "outputTokens": 2000,
+                        "costUSD": 5.25,
+                    }
+                },
+            },
+            "output_raw": "",
+            "exit_code": 0,
+        }
+        metrics = _extract_cost_metrics(agent_result)
+        assert metrics["cost_usd"] == 5.25
+        assert metrics["input_tokens"] == 18000  # 10000 + 5000 + 3000
+        assert metrics["output_tokens"] == 2000
+        assert metrics["num_turns"] == 7
+        assert "model_usage" in metrics
+
+    def test_returns_empty_when_no_result(self):
+        agent_result = {"result": None, "output_raw": "", "exit_code": 1}
+        metrics = _extract_cost_metrics(agent_result)
+        assert metrics == {}
+
+    def test_returns_empty_when_result_is_raw_text(self):
+        agent_result = {"result": {"raw_text": "not json"}, "exit_code": 0}
+        metrics = _extract_cost_metrics(agent_result)
+        # raw_text result has no cost data
+        assert "cost_usd" not in metrics
+
+    def test_handles_missing_usage_block(self):
+        agent_result = {
+            "result": {"total_cost_usd": 1.50},
+            "exit_code": 0,
+        }
+        metrics = _extract_cost_metrics(agent_result)
+        assert metrics["cost_usd"] == 1.50
+        assert "input_tokens" not in metrics or metrics["input_tokens"] == 0
+
+    def test_handles_partial_usage(self):
+        agent_result = {
+            "result": {
+                "total_cost_usd": 2.00,
+                "usage": {"input_tokens": 500, "output_tokens": 100},
+            },
+            "exit_code": 0,
+        }
+        metrics = _extract_cost_metrics(agent_result)
+        assert metrics["cost_usd"] == 2.00
+        assert metrics["input_tokens"] == 500
+        assert metrics["output_tokens"] == 100
+
+
+class TestExtractOutputSummary:
+    def test_extracts_result_text(self):
+        agent_result = {
+            "result": {"result": "I fixed the bug by updating the parser."},
+            "exit_code": 0,
+        }
+        summary = _extract_output_summary(agent_result)
+        assert summary == "I fixed the bug by updating the parser."
+
+    def test_truncates_long_output(self):
+        long_text = "x" * 5000
+        agent_result = {
+            "result": {"result": long_text},
+            "exit_code": 0,
+        }
+        summary = _extract_output_summary(agent_result)
+        assert len(summary) == 2000
+
+    def test_returns_none_when_no_result(self):
+        agent_result = {"result": None, "exit_code": 1}
+        assert _extract_output_summary(agent_result) is None
+
+    def test_returns_none_when_empty_text(self):
+        agent_result = {"result": {"result": ""}, "exit_code": 0}
+        assert _extract_output_summary(agent_result) is None
+
+    def test_returns_none_when_no_result_key(self):
+        agent_result = {"result": {"total_cost_usd": 1.0}, "exit_code": 0}
+        assert _extract_output_summary(agent_result) is None

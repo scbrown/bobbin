@@ -19,18 +19,29 @@ def _make_result(
     recall: float = 0.80,
     f1: float = 0.77,
     duration: float = 120.5,
+    cost_usd: float | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
 ) -> dict:
     """Build a minimal result dict matching the expected schema."""
+    agent_result: dict = {
+        "exit_code": 0 if passed else 1,
+        "duration_seconds": duration,
+        "timed_out": False,
+    }
+    if cost_usd is not None:
+        agent_result["cost_usd"] = cost_usd
+    if input_tokens is not None:
+        agent_result["input_tokens"] = input_tokens
+    if output_tokens is not None:
+        agent_result["output_tokens"] = output_tokens
+
     return {
         "task_id": task_id,
         "approach": approach,
         "attempt": attempt,
         "status": "completed",
-        "agent_result": {
-            "exit_code": 0 if passed else 1,
-            "duration_seconds": duration,
-            "timed_out": False,
-        },
+        "agent_result": agent_result,
         "test_result": {
             "passed": passed,
             "total": 10,
@@ -186,3 +197,56 @@ class TestReportDelta:
 
         content = output.read_text()
         assert "Delta" in content
+
+
+class TestReportCostMetrics:
+    def test_cost_columns_present_when_data_exists(self, tmp_path):
+        """When results have cost data, report should include cost columns."""
+        results = [
+            _make_result(approach="no-bobbin", attempt=0, cost_usd=5.50, input_tokens=10000, output_tokens=2000),
+            _make_result(approach="with-bobbin", attempt=0, cost_usd=3.25, input_tokens=8000, output_tokens=1500),
+        ]
+        rdir = tmp_path / "results"
+        _write_results(rdir, results)
+
+        output = tmp_path / "report.md"
+        generate_report(str(rdir), str(output))
+
+        content = output.read_text()
+        assert "Avg Cost (USD)" in content
+        assert "Avg Input Tokens" in content
+        assert "Avg Output Tokens" in content
+        assert "$5.50" in content
+        assert "$3.25" in content
+
+    def test_cost_columns_absent_without_data(self, tmp_path):
+        """When results lack cost data, report should not include cost columns."""
+        results = [
+            _make_result(approach="no-bobbin", attempt=0),
+            _make_result(approach="with-bobbin", attempt=0),
+        ]
+        rdir = tmp_path / "results"
+        _write_results(rdir, results)
+
+        output = tmp_path / "report.md"
+        generate_report(str(rdir), str(output))
+
+        content = output.read_text()
+        assert "Avg Cost (USD)" not in content
+        assert "Avg Input Tokens" not in content
+
+    def test_per_task_table_includes_cost(self, tmp_path):
+        """Per-task table should include cost column when data exists."""
+        results = [
+            _make_result(task_id="ruff-001", approach="no-bobbin", cost_usd=4.00),
+            _make_result(task_id="ruff-001", approach="with-bobbin", cost_usd=2.50),
+        ]
+        rdir = tmp_path / "results"
+        _write_results(rdir, results)
+
+        output = tmp_path / "report.md"
+        generate_report(str(rdir), str(output))
+
+        content = output.read_text()
+        # Per-task table should have Cost header.
+        assert "| Cost |" in content

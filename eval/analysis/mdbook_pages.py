@@ -162,6 +162,10 @@ def _compute_approach_stats(results: list[dict]) -> dict[str, Any]:
     f1s = [r["diff_result"]["f1"] for r in results if r.get("diff_result", {}).get("f1") is not None]
     durations = [r["agent_result"]["duration_seconds"] for r in results if r.get("agent_result", {}).get("duration_seconds") is not None]
 
+    costs = [r["agent_result"]["cost_usd"] for r in results if r.get("agent_result", {}).get("cost_usd") is not None]
+    input_tokens = [r["agent_result"]["input_tokens"] for r in results if r.get("agent_result", {}).get("input_tokens") is not None]
+    output_tokens = [r["agent_result"]["output_tokens"] for r in results if r.get("agent_result", {}).get("output_tokens") is not None]
+
     return {
         "count": len(results),
         "test_pass_rate": pass_rate,
@@ -169,6 +173,10 @@ def _compute_approach_stats(results: list[dict]) -> dict[str, Any]:
         "avg_file_recall": _safe_avg(recalls),
         "avg_f1": _safe_avg(f1s),
         "avg_duration_seconds": _safe_avg(durations),
+        "avg_cost_usd": _safe_avg(costs),
+        "avg_input_tokens": _safe_avg(input_tokens),
+        "avg_output_tokens": _safe_avg(output_tokens),
+        "has_cost_data": len(costs) > 0,
         "f1_values": f1s,
         "duration_values": durations,
     }
@@ -240,6 +248,9 @@ def generate_summary_page(
     lines.append(header)
     lines.append(sep)
 
+    # Check if any approach has cost data.
+    has_cost = any(s.get("has_cost_data") for s in stats.values())
+
     metrics = [
         ("Runs", "count", False),
         ("Test Pass Rate", "test_pass_rate", True),
@@ -248,6 +259,13 @@ def generate_summary_page(
         ("Avg F1", "avg_f1", True),
         ("Avg Duration", "avg_duration_seconds", False),
     ]
+
+    if has_cost:
+        metrics.extend([
+            ("Avg Cost", "avg_cost_usd", False),
+            ("Avg Input Tokens", "avg_input_tokens", False),
+            ("Avg Output Tokens", "avg_output_tokens", False),
+        ])
 
     for label, key, is_pct in metrics:
         row = f"| {label} |"
@@ -261,6 +279,10 @@ def generate_summary_page(
                 row += f" {int(v)} |"
             elif key == "avg_duration_seconds":
                 row += f" {_format_duration(v)} |"
+            elif key == "avg_cost_usd":
+                row += f" ${v:.2f} |"
+            elif key in ("avg_input_tokens", "avg_output_tokens"):
+                row += f" {int(v):,} |"
             else:
                 row += f" {v:.1f} |"
         if has_both:
@@ -271,7 +293,7 @@ def generate_summary_page(
                 else:
                     sign = "+" if diff > 0 else ""
                     row += f" {sign}{diff * 100:.1f}pp |"
-            elif key == "avg_duration_seconds" and vals[0] > 0:
+            elif key in ("avg_duration_seconds", "avg_cost_usd") and vals[0] > 0:
                 pct = (vals[1] - vals[0]) / vals[0] * 100
                 row += f" {pct:+.0f}% |"
             else:
@@ -402,8 +424,12 @@ def generate_summary_page(
     # Per-task mini-table.
     lines.append("## Per-Task Results")
     lines.append("")
-    lines.append("| Task | Language | Difficulty | Approach | Tests | Precision | Recall | F1 | Duration |")
-    lines.append("|------|----------|:----------:|----------|:-----:|:---------:|:------:|:--:|:--------:|")
+    if has_cost:
+        lines.append("| Task | Language | Difficulty | Approach | Tests | Precision | Recall | F1 | Duration | Cost |")
+        lines.append("|------|----------|:----------:|----------|:-----:|:---------:|:------:|:--:|:--------:|-----:|")
+    else:
+        lines.append("| Task | Language | Difficulty | Approach | Tests | Precision | Recall | F1 | Duration |")
+        lines.append("|------|----------|:----------:|----------|:-----:|:---------:|:------:|:--:|:--------:|")
 
     for task_id, task_results in by_task.items():
         task_def = tasks.get(task_id, {})
@@ -417,12 +443,15 @@ def generate_summary_page(
                 continue
             s = _compute_approach_stats(a_runs)
             pass_str = _format_pct(s["test_pass_rate"])
-            lines.append(
+            row = (
                 f"| {task_id} | {lang} | {diff} | {a} "
                 f"| {pass_str} | {_format_pct(s['avg_file_precision'])} "
                 f"| {_format_pct(s['avg_file_recall'])} | {_format_pct(s['avg_f1'])} "
                 f"| {_format_duration(s['avg_duration_seconds'])} |"
             )
+            if has_cost:
+                row = row.rstrip(" |") + f" ${s['avg_cost_usd']:.2f} |"
+            lines.append(row)
 
     lines.append("")
 
@@ -596,18 +625,31 @@ def generate_task_detail_page(
         task_by_approach = _group_by_approach(task_results)
         approaches = sorted(task_by_approach.keys())
 
-        lines.append("| Approach | Tests Pass | Precision | Recall | F1 | Duration |")
-        lines.append("|----------|:----------:|:---------:|:------:|:--:|:--------:|")
+        # Check if any result in this task has cost data.
+        task_has_cost = any(
+            r.get("agent_result", {}).get("cost_usd") is not None
+            for r in task_results
+        )
+
+        if task_has_cost:
+            lines.append("| Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |")
+            lines.append("|----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|")
+        else:
+            lines.append("| Approach | Tests Pass | Precision | Recall | F1 | Duration |")
+            lines.append("|----------|:----------:|:---------:|:------:|:--:|:--------:|")
 
         for a in approaches:
             s = _compute_approach_stats(task_by_approach[a])
-            lines.append(
+            row = (
                 f"| {a} | {_format_pct(s['test_pass_rate'])} "
                 f"| {_format_pct(s['avg_file_precision'])} "
                 f"| {_format_pct(s['avg_file_recall'])} "
                 f"| {_format_pct(s['avg_f1'])} "
                 f"| {_format_duration(s['avg_duration_seconds'])} |"
             )
+            if task_has_cost:
+                row = row.rstrip(" |") + f" ${s['avg_cost_usd']:.2f} |"
+            lines.append(row)
 
         lines.append("")
 

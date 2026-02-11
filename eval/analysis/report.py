@@ -134,6 +134,7 @@ def _compute_approach_stats(results: list[dict]) -> dict[str, Any]:
         "avg_cost_usd": _safe_avg(costs),
         "avg_input_tokens": _safe_avg(input_toks),
         "avg_output_tokens": _safe_avg(output_toks),
+        "has_cost_data": len(costs) > 0,
     }
 
 
@@ -168,6 +169,9 @@ def _build_summary_table(
     lines.append(header)
     lines.append(sep)
 
+    # Check if any approach has cost data.
+    has_cost = any(s.get("has_cost_data") for s in stats.values())
+
     metrics = [
         ("Runs", "count", False, False),
         ("Test Pass Rate", "test_pass_rate", True, True),
@@ -179,6 +183,13 @@ def _build_summary_table(
         ("Avg Input Tokens", "avg_input_tokens", False, False),
         ("Avg Output Tokens", "avg_output_tokens", False, False),
     ]
+
+    if has_cost:
+        metrics.extend([
+            ("Avg Cost (USD)", "avg_cost_usd", False, False),
+            ("Avg Input Tokens", "avg_input_tokens", False, False),
+            ("Avg Output Tokens", "avg_output_tokens", False, False),
+        ])
 
     for label, key, is_pct, show_as_pct in metrics:
         row = f"| {label} |"
