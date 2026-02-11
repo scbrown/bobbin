@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import secrets
 import sys
 import tempfile
@@ -240,6 +241,10 @@ def _run_single(
             run_settings = settings_file
         else:
             run_settings = str(_NO_BOBBIN_SETTINGS) if _NO_BOBBIN_SETTINGS.exists() else None
+
+        # Set metrics source so bobbin tags all events for this run.
+        metrics_tag = f"{task_id}_{approach}_{attempt}"
+        os.environ["BOBBIN_METRICS_SOURCE"] = metrics_tag
         agent_result = run_agent(
             str(ws),
             prompt,
@@ -248,6 +253,7 @@ def _run_single(
             max_budget_usd=budget,
             timeout=timeout,
         )
+        os.environ.pop("BOBBIN_METRICS_SOURCE", None)
 
         # 4. Snapshot and score.
         click.echo("    Scoring...")
@@ -263,6 +269,13 @@ def _run_single(
         diff_base = pre_agent_baseline or parent
         agent_diff = diff_snapshot(ws, diff_base, snap)
         ground_truth_diff = diff_snapshot(ws, parent, task["commit"])
+
+        # 5. Read bobbin metrics (with-bobbin only).
+        bobbin_metrics = None
+        if approach == "with-bobbin":
+            bobbin_metrics = _read_bobbin_metrics(
+                ws, metrics_tag, diff_result.get("ground_truth_files", []),
+            )
 
         result = {
             "task_id": task_id,
@@ -306,6 +319,7 @@ def _run_single(
             "ground_truth_diff": ground_truth_diff,
             "project_metadata": project_metadata,
             "bobbin_metadata": bobbin_metadata,
+            "bobbin_metrics": bobbin_metrics,
         }
 
         path = _save_result(result, results_dir, run_id=run_id)
@@ -316,6 +330,75 @@ def _run_single(
             f"f1={diff_result['f1']:.2f} | {agent_result['duration_seconds']:.0f}s"
         )
         click.echo(f"    Saved: {path.name}")
+
+    return result
+
+
+def _read_bobbin_metrics(
+    ws: Path, source_tag: str, ground_truth_files: list[str],
+) -> dict | None:
+    """Read .bobbin/metrics.jsonl and summarize injection/gate/dedup events.
+
+    Computes injection-to-ground-truth file overlap when ground truth is available.
+    """
+    metrics_path = ws / ".bobbin" / "metrics.jsonl"
+    if not metrics_path.exists():
+        return None
+
+    try:
+        lines = metrics_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+
+    events = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+            if ev.get("source") == source_tag:
+                events.append(ev)
+        except json.JSONDecodeError:
+            continue
+
+    if not events:
+        return None
+
+    injections = [e for e in events if e.get("event_type") == "hook_injection"]
+    gate_skips = [e for e in events if e.get("event_type") == "hook_gate_skip"]
+    dedup_skips = [e for e in events if e.get("event_type") == "hook_dedup_skip"]
+    commands = [e for e in events if e.get("event_type") == "command"]
+    prime_events = [e for e in events if e.get("event_type") == "hook_prime_context"]
+
+    # Collect all injected files across all injections.
+    injected_files: set[str] = set()
+    for inj in injections:
+        for f in inj.get("metadata", {}).get("files_returned", []):
+            injected_files.add(f)
+
+    result: dict = {
+        "injection_count": len(injections),
+        "gate_skip_count": len(gate_skips),
+        "dedup_skip_count": len(dedup_skips),
+        "prime_context_fired": len(prime_events) > 0,
+        "command_invocations": [
+            {"command": e.get("command", ""), "duration_ms": e.get("duration_ms", 0)}
+            for e in commands
+        ],
+        "injected_files": sorted(injected_files),
+        "total_events": len(events),
+    }
+
+    # Compute injection-to-ground-truth overlap.
+    if injected_files and ground_truth_files:
+        gt_set = set(ground_truth_files)
+        overlap = injected_files & gt_set
+        result["overlap"] = {
+            "injection_precision": round(len(overlap) / len(injected_files), 4) if injected_files else 0,
+            "injection_recall": round(len(overlap) / len(gt_set), 4) if gt_set else 0,
+            "overlap_files": sorted(overlap),
+        }
 
     return result
 
