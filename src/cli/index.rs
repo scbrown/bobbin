@@ -379,6 +379,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 &mut embed,
                 repo_name,
                 &mut profile,
+                &existing_files,
             )
             .await?;
 
@@ -402,6 +403,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             &mut embed,
             repo_name,
             &mut profile,
+            &existing_files,
         )
         .await?;
 
@@ -890,6 +892,7 @@ async fn process_batch(
     embed: &mut Embedder,
     repo: &str,
     profile: &mut ProfileStats,
+    existing_files: &HashSet<String>,
 ) -> Result<(usize, usize)> {
     if results.is_empty() {
         return Ok((0, 0));
@@ -929,10 +932,16 @@ async fn process_batch(
     profile.total_chunks_embedded += all_refs.len();
     profile.total_batches += 1;
 
-    // Batch-delete all files at once
+    // Batch-delete only files that already exist in the index
     let t_del = Instant::now();
-    let file_paths: Vec<String> = results.iter().map(|r| r.path.clone()).collect();
-    vector_store.delete_by_file(&file_paths).await?;
+    let file_paths: Vec<String> = results
+        .iter()
+        .map(|r| r.path.clone())
+        .filter(|p| existing_files.contains(p))
+        .collect();
+    if !file_paths.is_empty() {
+        vector_store.delete_by_file(&file_paths).await?;
+    }
     profile.delete_ms += t_del.elapsed().as_millis();
 
     // Accumulate all chunks, embeddings, contexts, and per-chunk file hashes
