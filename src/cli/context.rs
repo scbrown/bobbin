@@ -200,6 +200,9 @@ fn print_human_output(bundle: &ContextBundle) {
             FileRelevance::Coupled => {
                 format!("coupled via {}", file.coupled_to.join(", "))
             }
+            FileRelevance::Bridged => {
+                format!("bridged via doc provenance, score: {:.4}", file.score)
+            }
         };
 
         println!(

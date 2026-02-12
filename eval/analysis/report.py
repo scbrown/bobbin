@@ -124,6 +124,23 @@ def _compute_approach_stats(results: list[dict]) -> dict[str, Any]:
         if r.get("token_usage", {}).get("output_tokens") is not None
     ]
 
+    # Tool use metrics (backward compat: missing tool_use_summary → empty).
+    tool_calls = [
+        r["tool_use_summary"]["total_tool_calls"]
+        for r in results
+        if r.get("tool_use_summary", {}).get("total_tool_calls") is not None
+    ]
+    first_edit_turns = [
+        r["tool_use_summary"]["first_edit_turn"]
+        for r in results
+        if r.get("tool_use_summary", {}).get("first_edit_turn") is not None
+    ]
+    bobbin_cmds = [
+        len(r["tool_use_summary"]["bobbin_commands"])
+        for r in results
+        if r.get("tool_use_summary", {}).get("bobbin_commands") is not None
+    ]
+
     return {
         "count": len(results),
         "test_pass_rate": pass_rate,
@@ -135,6 +152,10 @@ def _compute_approach_stats(results: list[dict]) -> dict[str, Any]:
         "avg_input_tokens": _safe_avg(input_toks),
         "avg_output_tokens": _safe_avg(output_toks),
         "has_cost_data": len(costs) > 0,
+        "avg_tool_calls": _safe_avg(tool_calls),
+        "avg_first_edit_turn": _safe_avg(first_edit_turns),
+        "avg_bobbin_commands": _safe_avg(bobbin_cmds),
+        "has_tool_use_data": len(tool_calls) > 0,
     }
 
 
@@ -188,6 +209,15 @@ def _build_summary_table(
             ("Avg Output Tokens", "avg_output_tokens", False, False),
         ])
 
+    # Tool use metrics (only when data is available).
+    has_tool_use = any(s.get("has_tool_use_data") for s in stats.values())
+    if has_tool_use:
+        metrics.extend([
+            ("Avg Tool Calls", "avg_tool_calls", False, False),
+            ("Avg First Edit Turn", "avg_first_edit_turn", False, False),
+            ("Avg Bobbin Commands", "avg_bobbin_commands", False, False),
+        ])
+
     for label, key, is_pct, show_as_pct in metrics:
         row = f"| {label} |"
         values = []
@@ -220,17 +250,30 @@ def _build_per_task_table(
     """Build a per-task breakdown table."""
     by_task = _group_by_task(results)
 
-    lines = [
-        "| Task | Approach | Tests Passed | File Precision | File Recall | F1 | Duration | Cost |",
-        "|------|----------|:---:|:---:|:---:|:---:|---:|---:|",
-    ]
+    # Check if any result has tool use data.
+    has_tool_use = any(
+        r.get("tool_use_summary", {}).get("total_tool_calls") is not None
+        for r in results
+    )
+
+    if has_tool_use:
+        lines = [
+            "| Task | Approach | Tests Passed | File Precision | File Recall | F1 | Duration | Cost | Tools |",
+            "|------|----------|:---:|:---:|:---:|:---:|---:|---:|---:|",
+        ]
+    else:
+        lines = [
+            "| Task | Approach | Tests Passed | File Precision | File Recall | F1 | Duration | Cost |",
+            "|------|----------|:---:|:---:|:---:|:---:|---:|---:|",
+        ]
 
     for task_id, task_results in by_task.items():
         by_approach = _group_by_approach(task_results)
         for approach, approach_results in by_approach.items():
             stats = _compute_approach_stats(approach_results)
             cost_str = f"${stats['avg_cost_usd']:.2f}" if stats['avg_cost_usd'] else "n/a"
-            lines.append(
+            tools_str = f"{stats['avg_tool_calls']:.0f}" if stats.get('has_tool_use_data') else "n/a"
+            row = (
                 f"| {task_id} | {approach} "
                 f"| {_pct(stats['test_pass_rate'])} "
                 f"| {_pct(stats['avg_file_precision'])} "
@@ -239,6 +282,9 @@ def _build_per_task_table(
                 f"| {stats['avg_duration_seconds']:.1f}s "
                 f"| {cost_str} |"
             )
+            if has_tool_use:
+                row += f" {tools_str} |"
+            lines.append(row)
 
     return "\n".join(lines)
 

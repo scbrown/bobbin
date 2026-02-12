@@ -259,6 +259,12 @@ fn print_human_output(bundle: &ContextBundle, diff_files: &[DiffFile], descripti
                         file.score
                     )
                 }
+                FileRelevance::Bridged => {
+                    format!(
+                        "bridged via doc provenance, score: {:.2}",
+                        file.score
+                    )
+                }
             }
         };
 

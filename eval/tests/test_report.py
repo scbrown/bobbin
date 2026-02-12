@@ -22,6 +22,7 @@ def _make_result(
     cost_usd: float | None = None,
     input_tokens: int | None = None,
     output_tokens: int | None = None,
+    tool_use_summary: dict | None = None,
 ) -> dict:
     """Build a minimal result dict matching the expected schema."""
     agent_result: dict = {
@@ -64,6 +65,9 @@ def _make_result(
             "input_tokens": input_tokens or 0,
             "output_tokens": output_tokens or 0,
         }
+
+    if tool_use_summary is not None:
+        result["tool_use_summary"] = tool_use_summary
 
     return result
 
@@ -259,3 +263,69 @@ class TestReportCostMetrics:
         content = output.read_text()
         # Per-task table should have Cost header.
         assert "| Cost |" in content
+
+
+class TestReportToolUseColumns:
+    def test_report_includes_tool_use_columns(self, tmp_path):
+        """When results have tool_use_summary, report should include tool use rows."""
+        tool_summary = {
+            "by_tool": {"Bash": 10, "Read": 5, "Edit": 3},
+            "total_tool_calls": 18,
+            "bobbin_commands": [{"command": "bobbin search auth", "turn": 2}],
+            "first_edit_turn": 7,
+            "tool_sequence": ["Read", "Grep", "Bash", "Edit"],
+        }
+        results = [
+            _make_result(
+                approach="no-bobbin",
+                attempt=0,
+                tool_use_summary={
+                    "by_tool": {"Bash": 8, "Read": 4, "Edit": 2},
+                    "total_tool_calls": 14,
+                    "bobbin_commands": [],
+                    "first_edit_turn": 5,
+                    "tool_sequence": ["Read", "Bash", "Edit"],
+                },
+            ),
+            _make_result(
+                approach="with-bobbin",
+                attempt=0,
+                tool_use_summary=tool_summary,
+            ),
+        ]
+        rdir = tmp_path / "results"
+        _write_results(rdir, results)
+
+        output = tmp_path / "report.md"
+        generate_report(str(rdir), str(output))
+
+        content = output.read_text()
+        # Summary table should have tool use metric rows.
+        assert "Avg Tool Calls" in content
+        assert "Avg First Edit Turn" in content
+        assert "Avg Bobbin Commands" in content
+        # Per-task table should have Tools column.
+        assert "| Tools |" in content
+
+    def test_report_backward_compat_no_tool_use(self, tmp_path):
+        """Results without tool_use_summary should still generate valid reports."""
+        results = [
+            _make_result(approach="no-bobbin", attempt=0),
+            _make_result(approach="with-bobbin", attempt=0),
+        ]
+        rdir = tmp_path / "results"
+        _write_results(rdir, results)
+
+        output = tmp_path / "report.md"
+        generate_report(str(rdir), str(output))
+
+        content = output.read_text()
+        # Report should still generate without errors.
+        assert "# Bobbin Eval Report" in content
+        assert "Summary" in content
+        # Tool use rows should NOT appear when no data exists.
+        assert "Avg Tool Calls" not in content
+        assert "Avg First Edit Turn" not in content
+        assert "Avg Bobbin Commands" not in content
+        # Per-task table should NOT have Tools column.
+        assert "| Tools |" not in content
