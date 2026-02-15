@@ -597,6 +597,14 @@ pub struct SearchBeadsRequest {
     #[schemars(description = "Filter by rig name (e.g. 'aegis', 'gastown'). Matches against the file_path prefix 'beads:<rig>:'.")]
     pub rig: Option<String>,
 
+    /// Filter by issue type (bug, task, feature, epic, chore)
+    #[schemars(description = "Filter by issue type: 'bug', 'task', 'feature', 'epic', 'chore'")]
+    pub issue_type: Option<String>,
+
+    /// Filter by label (matches if any label contains the string)
+    #[schemars(description = "Filter by label (e.g. 'tech-debt', 'enhancement'). Matches if any label contains the filter string.")]
+    pub label: Option<String>,
+
     /// Maximum number of results (default: 10)
     #[schemars(description = "Maximum number of results to return (default: 10)")]
     pub limit: Option<usize>,
@@ -604,6 +612,10 @@ pub struct SearchBeadsRequest {
     /// Enrich results with live Dolt data (default: true)
     #[schemars(description = "If true (default), enrich results with live status/priority/assignee from Dolt. Set to false for faster indexed-only results.")]
     pub enrich: Option<bool>,
+
+    /// Compact mode - omit snippet to reduce token usage (default: true)
+    #[schemars(description = "If true (default), omit the snippet field to reduce token overhead. Set to false to include a content snippet.")]
+    pub compact: Option<bool>,
 }
 
 /// Response for searching beads
@@ -621,7 +633,16 @@ pub struct BeadResultItem {
     pub title: String,
     pub priority: String,
     pub status: String,
+    pub issue_type: String,
     pub assignee: String,
+    pub owner: String,
+    pub rig: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
     pub relevance_score: f32,
-    pub snippet: String,
+    pub match_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snippet: Option<String>,
 }

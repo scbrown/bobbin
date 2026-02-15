@@ -1542,10 +1542,16 @@ struct SearchBeadsParams {
     assignee: Option<String>,
     /// Filter by rig name
     rig: Option<String>,
+    /// Filter by issue type (bug, task, feature, etc.)
+    issue_type: Option<String>,
+    /// Filter by label
+    label: Option<String>,
     /// Max results (default 10)
     limit: Option<usize>,
     /// Enrich with live Dolt data (default true)
     enrich: Option<bool>,
+    /// Compact mode - omit snippet (default true)
+    compact: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -1561,9 +1567,18 @@ struct BeadResultItem {
     title: String,
     priority: String,
     status: String,
+    issue_type: String,
     assignee: String,
+    owner: String,
+    rig: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    labels: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    created_at: Option<String>,
     relevance_score: f32,
-    snippet: String,
+    match_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snippet: Option<String>,
 }
 
 pub(super) async fn search_beads(
@@ -1572,6 +1587,7 @@ pub(super) async fn search_beads(
 ) -> Result<Json<SearchBeadsResponse>, (StatusCode, Json<ErrorBody>)> {
     let limit = params.limit.unwrap_or(10);
     let should_enrich = params.enrich.unwrap_or(true);
+    let compact = params.compact.unwrap_or(true);
 
     let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
 
@@ -1620,8 +1636,10 @@ pub(super) async fn search_beads(
         std::collections::HashMap::new()
     };
 
-    // Apply status/priority/assignee filters
-    if params.status.is_some() || params.priority.is_some() || params.assignee.is_some() {
+    // Apply all filters
+    let has_filters = params.status.is_some() || params.priority.is_some()
+        || params.assignee.is_some() || params.issue_type.is_some() || params.label.is_some();
+    if has_filters {
         filtered.retain(|r| {
             let bead_id = r.chunk.file_path.split(':').nth(2).unwrap_or("");
             if let Some(meta) = live_metadata.get(bead_id) {
@@ -1638,6 +1656,16 @@ pub(super) async fn search_beads(
                 if let Some(ref assignee) = params.assignee {
                     let meta_assignee = meta.assignee.as_deref().unwrap_or("unassigned");
                     if !meta_assignee.contains(assignee.as_str()) {
+                        return false;
+                    }
+                }
+                if let Some(ref issue_type) = params.issue_type {
+                    if meta.issue_type != *issue_type {
+                        return false;
+                    }
+                }
+                if let Some(ref label) = params.label {
+                    if !meta.labels.iter().any(|l| l.contains(label.as_str())) {
                         return false;
                     }
                 }
@@ -1664,47 +1692,97 @@ pub(super) async fn search_beads(
         });
     }
 
+    // Boost relevance scores: title match and status weighting
+    let query_lower = params.q.to_lowercase();
+    let query_terms: Vec<&str> = query_lower.split_whitespace().collect();
+    for result in &mut filtered {
+        let mut boost: f32 = 1.0;
+
+        // Title match boost
+        if let Some(ref name) = result.chunk.name {
+            let title_lower = name.to_lowercase();
+            let matching_terms = query_terms.iter()
+                .filter(|t| title_lower.contains(**t))
+                .count();
+            if matching_terms > 0 {
+                boost += 0.3 * (matching_terms as f32 / query_terms.len().max(1) as f32);
+            }
+        }
+
+        // Status boost: open/in_progress are more actionable
+        let bead_id = result.chunk.file_path.split(':').nth(2).unwrap_or("");
+        if let Some(meta) = live_metadata.get(bead_id) {
+            match meta.status.as_str() {
+                "in_progress" | "hooked" => boost += 0.15,
+                "open" | "blocked" => boost += 0.1,
+                "closed" => boost -= 0.1,
+                _ => {}
+            }
+        }
+
+        result.score = (result.score * boost).min(1.0);
+    }
+
+    // Re-sort by boosted score
+    filtered.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     filtered.truncate(limit);
 
     let results: Vec<BeadResultItem> = filtered
         .iter()
         .map(|r| {
-            let bead_id = r
-                .chunk
-                .file_path
-                .split(':')
-                .nth(2)
-                .unwrap_or(&r.chunk.file_path)
-                .to_string();
+            let parts: Vec<&str> = r.chunk.file_path.splitn(3, ':').collect();
+            let rig = if parts.len() >= 2 { parts[1] } else { "" };
+            let bead_id = if parts.len() == 3 { parts[2] } else { &r.chunk.file_path };
 
-            let (title, bead_status, priority, assignee) =
-                if let Some(meta) = live_metadata.get(&bead_id) {
-                    (
-                        meta.title.clone(),
-                        meta.status.clone(),
-                        format!("P{}", meta.priority),
-                        meta.assignee
-                            .clone()
-                            .unwrap_or_else(|| "unassigned".to_string()),
-                    )
+            let match_type = r.match_type.as_ref()
+                .map(|mt| format!("{:?}", mt).to_lowercase())
+                .unwrap_or_else(|| "hybrid".to_string());
+
+            if let Some(meta) = live_metadata.get(bead_id) {
+                let snippet = if compact {
+                    None
                 } else {
-                    let content = &r.chunk.content;
-                    (
-                        r.chunk.name.clone().unwrap_or_default(),
-                        extract_bead_field(content, "Status: "),
-                        extract_bead_field(content, "Priority: "),
-                        extract_bead_field(content, "Assignee: "),
-                    )
+                    Some(clean_bead_snippet(&r.chunk.content, 200))
                 };
 
-            BeadResultItem {
-                bead_id,
-                title,
-                priority,
-                status: bead_status,
-                assignee,
-                relevance_score: r.score,
-                snippet: truncate(&r.chunk.content, 200),
+                BeadResultItem {
+                    bead_id: bead_id.to_string(),
+                    title: meta.title.clone(),
+                    priority: format!("P{}", meta.priority),
+                    status: meta.status.clone(),
+                    issue_type: meta.issue_type.clone(),
+                    assignee: meta.assignee.clone().unwrap_or_else(|| "unassigned".to_string()),
+                    owner: meta.owner.clone(),
+                    rig: rig.to_string(),
+                    labels: meta.labels.clone(),
+                    created_at: meta.created_at.clone(),
+                    relevance_score: r.score,
+                    match_type,
+                    snippet,
+                }
+            } else {
+                let content = &r.chunk.content;
+                let snippet = if compact {
+                    None
+                } else {
+                    Some(clean_bead_snippet(content, 200))
+                };
+
+                BeadResultItem {
+                    bead_id: bead_id.to_string(),
+                    title: r.chunk.name.clone().unwrap_or_default(),
+                    priority: extract_bead_field(content, "Priority: "),
+                    status: extract_bead_field(content, "Status: "),
+                    issue_type: "task".to_string(),
+                    assignee: extract_bead_field(content, "Assignee: "),
+                    owner: String::new(),
+                    rig: rig.to_string(),
+                    labels: Vec::new(),
+                    created_at: None,
+                    relevance_score: r.score,
+                    match_type,
+                    snippet,
+                }
             }
         })
         .collect();
@@ -2012,6 +2090,34 @@ fn extract_bead_field(content: &str, prefix: &str) -> String {
             Some(rest[..end].trim().to_string())
         })
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Clean a bead snippet by removing metadata lines already in structured fields.
+fn clean_bead_snippet(content: &str, max_len: usize) -> String {
+    let cleaned: String = content
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !(trimmed.starts_with("Status: ") && trimmed.contains(" | "))
+                && !trimmed.starts_with("Priority: P")
+                && !trimmed.starts_with("Assignee: ")
+                && !trimmed.starts_with("Comments:")
+                && !trimmed.starts_with("--- ")
+                && !trimmed.starts_with("Notes:")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let trimmed = cleaned.trim();
+    if trimmed.len() <= max_len {
+        trimmed.to_string()
+    } else {
+        let mut end = max_len;
+        while end > 0 && !trimmed.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...", &trimmed[..end])
+    }
 }
 
 /// Run incremental indexing (used by webhook handler)

@@ -353,9 +353,16 @@ pub struct BeadResultItem {
     pub title: String,
     pub priority: String,
     pub status: String,
+    pub issue_type: String,
     pub assignee: String,
+    pub owner: String,
+    pub rig: String,
+    #[serde(default)]
+    pub labels: Vec<String>,
+    pub created_at: Option<String>,
     pub relevance_score: f32,
-    pub snippet: String,
+    pub match_type: String,
+    pub snippet: Option<String>,
 }
 
 /// Error response from the server
@@ -669,6 +676,7 @@ impl Client {
     }
 
     /// Search beads via the remote server.
+    #[allow(clippy::too_many_arguments)]
     pub async fn search_beads(
         &self,
         query: &str,
@@ -676,8 +684,11 @@ impl Client {
         status: Option<&str>,
         assignee: Option<&str>,
         rig: Option<&str>,
+        issue_type: Option<&str>,
+        label: Option<&str>,
         limit: usize,
         enrich: Option<bool>,
+        compact: Option<bool>,
     ) -> Result<SearchBeadsResponse> {
         let url = format!("{}/beads", self.base_url);
         let mut params: Vec<(&str, String)> = vec![
@@ -696,8 +707,17 @@ impl Client {
         if let Some(r) = rig {
             params.push(("rig", r.to_string()));
         }
+        if let Some(t) = issue_type {
+            params.push(("issue_type", t.to_string()));
+        }
+        if let Some(l) = label {
+            params.push(("label", l.to_string()));
+        }
         if let Some(e) = enrich {
             params.push(("enrich", e.to_string()));
+        }
+        if let Some(c) = compact {
+            params.push(("compact", c.to_string()));
         }
         self.get_json(&url, &params).await
     }

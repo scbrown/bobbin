@@ -13,6 +13,10 @@ pub struct LiveBeadMetadata {
     pub priority: i32,
     pub assignee: Option<String>,
     pub title: String,
+    pub issue_type: String,
+    pub owner: String,
+    pub labels: Vec<String>,
+    pub created_at: Option<String>,
 }
 
 /// A single bead (issue) fetched from Dolt
@@ -240,17 +244,35 @@ pub async fn fetch_bead_metadata(
             .iter()
             .map(|id| format!("'{}'", id.replace('\'', "''")))
             .collect();
+        let in_clause = placeholders.join(", ");
+
         let query = format!(
-            "SELECT id, title, status, priority, assignee FROM issues WHERE id IN ({})",
-            placeholders.join(", ")
+            "SELECT id, title, status, priority, assignee, COALESCE(issue_type, 'task'), COALESCE(owner, ''), COALESCE(DATE_FORMAT(created_at, '%Y-%m-%d'), '') FROM issues WHERE id IN ({})",
+            in_clause
         );
 
-        let rows: Vec<(String, String, String, i32, Option<String>)> = conn
+        let rows: Vec<(String, String, String, i32, Option<String>, String, String, String)> = conn
             .query(&query)
             .await
             .unwrap_or_default();
 
-        for (id, title, status, priority, assignee) in rows {
+        // Fetch labels for these beads
+        let labels_query = format!(
+            "SELECT issue_id, label FROM labels WHERE issue_id IN ({})",
+            in_clause
+        );
+        let label_rows: Vec<(String, String)> = conn
+            .query(&labels_query)
+            .await
+            .unwrap_or_default();
+
+        let mut labels_by_id: HashMap<String, Vec<String>> = HashMap::new();
+        for (issue_id, label) in label_rows {
+            labels_by_id.entry(issue_id).or_default().push(label);
+        }
+
+        for (id, title, status, priority, assignee, issue_type, owner, created_at) in rows {
+            let labels = labels_by_id.remove(&id).unwrap_or_default();
             result.insert(
                 id,
                 LiveBeadMetadata {
@@ -258,6 +280,10 @@ pub async fn fetch_bead_metadata(
                     priority,
                     assignee,
                     title,
+                    issue_type,
+                    owner,
+                    labels,
+                    created_at: if created_at.is_empty() { None } else { Some(created_at) },
                 },
             );
         }

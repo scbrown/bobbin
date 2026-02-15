@@ -1270,13 +1270,14 @@ impl BobbinMcpServer {
     }
 
     /// Search indexed beads (issues) semantically, with optional live Dolt enrichment
-    #[tool(description = "Search for beads (issues/tasks from the Dolt issue tracker) using natural language. Finds issues related to your query by semantic similarity. Filter by priority, status, assignee, or rig. Results are enriched with live Dolt metadata by default (set enrich=false for faster indexed-only results). Requires beads to be indexed first via `bobbin index --include-beads`.")]
+    #[tool(description = "Search for beads (issues/tasks from the Dolt issue tracker) using natural language. Finds issues related to your query by semantic similarity. Filter by priority, status, assignee, rig, issue_type, or label. Results are enriched with live Dolt metadata by default (set enrich=false for faster indexed-only results). Compact mode (default) omits snippets to save tokens. Requires beads to be indexed first via `bobbin index --include-beads`.")]
     async fn search_beads(
         &self,
         Parameters(req): Parameters<SearchBeadsRequest>,
     ) -> Result<CallToolResult, McpError> {
         let limit = req.limit.unwrap_or(10);
         let should_enrich = req.enrich.unwrap_or(true);
+        let compact = req.compact.unwrap_or(true);
 
         let config_path = Config::config_path(&self.repo_root);
         let config = Config::load(&config_path)
@@ -1285,7 +1286,6 @@ impl BobbinMcpServer {
         let vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        // Search with type filter for Issue chunks
         let model_dir = Config::model_cache_dir()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let embedder = Embedder::from_config(&config.embedding, &model_dir)
@@ -1336,8 +1336,10 @@ impl BobbinMcpServer {
             std::collections::HashMap::new()
         };
 
-        // Apply status/priority/assignee filters using live data when available
-        if req.status.is_some() || req.priority.is_some() || req.assignee.is_some() {
+        // Apply all filters using live data when available
+        let has_filters = req.status.is_some() || req.priority.is_some()
+            || req.assignee.is_some() || req.issue_type.is_some() || req.label.is_some();
+        if has_filters {
             filtered.retain(|r| {
                 let bead_id = r.chunk.file_path.split(':').nth(2).unwrap_or("");
 
@@ -1355,6 +1357,16 @@ impl BobbinMcpServer {
                     if let Some(ref assignee) = req.assignee {
                         let meta_assignee = meta.assignee.as_deref().unwrap_or("unassigned");
                         if !meta_assignee.contains(assignee.as_str()) {
+                            return false;
+                        }
+                    }
+                    if let Some(ref issue_type) = req.issue_type {
+                        if meta.issue_type != *issue_type {
+                            return false;
+                        }
+                    }
+                    if let Some(ref label) = req.label {
+                        if !meta.labels.iter().any(|l| l.contains(label.as_str())) {
                             return false;
                         }
                     }
@@ -1377,49 +1389,104 @@ impl BobbinMcpServer {
                             return false;
                         }
                     }
+                    // issue_type and label can't be reliably extracted from indexed content
                     true
                 }
             });
         }
 
+        // Boost relevance scores: title match and status weighting
+        let query_lower = req.query.to_lowercase();
+        let query_terms: Vec<&str> = query_lower.split_whitespace().collect();
+        for result in &mut filtered {
+            let mut boost: f32 = 1.0;
+
+            // Title match boost: if query terms appear in the title, boost score
+            if let Some(ref name) = result.chunk.name {
+                let title_lower = name.to_lowercase();
+                let matching_terms = query_terms.iter()
+                    .filter(|t| title_lower.contains(**t))
+                    .count();
+                if matching_terms > 0 {
+                    boost += 0.3 * (matching_terms as f32 / query_terms.len().max(1) as f32);
+                }
+            }
+
+            // Status boost: open/in_progress are more actionable than closed
+            let bead_id = result.chunk.file_path.split(':').nth(2).unwrap_or("");
+            if let Some(meta) = live_metadata.get(bead_id) {
+                match meta.status.as_str() {
+                    "in_progress" | "hooked" => boost += 0.15,
+                    "open" | "blocked" => boost += 0.1,
+                    "closed" => boost -= 0.1,
+                    _ => {}
+                }
+            }
+
+            result.score = (result.score * boost).min(1.0);
+        }
+
+        // Re-sort by boosted score
+        filtered.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         filtered.truncate(limit);
 
         // Convert to bead-specific response, using live metadata when available
         let results: Vec<BeadResultItem> = filtered
             .iter()
             .map(|r| {
-                let bead_id = r.chunk.file_path
-                    .split(':')
-                    .nth(2)
-                    .unwrap_or(&r.chunk.file_path)
-                    .to_string();
+                let parts: Vec<&str> = r.chunk.file_path.splitn(3, ':').collect();
+                let rig = if parts.len() >= 2 { parts[1] } else { "" };
+                let bead_id = if parts.len() == 3 { parts[2] } else { &r.chunk.file_path };
 
-                let (title, status, priority, assignee) =
-                    if let Some(meta) = live_metadata.get(&bead_id) {
-                        (
-                            meta.title.clone(),
-                            meta.status.clone(),
-                            format!("P{}", meta.priority),
-                            meta.assignee.clone().unwrap_or_else(|| "unassigned".to_string()),
-                        )
+                let match_type = r.match_type.as_ref()
+                    .map(|mt| format!("{:?}", mt).to_lowercase())
+                    .unwrap_or_else(|| "hybrid".to_string());
+
+                if let Some(meta) = live_metadata.get(bead_id) {
+                    let snippet = if compact {
+                        None
                     } else {
-                        let content = &r.chunk.content;
-                        (
-                            r.chunk.name.clone().unwrap_or_default(),
-                            extract_field(content, "Status: "),
-                            extract_field(content, "Priority: "),
-                            extract_field(content, "Assignee: "),
-                        )
+                        Some(clean_bead_snippet(&r.chunk.content, 200))
                     };
 
-                BeadResultItem {
-                    bead_id,
-                    title,
-                    priority,
-                    status,
-                    assignee,
-                    relevance_score: r.score,
-                    snippet: Self::truncate_content(&r.chunk.content, 200),
+                    BeadResultItem {
+                        bead_id: bead_id.to_string(),
+                        title: meta.title.clone(),
+                        priority: format!("P{}", meta.priority),
+                        status: meta.status.clone(),
+                        issue_type: meta.issue_type.clone(),
+                        assignee: meta.assignee.clone().unwrap_or_else(|| "unassigned".to_string()),
+                        owner: meta.owner.clone(),
+                        rig: rig.to_string(),
+                        labels: meta.labels.clone(),
+                        created_at: meta.created_at.clone(),
+                        relevance_score: r.score,
+                        match_type,
+                        snippet,
+                    }
+                } else {
+                    let content = &r.chunk.content;
+                    let snippet = if compact {
+                        None
+                    } else {
+                        Some(clean_bead_snippet(content, 200))
+                    };
+
+                    BeadResultItem {
+                        bead_id: bead_id.to_string(),
+                        title: r.chunk.name.clone().unwrap_or_default(),
+                        priority: extract_field(content, "Priority: "),
+                        status: extract_field(content, "Status: "),
+                        issue_type: "task".to_string(),
+                        assignee: extract_field(content, "Assignee: "),
+                        owner: String::new(),
+                        rig: rig.to_string(),
+                        labels: Vec::new(),
+                        created_at: None,
+                        relevance_score: r.score,
+                        match_type,
+                        snippet,
+                    }
                 }
             })
             .collect();
@@ -1449,6 +1516,36 @@ fn extract_field(content: &str, prefix: &str) -> String {
             Some(rest[..end].trim().to_string())
         })
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Clean a bead snippet by removing metadata lines that are already in structured fields.
+/// Returns the description/content portion only, truncated to max_len.
+fn clean_bead_snippet(content: &str, max_len: usize) -> String {
+    let cleaned: String = content
+        .lines()
+        .filter(|line| {
+            // Skip metadata lines already represented in structured fields
+            let trimmed = line.trim();
+            !(trimmed.starts_with("Status: ") && trimmed.contains(" | "))
+                && !trimmed.starts_with("Priority: P")
+                && !trimmed.starts_with("Assignee: ")
+                && !trimmed.starts_with("Comments:")
+                && !trimmed.starts_with("--- ")
+                && !trimmed.starts_with("Notes:")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let trimmed = cleaned.trim();
+    if trimmed.len() <= max_len {
+        trimmed.to_string()
+    } else {
+        let mut end = max_len;
+        while end > 0 && !trimmed.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...", &trimmed[..end])
+    }
 }
 
 impl BobbinMcpServer {
