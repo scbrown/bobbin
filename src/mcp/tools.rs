@@ -600,6 +600,10 @@ pub struct SearchBeadsRequest {
     /// Maximum number of results (default: 10)
     #[schemars(description = "Maximum number of results to return (default: 10)")]
     pub limit: Option<usize>,
+
+    /// Enrich results with live Dolt data (default: true)
+    #[schemars(description = "If true (default), enrich results with live status/priority/assignee from Dolt. Set to false for faster indexed-only results.")]
+    pub enrich: Option<bool>,
 }
 
 /// Response for searching beads

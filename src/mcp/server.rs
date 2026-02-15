@@ -1269,19 +1269,20 @@ impl BobbinMcpServer {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    /// Search indexed beads (issues) semantically
-    #[tool(description = "Search for beads (issues/tasks from the Dolt issue tracker) using natural language. Finds issues related to your query by semantic similarity. Filter by priority, status, assignee, or rig. Requires beads to be indexed first via `bobbin index --include-beads`.")]
+    /// Search indexed beads (issues) semantically, with optional live Dolt enrichment
+    #[tool(description = "Search for beads (issues/tasks from the Dolt issue tracker) using natural language. Finds issues related to your query by semantic similarity. Filter by priority, status, assignee, or rig. Results are enriched with live Dolt metadata by default (set enrich=false for faster indexed-only results). Requires beads to be indexed first via `bobbin index --include-beads`.")]
     async fn search_beads(
         &self,
         Parameters(req): Parameters<SearchBeadsRequest>,
     ) -> Result<CallToolResult, McpError> {
         let limit = req.limit.unwrap_or(10);
+        let should_enrich = req.enrich.unwrap_or(true);
 
         let config_path = Config::config_path(&self.repo_root);
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let mut vector_store = self.open_vector_store().await
+        let vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         // Search with type filter for Issue chunks
@@ -1314,56 +1315,111 @@ impl BobbinMcpServer {
             filtered.retain(|r| r.chunk.file_path.starts_with(&prefix));
         }
 
-        // Apply status/priority/assignee filters by parsing content
+        // Fetch live metadata from Dolt before filtering (so filters use fresh data)
+        let live_metadata = if should_enrich && config.beads.enabled {
+            let bead_ids: Vec<(String, String)> = filtered
+                .iter()
+                .filter_map(|r| {
+                    let parts: Vec<&str> = r.chunk.file_path.splitn(3, ':').collect();
+                    if parts.len() == 3 {
+                        Some((parts[1].to_string(), parts[2].to_string()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            crate::index::beads::fetch_bead_metadata(&config.beads, &bead_ids)
+                .await
+                .unwrap_or_default()
+        } else {
+            std::collections::HashMap::new()
+        };
+
+        // Apply status/priority/assignee filters using live data when available
         if req.status.is_some() || req.priority.is_some() || req.assignee.is_some() {
             filtered.retain(|r| {
-                let content = &r.chunk.content;
-                if let Some(ref status) = req.status {
-                    if !content.contains(&format!("Status: {}", status)) {
-                        return false;
+                let bead_id = r.chunk.file_path.split(':').nth(2).unwrap_or("");
+
+                if let Some(meta) = live_metadata.get(bead_id) {
+                    if let Some(ref status) = req.status {
+                        if meta.status != *status {
+                            return false;
+                        }
                     }
-                }
-                if let Some(priority) = req.priority {
-                    if !content.contains(&format!("Priority: P{}", priority)) {
-                        return false;
+                    if let Some(priority) = req.priority {
+                        if meta.priority != priority {
+                            return false;
+                        }
                     }
-                }
-                if let Some(ref assignee) = req.assignee {
-                    if !content.contains(&format!("Assignee: {}", assignee)) {
-                        return false;
+                    if let Some(ref assignee) = req.assignee {
+                        let meta_assignee = meta.assignee.as_deref().unwrap_or("unassigned");
+                        if !meta_assignee.contains(assignee.as_str()) {
+                            return false;
+                        }
                     }
+                    true
+                } else {
+                    // Fall back to indexed content filtering
+                    let content = &r.chunk.content;
+                    if let Some(ref status) = req.status {
+                        if !content.contains(&format!("Status: {}", status)) {
+                            return false;
+                        }
+                    }
+                    if let Some(priority) = req.priority {
+                        if !content.contains(&format!("Priority: P{}", priority)) {
+                            return false;
+                        }
+                    }
+                    if let Some(ref assignee) = req.assignee {
+                        if !content.contains(&format!("Assignee: {}", assignee)) {
+                            return false;
+                        }
+                    }
+                    true
                 }
-                true
             });
         }
 
         filtered.truncate(limit);
 
-        // Convert to bead-specific response
+        // Convert to bead-specific response, using live metadata when available
         let results: Vec<BeadResultItem> = filtered
             .iter()
             .map(|r| {
-                // Extract bead_id from file_path "beads:<rig>:<id>"
                 let bead_id = r.chunk.file_path
                     .split(':')
                     .nth(2)
                     .unwrap_or(&r.chunk.file_path)
                     .to_string();
 
-                // Extract metadata from content
-                let content = &r.chunk.content;
-                let status = extract_field(content, "Status: ");
-                let priority = extract_field(content, "Priority: ");
-                let assignee = extract_field(content, "Assignee: ");
+                let (title, status, priority, assignee) =
+                    if let Some(meta) = live_metadata.get(&bead_id) {
+                        (
+                            meta.title.clone(),
+                            meta.status.clone(),
+                            format!("P{}", meta.priority),
+                            meta.assignee.clone().unwrap_or_else(|| "unassigned".to_string()),
+                        )
+                    } else {
+                        let content = &r.chunk.content;
+                        (
+                            r.chunk.name.clone().unwrap_or_default(),
+                            extract_field(content, "Status: "),
+                            extract_field(content, "Priority: "),
+                            extract_field(content, "Assignee: "),
+                        )
+                    };
 
                 BeadResultItem {
                     bead_id,
-                    title: r.chunk.name.clone().unwrap_or_default(),
+                    title,
                     priority,
                     status,
                     assignee,
                     relevance_score: r.score,
-                    snippet: Self::truncate_content(content, 200),
+                    snippet: Self::truncate_content(&r.chunk.content, 200),
                 }
             })
             .collect();

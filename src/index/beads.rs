@@ -1,9 +1,19 @@
 use anyhow::{Context, Result};
 use mysql_async::prelude::*;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 
 use crate::config::BeadsConfig;
 use crate::types::{Chunk, ChunkType};
+
+/// Live metadata for a bead, fetched from Dolt
+#[derive(Debug, Clone)]
+pub struct LiveBeadMetadata {
+    pub status: String,
+    pub priority: i32,
+    pub assignee: Option<String>,
+    pub title: String,
+}
 
 /// A single bead (issue) fetched from Dolt
 #[derive(Debug)]
@@ -187,6 +197,76 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
     pool.disconnect().await?;
 
     Ok(chunks)
+}
+
+/// Fetch live metadata for specific beads from Dolt.
+///
+/// Takes a list of (rig, bead_id) pairs and returns a map from bead_id to metadata.
+/// Used by search_beads MCP tool to enrich results with current status/priority.
+pub async fn fetch_bead_metadata(
+    config: &BeadsConfig,
+    bead_ids: &[(String, String)], // (rig, bead_id)
+) -> Result<HashMap<String, LiveBeadMetadata>> {
+    if !config.enabled || bead_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut result = HashMap::new();
+
+    // Group bead_ids by rig -> database
+    let mut by_db: HashMap<String, Vec<&str>> = HashMap::new();
+    for (rig, bead_id) in bead_ids {
+        let db_name = format!("beads_{}", rig);
+        if config.databases.contains(&db_name) {
+            by_db.entry(db_name).or_default().push(bead_id.as_str());
+        }
+    }
+
+    for (db_name, ids) in &by_db {
+        let url = format!(
+            "mysql://{}@{}:{}/{}",
+            config.user, config.host, config.port, db_name
+        );
+        let pool = mysql_async::Pool::new(url.as_str());
+        let mut conn = match pool.get_conn().await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Warning: failed to connect to Dolt for live enrichment: {}", e);
+                continue;
+            }
+        };
+
+        let placeholders: Vec<String> = ids
+            .iter()
+            .map(|id| format!("'{}'", id.replace('\'', "''")))
+            .collect();
+        let query = format!(
+            "SELECT id, title, status, priority, assignee FROM issues WHERE id IN ({})",
+            placeholders.join(", ")
+        );
+
+        let rows: Vec<(String, String, String, i32, Option<String>)> = conn
+            .query(&query)
+            .await
+            .unwrap_or_default();
+
+        for (id, title, status, priority, assignee) in rows {
+            result.insert(
+                id,
+                LiveBeadMetadata {
+                    status,
+                    priority,
+                    assignee,
+                    title,
+                },
+            );
+        }
+
+        drop(conn);
+        let _ = pool.disconnect().await;
+    }
+
+    Ok(result)
 }
 
 #[cfg(test)]
