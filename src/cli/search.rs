@@ -336,9 +336,10 @@ fn parse_chunk_type(s: &str) -> Result<ChunkType> {
         "table" => Ok(ChunkType::Table),
         "code_block" | "codeblock" => Ok(ChunkType::CodeBlock),
         "commit" => Ok(ChunkType::Commit),
+        "issue" | "bead" => Ok(ChunkType::Issue),
         "other" => Ok(ChunkType::Other),
         _ => bail!(
-            "Unknown chunk type '{}'. Valid types: function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block, commit, other",
+            "Unknown chunk type '{}'. Valid types: function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block, commit, issue, other",
             s
         ),
     }

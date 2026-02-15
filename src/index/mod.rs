@@ -1,3 +1,4 @@
+pub mod beads;
 pub mod embedder;
 pub mod git;
 pub mod parser;

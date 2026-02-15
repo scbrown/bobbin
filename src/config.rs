@@ -12,6 +12,7 @@ pub struct Config {
     pub git: GitConfig,
     pub dependencies: DependencyConfig,
     pub hooks: HooksConfig,
+    pub beads: BeadsConfig,
 }
 
 /// Configuration for indexing behavior
@@ -299,6 +300,43 @@ impl Default for HooksConfig {
             gate_threshold: 0.75,
             dedup_enabled: true,
             show_docs: true,
+        }
+    }
+}
+
+/// Configuration for beads (Dolt issue tracker) integration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BeadsConfig {
+    /// Enable beads indexing
+    pub enabled: bool,
+    /// Dolt server hostname
+    pub host: String,
+    /// Dolt server port
+    pub port: u16,
+    /// Dolt user
+    pub user: String,
+    /// Database names to index (e.g., ["beads_aegis", "beads_gastown"])
+    pub databases: Vec<String>,
+    /// Include comments in indexed content
+    pub include_comments: bool,
+    /// Include closed beads
+    pub include_closed: bool,
+    /// Skip beads older than this many days (0 = no limit)
+    pub max_age_days: u32,
+}
+
+impl Default for BeadsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            host: "dolt.svc".into(),
+            port: 3306,
+            user: "root".into(),
+            databases: vec![],
+            include_comments: true,
+            include_closed: false,
+            max_age_days: 90,
         }
     }
 }

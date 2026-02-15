@@ -1568,6 +1568,7 @@ fn chunk_type_to_str(ct: &ChunkType) -> &'static str {
         ChunkType::Table => "table",
         ChunkType::CodeBlock => "code_block",
         ChunkType::Commit => "commit",
+        ChunkType::Issue => "issue",
         ChunkType::Other => "other",
     }
 }
@@ -1589,6 +1590,7 @@ fn str_to_chunk_type(s: &str) -> ChunkType {
         "table" => ChunkType::Table,
         "code_block" => ChunkType::CodeBlock,
         "commit" => ChunkType::Commit,
+        "issue" => ChunkType::Issue,
         _ => ChunkType::Other,
     }
 }

@@ -341,6 +341,8 @@ fn parse_chunk_type(s: &str) -> anyhow::Result<crate::types::ChunkType> {
         "section" => Ok(ChunkType::Section),
         "table" => Ok(ChunkType::Table),
         "code_block" | "codeblock" => Ok(ChunkType::CodeBlock),
+        "commit" => Ok(ChunkType::Commit),
+        "issue" | "bead" => Ok(ChunkType::Issue),
         "other" => Ok(ChunkType::Other),
         _ => anyhow::bail!("Unknown chunk type: {}", s),
     }

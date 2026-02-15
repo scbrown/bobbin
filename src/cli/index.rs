@@ -33,6 +33,10 @@ pub struct IndexArgs {
     #[arg(long)]
     source: Option<PathBuf>,
 
+    /// Also index beads (issues) from Dolt
+    #[arg(long)]
+    include_beads: bool,
+
     /// Directory containing .bobbin/ config (defaults to current directory)
     #[arg(default_value = ".")]
     path: PathBuf,
@@ -56,6 +60,8 @@ struct IndexOutput {
     imports_unresolved: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     commits_indexed: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    beads_indexed: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     elapsed_ms: Option<u128>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -256,6 +262,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 imports_resolved: None,
                 imports_unresolved: None,
                 commits_indexed: None,
+                beads_indexed: None,
                 elapsed_ms: None,
                 errors: None,
             };
@@ -685,6 +692,82 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     profile.git_commits_ms = t_commits.elapsed().as_millis();
 
+    // Index beads from Dolt if enabled
+    let mut beads_indexed: usize = 0;
+    let include_beads = args.include_beads || config.beads.enabled;
+    if include_beads && !config.beads.databases.is_empty() {
+        if !output.quiet && !output.json {
+            println!("  Indexing beads from Dolt...");
+        }
+
+        let mut beads_config = config.beads.clone();
+        beads_config.enabled = true;
+
+        match crate::index::beads::fetch_beads(&beads_config).await {
+            Ok(bead_chunks) if !bead_chunks.is_empty() => {
+                let embed_texts: Vec<String> =
+                    bead_chunks.iter().map(|c| c.content.clone()).collect();
+                let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
+
+                match embed.embed_batch(&embed_refs).await {
+                    Ok(embeddings) => {
+                        let contexts = vec![None; bead_chunks.len()];
+                        let now = chrono::Utc::now().timestamp().to_string();
+
+                        // Delete existing bead chunks (re-index all beads each time)
+                        let bead_ids: Vec<String> =
+                            bead_chunks.iter().map(|c| c.id.clone()).collect();
+                        vector_store.delete(&bead_ids).await.ok();
+
+                        if let Err(e) = vector_store
+                            .insert(
+                                &bead_chunks,
+                                &embeddings,
+                                &contexts,
+                                repo_name,
+                                "beads",
+                                &now,
+                            )
+                            .await
+                        {
+                            if !output.quiet && !output.json {
+                                println!(
+                                    "{} Failed to store bead chunks: {}",
+                                    "!".yellow(),
+                                    e
+                                );
+                            }
+                        } else {
+                            beads_indexed = bead_chunks.len();
+                            if output.verbose && !output.quiet && !output.json {
+                                println!("  Indexed {} beads", beads_indexed);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if !output.quiet && !output.json {
+                            println!(
+                                "{} Failed to embed beads: {}",
+                                "!".yellow(),
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(_) => {
+                if output.verbose && !output.quiet && !output.json {
+                    println!("  No beads to index");
+                }
+            }
+            Err(e) => {
+                if !output.quiet && !output.json {
+                    println!("{} Failed to fetch beads: {}", "!".yellow(), e);
+                }
+            }
+        }
+    }
+
     // Compact fragmented lance data after indexing — each file insert creates a
     // new fragment, and compaction merges them for better read performance.
     // Stats queries on heavily fragmented tables return incomplete results.
@@ -769,6 +852,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             } else {
                 None
             },
+            beads_indexed: if beads_indexed > 0 {
+                Some(beads_indexed)
+            } else {
+                None
+            },
             elapsed_ms: Some(elapsed.as_millis()),
             errors: Some(errors.len()),
         };
@@ -784,6 +872,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
         if commits_indexed > 0 {
             println!("  Commits: {} indexed for semantic search", commits_indexed);
+        }
+
+        if beads_indexed > 0 {
+            println!("  Beads: {} indexed from Dolt", beads_indexed);
         }
 
         if dep_count > 0 {
