@@ -27,6 +27,7 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/search", get(search))
         .route("/chunk/{id}", get(get_chunk))
         .route("/status", get(status))
+        .route("/metrics", get(metrics))
         .route("/webhook/push", post(webhook_push))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
@@ -259,6 +260,51 @@ pub(super) async fn status(
         status: "ok".to_string(),
         index: stats,
     }))
+}
+
+// -- /metrics (Prometheus) --
+
+pub(super) async fn metrics(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let store = match open_vector_store(&state).await {
+        Ok(s) => s,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
+                "# Failed to open vector store\nbobbin_up 0\n".to_string(),
+            );
+        }
+    };
+
+    let stats = store.get_stats(None).await.ok();
+
+    let mut out = String::new();
+    out.push_str("# HELP bobbin_up Whether bobbin is running.\n");
+    out.push_str("# TYPE bobbin_up gauge\n");
+    out.push_str("bobbin_up 1\n");
+
+    if let Some(s) = stats {
+        out.push_str("# HELP bobbin_index_files_total Total indexed files.\n");
+        out.push_str("# TYPE bobbin_index_files_total gauge\n");
+        out.push_str(&format!("bobbin_index_files_total {}\n", s.total_files));
+        out.push_str("# HELP bobbin_index_chunks_total Total indexed chunks.\n");
+        out.push_str("# TYPE bobbin_index_chunks_total gauge\n");
+        out.push_str(&format!("bobbin_index_chunks_total {}\n", s.total_chunks));
+        out.push_str("# HELP bobbin_index_embeddings_total Total embeddings.\n");
+        out.push_str("# TYPE bobbin_index_embeddings_total gauge\n");
+        out.push_str(&format!(
+            "bobbin_index_embeddings_total {}\n",
+            s.total_embeddings
+        ));
+    }
+
+    (
+        StatusCode::OK,
+        [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
+        out,
+    )
 }
 
 // -- /webhook/push --
