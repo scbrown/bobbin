@@ -1723,7 +1723,7 @@ async fn run_uninstall_git_hook(_args: UninstallGitHookArgs, output: OutputConfi
 mod tests {
     use super::*;
     use crate::search::context::*;
-    use crate::types::{ChunkType, FileCategory, MatchType, classify_file};
+    use crate::types::{ChunkType, MatchType, classify_file};
 
     #[test]
     fn test_hook_config_output_serialization() {
