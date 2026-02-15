@@ -1268,6 +1268,131 @@ impl BobbinMcpServer {
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
+
+    /// Search indexed beads (issues) semantically
+    #[tool(description = "Search for beads (issues/tasks from the Dolt issue tracker) using natural language. Finds issues related to your query by semantic similarity. Filter by priority, status, assignee, or rig. Requires beads to be indexed first via `bobbin index --include-beads`.")]
+    async fn search_beads(
+        &self,
+        Parameters(req): Parameters<SearchBeadsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let limit = req.limit.unwrap_or(10);
+
+        let config_path = Config::config_path(&self.repo_root);
+        let config = Config::load(&config_path)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let mut vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Search with type filter for Issue chunks
+        let model_dir = Config::model_cache_dir()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let embedder = Embedder::from_config(&config.embedding, &model_dir)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let mut search = HybridSearch::new(
+            embedder,
+            vector_store,
+            config.search.semantic_weight,
+        );
+
+        // Fetch more results than needed so we can filter
+        let search_results = search
+            .search(&req.query, limit * 5, None)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Filter to only Issue chunks
+        let mut filtered: Vec<SearchResult> = search_results
+            .into_iter()
+            .filter(|r| r.chunk.chunk_type == ChunkType::Issue)
+            .collect();
+
+        // Apply rig filter (file_path is "beads:<rig>:<id>")
+        if let Some(ref rig) = req.rig {
+            let prefix = format!("beads:{}:", rig);
+            filtered.retain(|r| r.chunk.file_path.starts_with(&prefix));
+        }
+
+        // Apply status/priority/assignee filters by parsing content
+        if req.status.is_some() || req.priority.is_some() || req.assignee.is_some() {
+            filtered.retain(|r| {
+                let content = &r.chunk.content;
+                if let Some(ref status) = req.status {
+                    if !content.contains(&format!("Status: {}", status)) {
+                        return false;
+                    }
+                }
+                if let Some(priority) = req.priority {
+                    if !content.contains(&format!("Priority: P{}", priority)) {
+                        return false;
+                    }
+                }
+                if let Some(ref assignee) = req.assignee {
+                    if !content.contains(&format!("Assignee: {}", assignee)) {
+                        return false;
+                    }
+                }
+                true
+            });
+        }
+
+        filtered.truncate(limit);
+
+        // Convert to bead-specific response
+        let results: Vec<BeadResultItem> = filtered
+            .iter()
+            .map(|r| {
+                // Extract bead_id from file_path "beads:<rig>:<id>"
+                let bead_id = r.chunk.file_path
+                    .split(':')
+                    .nth(2)
+                    .unwrap_or(&r.chunk.file_path)
+                    .to_string();
+
+                // Extract metadata from content
+                let content = &r.chunk.content;
+                let status = extract_field(content, "Status: ");
+                let priority = extract_field(content, "Priority: ");
+                let assignee = extract_field(content, "Assignee: ");
+
+                BeadResultItem {
+                    bead_id,
+                    title: r.chunk.name.clone().unwrap_or_default(),
+                    priority,
+                    status,
+                    assignee,
+                    relevance_score: r.score,
+                    snippet: Self::truncate_content(content, 200),
+                }
+            })
+            .collect();
+
+        let response = SearchBeadsResponse {
+            query: req.query,
+            count: results.len(),
+            results,
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+}
+
+/// Extract a field value from bead content like "Status: open | Priority: P2 | ..."
+fn extract_field(content: &str, prefix: &str) -> String {
+    content
+        .lines()
+        .find(|line| line.contains(prefix))
+        .and_then(|line| {
+            let start = line.find(prefix)? + prefix.len();
+            let rest = &line[start..];
+            let end = rest.find(" | ").unwrap_or(rest.len());
+            Some(rest[..end].trim().to_string())
+        })
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 impl BobbinMcpServer {

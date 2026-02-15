@@ -573,3 +573,51 @@ pub struct ReviewChangedFile {
     pub added_lines: usize,
     pub removed_lines: usize,
 }
+
+/// Request for searching beads (issues from Dolt)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SearchBeadsRequest {
+    /// Natural language search query
+    #[schemars(description = "Natural language search query to find relevant beads/issues (e.g. 'cert expiry', 'disk pressure', 'auth bug')")]
+    pub query: String,
+
+    /// Filter by priority (1-4)
+    #[schemars(description = "Filter by priority level (1=P1 critical, 2=P2 high, 3=P3 medium, 4=P4 low)")]
+    pub priority: Option<i32>,
+
+    /// Filter by status (open, in_progress, closed)
+    #[schemars(description = "Filter by issue status: 'open', 'in_progress', 'closed'")]
+    pub status: Option<String>,
+
+    /// Filter by assignee
+    #[schemars(description = "Filter by assignee (e.g. 'aegis/crew/braino')")]
+    pub assignee: Option<String>,
+
+    /// Filter by rig name
+    #[schemars(description = "Filter by rig name (e.g. 'aegis', 'gastown'). Matches against the file_path prefix 'beads:<rig>:'.")]
+    pub rig: Option<String>,
+
+    /// Maximum number of results (default: 10)
+    #[schemars(description = "Maximum number of results to return (default: 10)")]
+    pub limit: Option<usize>,
+}
+
+/// Response for searching beads
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SearchBeadsResponse {
+    pub query: String,
+    pub count: usize,
+    pub results: Vec<BeadResultItem>,
+}
+
+/// A single bead search result
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct BeadResultItem {
+    pub bead_id: String,
+    pub title: String,
+    pub priority: String,
+    pub status: String,
+    pub assignee: String,
+    pub relevance_score: f32,
+    pub snippet: String,
+}
