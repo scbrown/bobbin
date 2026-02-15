@@ -11,7 +11,7 @@ pub struct ServeArgs {
     path: PathBuf,
 
     /// Run HTTP server instead of MCP stdio server
-    #[arg(long)]
+    #[arg(long = "http")]
     server: bool,
 
     /// HTTP server port (default: 3030)
