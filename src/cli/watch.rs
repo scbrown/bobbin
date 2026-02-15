@@ -11,7 +11,7 @@ use super::index::build_context_windows;
 use super::OutputConfig;
 use crate::config::Config;
 use crate::index::{embedder, Embedder, Parser};
-use crate::storage::VectorStore;
+use crate::storage::{MetadataStore, VectorStore};
 
 #[derive(Args)]
 pub struct WatchArgs {
@@ -85,7 +85,9 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
     embedder::ensure_model(&model_dir, &config.embedding.model).await?;
 
     // Open storage and load models
+    let db_path = Config::db_path(&repo_root);
     let lance_path = Config::lance_path(&repo_root);
+    let metadata_store = MetadataStore::open(&db_path)?;
     let mut vector_store = VectorStore::open(&lance_path).await?;
     let mut embed = Embedder::load(&model_dir, &config.embedding.model)?;
     let mut parser = Parser::new()?;
@@ -209,6 +211,7 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
 
                         match vector_store.delete_by_file(&del_paths).await {
                             Ok(_) => {
+                                let _ = metadata_store.delete_file_hashes(&del_paths);
                                 if !output.quiet {
                                     for p in &del_paths {
                                         println!("  {} Removed {}", "-".red(), p);
@@ -232,6 +235,7 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
                             &config,
                             repo_name,
                             &mut vector_store,
+                            &metadata_store,
                             &mut embed,
                             &mut parser,
                             &output,
@@ -309,6 +313,7 @@ async fn reindex_files(
     config: &Config,
     repo_name: &str,
     vector_store: &mut VectorStore,
+    metadata_store: &MetadataStore,
     embed: &mut Embedder,
     parser: &mut Parser,
     output: &OutputConfig,
@@ -341,8 +346,12 @@ async fn reindex_files(
         }
 
         let hash = compute_hash(&content);
-        if !vector_store.needs_reindex(&rel_path, &hash).await? {
-            continue;
+
+        // Skip unchanged files using SQLite hash lookup
+        if let Some(stored_hash) = metadata_store.get_file_hash(&rel_path)? {
+            if stored_hash == hash {
+                continue;
+            }
         }
 
         let chunks = match parser.parse_file(path, &content) {
@@ -378,6 +387,9 @@ async fn reindex_files(
                 &now,
             )
             .await?;
+
+        // Update SQLite hash after successful indexing
+        metadata_store.set_file_hash(&rel_path, &hash)?;
 
         stats.chunks_created += chunks.len();
         stats.files_indexed += 1;

@@ -17,7 +17,7 @@ use crate::types::{Chunk, ChunkType, ImportDependency, ImportEdge};
 
 #[derive(Args)]
 pub struct IndexArgs {
-    /// Only update changed files
+    /// Only update changed files (now the default; kept for backwards compatibility)
     #[arg(long)]
     incremental: bool,
 
@@ -216,6 +216,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             println!("  Cleaning up {} deleted files...", deleted_files.len());
         }
         vector_store.delete_by_file(&deleted_files).await?;
+        metadata_store.delete_file_hashes(&deleted_files)?;
         // Also clear import dependencies for deleted files
         if config.dependencies.enabled {
             for file in &deleted_files {
@@ -224,8 +225,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
-    // Filter files that need indexing
+    // When forcing, clear SQLite file hashes so everything gets re-indexed
+    if args.force {
+        metadata_store.clear_file_hashes()?;
+    }
+
+    // Filter files that need indexing (incremental by default)
     let mut files_needing_index = Vec::new();
+    let mut skipped_count = 0usize;
 
     for file_path in &files_to_index {
         let rel_path = file_path
@@ -234,17 +241,24 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .to_string_lossy()
             .to_string();
 
-        if !args.force && args.incremental {
+        if !args.force {
             let content = std::fs::read_to_string(file_path)
                 .with_context(|| format!("Failed to read {}", file_path.display()))?;
             let hash = compute_hash(&content);
 
-            if !vector_store.needs_reindex(&rel_path, &hash).await? {
-                continue;
+            if let Some(stored_hash) = metadata_store.get_file_hash(&rel_path)? {
+                if stored_hash == hash {
+                    skipped_count += 1;
+                    continue;
+                }
             }
         }
 
         files_needing_index.push(file_path.clone());
+    }
+
+    if output.verbose && !output.quiet && !output.json && skipped_count > 0 {
+        println!("  Skipping {} unchanged files", skipped_count);
     }
 
     let total_files = files_needing_index.len();
@@ -380,6 +394,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
         let total_pending_chunks: usize = pending_results.iter().map(|r| r.chunks.len()).sum();
         if total_pending_chunks >= batch_size {
+            // Collect hashes before process_batch drains the results
+            let batch_hashes: Vec<(String, String)> = pending_results
+                .iter()
+                .map(|r| (r.path.clone(), r.hash.clone()))
+                .collect();
+
             let (indexed, chunks_count) = process_batch(
                 &mut pending_results,
                 &mut vector_store,
@@ -389,6 +409,13 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 &existing_files,
             )
             .await?;
+
+            // Update SQLite file hashes after successful indexing
+            let hash_refs: Vec<(&str, &str)> = batch_hashes
+                .iter()
+                .map(|(p, h)| (p.as_str(), h.as_str()))
+                .collect();
+            metadata_store.set_file_hashes_bulk(&hash_refs)?;
 
             indexed_files += indexed;
             total_chunks += chunks_count;
@@ -404,6 +431,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     // Process remaining files
     if !pending_results.is_empty() {
+        let batch_hashes: Vec<(String, String)> = pending_results
+            .iter()
+            .map(|r| (r.path.clone(), r.hash.clone()))
+            .collect();
+
         let (indexed, chunks_count) = process_batch(
             &mut pending_results,
             &mut vector_store,
@@ -413,6 +445,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             &existing_files,
         )
         .await?;
+
+        let hash_refs: Vec<(&str, &str)> = batch_hashes
+            .iter()
+            .map(|(p, h)| (p.as_str(), h.as_str()))
+            .collect();
+        metadata_store.set_file_hashes_bulk(&hash_refs)?;
 
         indexed_files += indexed;
         total_chunks += chunks_count;

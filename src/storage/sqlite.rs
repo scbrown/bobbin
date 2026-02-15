@@ -47,6 +47,12 @@ impl MetadataStore {
                 value TEXT
             );
 
+            -- File hash tracking for incremental indexing
+            CREATE TABLE IF NOT EXISTS file_hashes (
+                file_path TEXT PRIMARY KEY,
+                hash TEXT NOT NULL
+            );
+
             -- Indexes
             CREATE INDEX IF NOT EXISTS idx_coupling_score ON coupling(score DESC);
         "#,
@@ -131,6 +137,74 @@ impl MetadataStore {
     /// Clear all coupling data
     pub fn clear_coupling(&self) -> Result<()> {
         self.conn.execute("DELETE FROM coupling", [])?;
+        Ok(())
+    }
+
+    /// Get the stored hash for a file (for incremental indexing)
+    pub fn get_file_hash(&self, file_path: &str) -> Result<Option<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT hash FROM file_hashes WHERE file_path = ?1")?;
+        let result = stmt.query_row([file_path], |row| row.get(0)).optional()?;
+        Ok(result)
+    }
+
+    /// Store the hash for a file after successful indexing
+    pub fn set_file_hash(&self, file_path: &str, hash: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO file_hashes (file_path, hash) VALUES (?1, ?2)",
+            [file_path, hash],
+        )?;
+        Ok(())
+    }
+
+    /// Store hashes for multiple files in a single transaction
+    pub fn set_file_hashes_bulk(&self, entries: &[(&str, &str)]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO file_hashes (file_path, hash) VALUES (?1, ?2)",
+            )?;
+            for (path, hash) in entries {
+                stmt.execute([path, hash])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Delete hash entries for removed files
+    pub fn delete_file_hashes(&self, file_paths: &[String]) -> Result<()> {
+        if file_paths.is_empty() {
+            return Ok(());
+        }
+        let placeholders: Vec<String> = (1..=file_paths.len()).map(|i| format!("?{i}")).collect();
+        let sql = format!(
+            "DELETE FROM file_hashes WHERE file_path IN ({})",
+            placeholders.join(", ")
+        );
+        let params: Vec<&dyn rusqlite::ToSql> = file_paths
+            .iter()
+            .map(|p| p as &dyn rusqlite::ToSql)
+            .collect();
+        self.conn.execute(&sql, params.as_slice())?;
+        Ok(())
+    }
+
+    /// Get all file paths that have been indexed
+    pub fn get_all_indexed_files(&self) -> Result<std::collections::HashSet<String>> {
+        let mut stmt = self.conn.prepare("SELECT file_path FROM file_hashes")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        let mut result = std::collections::HashSet::new();
+        for row in rows {
+            result.insert(row?);
+        }
+        Ok(result)
+    }
+
+    /// Clear all file hashes (used by --force to rebuild from scratch)
+    pub fn clear_file_hashes(&self) -> Result<()> {
+        self.conn.execute("DELETE FROM file_hashes", [])?;
         Ok(())
     }
 }
@@ -259,4 +333,80 @@ mod tests {
         assert_eq!(store.get_coupling("a.rs", 10).unwrap().len(), 1);
     }
 
+    #[test]
+    fn test_file_hash_roundtrip() {
+        let (store, _dir) = create_test_store();
+
+        assert!(store.get_file_hash("src/main.rs").unwrap().is_none());
+
+        store.set_file_hash("src/main.rs", "abc123").unwrap();
+        assert_eq!(
+            store.get_file_hash("src/main.rs").unwrap(),
+            Some("abc123".to_string())
+        );
+
+        // Update hash
+        store.set_file_hash("src/main.rs", "def456").unwrap();
+        assert_eq!(
+            store.get_file_hash("src/main.rs").unwrap(),
+            Some("def456".to_string())
+        );
+    }
+
+    #[test]
+    fn test_file_hashes_bulk() {
+        let (store, _dir) = create_test_store();
+
+        let entries = vec![
+            ("src/a.rs", "hash_a"),
+            ("src/b.rs", "hash_b"),
+            ("src/c.rs", "hash_c"),
+        ];
+        store.set_file_hashes_bulk(&entries).unwrap();
+
+        assert_eq!(store.get_file_hash("src/a.rs").unwrap(), Some("hash_a".to_string()));
+        assert_eq!(store.get_file_hash("src/b.rs").unwrap(), Some("hash_b".to_string()));
+        assert_eq!(store.get_file_hash("src/c.rs").unwrap(), Some("hash_c".to_string()));
+    }
+
+    #[test]
+    fn test_delete_file_hashes() {
+        let (store, _dir) = create_test_store();
+
+        store.set_file_hash("src/a.rs", "hash_a").unwrap();
+        store.set_file_hash("src/b.rs", "hash_b").unwrap();
+        store.set_file_hash("src/c.rs", "hash_c").unwrap();
+
+        store.delete_file_hashes(&["src/a.rs".to_string(), "src/c.rs".to_string()]).unwrap();
+
+        assert!(store.get_file_hash("src/a.rs").unwrap().is_none());
+        assert_eq!(store.get_file_hash("src/b.rs").unwrap(), Some("hash_b".to_string()));
+        assert!(store.get_file_hash("src/c.rs").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_clear_file_hashes() {
+        let (store, _dir) = create_test_store();
+
+        store.set_file_hash("src/a.rs", "hash_a").unwrap();
+        store.set_file_hash("src/b.rs", "hash_b").unwrap();
+
+        store.clear_file_hashes().unwrap();
+
+        assert!(store.get_file_hash("src/a.rs").unwrap().is_none());
+        assert!(store.get_file_hash("src/b.rs").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_get_all_indexed_files() {
+        let (store, _dir) = create_test_store();
+
+        store.set_file_hash("src/a.rs", "hash_a").unwrap();
+        store.set_file_hash("src/b.rs", "hash_b").unwrap();
+
+        let files = store.get_all_indexed_files().unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(files.contains("src/a.rs"));
+        assert!(files.contains("src/b.rs"));
+    }
 }

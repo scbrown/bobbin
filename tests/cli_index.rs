@@ -72,7 +72,7 @@ fn index_json_output() {
 }
 
 #[test]
-fn index_incremental_runs_successfully() {
+fn index_incremental_skips_unchanged_files() {
     let project = TestProject::new();
     project.write_rust_fixtures();
     project.git_commit("initial");
@@ -80,7 +80,59 @@ fn index_incremental_runs_successfully() {
 
     if !project.bobbin_index() { return };
 
-    // Incremental index produces valid JSON output
+    // Re-index without changes — should skip everything (0 files indexed)
+    let output = Command::new(TestProject::bobbin_bin())
+        .args(["--json", "index"])
+        .arg(project.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["status"], "up_to_date", "unchanged files should be skipped");
+    assert_eq!(json["files_indexed"], 0, "no files should be re-indexed");
+}
+
+#[test]
+fn index_incremental_reindexes_modified_file() {
+    let project = TestProject::new();
+    project.write_rust_fixtures();
+    project.git_commit("initial");
+    project.bobbin_init();
+
+    if !project.bobbin_index() { return };
+
+    // Modify one file
+    project.write_file("src/lib.rs", "pub fn modified() -> bool { true }\npub fn another() -> i32 { 42 }\n");
+
+    // Re-index — should pick up the changed file
+    let output = Command::new(TestProject::bobbin_bin())
+        .args(["--json", "index"])
+        .arg(project.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["status"], "indexed");
+    let files_indexed = json["files_indexed"].as_u64().unwrap();
+    assert_eq!(files_indexed, 1, "only the modified file should be re-indexed");
+}
+
+#[test]
+fn index_incremental_flag_backwards_compat() {
+    let project = TestProject::new();
+    project.write_rust_fixtures();
+    project.git_commit("initial");
+    project.bobbin_init();
+
+    if !project.bobbin_index() { return };
+
+    // --incremental flag should still work (now a no-op since it's the default)
     let output = Command::new(TestProject::bobbin_bin())
         .args(["--json", "index", "--incremental"])
         .arg(project.path())
@@ -91,8 +143,7 @@ fn index_incremental_runs_successfully() {
         .clone();
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
-    assert!(json["files_indexed"].is_number());
-    assert!(json["status"].is_string());
+    assert_eq!(json["status"], "up_to_date");
 }
 
 #[test]
