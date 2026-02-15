@@ -294,8 +294,8 @@ impl Default for HooksConfig {
     fn default() -> Self {
         Self {
             threshold: 0.5,
-            budget: 150,
-            content_mode: "preview".into(),
+            budget: 300,
+            content_mode: "full".into(),
             min_prompt_length: 10,
             gate_threshold: 0.75,
             dedup_enabled: true,
@@ -562,8 +562,8 @@ coupling_depth = 500
     fn test_hooks_config_defaults() {
         let config = Config::default();
         assert!((config.hooks.threshold - 0.5).abs() < f32::EPSILON);
-        assert_eq!(config.hooks.budget, 150);
-        assert_eq!(config.hooks.content_mode, "preview");
+        assert_eq!(config.hooks.budget, 300);
+        assert_eq!(config.hooks.content_mode, "full");
         assert_eq!(config.hooks.min_prompt_length, 10);
         assert!((config.hooks.gate_threshold - 0.75).abs() < f32::EPSILON);
         assert!(config.hooks.dedup_enabled);
@@ -575,7 +575,7 @@ coupling_depth = 500
 [hooks]
 threshold = 0.7
 budget = 200
-content_mode = "full"
+content_mode = "preview"
 min_prompt_length = 20
 gate_threshold = 0.9
 dedup_enabled = false
@@ -583,7 +583,7 @@ dedup_enabled = false
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!((config.hooks.threshold - 0.7).abs() < f32::EPSILON);
         assert_eq!(config.hooks.budget, 200);
-        assert_eq!(config.hooks.content_mode, "full");
+        assert_eq!(config.hooks.content_mode, "preview");
         assert_eq!(config.hooks.min_prompt_length, 20);
         assert!((config.hooks.gate_threshold - 0.9).abs() < f32::EPSILON);
         assert!(!config.hooks.dedup_enabled);
@@ -598,7 +598,7 @@ batch_size = 32
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!((config.hooks.threshold - 0.5).abs() < f32::EPSILON);
-        assert_eq!(config.hooks.budget, 150);
+        assert_eq!(config.hooks.budget, 300);
         assert!((config.hooks.gate_threshold - 0.75).abs() < f32::EPSILON);
     }
 
@@ -608,7 +608,7 @@ batch_size = 32
         let toml_str = r#"
 [hooks]
 threshold = 0.5
-budget = 150
+budget = 300
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!((config.hooks.gate_threshold - 0.75).abs() < f32::EPSILON);

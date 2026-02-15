@@ -538,13 +538,9 @@ async fn inject_context_remote(
         .unwrap_or_default();
     let hooks_cfg = &config.hooks;
 
-    // Apply CLI overrides; use remote-calibrated defaults when the user hasn't
-    // explicitly set values (remote hybrid scores are typically 0.005–0.020,
-    // much lower than the local semantic scores the config defaults target).
+    // Apply CLI overrides
     let min_prompt_length = args.min_prompt_length.unwrap_or(hooks_cfg.min_prompt_length);
-    let threshold = args.threshold.unwrap_or(0.005);
     let budget = args.budget.unwrap_or(hooks_cfg.budget);
-    let gate = args.gate_threshold.unwrap_or(0.005);
 
     // 3. Check min prompt length
     let prompt = input.prompt.trim();
@@ -552,78 +548,133 @@ async fn inject_context_remote(
         return Ok(());
     }
 
-    // 4. Search via remote server
+    // 4. Assemble context via remote server (uses full ContextAssembler on server
+    //    side, including coupling expansion and provenance bridging)
     let client = Client::new(server_url);
     let resp = client
-        .search(prompt, "hybrid", None, 10, None)
+        .context(
+            prompt,
+            Some(budget),
+            Some(1),    // depth: 1 level of coupling expansion
+            Some(3),    // max_coupled: 3 coupled files per seed
+            Some(20),   // search_limit: 20 initial results
+            Some(0.1),  // coupling_threshold
+            None,       // repo filter
+        )
         .await
-        .context("Remote search failed")?;
+        .context("Remote context assembly failed")?;
 
-    if resp.results.is_empty() {
+    if resp.files.is_empty() {
         return Ok(());
     }
 
     // 5. Gate check: skip if top score is too low
-    let top_score = resp.results.first().map(|r| r.score).unwrap_or(0.0);
-    if top_score < gate {
+    let top_score = resp.files.iter()
+        .flat_map(|f| f.chunks.iter())
+        .map(|c| c.score)
+        .fold(0.0_f32, f32::max);
+    if top_score < 0.005 {
         if output.verbose {
             eprintln!(
-                "bobbin: skipped (score={:.3} < gate={:.2})",
-                top_score, gate
+                "bobbin: skipped (score={:.3} < gate=0.005)",
+                top_score,
             );
         }
         return Ok(());
     }
 
-    // 6. Format results matching local inject-context output format
-    let result_count = resp.results.iter().filter(|r| r.score >= threshold).count();
-    if result_count == 0 {
-        return Ok(());
-    }
+    // 6. Format structured context output
+    let mut out = String::new();
+    use std::fmt::Write;
 
-    let mut out = format!(
-        "Bobbin found {} relevant chunks (via {}):\n",
-        result_count, server_url,
+    // Header with summary
+    let _ = writeln!(
+        out,
+        "Bobbin found {} relevant files ({} direct, {} coupled, {} bridged, {}/{} budget lines):",
+        resp.summary.total_files,
+        resp.summary.direct_hits,
+        resp.summary.coupled_additions,
+        resp.summary.bridged_additions,
+        resp.summary.total_chunks,
+        budget,
     );
 
-    out.push_str("\n=== Source Files ===\n");
+    // Partition files by relevance type for structured output
+    let is_doc = |path: &str| -> bool {
+        path.ends_with(".md") || path.ends_with(".txt") || path.ends_with(".rst")
+            || path.ends_with(".adoc") || path.contains("/docs/")
+    };
+
+    let source_files: Vec<_> = resp.files.iter().filter(|f| !is_doc(&f.path)).collect();
+    let doc_files: Vec<_> = resp.files.iter().filter(|f| is_doc(&f.path)).collect();
 
     let mut line_count = out.lines().count();
-    for result in &resp.results {
-        if result.score < threshold {
-            continue;
-        }
-        let name = result
-            .name
-            .as_ref()
-            .map(|n| format!(" {}", n))
-            .unwrap_or_default();
-        let chunk_section = format!(
-            "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n{}{}\n",
-            result.file_path,
-            result.start_line,
-            result.end_line,
-            name,
-            result.chunk_type,
-            result.score,
-            result.content_preview,
-            if result.content_preview.ends_with('\n') {
-                ""
-            } else {
-                ""
-            },
-        );
 
-        let chunk_line_count = chunk_section.lines().count();
-        if line_count + chunk_line_count > budget {
-            break;
-        }
-        line_count += chunk_line_count;
-        out.push_str(&chunk_section);
+    // Emit source files
+    if !source_files.is_empty() {
+        let _ = write!(out, "\n=== Source Files ===\n");
+        line_count += 2;
+        format_remote_file_chunks(&mut out, &source_files, budget, &mut line_count);
+    }
+
+    // Emit documentation
+    if hooks_cfg.show_docs && !doc_files.is_empty() {
+        let _ = write!(out, "\n=== Documentation ===\n");
+        line_count += 2;
+        format_remote_file_chunks(&mut out, &doc_files, budget, &mut line_count);
     }
 
     print!("{}", out);
     Ok(())
+}
+
+/// Format chunks from remote context response files into output string.
+fn format_remote_file_chunks(
+    out: &mut String,
+    files: &[&crate::http::client::ContextFileOutput],
+    budget: usize,
+    line_count: &mut usize,
+) {
+    use std::fmt::Write;
+
+    for file in files {
+        // Show coupling info if present
+        let relevance_info = if !file.coupled_to.is_empty() {
+            format!(" [coupled via {}]", file.coupled_to.join(", "))
+        } else if file.relevance == "bridged" {
+            " [bridged from docs]".to_string()
+        } else {
+            String::new()
+        };
+
+        for chunk in &file.chunks {
+            let name = chunk
+                .name
+                .as_ref()
+                .map(|n| format!(" {}", n))
+                .unwrap_or_default();
+            let content_str = chunk.content.as_deref().unwrap_or("");
+            let chunk_section = format!(
+                "\n--- {}:{}-{}{} ({}, score {:.2}){} ---\n{}{}",
+                file.path,
+                chunk.start_line,
+                chunk.end_line,
+                name,
+                chunk.chunk_type,
+                chunk.score,
+                relevance_info,
+                content_str,
+                if content_str.ends_with('\n') { "" } else { "\n" },
+            );
+
+            let chunk_line_count = chunk_section.lines().count();
+            if *line_count + chunk_line_count > budget {
+                return;
+            }
+            *line_count += chunk_line_count;
+            let _ = write!(out, "{}", chunk_section);
+        }
+    }
 }
 
 /// Claude Code UserPromptSubmit hook input (subset of fields we need)
