@@ -6,7 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN useradd -r -s /usr/sbin/nologin -d /data bobbin
 
-COPY target/release/bobbin /usr/local/bin/bobbin
+COPY bobbin /usr/local/bin/bobbin
+RUN chmod +x /usr/local/bin/bobbin
 
 RUN mkdir -p /data && chown bobbin:bobbin /data
 
