@@ -7,13 +7,19 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::analysis::complexity::ComplexityAnalyzer;
+use crate::analysis::impact::{ImpactAnalyzer, ImpactConfig, ImpactMode, ImpactSignal};
+use crate::analysis::refs::RefAnalyzer;
+use crate::analysis::similar::{SimilarTarget, SimilarityAnalyzer};
 use crate::config::Config;
-use crate::index::Embedder;
+use crate::index::{Embedder, GitAnalyzer};
+use crate::search::context::{ContentMode, ContextAssembler, ContextConfig, FileRelevance};
 use crate::search::{HybridSearch, SemanticSearch};
-use crate::storage::VectorStore;
-use crate::types::MatchType;
+use crate::storage::{MetadataStore, VectorStore};
+use crate::types::{ChunkType, MatchType, SearchResult};
 
 use super::AppState;
 
@@ -25,7 +31,19 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
 
     axum::Router::new()
         .route("/search", get(search))
+        .route("/grep", get(grep))
+        .route("/context", get(context))
         .route("/chunk/{id}", get(get_chunk))
+        .route("/read", get(read_chunk))
+        .route("/related", get(related))
+        .route("/refs", get(find_refs))
+        .route("/symbols", get(list_symbols))
+        .route("/hotspots", get(hotspots))
+        .route("/impact", get(impact))
+        .route("/review", get(review))
+        .route("/similar", get(similar))
+        .route("/prime", get(prime))
+        .route("/beads", get(search_beads))
         .route("/status", get(status))
         .route("/metrics", get(metrics))
         .route("/webhook/push", post(webhook_push))
@@ -364,7 +382,1345 @@ pub(super) async fn webhook_push(
     })
 }
 
+// -- /grep --
+
+#[derive(Deserialize)]
+struct GrepParams {
+    /// Pattern to search for
+    pattern: String,
+    /// Case insensitive search
+    ignore_case: Option<bool>,
+    /// Use regex matching
+    regex: Option<bool>,
+    /// Filter by chunk type
+    r#type: Option<String>,
+    /// Max results (default 10)
+    limit: Option<usize>,
+    /// Filter by repository name
+    repo: Option<String>,
+}
+
+#[derive(Serialize)]
+struct GrepResponse {
+    pattern: String,
+    count: usize,
+    results: Vec<GrepResultItem>,
+}
+
+#[derive(Serialize)]
+struct GrepResultItem {
+    file_path: String,
+    name: Option<String>,
+    chunk_type: String,
+    start_line: u32,
+    end_line: u32,
+    score: f32,
+    language: String,
+    content_preview: String,
+    matching_lines: Vec<MatchingLine>,
+}
+
+#[derive(Serialize)]
+struct MatchingLine {
+    line_number: u32,
+    content: String,
+}
+
+pub(super) async fn grep(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<GrepParams>,
+) -> Result<Json<GrepResponse>, (StatusCode, Json<ErrorBody>)> {
+    let limit = params.limit.unwrap_or(10);
+    let ignore_case = params.ignore_case.unwrap_or(false);
+    let use_regex = params.regex.unwrap_or(false);
+
+    let type_filter = params
+        .r#type
+        .as_deref()
+        .map(parse_chunk_type)
+        .transpose()
+        .map_err(|e| bad_request(e.to_string()))?;
+
+    let regex_pattern = if use_regex {
+        let pat = if ignore_case {
+            format!("(?i){}", params.pattern)
+        } else {
+            params.pattern.clone()
+        };
+        Some(Regex::new(&pat).map_err(|e| bad_request(format!("Invalid regex: {}", e)))?)
+    } else {
+        None
+    };
+
+    let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+
+    let stats = vector_store
+        .get_stats(None)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+    if stats.total_chunks == 0 {
+        return Ok(Json(GrepResponse {
+            pattern: params.pattern,
+            count: 0,
+            results: vec![],
+        }));
+    }
+
+    // Build FTS query
+    let fts_query = if use_regex {
+        let cleaned: String = params
+            .pattern
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '_' || c == ' ' {
+                    c
+                } else {
+                    ' '
+                }
+            })
+            .collect();
+        let words: Vec<&str> = cleaned
+            .split_whitespace()
+            .filter(|w| w.len() >= 2)
+            .collect();
+        if words.is_empty() {
+            params.pattern.clone()
+        } else {
+            words.join(" OR ")
+        }
+    } else {
+        params.pattern.clone()
+    };
+
+    let search_limit = if type_filter.is_some() || use_regex {
+        limit * 5
+    } else {
+        limit
+    };
+
+    let results = vector_store
+        .search_fts(&fts_query, search_limit, params.repo.as_deref())
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+
+    let filtered: Vec<SearchResult> = results
+        .into_iter()
+        .filter(|r| {
+            if let Some(ref chunk_type) = type_filter {
+                &r.chunk.chunk_type == chunk_type
+            } else {
+                true
+            }
+        })
+        .filter(|r| {
+            if let Some(ref re) = regex_pattern {
+                re.is_match(&r.chunk.content)
+                    || r.chunk.name.as_ref().is_some_and(|n| re.is_match(n))
+            } else {
+                true
+            }
+        })
+        .filter(|r| {
+            if !ignore_case && regex_pattern.is_none() {
+                r.chunk.content.contains(&params.pattern)
+                    || r.chunk
+                        .name
+                        .as_ref()
+                        .is_some_and(|n| n.contains(&params.pattern))
+            } else {
+                true
+            }
+        })
+        .take(limit)
+        .collect();
+
+    let response = GrepResponse {
+        pattern: params.pattern.clone(),
+        count: filtered.len(),
+        results: filtered
+            .iter()
+            .map(|r| GrepResultItem {
+                file_path: r.chunk.file_path.clone(),
+                name: r.chunk.name.clone(),
+                chunk_type: r.chunk.chunk_type.to_string(),
+                start_line: r.chunk.start_line,
+                end_line: r.chunk.end_line,
+                score: r.score,
+                language: r.chunk.language.clone(),
+                content_preview: truncate(&r.chunk.content, 200),
+                matching_lines: find_matching_lines(
+                    &r.chunk.content,
+                    &params.pattern,
+                    regex_pattern.as_ref(),
+                    ignore_case,
+                    r.chunk.start_line,
+                ),
+            })
+            .collect(),
+    };
+
+    Ok(Json(response))
+}
+
+// -- /context --
+
+#[derive(Deserialize)]
+struct ContextParams {
+    /// Task description query
+    q: String,
+    /// Max lines budget (default 500)
+    budget: Option<usize>,
+    /// Coupling expansion depth (default 1)
+    depth: Option<u32>,
+    /// Max coupled files per seed (default 3)
+    max_coupled: Option<usize>,
+    /// Max initial search results (default 20)
+    limit: Option<usize>,
+    /// Min coupling threshold (default 0.1)
+    coupling_threshold: Option<f32>,
+    /// Filter by repository
+    repo: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ContextResponse {
+    query: String,
+    budget: ContextBudgetInfo,
+    files: Vec<ContextFileOutput>,
+    summary: ContextSummaryOutput,
+}
+
+#[derive(Serialize)]
+struct ContextBudgetInfo {
+    max_lines: usize,
+    used_lines: usize,
+}
+
+#[derive(Serialize)]
+struct ContextFileOutput {
+    path: String,
+    language: String,
+    relevance: String,
+    score: f32,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    coupled_to: Vec<String>,
+    chunks: Vec<ContextChunkOutput>,
+}
+
+#[derive(Serialize)]
+struct ContextChunkOutput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    chunk_type: String,
+    start_line: u32,
+    end_line: u32,
+    score: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    match_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ContextSummaryOutput {
+    total_files: usize,
+    total_chunks: usize,
+    direct_hits: usize,
+    coupled_additions: usize,
+    bridged_additions: usize,
+    source_files: usize,
+    doc_files: usize,
+}
+
+pub(super) async fn context(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ContextParams>,
+) -> Result<Json<ContextResponse>, (StatusCode, Json<ErrorBody>)> {
+    let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+
+    let stats = vector_store
+        .get_stats(None)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+    if stats.total_chunks == 0 {
+        return Ok(Json(ContextResponse {
+            query: params.q,
+            budget: ContextBudgetInfo {
+                max_lines: params.budget.unwrap_or(500),
+                used_lines: 0,
+            },
+            files: vec![],
+            summary: ContextSummaryOutput {
+                total_files: 0,
+                total_chunks: 0,
+                direct_hits: 0,
+                coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
+            },
+        }));
+    }
+
+    let metadata_store = open_metadata_store(&state).map_err(internal_error)?;
+
+    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
+    let embedder =
+        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+
+    let context_config = ContextConfig {
+        budget_lines: params.budget.unwrap_or(500),
+        depth: params.depth.unwrap_or(1),
+        max_coupled: params.max_coupled.unwrap_or(3),
+        coupling_threshold: params.coupling_threshold.unwrap_or(0.1),
+        semantic_weight: state.config.search.semantic_weight,
+        content_mode: ContentMode::Full,
+        search_limit: params.limit.unwrap_or(20),
+    };
+
+    let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let bundle = assembler
+        .assemble(&params.q, params.repo.as_deref())
+        .await
+        .map_err(internal_error)?;
+
+    Ok(Json(ContextResponse {
+        query: bundle.query,
+        budget: ContextBudgetInfo {
+            max_lines: bundle.budget.max_lines,
+            used_lines: bundle.budget.used_lines,
+        },
+        files: bundle.files.iter().map(to_context_file).collect(),
+        summary: to_context_summary(&bundle.summary),
+    }))
+}
+
+// -- /read --
+
+#[derive(Deserialize)]
+struct ReadChunkParams {
+    /// File path (relative to repo root)
+    file: String,
+    /// Start line
+    start_line: u32,
+    /// End line
+    end_line: u32,
+    /// Context lines before/after (default 0)
+    context: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct ReadChunkResponse {
+    file: String,
+    start_line: u32,
+    end_line: u32,
+    actual_start_line: u32,
+    actual_end_line: u32,
+    content: String,
+    language: String,
+}
+
+pub(super) async fn read_chunk(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ReadChunkParams>,
+) -> Result<Json<ReadChunkResponse>, (StatusCode, Json<ErrorBody>)> {
+    let ctx = params.context.unwrap_or(0);
+    let (content, actual_start, actual_end) =
+        read_file_lines(&state.repo_root, &params.file, params.start_line, params.end_line, ctx)
+            .map_err(internal_error)?;
+
+    Ok(Json(ReadChunkResponse {
+        file: params.file.clone(),
+        start_line: params.start_line,
+        end_line: params.end_line,
+        actual_start_line: actual_start,
+        actual_end_line: actual_end,
+        content,
+        language: detect_language(&params.file),
+    }))
+}
+
+// -- /related --
+
+#[derive(Deserialize)]
+struct RelatedParams {
+    /// File path to find related files for
+    file: String,
+    /// Max results (default 10)
+    limit: Option<usize>,
+    /// Min coupling score threshold (default 0.0)
+    threshold: Option<f32>,
+}
+
+#[derive(Serialize)]
+struct RelatedResponse {
+    file: String,
+    related: Vec<RelatedFile>,
+}
+
+#[derive(Serialize)]
+struct RelatedFile {
+    path: String,
+    score: f32,
+    co_changes: u32,
+}
+
+pub(super) async fn related(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<RelatedParams>,
+) -> Result<Json<RelatedResponse>, (StatusCode, Json<ErrorBody>)> {
+    let limit = params.limit.unwrap_or(10);
+    let threshold = params.threshold.unwrap_or(0.0);
+
+    let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+
+    // Verify file exists in index
+    if vector_store
+        .get_file(&params.file)
+        .await
+        .map_err(|e| internal_error(e.into()))?
+        .is_none()
+    {
+        return Err(bad_request(format!(
+            "File not found in index: {}",
+            params.file
+        )));
+    }
+
+    let store = open_metadata_store(&state).map_err(internal_error)?;
+    let couplings = store
+        .get_coupling(&params.file, limit)
+        .map_err(internal_error)?;
+
+    let related: Vec<RelatedFile> = couplings
+        .into_iter()
+        .filter(|c| c.score >= threshold)
+        .map(|c| {
+            let other_path = if c.file_a == params.file {
+                c.file_b
+            } else {
+                c.file_a
+            };
+            RelatedFile {
+                path: other_path,
+                score: c.score,
+                co_changes: c.co_changes,
+            }
+        })
+        .collect();
+
+    Ok(Json(RelatedResponse {
+        file: params.file,
+        related,
+    }))
+}
+
+// -- /refs --
+
+#[derive(Deserialize)]
+struct FindRefsParams {
+    /// Symbol name to find references for
+    symbol: String,
+    /// Filter by symbol type
+    r#type: Option<String>,
+    /// Max usage results (default 20)
+    limit: Option<usize>,
+    /// Filter by repository
+    repo: Option<String>,
+}
+
+#[derive(Serialize)]
+struct FindRefsResponse {
+    symbol: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    definition: Option<SymbolDefinitionOutput>,
+    usage_count: usize,
+    usages: Vec<SymbolUsageOutput>,
+}
+
+#[derive(Serialize)]
+struct SymbolDefinitionOutput {
+    name: String,
+    chunk_type: String,
+    file_path: String,
+    start_line: u32,
+    end_line: u32,
+    signature: String,
+}
+
+#[derive(Serialize)]
+struct SymbolUsageOutput {
+    file_path: String,
+    line: u32,
+    context: String,
+}
+
+pub(super) async fn find_refs(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<FindRefsParams>,
+) -> Result<Json<FindRefsResponse>, (StatusCode, Json<ErrorBody>)> {
+    let limit = params.limit.unwrap_or(20);
+
+    let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+    let mut analyzer = RefAnalyzer::new(&mut vector_store);
+    let refs = analyzer
+        .find_refs(
+            &params.symbol,
+            params.r#type.as_deref(),
+            limit,
+            params.repo.as_deref(),
+        )
+        .await
+        .map_err(internal_error)?;
+
+    Ok(Json(FindRefsResponse {
+        symbol: params.symbol,
+        definition: refs.definition.map(|d| SymbolDefinitionOutput {
+            name: d.name,
+            chunk_type: d.chunk_type.to_string(),
+            file_path: d.file_path,
+            start_line: d.start_line,
+            end_line: d.end_line,
+            signature: d.signature,
+        }),
+        usage_count: refs.usages.len(),
+        usages: refs
+            .usages
+            .iter()
+            .map(|u| SymbolUsageOutput {
+                file_path: u.file_path.clone(),
+                line: u.line,
+                context: u.context.clone(),
+            })
+            .collect(),
+    }))
+}
+
+// -- /symbols --
+
+#[derive(Deserialize)]
+struct ListSymbolsParams {
+    /// File path (relative to repo root)
+    file: String,
+    /// Filter by repository
+    repo: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ListSymbolsResponse {
+    file: String,
+    count: usize,
+    symbols: Vec<SymbolItemOutput>,
+}
+
+#[derive(Serialize)]
+struct SymbolItemOutput {
+    name: String,
+    chunk_type: String,
+    start_line: u32,
+    end_line: u32,
+    signature: String,
+}
+
+pub(super) async fn list_symbols(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ListSymbolsParams>,
+) -> Result<Json<ListSymbolsResponse>, (StatusCode, Json<ErrorBody>)> {
+    let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+    let analyzer = RefAnalyzer::new(&mut vector_store);
+    let file_symbols = analyzer
+        .list_symbols(&params.file, params.repo.as_deref())
+        .await
+        .map_err(internal_error)?;
+
+    Ok(Json(ListSymbolsResponse {
+        file: file_symbols.path,
+        count: file_symbols.symbols.len(),
+        symbols: file_symbols
+            .symbols
+            .iter()
+            .map(|s| SymbolItemOutput {
+                name: s.name.clone(),
+                chunk_type: s.chunk_type.to_string(),
+                start_line: s.start_line,
+                end_line: s.end_line,
+                signature: s.signature.clone(),
+            })
+            .collect(),
+    }))
+}
+
+// -- /hotspots --
+
+#[derive(Deserialize)]
+struct HotspotsParams {
+    /// Time window (e.g. "6 months ago", default "1 year ago")
+    since: Option<String>,
+    /// Max results (default 20)
+    limit: Option<usize>,
+    /// Min score threshold (default 0.0)
+    threshold: Option<f32>,
+}
+
+#[derive(Serialize)]
+struct HotspotsResponse {
+    count: usize,
+    since: String,
+    hotspots: Vec<HotspotItem>,
+}
+
+#[derive(Serialize)]
+struct HotspotItem {
+    file: String,
+    score: f32,
+    churn: u32,
+    complexity: f32,
+    language: String,
+}
+
+pub(super) async fn hotspots(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<HotspotsParams>,
+) -> Result<Json<HotspotsResponse>, (StatusCode, Json<ErrorBody>)> {
+    let since = params.since.as_deref().unwrap_or("1 year ago");
+    let limit = params.limit.unwrap_or(20);
+    let threshold = params.threshold.unwrap_or(0.0);
+
+    let git = GitAnalyzer::new(&state.repo_root).map_err(internal_error)?;
+    let churn_map = git.get_file_churn(Some(since)).map_err(internal_error)?;
+
+    if churn_map.is_empty() {
+        return Ok(Json(HotspotsResponse {
+            count: 0,
+            since: since.to_string(),
+            hotspots: vec![],
+        }));
+    }
+
+    let mut analyzer = ComplexityAnalyzer::new().map_err(internal_error)?;
+    let max_churn = churn_map.values().copied().max().unwrap_or(1) as f32;
+    let mut hotspot_items: Vec<HotspotItem> = Vec::new();
+
+    for (file_path, churn) in &churn_map {
+        let language = detect_language(file_path);
+        if matches!(
+            language.as_str(),
+            "unknown" | "markdown" | "json" | "yaml" | "toml" | "c"
+        ) {
+            continue;
+        }
+
+        let abs_path = state.repo_root.join(file_path);
+        let content = match std::fs::read_to_string(&abs_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let complexity = match analyzer.analyze_file(file_path, &content, &language) {
+            Ok(fc) => fc.complexity,
+            Err(_) => continue,
+        };
+
+        let churn_norm = (*churn as f32) / max_churn;
+        let score = (churn_norm * complexity).sqrt();
+
+        if score >= threshold {
+            hotspot_items.push(HotspotItem {
+                file: file_path.clone(),
+                score,
+                churn: *churn,
+                complexity,
+                language,
+            });
+        }
+    }
+
+    hotspot_items
+        .sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    hotspot_items.truncate(limit);
+
+    Ok(Json(HotspotsResponse {
+        count: hotspot_items.len(),
+        since: since.to_string(),
+        hotspots: hotspot_items,
+    }))
+}
+
+// -- /impact --
+
+#[derive(Deserialize)]
+struct ImpactParams {
+    /// File path or file:function target
+    target: String,
+    /// Transitive depth (default 1)
+    depth: Option<u32>,
+    /// Signal mode: combined, coupling, semantic, deps
+    mode: Option<String>,
+    /// Max results (default 15)
+    limit: Option<usize>,
+    /// Min score threshold (default 0.1)
+    threshold: Option<f32>,
+    /// Filter by repository
+    repo: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ImpactResponse {
+    target: String,
+    mode: String,
+    depth: u32,
+    count: usize,
+    results: Vec<ImpactResultItem>,
+}
+
+#[derive(Serialize)]
+struct ImpactResultItem {
+    file: String,
+    signal: String,
+    score: f32,
+    reason: String,
+}
+
+pub(super) async fn impact(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ImpactParams>,
+) -> Result<Json<ImpactResponse>, (StatusCode, Json<ErrorBody>)> {
+    let depth = params.depth.unwrap_or(1);
+    let mode_str = params.mode.as_deref().unwrap_or("combined");
+    let limit = params.limit.unwrap_or(15);
+    let threshold = params.threshold.unwrap_or(0.1);
+
+    let mode = match mode_str {
+        "combined" => ImpactMode::Combined,
+        "coupling" => ImpactMode::Coupling,
+        "semantic" => ImpactMode::Semantic,
+        "deps" => ImpactMode::Deps,
+        _ => {
+            return Err(bad_request(format!(
+                "Invalid mode: {}. Use: combined, coupling, semantic, deps",
+                mode_str
+            )));
+        }
+    };
+
+    let impact_config = ImpactConfig {
+        mode,
+        threshold,
+        limit,
+    };
+
+    let metadata_store = open_metadata_store(&state).map_err(internal_error)?;
+    let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
+    let embedder =
+        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+
+    let mut analyzer = ImpactAnalyzer::new(metadata_store, vector_store, embedder);
+    let results = analyzer
+        .analyze(&params.target, &impact_config, depth, params.repo.as_deref())
+        .await
+        .map_err(internal_error)?;
+
+    let signal_name = |s: &ImpactSignal| -> &'static str {
+        match s {
+            ImpactSignal::Coupling { .. } => "coupling",
+            ImpactSignal::Semantic { .. } => "semantic",
+            ImpactSignal::Dependency => "deps",
+            ImpactSignal::Combined => "combined",
+        }
+    };
+
+    Ok(Json(ImpactResponse {
+        target: params.target,
+        mode: mode_str.to_string(),
+        depth,
+        count: results.len(),
+        results: results
+            .iter()
+            .map(|r| ImpactResultItem {
+                file: r.path.clone(),
+                signal: signal_name(&r.signal).to_string(),
+                score: r.score,
+                reason: r.reason.clone(),
+            })
+            .collect(),
+    }))
+}
+
+// -- /review --
+
+#[derive(Deserialize)]
+struct ReviewParams {
+    /// Diff spec: "unstaged", "staged", "branch:<name>", or commit range
+    diff: Option<String>,
+    /// Max lines budget (default 500)
+    budget: Option<usize>,
+    /// Coupling expansion depth (default 1)
+    depth: Option<u32>,
+    /// Filter by repository
+    repo: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ReviewResponse {
+    diff_description: String,
+    changed_files: Vec<ReviewChangedFile>,
+    budget: ContextBudgetInfo,
+    files: Vec<ContextFileOutput>,
+    summary: ContextSummaryOutput,
+}
+
+#[derive(Serialize)]
+struct ReviewChangedFile {
+    path: String,
+    status: String,
+    added_lines: usize,
+    removed_lines: usize,
+}
+
+pub(super) async fn review(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ReviewParams>,
+) -> Result<Json<ReviewResponse>, (StatusCode, Json<ErrorBody>)> {
+    let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+
+    let stats = vector_store
+        .get_stats(None)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+    if stats.total_chunks == 0 {
+        return Err(internal_error(anyhow::anyhow!(
+            "No indexed content. Run `bobbin index` first."
+        )));
+    }
+
+    let metadata_store = open_metadata_store(&state).map_err(internal_error)?;
+    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
+    let embedder =
+        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+
+    let diff_spec = parse_diff_spec(params.diff.as_deref());
+    let diff_description = describe_diff_spec(&diff_spec);
+
+    let git = GitAnalyzer::new(&state.repo_root).map_err(internal_error)?;
+    let diff_files = git.get_diff_files(&diff_spec).map_err(internal_error)?;
+
+    if diff_files.is_empty() {
+        return Ok(Json(ReviewResponse {
+            diff_description,
+            changed_files: vec![],
+            budget: ContextBudgetInfo {
+                max_lines: params.budget.unwrap_or(500),
+                used_lines: 0,
+            },
+            files: vec![],
+            summary: ContextSummaryOutput {
+                total_files: 0,
+                total_chunks: 0,
+                direct_hits: 0,
+                coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 0,
+                doc_files: 0,
+            },
+        }));
+    }
+
+    let seeds = crate::search::review::map_diff_to_chunks(
+        &diff_files,
+        &vector_store,
+        params.repo.as_deref(),
+    )
+    .await
+    .map_err(internal_error)?;
+
+    let context_config = ContextConfig {
+        budget_lines: params.budget.unwrap_or(500),
+        depth: params.depth.unwrap_or(1),
+        max_coupled: 3,
+        coupling_threshold: 0.1,
+        semantic_weight: state.config.search.semantic_weight,
+        content_mode: ContentMode::Full,
+        search_limit: 20,
+    };
+
+    let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let bundle = assembler
+        .assemble_from_seeds(&diff_description, seeds, params.repo.as_deref())
+        .await
+        .map_err(internal_error)?;
+
+    Ok(Json(ReviewResponse {
+        diff_description,
+        changed_files: diff_files
+            .iter()
+            .map(|f| ReviewChangedFile {
+                path: f.path.clone(),
+                status: f.status.to_string(),
+                added_lines: f.added_lines.len(),
+                removed_lines: f.removed_lines.len(),
+            })
+            .collect(),
+        budget: ContextBudgetInfo {
+            max_lines: bundle.budget.max_lines,
+            used_lines: bundle.budget.used_lines,
+        },
+        files: bundle.files.iter().map(to_context_file).collect(),
+        summary: to_context_summary(&bundle.summary),
+    }))
+}
+
+// -- /similar --
+
+#[derive(Deserialize)]
+struct SimilarParams {
+    /// Target chunk ref or text (required unless scan=true)
+    target: Option<String>,
+    /// Scan for duplicates across codebase
+    scan: Option<bool>,
+    /// Min similarity threshold
+    threshold: Option<f32>,
+    /// Max results (default 10)
+    limit: Option<usize>,
+    /// Filter by repository
+    repo: Option<String>,
+    /// Cross-repo comparison in scan mode
+    cross_repo: Option<bool>,
+}
+
+#[derive(Serialize)]
+struct SimilarResponse {
+    mode: String,
+    threshold: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target: Option<String>,
+    count: usize,
+    results: Vec<SimilarResultItem>,
+    clusters: Vec<SimilarClusterItem>,
+}
+
+#[derive(Serialize)]
+struct SimilarResultItem {
+    file_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    chunk_type: String,
+    start_line: u32,
+    end_line: u32,
+    similarity: f32,
+    language: String,
+    explanation: String,
+}
+
+#[derive(Serialize)]
+struct SimilarClusterItem {
+    representative: SimilarChunkRef,
+    avg_similarity: f32,
+    member_count: usize,
+    members: Vec<SimilarResultItem>,
+}
+
+#[derive(Serialize)]
+struct SimilarChunkRef {
+    file_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    chunk_type: String,
+    start_line: u32,
+    end_line: u32,
+    language: String,
+}
+
+pub(super) async fn similar(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SimilarParams>,
+) -> Result<Json<SimilarResponse>, (StatusCode, Json<ErrorBody>)> {
+    let scan = params.scan.unwrap_or(false);
+    let limit = params.limit.unwrap_or(10);
+    let cross_repo = params.cross_repo.unwrap_or(false);
+
+    let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+
+    let stats = vector_store
+        .get_stats(None)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+    if stats.total_chunks == 0 {
+        return Ok(Json(SimilarResponse {
+            mode: if scan { "scan" } else { "single" }.to_string(),
+            threshold: params.threshold.unwrap_or(0.85),
+            target: params.target,
+            count: 0,
+            results: vec![],
+            clusters: vec![],
+        }));
+    }
+
+    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
+    let embedder =
+        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+
+    let mut analyzer = SimilarityAnalyzer::new(embedder, vector_store);
+    let repo_filter = params.repo.as_deref();
+
+    let response = if scan {
+        let threshold = params.threshold.unwrap_or(0.90);
+        let clusters = analyzer
+            .scan_duplicates(threshold, limit, repo_filter, cross_repo)
+            .await
+            .map_err(internal_error)?;
+
+        SimilarResponse {
+            mode: "scan".to_string(),
+            threshold,
+            target: None,
+            count: clusters.len(),
+            results: vec![],
+            clusters: clusters
+                .iter()
+                .map(|c| SimilarClusterItem {
+                    representative: SimilarChunkRef {
+                        file_path: c.representative.file_path.clone(),
+                        name: c.representative.name.clone(),
+                        chunk_type: c.representative.chunk_type.to_string(),
+                        start_line: c.representative.start_line,
+                        end_line: c.representative.end_line,
+                        language: c.representative.language.clone(),
+                    },
+                    avg_similarity: c.avg_similarity,
+                    member_count: c.members.len(),
+                    members: c
+                        .members
+                        .iter()
+                        .map(|m| SimilarResultItem {
+                            file_path: m.chunk.file_path.clone(),
+                            name: m.chunk.name.clone(),
+                            chunk_type: m.chunk.chunk_type.to_string(),
+                            start_line: m.chunk.start_line,
+                            end_line: m.chunk.end_line,
+                            similarity: m.similarity,
+                            language: m.chunk.language.clone(),
+                            explanation: m.explanation.clone(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    } else {
+        let target_str = params
+            .target
+            .as_deref()
+            .ok_or_else(|| bad_request("Either 'target' or 'scan=true' is required".to_string()))?;
+
+        let threshold = params.threshold.unwrap_or(0.85);
+        let target = parse_similar_target(target_str);
+
+        let results = analyzer
+            .find_similar(&target, threshold, limit, repo_filter)
+            .await
+            .map_err(internal_error)?;
+
+        SimilarResponse {
+            mode: "single".to_string(),
+            threshold,
+            target: Some(target_str.to_string()),
+            count: results.len(),
+            results: results
+                .iter()
+                .map(|r| SimilarResultItem {
+                    file_path: r.chunk.file_path.clone(),
+                    name: r.chunk.name.clone(),
+                    chunk_type: r.chunk.chunk_type.to_string(),
+                    start_line: r.chunk.start_line,
+                    end_line: r.chunk.end_line,
+                    similarity: r.similarity,
+                    language: r.chunk.language.clone(),
+                    explanation: r.explanation.clone(),
+                })
+                .collect(),
+            clusters: vec![],
+        }
+    };
+
+    Ok(Json(response))
+}
+
+// -- /prime --
+
+#[derive(Deserialize)]
+struct PrimeParams {
+    /// Specific section to show
+    section: Option<String>,
+    /// Show brief overview only
+    brief: Option<bool>,
+}
+
+#[derive(Serialize)]
+struct PrimeResponse {
+    primer: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    section: Option<String>,
+    initialized: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stats: Option<PrimeStats>,
+}
+
+#[derive(Serialize)]
+struct PrimeStats {
+    total_files: u64,
+    total_chunks: u64,
+    total_embeddings: u64,
+    languages: Vec<PrimeLanguageStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_indexed: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PrimeLanguageStats {
+    language: String,
+    file_count: u64,
+    chunk_count: u64,
+}
+
+pub(super) async fn prime(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<PrimeParams>,
+) -> Result<Json<PrimeResponse>, (StatusCode, Json<ErrorBody>)> {
+    const PRIMER: &str = include_str!("../../docs/primer.md");
+
+    let primer_text = if let Some(ref section) = params.section {
+        extract_primer_section(PRIMER, section)
+    } else if params.brief.unwrap_or(false) {
+        extract_primer_brief(PRIMER)
+    } else {
+        PRIMER.to_string()
+    };
+
+    let stats = match open_vector_store(&state).await {
+        Ok(store) => match store.get_stats(None).await {
+            Ok(s) => Some(PrimeStats {
+                total_files: s.total_files,
+                total_chunks: s.total_chunks,
+                total_embeddings: s.total_embeddings,
+                languages: s
+                    .languages
+                    .iter()
+                    .map(|l| PrimeLanguageStats {
+                        language: l.language.clone(),
+                        file_count: l.file_count,
+                        chunk_count: l.chunk_count,
+                    })
+                    .collect(),
+                last_indexed: s
+                    .last_indexed
+                    .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0).map(|t| t.to_rfc3339())),
+            }),
+            Err(_) => None,
+        },
+        Err(_) => None,
+    };
+
+    Ok(Json(PrimeResponse {
+        primer: primer_text,
+        section: params.section,
+        initialized: true,
+        stats,
+    }))
+}
+
+// -- /beads --
+
+#[derive(Deserialize)]
+struct SearchBeadsParams {
+    /// Natural language search query
+    q: String,
+    /// Filter by priority (1-4)
+    priority: Option<i32>,
+    /// Filter by status
+    status: Option<String>,
+    /// Filter by assignee
+    assignee: Option<String>,
+    /// Filter by rig name
+    rig: Option<String>,
+    /// Max results (default 10)
+    limit: Option<usize>,
+    /// Enrich with live Dolt data (default true)
+    enrich: Option<bool>,
+}
+
+#[derive(Serialize)]
+struct SearchBeadsResponse {
+    query: String,
+    count: usize,
+    results: Vec<BeadResultItem>,
+}
+
+#[derive(Serialize)]
+struct BeadResultItem {
+    bead_id: String,
+    title: String,
+    priority: String,
+    status: String,
+    assignee: String,
+    relevance_score: f32,
+    snippet: String,
+}
+
+pub(super) async fn search_beads(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SearchBeadsParams>,
+) -> Result<Json<SearchBeadsResponse>, (StatusCode, Json<ErrorBody>)> {
+    let limit = params.limit.unwrap_or(10);
+    let should_enrich = params.enrich.unwrap_or(true);
+
+    let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+
+    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
+    let embedder =
+        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+
+    let mut search =
+        HybridSearch::new(embedder, vector_store, state.config.search.semantic_weight);
+
+    let search_results = search
+        .search(&params.q, limit * 5, None)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+
+    // Filter to only Issue chunks
+    let mut filtered: Vec<SearchResult> = search_results
+        .into_iter()
+        .filter(|r| r.chunk.chunk_type == ChunkType::Issue)
+        .collect();
+
+    // Apply rig filter
+    if let Some(ref rig) = params.rig {
+        let prefix = format!("beads:{}:", rig);
+        filtered.retain(|r| r.chunk.file_path.starts_with(&prefix));
+    }
+
+    // Fetch live metadata from Dolt
+    let live_metadata = if should_enrich && state.config.beads.enabled {
+        let bead_ids: Vec<(String, String)> = filtered
+            .iter()
+            .filter_map(|r| {
+                let parts: Vec<&str> = r.chunk.file_path.splitn(3, ':').collect();
+                if parts.len() == 3 {
+                    Some((parts[1].to_string(), parts[2].to_string()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        crate::index::beads::fetch_bead_metadata(&state.config.beads, &bead_ids)
+            .await
+            .unwrap_or_default()
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    // Apply status/priority/assignee filters
+    if params.status.is_some() || params.priority.is_some() || params.assignee.is_some() {
+        filtered.retain(|r| {
+            let bead_id = r.chunk.file_path.split(':').nth(2).unwrap_or("");
+            if let Some(meta) = live_metadata.get(bead_id) {
+                if let Some(ref status) = params.status {
+                    if meta.status != *status {
+                        return false;
+                    }
+                }
+                if let Some(priority) = params.priority {
+                    if meta.priority != priority {
+                        return false;
+                    }
+                }
+                if let Some(ref assignee) = params.assignee {
+                    let meta_assignee = meta.assignee.as_deref().unwrap_or("unassigned");
+                    if !meta_assignee.contains(assignee.as_str()) {
+                        return false;
+                    }
+                }
+                true
+            } else {
+                let content = &r.chunk.content;
+                if let Some(ref status) = params.status {
+                    if !content.contains(&format!("Status: {}", status)) {
+                        return false;
+                    }
+                }
+                if let Some(priority) = params.priority {
+                    if !content.contains(&format!("Priority: P{}", priority)) {
+                        return false;
+                    }
+                }
+                if let Some(ref assignee) = params.assignee {
+                    if !content.contains(&format!("Assignee: {}", assignee)) {
+                        return false;
+                    }
+                }
+                true
+            }
+        });
+    }
+
+    filtered.truncate(limit);
+
+    let results: Vec<BeadResultItem> = filtered
+        .iter()
+        .map(|r| {
+            let bead_id = r
+                .chunk
+                .file_path
+                .split(':')
+                .nth(2)
+                .unwrap_or(&r.chunk.file_path)
+                .to_string();
+
+            let (title, bead_status, priority, assignee) =
+                if let Some(meta) = live_metadata.get(&bead_id) {
+                    (
+                        meta.title.clone(),
+                        meta.status.clone(),
+                        format!("P{}", meta.priority),
+                        meta.assignee
+                            .clone()
+                            .unwrap_or_else(|| "unassigned".to_string()),
+                    )
+                } else {
+                    let content = &r.chunk.content;
+                    (
+                        r.chunk.name.clone().unwrap_or_default(),
+                        extract_bead_field(content, "Status: "),
+                        extract_bead_field(content, "Priority: "),
+                        extract_bead_field(content, "Assignee: "),
+                    )
+                };
+
+            BeadResultItem {
+                bead_id,
+                title,
+                priority,
+                status: bead_status,
+                assignee,
+                relevance_score: r.score,
+                snippet: truncate(&r.chunk.content, 200),
+            }
+        })
+        .collect();
+
+    Ok(Json(SearchBeadsResponse {
+        query: params.q,
+        count: results.len(),
+        results,
+    }))
+}
+
 // -- Helpers --
+
+fn bad_request(msg: String) -> (StatusCode, Json<ErrorBody>) {
+    (StatusCode::BAD_REQUEST, Json(ErrorBody { error: msg }))
+}
 
 async fn open_vector_store(state: &AppState) -> anyhow::Result<VectorStore> {
     let lance_path = Config::lance_path(&state.repo_root);
@@ -419,6 +1775,243 @@ fn truncate(s: &str, max: usize) -> String {
         let t: String = s.chars().take(max).collect();
         format!("{}...", t.trim_end())
     }
+}
+
+fn open_metadata_store(state: &AppState) -> anyhow::Result<MetadataStore> {
+    let db_path = Config::db_path(&state.repo_root);
+    MetadataStore::open(&db_path)
+}
+
+fn find_matching_lines(
+    content: &str,
+    pattern: &str,
+    regex: Option<&Regex>,
+    ignore_case: bool,
+    start_line: u32,
+) -> Vec<MatchingLine> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut results = Vec::new();
+
+    for (idx, line) in lines.iter().enumerate() {
+        let matches = if let Some(re) = regex {
+            re.is_match(line)
+        } else if ignore_case {
+            line.to_lowercase().contains(&pattern.to_lowercase())
+        } else {
+            line.contains(pattern)
+        };
+
+        if matches {
+            results.push(MatchingLine {
+                line_number: start_line + idx as u32,
+                content: line.to_string(),
+            });
+        }
+
+        if results.len() >= 10 {
+            break;
+        }
+    }
+
+    results
+}
+
+fn read_file_lines(
+    repo_root: &std::path::Path,
+    file: &str,
+    start: u32,
+    end: u32,
+    context: u32,
+) -> anyhow::Result<(String, u32, u32)> {
+    let file_path = repo_root.join(file);
+    if !file_path.exists() {
+        anyhow::bail!("File not found: {}", file);
+    }
+
+    let content = std::fs::read_to_string(&file_path)?;
+    let lines: Vec<&str> = content.lines().collect();
+    let total_lines = lines.len() as u32;
+
+    let actual_start = start.saturating_sub(context).max(1);
+    let actual_end = (end + context).min(total_lines);
+
+    let start_idx = (actual_start - 1) as usize;
+    let end_idx = actual_end as usize;
+
+    let selected = if end_idx <= lines.len() {
+        lines[start_idx..end_idx].join("\n")
+    } else {
+        lines[start_idx..].join("\n")
+    };
+
+    Ok((selected, actual_start, actual_end))
+}
+
+fn detect_language(file: &str) -> String {
+    let ext = file.rsplit('.').next().unwrap_or("");
+    match ext {
+        "rs" => "rust",
+        "ts" | "tsx" => "typescript",
+        "js" | "jsx" => "javascript",
+        "py" => "python",
+        "go" => "go",
+        "java" => "java",
+        "cpp" | "cc" | "cxx" | "hpp" | "h" => "cpp",
+        "c" => "c",
+        "md" => "markdown",
+        "json" => "json",
+        "yaml" | "yml" => "yaml",
+        "toml" => "toml",
+        _ => "unknown",
+    }
+    .to_string()
+}
+
+fn to_context_file(f: &crate::search::context::ContextFile) -> ContextFileOutput {
+    ContextFileOutput {
+        path: f.path.clone(),
+        language: f.language.clone(),
+        relevance: match f.relevance {
+            FileRelevance::Direct => "direct".to_string(),
+            FileRelevance::Coupled => "coupled".to_string(),
+            FileRelevance::Bridged => "bridged".to_string(),
+        },
+        score: f.score,
+        coupled_to: f.coupled_to.clone(),
+        chunks: f
+            .chunks
+            .iter()
+            .map(|c| ContextChunkOutput {
+                name: c.name.clone(),
+                chunk_type: c.chunk_type.to_string(),
+                start_line: c.start_line,
+                end_line: c.end_line,
+                score: c.score,
+                match_type: c.match_type.map(|mt| match mt {
+                    MatchType::Semantic => "semantic".to_string(),
+                    MatchType::Keyword => "keyword".to_string(),
+                    MatchType::Hybrid => "hybrid".to_string(),
+                }),
+                content: c.content.clone(),
+            })
+            .collect(),
+    }
+}
+
+fn to_context_summary(s: &crate::search::context::ContextSummary) -> ContextSummaryOutput {
+    ContextSummaryOutput {
+        total_files: s.total_files,
+        total_chunks: s.total_chunks,
+        direct_hits: s.direct_hits,
+        coupled_additions: s.coupled_additions,
+        bridged_additions: s.bridged_additions,
+        source_files: s.source_files,
+        doc_files: s.doc_files,
+    }
+}
+
+fn parse_diff_spec(spec: Option<&str>) -> crate::index::git::DiffSpec {
+    use crate::index::git::DiffSpec;
+    match spec {
+        None | Some("unstaged") | Some("") => DiffSpec::Unstaged,
+        Some("staged") => DiffSpec::Staged,
+        Some(s) if s.starts_with("branch:") => DiffSpec::Branch(s[7..].to_string()),
+        Some(range) => DiffSpec::Range(range.to_string()),
+    }
+}
+
+fn describe_diff_spec(spec: &crate::index::git::DiffSpec) -> String {
+    use crate::index::git::DiffSpec;
+    match spec {
+        DiffSpec::Unstaged => "unstaged changes".to_string(),
+        DiffSpec::Staged => "staged changes".to_string(),
+        DiffSpec::Branch(b) => format!("branch: {}", b),
+        DiffSpec::Range(r) => format!("range: {}", r),
+    }
+}
+
+fn parse_similar_target(s: &str) -> SimilarTarget {
+    if let Some(colon_pos) = s.find(':') {
+        let before = &s[..colon_pos];
+        if before.contains('.') || before.contains('/') {
+            return SimilarTarget::ChunkRef(s.to_string());
+        }
+    }
+    SimilarTarget::Text(s.to_string())
+}
+
+fn extract_primer_brief(primer: &str) -> String {
+    let mut result = String::new();
+    let mut heading_count = 0;
+    for line in primer.lines() {
+        if line.starts_with("## ") {
+            heading_count += 1;
+            if heading_count > 1 {
+                break;
+            }
+        }
+        result.push_str(line);
+        result.push('\n');
+    }
+    result.trim_end().to_string()
+}
+
+fn extract_primer_section(primer: &str, query: &str) -> String {
+    let query_lower = query.to_lowercase();
+    let sections = [
+        "what bobbin does",
+        "architecture",
+        "supported languages",
+        "key commands",
+        "mcp tools",
+        "quick start",
+        "configuration",
+    ];
+    let target = sections
+        .iter()
+        .find(|s| s.contains(&query_lower.as_str()) || query_lower.contains(*s))
+        .copied()
+        .unwrap_or(query_lower.as_str());
+
+    let mut result = String::new();
+    let mut capturing = false;
+    for line in primer.lines() {
+        if line.starts_with("## ") {
+            if capturing {
+                break;
+            }
+            let heading = line.trim_start_matches('#').trim().to_lowercase();
+            if heading.contains(target) || target.contains(heading.as_str()) {
+                capturing = true;
+            }
+        }
+        if capturing {
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+    if result.is_empty() {
+        format!(
+            "Section '{}' not found. Available sections: {}",
+            query,
+            sections.join(", ")
+        )
+    } else {
+        result.trim_end().to_string()
+    }
+}
+
+fn extract_bead_field(content: &str, prefix: &str) -> String {
+    content
+        .lines()
+        .find(|line| line.contains(prefix))
+        .and_then(|line| {
+            let start = line.find(prefix)? + prefix.len();
+            let rest = &line[start..];
+            let end = rest.find(" | ").unwrap_or(rest.len());
+            Some(rest[..end].trim().to_string())
+        })
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 /// Run incremental indexing (used by webhook handler)

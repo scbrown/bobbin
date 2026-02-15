@@ -25,14 +25,25 @@ The server binds to `0.0.0.0` on the specified port and includes CORS headers fo
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/search` | Search the index |
-| `GET` | `/chunk/{id}` | Read a specific chunk |
+| `GET` | `/search` | Semantic/hybrid/keyword search |
+| `GET` | `/grep` | Keyword/regex pattern search |
+| `GET` | `/context` | Task-aware context assembly |
+| `GET` | `/chunk/{id}` | Read a specific chunk by ID |
+| `GET` | `/read` | Read file lines by path and range |
+| `GET` | `/related` | Find temporally coupled files |
+| `GET` | `/refs` | Find symbol definitions and usages |
+| `GET` | `/symbols` | List symbols in a file |
+| `GET` | `/hotspots` | Identify high-churn complex files |
+| `GET` | `/impact` | Predict change impact |
+| `GET` | `/review` | Diff-aware review context |
+| `GET` | `/similar` | Find similar code or duplicate clusters |
+| `GET` | `/prime` | Project overview with live stats |
+| `GET` | `/beads` | Search indexed beads/issues |
 | `GET` | `/status` | Index statistics |
+| `GET` | `/metrics` | Prometheus metrics |
 | `POST` | `/webhook/push` | Trigger re-indexing (for CI/CD) |
 
 ### GET /search
-
-Query parameters:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -46,12 +57,183 @@ Query parameters:
 curl "http://localhost:3030/search?q=error+handling&limit=5"
 ```
 
+### GET /grep
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pattern` | string | required | Search pattern |
+| `ignore_case` | bool | false | Case-insensitive search |
+| `regex` | bool | false | Enable regex matching |
+| `type` | string | all | Filter by chunk type |
+| `limit` | integer | 10 | Maximum results |
+| `repo` | string | all | Filter by repository |
+
+```bash
+curl "http://localhost:3030/grep?pattern=handleAuth&limit=5"
+```
+
+### GET /context
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `q` | string | required | Task description |
+| `budget` | integer | 500 | Max lines of content |
+| `depth` | integer | 1 | Coupling expansion depth |
+| `max_coupled` | integer | 3 | Max coupled files per seed |
+| `limit` | integer | 20 | Max initial search results |
+| `coupling_threshold` | float | 0.1 | Min coupling score |
+| `repo` | string | all | Filter by repository |
+
+```bash
+curl "http://localhost:3030/context?q=refactor+auth+flow&budget=300"
+```
+
+### GET /read
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `file` | string | required | File path (relative to repo root) |
+| `start_line` | integer | required | Start line number |
+| `end_line` | integer | required | End line number |
+| `context` | integer | 0 | Extra context lines before/after |
+
+```bash
+curl "http://localhost:3030/read?file=src/main.rs&start_line=1&end_line=20"
+```
+
+### GET /related
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `file` | string | required | File path to find related files for |
+| `limit` | integer | 10 | Maximum results |
+| `threshold` | float | 0.0 | Min coupling score |
+
+```bash
+curl "http://localhost:3030/related?file=src/auth.rs&limit=5"
+```
+
+### GET /refs
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `symbol` | string | required | Symbol name to find |
+| `type` | string | all | Filter by symbol type |
+| `limit` | integer | 20 | Max usage results |
+| `repo` | string | all | Filter by repository |
+
+```bash
+curl "http://localhost:3030/refs?symbol=parse_config"
+```
+
+### GET /symbols
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `file` | string | required | File path |
+| `repo` | string | all | Filter by repository |
+
+```bash
+curl "http://localhost:3030/symbols?file=src/config.rs"
+```
+
+### GET /hotspots
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `since` | string | `1 year ago` | Time window for churn analysis |
+| `limit` | integer | 20 | Maximum results |
+| `threshold` | float | 0.0 | Min hotspot score |
+
+```bash
+curl "http://localhost:3030/hotspots?since=6+months+ago&limit=10"
+```
+
+### GET /impact
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `target` | string | required | File or file:function target |
+| `depth` | integer | 1 | Transitive depth (1-3) |
+| `mode` | string | `combined` | Signal: `combined`, `coupling`, `semantic`, `deps` |
+| `limit` | integer | 15 | Maximum results |
+| `threshold` | float | 0.1 | Min impact score |
+| `repo` | string | all | Filter by repository |
+
+```bash
+curl "http://localhost:3030/impact?target=src/auth.rs&depth=2"
+```
+
+### GET /review
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `diff` | string | `unstaged` | Diff spec: `unstaged`, `staged`, `branch:<name>`, or commit range |
+| `budget` | integer | 500 | Max lines of content |
+| `depth` | integer | 1 | Coupling expansion depth |
+| `repo` | string | all | Filter by repository |
+
+```bash
+curl "http://localhost:3030/review?diff=staged&budget=300"
+```
+
+### GET /similar
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `target` | string | - | Chunk ref or text (required unless `scan=true`) |
+| `scan` | bool | false | Scan for duplicate clusters |
+| `threshold` | float | 0.85/0.90 | Min similarity threshold |
+| `limit` | integer | 10 | Max results or clusters |
+| `repo` | string | all | Filter by repository |
+| `cross_repo` | bool | false | Cross-repo comparison in scan mode |
+
+```bash
+curl "http://localhost:3030/similar?target=src/auth.rs:login&limit=5"
+curl "http://localhost:3030/similar?scan=true&threshold=0.9"
+```
+
+### GET /prime
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `section` | string | - | Specific section to show |
+| `brief` | bool | false | Compact overview only |
+
+```bash
+curl "http://localhost:3030/prime?brief=true"
+```
+
+### GET /beads
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `q` | string | required | Search query |
+| `priority` | integer | - | Filter by priority (1-4) |
+| `status` | string | - | Filter by status |
+| `assignee` | string | - | Filter by assignee |
+| `rig` | string | - | Filter by rig name |
+| `limit` | integer | 10 | Maximum results |
+| `enrich` | bool | true | Enrich with live Dolt data |
+
+```bash
+curl "http://localhost:3030/beads?q=auth+bug&status=open"
+```
+
 ### GET /status
 
 Returns index statistics in JSON format.
 
 ```bash
 curl http://localhost:3030/status
+```
+
+### GET /metrics
+
+Returns Prometheus-compatible metrics.
+
+```bash
+curl http://localhost:3030/metrics
 ```
 
 ### POST /webhook/push
