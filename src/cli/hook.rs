@@ -493,7 +493,17 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
     Ok(())
 }
 
-async fn run_inject_context(args: InjectContextArgs, _output: OutputConfig) -> Result<()> {
+async fn run_inject_context(args: InjectContextArgs, output: OutputConfig) -> Result<()> {
+    // Route to remote handler if --server is set
+    if let Some(ref server_url) = output.server {
+        return match inject_context_remote(args, &output, server_url).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                eprintln!("bobbin inject-context (remote): {:#}", e);
+                Ok(())
+            }
+        };
+    }
     // Never block user prompts — any error exits silently
     match inject_context_inner(args).await {
         Ok(()) => Ok(()),
@@ -502,6 +512,118 @@ async fn run_inject_context(args: InjectContextArgs, _output: OutputConfig) -> R
             Ok(())
         }
     }
+}
+
+/// Remote-server implementation of inject-context.
+/// Uses HTTP client to search instead of opening local stores.
+async fn inject_context_remote(
+    args: InjectContextArgs,
+    output: &OutputConfig,
+    server_url: &str,
+) -> Result<()> {
+    use crate::http::client::Client;
+
+    // 1. Read stdin JSON
+    let input: HookInput = serde_json::from_reader(std::io::stdin().lock())
+        .context("Failed to parse stdin JSON")?;
+
+    // 2. Load config for hook settings (use defaults if not found)
+    let cwd = if input.cwd.is_empty() {
+        std::env::current_dir().context("Failed to get cwd")?
+    } else {
+        PathBuf::from(&input.cwd)
+    };
+    let config = find_bobbin_root(&cwd)
+        .and_then(|root| Config::load(&Config::config_path(&root)).ok())
+        .unwrap_or_default();
+    let hooks_cfg = &config.hooks;
+
+    // Apply CLI overrides; use remote-calibrated defaults when the user hasn't
+    // explicitly set values (remote hybrid scores are typically 0.005–0.020,
+    // much lower than the local semantic scores the config defaults target).
+    let min_prompt_length = args.min_prompt_length.unwrap_or(hooks_cfg.min_prompt_length);
+    let threshold = args.threshold.unwrap_or(0.005);
+    let budget = args.budget.unwrap_or(hooks_cfg.budget);
+    let gate = args.gate_threshold.unwrap_or(0.005);
+
+    // 3. Check min prompt length
+    let prompt = input.prompt.trim();
+    if prompt.len() < min_prompt_length {
+        return Ok(());
+    }
+
+    // 4. Search via remote server
+    let client = Client::new(server_url);
+    let resp = client
+        .search(prompt, "hybrid", None, 10, None)
+        .await
+        .context("Remote search failed")?;
+
+    if resp.results.is_empty() {
+        return Ok(());
+    }
+
+    // 5. Gate check: skip if top score is too low
+    let top_score = resp.results.first().map(|r| r.score).unwrap_or(0.0);
+    if top_score < gate {
+        if output.verbose {
+            eprintln!(
+                "bobbin: skipped (score={:.3} < gate={:.2})",
+                top_score, gate
+            );
+        }
+        return Ok(());
+    }
+
+    // 6. Format results matching local inject-context output format
+    let result_count = resp.results.iter().filter(|r| r.score >= threshold).count();
+    if result_count == 0 {
+        return Ok(());
+    }
+
+    let mut out = format!(
+        "Bobbin found {} relevant chunks (via {}):\n",
+        result_count, server_url,
+    );
+
+    out.push_str("\n=== Source Files ===\n");
+
+    let mut line_count = out.lines().count();
+    for result in &resp.results {
+        if result.score < threshold {
+            continue;
+        }
+        let name = result
+            .name
+            .as_ref()
+            .map(|n| format!(" {}", n))
+            .unwrap_or_default();
+        let chunk_section = format!(
+            "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n{}{}\n",
+            result.file_path,
+            result.start_line,
+            result.end_line,
+            name,
+            result.chunk_type,
+            result.score,
+            result.content_preview,
+            if result.content_preview.ends_with('\n') {
+                ""
+            } else {
+                ""
+            },
+        );
+
+        let chunk_line_count = chunk_section.lines().count();
+        if line_count + chunk_line_count > budget {
+            break;
+        }
+        line_count += chunk_line_count;
+        out.push_str(&chunk_section);
+    }
+
+    print!("{}", out);
+    Ok(())
 }
 
 /// Claude Code UserPromptSubmit hook input (subset of fields we need)
