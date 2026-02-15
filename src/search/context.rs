@@ -434,14 +434,11 @@ impl ContextAssembler {
             .search(&query_embedding, fetch_limit, repo)
             .await?;
         // FTS may fail (e.g. index not built yet) — fall back to semantic-only
-        let keyword_results = match self
+        let keyword_results = self
             .vector_store
             .search_fts(query, fetch_limit, repo)
             .await
-        {
-            Ok(results) => results,
-            Err(_) => vec![],
-        };
+            .unwrap_or_default();
 
         // Capture raw cosine similarity of the top semantic result before RRF
         let top_semantic_score = semantic_results

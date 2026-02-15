@@ -298,7 +298,7 @@ fn has_bobbin_hooks(settings: &serde_json::Value) -> bool {
     if let Some(hooks) = settings.get("hooks").and_then(|h| h.as_object()) {
         for (_event, entries) in hooks {
             if let Some(arr) = entries.as_array() {
-                if arr.iter().any(|e| is_bobbin_hook_group(e)) {
+                if arr.iter().any(is_bobbin_hook_group) {
                     return true;
                 }
             }
@@ -410,10 +410,7 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
         .canonicalize()
         .with_context(|| format!("Invalid path: {}", args.path.display()))?;
 
-    let config = match Config::load(&Config::config_path(&repo_root)) {
-        Ok(c) => c,
-        Err(_) => Config::default(),
-    };
+    let config = Config::load(&Config::config_path(&repo_root)).unwrap_or_default();
 
     let hooks_cfg = &config.hooks;
 
@@ -808,7 +805,7 @@ fn generate_hot_topics(state: &HookState, output_path: &Path) -> Result<()> {
 }
 
 async fn run_hot_topics(args: HotTopicsArgs, _output: OutputConfig) -> Result<()> {
-    let cwd = if args.path == PathBuf::from(".") {
+    let cwd = if args.path == Path::new(".") {
         std::env::current_dir().context("Failed to get cwd")?
     } else {
         args.path.clone()
