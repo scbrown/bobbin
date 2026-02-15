@@ -599,6 +599,9 @@ fn format_file_chunks(
 ) {
     use std::fmt::Write;
 
+    // Track line count incrementally to avoid O(n²) recounting
+    let mut current_lines = out.lines().count();
+
     for file in files {
         for chunk in &file.chunks {
             if chunk.score < threshold {
@@ -629,10 +632,11 @@ fn format_file_chunks(
             };
 
             // Check if adding this chunk would exceed budget
-            let candidate = format!("{}{}", out, chunk_section);
-            if candidate.lines().count() > budget {
+            let chunk_line_count = chunk_section.lines().count();
+            if current_lines + chunk_line_count > budget {
                 return;
             }
+            current_lines += chunk_line_count;
             let _ = write!(out, "{}", chunk_section);
         }
     }
@@ -2223,6 +2227,160 @@ mod tests {
         let result = format_context_for_injection(&bundle, 0.0, true);
         // Score should be 2 decimal places
         assert!(result.contains("score 0.86"), "Expected 2-decimal score in: {}", result);
+    }
+
+    #[test]
+    fn test_format_context_show_docs_false_excludes_doc_files() {
+        let bundle = ContextBundle {
+            query: "test".to_string(),
+            files: vec![
+                ContextFile {
+                    path: "src/main.rs".to_string(),
+                    language: "rust".to_string(),
+                    relevance: FileRelevance::Direct,
+                    category: classify_file("src/main.rs"),
+                    score: 0.9,
+                    coupled_to: vec![],
+                    chunks: vec![ContextChunk {
+                        name: Some("main".to_string()),
+                        chunk_type: ChunkType::Function,
+                        start_line: 1,
+                        end_line: 5,
+                        score: 0.9,
+                        match_type: None,
+                        content: Some("fn main() {}".to_string()),
+                    }],
+                },
+                ContextFile {
+                    path: "README.md".to_string(),
+                    language: "markdown".to_string(),
+                    relevance: FileRelevance::Direct,
+                    category: classify_file("README.md"),
+                    score: 0.8,
+                    coupled_to: vec![],
+                    chunks: vec![ContextChunk {
+                        name: None,
+                        chunk_type: ChunkType::Module,
+                        start_line: 1,
+                        end_line: 10,
+                        score: 0.8,
+                        match_type: None,
+                        content: Some("# My Project".to_string()),
+                    }],
+                },
+            ],
+            budget: BudgetInfo {
+                max_lines: 150,
+                used_lines: 15,
+            },
+            summary: ContextSummary {
+                total_files: 2,
+                total_chunks: 2,
+                direct_hits: 2,
+                coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 1,
+                doc_files: 1,
+                top_semantic_score: 0.0,
+            },
+        };
+
+        // show_docs=true should include both
+        let with_docs = format_context_for_injection(&bundle, 0.0, true);
+        assert!(with_docs.contains("Source Files"), "Should have source section");
+        assert!(with_docs.contains("Documentation"), "Should have doc section");
+        assert!(with_docs.contains("README.md"));
+
+        // show_docs=false should exclude documentation
+        let without_docs = format_context_for_injection(&bundle, 0.0, false);
+        assert!(without_docs.contains("Source Files"), "Should have source section");
+        assert!(!without_docs.contains("Documentation"), "Should not have doc section");
+        assert!(!without_docs.contains("README.md"), "Doc file should be excluded");
+        assert!(without_docs.contains("src/main.rs"), "Source file should remain");
+    }
+
+    #[test]
+    fn test_format_context_budget_zero() {
+        let bundle = ContextBundle {
+            query: "test".to_string(),
+            files: vec![ContextFile {
+                path: "src/a.rs".to_string(),
+                language: "rust".to_string(),
+                relevance: FileRelevance::Direct,
+                category: classify_file("src/a.rs"),
+                score: 0.9,
+                coupled_to: vec![],
+                chunks: vec![ContextChunk {
+                    name: Some("fn_a".to_string()),
+                    chunk_type: ChunkType::Function,
+                    start_line: 1,
+                    end_line: 10,
+                    score: 0.9,
+                    match_type: None,
+                    content: Some("fn a() {}".to_string()),
+                }],
+            }],
+            budget: BudgetInfo {
+                max_lines: 0,
+                used_lines: 0,
+            },
+            summary: ContextSummary {
+                total_files: 1,
+                total_chunks: 1,
+                direct_hits: 1,
+                coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 1,
+                doc_files: 0,
+                top_semantic_score: 0.0,
+            },
+        };
+        // Budget 0 — should not panic and should produce empty or minimal output
+        let result = format_context_for_injection(&bundle, 0.0, true);
+        assert!(result.lines().count() <= 1, "Budget 0 should produce at most the header");
+    }
+
+    #[test]
+    fn test_format_context_no_content() {
+        // Test formatting when content is None (ContentMode::None)
+        let bundle = ContextBundle {
+            query: "test".to_string(),
+            files: vec![ContextFile {
+                path: "src/a.rs".to_string(),
+                language: "rust".to_string(),
+                relevance: FileRelevance::Direct,
+                category: classify_file("src/a.rs"),
+                score: 0.9,
+                coupled_to: vec![],
+                chunks: vec![ContextChunk {
+                    name: Some("fn_a".to_string()),
+                    chunk_type: ChunkType::Function,
+                    start_line: 1,
+                    end_line: 10,
+                    score: 0.9,
+                    match_type: None,
+                    content: None,
+                }],
+            }],
+            budget: BudgetInfo {
+                max_lines: 150,
+                used_lines: 10,
+            },
+            summary: ContextSummary {
+                total_files: 1,
+                total_chunks: 1,
+                direct_hits: 1,
+                coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 1,
+                doc_files: 0,
+                top_semantic_score: 0.0,
+            },
+        };
+        let result = format_context_for_injection(&bundle, 0.0, true);
+        // Should still have the chunk header with file:lines
+        assert!(result.contains("src/a.rs:1-10"));
+        assert!(result.contains("fn_a"));
     }
 
     #[test]
