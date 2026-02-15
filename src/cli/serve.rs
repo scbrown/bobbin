@@ -11,8 +11,8 @@ pub struct ServeArgs {
     path: PathBuf,
 
     /// Run HTTP server instead of MCP stdio server
-    #[arg(long = "http")]
-    server: bool,
+    #[arg(long)]
+    http: bool,
 
     /// HTTP server port (default: 3030)
     #[arg(long, default_value = "3030")]
@@ -29,7 +29,7 @@ pub async fn run(args: ServeArgs, _output: OutputConfig) -> Result<()> {
         .canonicalize()
         .map_err(|e| anyhow::anyhow!("Invalid path: {}", e))?;
 
-    match (args.server, args.mcp) {
+    match (args.http, args.mcp) {
         // HTTP + MCP: run both concurrently
         (true, true) => {
             let http_root = repo_root.clone();
