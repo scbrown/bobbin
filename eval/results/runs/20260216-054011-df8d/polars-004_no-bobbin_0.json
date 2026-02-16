@@ -1,0 +1,305 @@
+{
+  "task_id": "polars-004",
+  "approach": "no-bobbin",
+  "attempt": 0,
+  "status": "completed",
+  "timestamp": "2026-02-16T05:51:06.354022+00:00",
+  "task": {
+    "repo": "pola-rs/polars",
+    "commit": "052e68fc47a7be9500c99da063eac41afa180449",
+    "test_command": ".venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pytest py-polars/tests/unit/lazyframe/test_optimizations.py -x -k test_concat_str_sortedness_26466",
+    "language": "rust",
+    "difficulty": "medium"
+  },
+  "agent_config": {
+    "model": "claude-opus-4-6",
+    "budget_usd": 100.0,
+    "timeout_seconds": 3600,
+    "index_timeout_seconds": 600
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 276.07,
+    "timed_out": false,
+    "cost_usd": 0.8864871000000003,
+    "input_tokens": 917685,
+    "output_tokens": 6383,
+    "model_usage": {
+      "claude-haiku-4-5-20251001": {
+        "inputTokens": 22132,
+        "outputTokens": 5174,
+        "cacheReadInputTokens": 495506,
+        "cacheCreationInputTokens": 56450,
+        "webSearchRequests": 0,
+        "costUSD": 0.16811510000000007,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      },
+      "claude-opus-4-6": {
+        "inputTokens": 35,
+        "outputTokens": 6383,
+        "cacheReadInputTokens": 900294,
+        "cacheCreationInputTokens": 17356,
+        "webSearchRequests": 0,
+        "costUSD": 0.718372,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    },
+    "num_turns": 32
+  },
+  "token_usage": {
+    "total_cost_usd": 0.8864871000000003,
+    "input_tokens": 35,
+    "output_tokens": 6383,
+    "cache_creation_tokens": 17356,
+    "cache_read_tokens": 900294,
+    "num_turns": 32,
+    "model_usage": {
+      "claude-haiku-4-5-20251001": {
+        "inputTokens": 22132,
+        "outputTokens": 5174,
+        "cacheReadInputTokens": 495506,
+        "cacheCreationInputTokens": 56450,
+        "webSearchRequests": 0,
+        "costUSD": 0.16811510000000007,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      },
+      "claude-opus-4-6": {
+        "inputTokens": 35,
+        "outputTokens": 6383,
+        "cacheReadInputTokens": 900294,
+        "cacheCreationInputTokens": 17356,
+        "webSearchRequests": 0,
+        "costUSD": 0.718372,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    }
+  },
+  "agent_output": {
+    "num_turns": 32,
+    "session_id": "89877cec-bfce-4f82-94a8-d01eaf022c7d",
+    "stop_reason": null
+  },
+  "agent_stderr": "",
+  "test_result": {
+    "passed": true,
+    "total": 0,
+    "failures": 0,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0
+    },
+    "output": "\u270f\ufe0f Setting installed package as editable\n============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-9.0.2, pluggy-1.6.0\nrootdir: /tmp/bobbin-eval-polars-004-_su3gtbz/pola-rs--polars/py-polars\nconfigfile: pyproject.toml\nplugins: hypothesis-6.151.6\ncollected 20 items / 19 deselected / 1 selected\n\npy-polars/tests/unit/lazyframe/test_optimizations.py .                   [100%]\n\n======================= 1 passed, 19 deselected in 0.02s =======================\n\ud83c\udf79 Building a mixed python/rust project\n\ud83d\udd17 Found pyo3 bindings with abi3 support\n\ud83d\udc0d Found CPython 3.12 at /tmp/bobbin-eval-polars-004-_su3gtbz/pola-rs--polars/.venv/bin/python\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.37s\n\ud83d\udce6 Built wheel for abi3 Python \u2265 3.10 to /tmp/.tmpUPjb17/polars_runtime_32-1.38.0-cp310-abi3-linux_x86_64.whl\n\ud83d\udee0 Installed polars-runtime-32-1.38.0\n",
+    "exit_code": 0,
+    "timed_out": false
+  },
+  "diff_result": {
+    "file_precision": 1.0,
+    "file_recall": 0.6667,
+    "f1": 0.8,
+    "files_touched": [
+      "crates/polars-plan/src/plans/optimizer/sortedness.rs",
+      "py-polars/tests/unit/lazyframe/test_optimizations.py"
+    ],
+    "ground_truth_files": [
+      "crates/polars-plan/src/plans/optimizer/sortedness.rs",
+      "py-polars/tests/unit/lazyframe/test_optimizations.py",
+      "py-polars/tests/unit/streaming/test_streaming_join.py"
+    ],
+    "exact_file_match": false
+  },
+  "agent_diff": "diff --git a/crates/polars-plan/src/plans/optimizer/sortedness.rs b/crates/polars-plan/src/plans/optimizer/sortedness.rs\nindex 8704a7666e..982a22eaa1 100644\n--- a/crates/polars-plan/src/plans/optimizer/sortedness.rs\n+++ b/crates/polars-plan/src/plans/optimizer/sortedness.rs\n@@ -524,36 +524,15 @@ pub fn function_expr_sortedness(\n         },\n \n         #[cfg(all(feature = \"strings\", feature = \"concat_str\"))]\n-        IRFunctionExpr::StringExpr(IRStringFunction::ConcatHorizontal { ignore_nulls, .. }) => {\n-            // In cases like pl.concat_str(pl.lit(\"prefix\"), pl.col(\"a\"), pl.lit(\"suffix\")),\n-            // we always want to return the sortedness of pl.col(\"a\").\n-            let scalar_constants = inputs\n-                .iter()\n-                .map(|e| {\n-                    constant_evaluate(e.node(), arena, schema, 0)\n-                        .flatten()\n-                        .filter(|c| c.is_scalar())\n-                })\n-                .collect::<Vec<_>>();\n-            let scalar_constant_count = scalar_constants.iter().filter(|o| o.is_some()).count();\n-            for (idx, sc) in scalar_constants.iter().enumerate() {\n-                let Some(sortedness) = nth_input(idx) else {\n-                    continue;\n-                };\n-                if scalar_constant_count == inputs.len() - 1 && sc.is_none() {\n-                    return Some(sortedness);\n-                }\n-            }\n-\n-            let sortedness = nth_input(0)?;\n-            if *ignore_nulls && sortedness.nulls_last? != sortedness.descending? {\n+        IRFunctionExpr::StringExpr(IRStringFunction::ConcatHorizontal {\n+            ignore_nulls: false,\n+            delimiter: _,\n+        }) => {\n+            let [e] = inputs else {\n                 return None;\n-            }\n-            if (1..inputs.len()).all(|n| nth_input(n).as_ref() == Some(&sortedness)) {\n-                Some(sortedness)\n-            } else {\n-                None\n-            }\n+            };\n+\n+            aexpr_sortedness(arena.get(e.node()), arena, schema, input_sorted)\n         },\n \n         _ => None,\ndiff --git a/py-polars/tests/unit/lazyframe/test_optimizations.py b/py-polars/tests/unit/lazyframe/test_optimizations.py\nindex ba233f4cb0..04c431d7f1 100644\n--- a/py-polars/tests/unit/lazyframe/test_optimizations.py\n+++ b/py-polars/tests/unit/lazyframe/test_optimizations.py\n@@ -1,6 +1,7 @@\n import datetime as dt\n import io\n import itertools\n+import typing\n \n import pytest\n \n@@ -563,3 +564,27 @@ def test_flatten_alias() -> None:\n         .select(pl.len().alias(\"foo\").alias(\"bar\"))\n         .explain()\n     )\n+\n+\n+def test_concat_str_sortedness_26466() -> None:\n+    df = pl.DataFrame({\"x\": [\"\", \"a\", \"b\"], \"y\": [1, 2, 3]})\n+    lf = df.lazy().set_sorted(\"x\")\n+\n+    dot = (\n+        lf.with_columns(x=pl.concat_str(\"x\"))\n+        .group_by(\"x\")\n+        .agg(pl.col.y.sum())\n+        .show_graph(engine=\"streaming\", plan_stage=\"physical\", raw_output=True)\n+    )\n+\n+    assert \"sorted-group-by\" in typing.cast(\"str\", dot)\n+\n+    for e in [pl.concat_str(\"x\", pl.lit(\"c\")), pl.concat_str(\"x\", ignore_nulls=True)]:\n+        dot = (\n+            lf.with_columns(x=e)\n+            .group_by(\"x\")\n+            .agg(pl.col.y.sum())\n+            .show_graph(engine=\"streaming\", plan_stage=\"physical\", raw_output=True)\n+        )\n+\n+        assert \"sorted-group-by\" not in typing.cast(\"str\", dot)\n",
+  "ground_truth_diff": "diff --git a/crates/polars-plan/src/plans/optimizer/sortedness.rs b/crates/polars-plan/src/plans/optimizer/sortedness.rs\nindex 8704a7666e..a06bfbe88e 100644\n--- a/crates/polars-plan/src/plans/optimizer/sortedness.rs\n+++ b/crates/polars-plan/src/plans/optimizer/sortedness.rs\n@@ -459,8 +459,9 @@ pub fn function_expr_sortedness(\n     schema: &Schema,\n     input_sorted: Option<&[Sorted]>,\n ) -> Option<AExprSorted> {\n-    let nth_input =\n-        |n: usize| aexpr_sortedness(arena.get(inputs[n].node()), arena, schema, input_sorted);\n+    macro_rules! rec_ae {\n+        ($node:expr) => {{ aexpr_sortedness(arena.get($node), arena, schema, input_sorted) }};\n+    }\n \n     match function {\n         #[cfg(feature = \"rle\")]\n@@ -485,11 +486,23 @@ pub fn function_expr_sortedness(\n         | IRFunctionExpr::DropNans\n         | IRFunctionExpr::FillNullWithStrategy(\n             FillNullStrategy::Forward(None) | FillNullStrategy::Backward(None),\n-        ) => nth_input(0),\n+        ) => {\n+            let [e] = inputs else {\n+                return None;\n+            };\n+\n+            rec_ae!(e.node())\n+        },\n         #[cfg(feature = \"mode\")]\n         IRFunctionExpr::Mode {\n             maintain_order: true,\n-        } => nth_input(0),\n+        } => {\n+            let [e] = inputs else {\n+                return None;\n+            };\n+\n+            rec_ae!(e.node())\n+        },\n \n         #[cfg(feature = \"range\")]\n         IRFunctionExpr::Range(range) => {\n@@ -513,7 +526,12 @@ pub fn function_expr_sortedness(\n         },\n \n         IRFunctionExpr::Reverse => {\n-            let mut sortedness = nth_input(0)?;\n+            let [e] = inputs else {\n+                return None;\n+            };\n+\n+            let mut sortedness = rec_ae!(e.node())?;\n+\n             if let Some(d) = &mut sortedness.descending {\n                 *d = !*d;\n             }\n@@ -524,36 +542,15 @@ pub fn function_expr_sortedness(\n         },\n \n         #[cfg(all(feature = \"strings\", feature = \"concat_str\"))]\n-        IRFunctionExpr::StringExpr(IRStringFunction::ConcatHorizontal { ignore_nulls, .. }) => {\n-            // In cases like pl.concat_str(pl.lit(\"prefix\"), pl.col(\"a\"), pl.lit(\"suffix\")),\n-            // we always want to return the sortedness of pl.col(\"a\").\n-            let scalar_constants = inputs\n-                .iter()\n-                .map(|e| {\n-                    constant_evaluate(e.node(), arena, schema, 0)\n-                        .flatten()\n-                        .filter(|c| c.is_scalar())\n-                })\n-                .collect::<Vec<_>>();\n-            let scalar_constant_count = scalar_constants.iter().filter(|o| o.is_some()).count();\n-            for (idx, sc) in scalar_constants.iter().enumerate() {\n-                let Some(sortedness) = nth_input(idx) else {\n-                    continue;\n-                };\n-                if scalar_constant_count == inputs.len() - 1 && sc.is_none() {\n-                    return Some(sortedness);\n-                }\n-            }\n-\n-            let sortedness = nth_input(0)?;\n-            if *ignore_nulls && sortedness.nulls_last? != sortedness.descending? {\n+        IRFunctionExpr::StringExpr(IRStringFunction::ConcatHorizontal {\n+            ignore_nulls: false,\n+            delimiter: _,\n+        }) => {\n+            let [e] = inputs else {\n                 return None;\n-            }\n-            if (1..inputs.len()).all(|n| nth_input(n).as_ref() == Some(&sortedness)) {\n-                Some(sortedness)\n-            } else {\n-                None\n-            }\n+            };\n+\n+            rec_ae!(e.node())\n         },\n \n         _ => None,\ndiff --git a/py-polars/tests/unit/lazyframe/test_optimizations.py b/py-polars/tests/unit/lazyframe/test_optimizations.py\nindex ba233f4cb0..04c431d7f1 100644\n--- a/py-polars/tests/unit/lazyframe/test_optimizations.py\n+++ b/py-polars/tests/unit/lazyframe/test_optimizations.py\n@@ -1,6 +1,7 @@\n import datetime as dt\n import io\n import itertools\n+import typing\n \n import pytest\n \n@@ -563,3 +564,27 @@ def test_flatten_alias() -> None:\n         .select(pl.len().alias(\"foo\").alias(\"bar\"))\n         .explain()\n     )\n+\n+\n+def test_concat_str_sortedness_26466() -> None:\n+    df = pl.DataFrame({\"x\": [\"\", \"a\", \"b\"], \"y\": [1, 2, 3]})\n+    lf = df.lazy().set_sorted(\"x\")\n+\n+    dot = (\n+        lf.with_columns(x=pl.concat_str(\"x\"))\n+        .group_by(\"x\")\n+        .agg(pl.col.y.sum())\n+        .show_graph(engine=\"streaming\", plan_stage=\"physical\", raw_output=True)\n+    )\n+\n+    assert \"sorted-group-by\" in typing.cast(\"str\", dot)\n+\n+    for e in [pl.concat_str(\"x\", pl.lit(\"c\")), pl.concat_str(\"x\", ignore_nulls=True)]:\n+        dot = (\n+            lf.with_columns(x=e)\n+            .group_by(\"x\")\n+            .agg(pl.col.y.sum())\n+            .show_graph(engine=\"streaming\", plan_stage=\"physical\", raw_output=True)\n+        )\n+\n+        assert \"sorted-group-by\" not in typing.cast(\"str\", dot)\ndiff --git a/py-polars/tests/unit/streaming/test_streaming_join.py b/py-polars/tests/unit/streaming/test_streaming_join.py\nindex 9d08a4f560..544743e3d6 100644\n--- a/py-polars/tests/unit/streaming/test_streaming_join.py\n+++ b/py-polars/tests/unit/streaming/test_streaming_join.py\n@@ -545,11 +545,10 @@ def test_join_dtypes(\n     assert_frame_equal(actual, expected, check_row_order=False)\n \n \n-@pytest.mark.parametrize(\"ignore_nulls\", [False, True])\n-def test_merge_join_exprs(ignore_nulls: bool) -> None:\n+def test_merge_join_exprs() -> None:\n     left = pl.LazyFrame(\n         {\n-            \"key\": [\"zzzaaa\", \"zzzaaaa\", \"zzzcaaa\"],\n+            \"key\": [\"\", \"a\", \"c\"],\n             \"key_ext\": [1, 2, 3],\n             \"value\": [1, 2, 3],\n         }\n@@ -565,9 +564,7 @@ def test_merge_join_exprs(ignore_nulls: bool) -> None:\n     q = left.join(\n         right,\n         left_on=\"key\",\n-        right_on=pl.concat_str(\n-            pl.lit(\"zzz\"), pl.col(\"key\"), pl.lit(\"aaa\"), ignore_nulls=ignore_nulls\n-        ),\n+        right_on=pl.concat_str(pl.col(\"key\"), ignore_nulls=False),\n         how=\"full\",\n         maintain_order=\"none\",\n     )\n",
+  "project_metadata": {
+    "CSS": {
+      "files": 2,
+      "lines": 145,
+      "code": 107,
+      "comments": 13,
+      "blanks": 25
+    },
+    "HTML": {
+      "files": 4,
+      "lines": 254,
+      "code": 253,
+      "comments": 0,
+      "blanks": 1
+    },
+    "JavaScript": {
+      "files": 1,
+      "lines": 19,
+      "code": 18,
+      "comments": 0,
+      "blanks": 1
+    },
+    "JSON": {
+      "files": 8,
+      "lines": 408,
+      "code": 408,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Makefile": {
+      "files": 7,
+      "lines": 575,
+      "code": 460,
+      "comments": 18,
+      "blanks": 97
+    },
+    "Markdown": {
+      "files": 168,
+      "lines": 12867,
+      "code": 0,
+      "comments": 9114,
+      "blanks": 3753
+    },
+    "Nix": {
+      "files": 1,
+      "lines": 502,
+      "code": 409,
+      "comments": 52,
+      "blanks": 41
+    },
+    "Python": {
+      "files": 725,
+      "lines": 267023,
+      "code": 228936,
+      "comments": 5839,
+      "blanks": 32248
+    },
+    "ReStructuredText": {
+      "files": 102,
+      "lines": 8062,
+      "code": 6593,
+      "comments": 0,
+      "blanks": 1469
+    },
+    "Rust": {
+      "files": 2008,
+      "lines": 421643,
+      "code": 361685,
+      "comments": 13199,
+      "blanks": 46759
+    },
+    "SVG": {
+      "files": 3,
+      "lines": 271,
+      "code": 271,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Plain Text": {
+      "files": 9,
+      "lines": 233,
+      "code": 0,
+      "comments": 214,
+      "blanks": 19
+    },
+    "TOML": {
+      "files": 50,
+      "lines": 4710,
+      "code": 4217,
+      "comments": 141,
+      "blanks": 352
+    },
+    "YAML": {
+      "files": 2,
+      "lines": 764,
+      "code": 743,
+      "comments": 10,
+      "blanks": 11
+    },
+    "Total": {
+      "files": 0,
+      "lines": 739330,
+      "code": 606877,
+      "comments": 44967,
+      "blanks": 87486
+    }
+  },
+  "bobbin_metadata": null,
+  "bobbin_metrics": null,
+  "tool_use_summary": {
+    "by_tool": {
+      "TodoWrite": 4,
+      "Task": 1,
+      "Glob": 1,
+      "Grep": 13,
+      "Read": 17,
+      "Bash": 17,
+      "Edit": 4
+    },
+    "tool_sequence": [
+      "TodoWrite",
+      "Task",
+      "Glob",
+      "Grep",
+      "Grep",
+      "Grep",
+      "Grep",
+      "Grep",
+      "Read",
+      "Read",
+      "Read",
+      "Read",
+      "Grep",
+      "Read",
+      "Grep",
+      "Grep",
+      "Read",
+      "Grep",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Read",
+      "Read",
+      "Bash",
+      "Bash",
+      "Read",
+      "Bash",
+      "Bash",
+      "Read",
+      "Read",
+      "TodoWrite",
+      "Edit",
+      "Read",
+      "Grep",
+      "Grep",
+      "Grep",
+      "Grep",
+      "Read",
+      "Read",
+      "Edit",
+      "Read",
+      "Read",
+      "Read",
+      "Edit",
+      "Edit",
+      "TodoWrite",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "TodoWrite"
+    ],
+    "first_edit_turn": 34,
+    "bobbin_commands": [
+      "wc -l /tmp/bobbin-eval-polars-004-_su3gtbz/pola-rs--polars/crates/polars-plan/src/plans/optimizer/sortedness.rs",
+      "grep -n \"test_concat_str_sortedness\\|concat_str\" /tmp/bobbin-eval-polars-004-_su3gtbz/pola-rs--polars/py-polars/tests/unit/lazyframe/test_optimizations.py"
+    ]
+  },
+  "output_summary": "All done. Here's a summary of the changes:\n\n## Fix: concat_str sortedness tracking (issue #26466)\n\n**Problem:** The optimizer's sortedness propagation for `concat_str` incorrectly marked the output as sorted when operating on multiple columns. Concatenating multiple sorted columns does not produce a sorted result (e.g., sorted `[\"a\", \"b\"]` + sorted `[\"x\", \"a\"]` \u2192 `[\"ax\", \"ba\"]` which is not sorted).\n\n**Root cause:** In `crates/polars-plan/src/plans/optimizer/sortedness.rs`, the `ConcatHorizontal` handler had complex logic that tried to propagate sortedness across multiple inputs \u2014 checking if all inputs shared the same sortedness, or if all-but-one were scalar constants.\n\n**Fix (2 files):**\n\n1. **`crates/polars-plan/src/plans/optimizer/sortedness.rs`** \u2014 Replaced the multi-input sortedness propagation logic with a simple guard: only propagate sortedness when there is exactly **one** input and `ignore_nulls` is `false`. With `ignore_nulls=true`, null handling changes the output semantics, so sortedness can't be guaranteed either.\n\n2. **`py-polars/tests/unit/lazyframe/test_optimizations.py`** \u2014 Added `test_concat_str_sortedness_26466` which verifies:\n   - Single-input `concat_str(\"x\")` preserves sortedness (uses `sorted-group-by`)\n   - Multi-input `concat_str(\"x\", lit(\"c\"))` does **not** propagate sortedness\n   - `concat_str(\"x\", ignore_nulls=True)` does **not** propagate sortedness",
+  "run_id": "20260216-054011-df8d"
+}
