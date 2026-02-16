@@ -647,6 +647,131 @@ pub struct BeadResultItem {
     pub snippet: Option<String>,
 }
 
+/// Request for dependency analysis
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DependenciesRequest {
+    /// File path to show dependencies for
+    #[schemars(description = "File path (relative to repo root) to show import dependencies for")]
+    pub file: String,
+
+    /// Show reverse dependencies (files that import this file)
+    #[schemars(description = "If true, show reverse dependencies (files that import this file) instead of forward dependencies")]
+    pub reverse: Option<bool>,
+
+    /// Show both directions (imports and dependents)
+    #[schemars(description = "If true, show both forward imports and reverse dependents")]
+    pub both: Option<bool>,
+}
+
+/// Response for dependency analysis
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct DependenciesResponse {
+    pub file: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub imports: Option<Vec<DependencyItem>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub imported_by: Option<Vec<DependencyItem>>,
+}
+
+/// A single dependency entry
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct DependencyItem {
+    pub path: String,
+    pub dep_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    pub resolved: bool,
+}
+
+/// Request for file history
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct FileHistoryRequest {
+    /// File path to show commit history for
+    #[schemars(description = "File path (relative to repo root) to show commit history for")]
+    pub file: String,
+
+    /// Maximum number of history entries (default: 20)
+    #[schemars(description = "Maximum number of commit entries to return (default: 20)")]
+    pub limit: Option<usize>,
+}
+
+/// Response for file history
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct FileHistoryResponse {
+    pub file: String,
+    pub entries: Vec<FileHistoryItem>,
+    pub stats: FileHistoryStats,
+}
+
+/// A single file history entry
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct FileHistoryItem {
+    pub date: String,
+    pub author: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub issues: Vec<String>,
+}
+
+/// Statistics about a file's history
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct FileHistoryStats {
+    pub total_commits: usize,
+    pub authors: Vec<FileHistoryAuthor>,
+    pub churn_rate: f32,
+}
+
+/// Author statistics in file history
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct FileHistoryAuthor {
+    pub name: String,
+    pub commits: usize,
+}
+
+/// Request for index status
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct StatusRequest {
+    /// Show detailed statistics including language breakdown
+    #[schemars(description = "If true, include per-language breakdown in the response")]
+    pub detailed: Option<bool>,
+
+    /// Filter stats to a specific repository
+    #[schemars(description = "Filter statistics to a specific repository name. Omit to show stats for all repos.")]
+    pub repo: Option<String>,
+}
+
+/// Response for index status
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct StatusResponse {
+    pub status: String,
+    pub total_files: u64,
+    pub total_chunks: u64,
+    pub total_embeddings: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_indexed: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dependency_stats: Option<StatusDependencyStats>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub repos: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<StatusLanguageStats>,
+}
+
+/// Dependency statistics in status response
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct StatusDependencyStats {
+    pub total: u64,
+    pub resolved: u64,
+}
+
+/// Per-language stats in status response
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct StatusLanguageStats {
+    pub language: String,
+    pub file_count: u64,
+    pub chunk_count: u64,
+}
+
 /// Request for semantic commit search
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CommitSearchRequest {

@@ -1505,6 +1505,199 @@ impl BobbinMcpServer {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
+    /// Show import dependencies for a file
+    #[tool(description = "Show import dependencies for a file. Returns what the file imports (forward dependencies) and/or what imports the file (reverse dependencies). Use 'reverse=true' to see dependents only, 'both=true' for both directions. Requires the index to include dependency data (enabled by default).")]
+    async fn dependencies(
+        &self,
+        Parameters(req): Parameters<DependenciesRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let reverse = req.reverse.unwrap_or(false);
+        let both = req.both.unwrap_or(false);
+        let show_imports = !reverse || both;
+        let show_dependents = reverse || both;
+
+        let vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let imports = if show_imports {
+            let deps = vector_store
+                .get_dependencies(&req.file)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            Some(
+                deps.into_iter()
+                    .map(|d| DependencyItem {
+                        path: if d.resolved {
+                            d.file_b
+                        } else {
+                            d.import_statement.clone()
+                        },
+                        dep_type: d.dep_type,
+                        symbol: d.symbol,
+                        resolved: d.resolved,
+                    })
+                    .collect(),
+            )
+        } else {
+            None
+        };
+
+        let imported_by = if show_dependents {
+            let deps = vector_store
+                .get_dependents(&req.file)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            Some(
+                deps.into_iter()
+                    .map(|d| DependencyItem {
+                        path: d.file_a,
+                        dep_type: d.dep_type,
+                        symbol: d.symbol,
+                        resolved: d.resolved,
+                    })
+                    .collect(),
+            )
+        } else {
+            None
+        };
+
+        let response = DependenciesResponse {
+            file: req.file,
+            imports,
+            imported_by,
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Show commit history for a specific file
+    #[tool(description = "Show the git commit history for a specific file. Returns a list of commits that touched the file, along with statistics like author breakdown and churn rate (commits/month). Best for: 'who has worked on this file?', 'how often does this file change?', 'recent changes to config.rs'.")]
+    async fn file_history(
+        &self,
+        Parameters(req): Parameters<FileHistoryRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let limit = req.limit.unwrap_or(20);
+
+        let git = GitAnalyzer::new(&self.repo_root)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let history = git
+            .get_file_history(&req.file, limit)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Calculate statistics
+        let mut author_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for entry in &history {
+            *author_counts.entry(entry.author.clone()).or_insert(0) += 1;
+        }
+
+        let mut authors: Vec<FileHistoryAuthor> = author_counts
+            .into_iter()
+            .map(|(name, commits)| FileHistoryAuthor { name, commits })
+            .collect();
+        authors.sort_by(|a, b| b.commits.cmp(&a.commits));
+
+        let churn_rate = if history.len() >= 2 {
+            let first_ts = history.last().map(|e| e.timestamp).unwrap_or(0);
+            let last_ts = history.first().map(|e| e.timestamp).unwrap_or(0);
+            let days = ((last_ts - first_ts) as f32 / 86400.0).max(1.0);
+            (history.len() as f32 / days) * 30.0
+        } else {
+            0.0
+        };
+
+        let response = FileHistoryResponse {
+            file: req.file,
+            entries: history
+                .into_iter()
+                .map(|h| FileHistoryItem {
+                    date: h.date,
+                    author: h.author,
+                    message: h.message,
+                    issues: h.issues,
+                })
+                .collect(),
+            stats: FileHistoryStats {
+                total_commits: authors.iter().map(|a| a.commits).sum(),
+                authors,
+                churn_rate,
+            },
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Show index status and statistics
+    #[tool(description = "Show the current index status and statistics for the bobbin instance. Returns file/chunk counts, dependency stats, repository list, and optionally a per-language breakdown. Best for: 'is the index up to date?', 'how many files are indexed?', 'what languages are in the codebase?'.")]
+    async fn status(
+        &self,
+        Parameters(req): Parameters<StatusRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let repos = vector_store
+            .get_all_repos()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let stats = vector_store
+            .get_stats(req.repo.as_deref())
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let dependency_stats = vector_store
+            .get_dependency_stats()
+            .await
+            .ok()
+            .and_then(|(total, resolved)| {
+                if total > 0 {
+                    Some(StatusDependencyStats { total, resolved })
+                } else {
+                    None
+                }
+            });
+
+        let languages = if req.detailed.unwrap_or(false) {
+            stats
+                .languages
+                .iter()
+                .map(|l| StatusLanguageStats {
+                    language: l.language.clone(),
+                    file_count: l.file_count,
+                    chunk_count: l.chunk_count,
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+
+        let response = StatusResponse {
+            status: "ready".to_string(),
+            total_files: stats.total_files,
+            total_chunks: stats.total_chunks,
+            total_embeddings: stats.total_embeddings,
+            last_indexed: stats.last_indexed.and_then(|ts| {
+                chrono::DateTime::from_timestamp(ts, 0).map(|t| t.to_rfc3339())
+            }),
+            dependency_stats,
+            repos,
+            languages,
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
     /// Search git commits semantically to find commits by what they did
     #[tool(description = "Search git commit history using natural language. Finds commits by what they did, not just by message keywords. Best for: 'when was authentication added?', 'commits that changed the parser', 'who refactored the database layer?'. Filter by author or file path. Requires commits to be indexed (enabled by default in bobbin index).")]
     async fn commit_search(
@@ -1763,8 +1956,9 @@ impl ServerHandler for BobbinMcpServer {
             instructions: Some(
                 "Bobbin is a semantic code search engine. Use the search tool for natural language queries, \
                 grep for exact pattern matching, find_refs to find symbol definitions and usages, \
-                list_symbols to see all symbols in a file, related for finding coupled files, and read_chunk to \
-                view specific code sections. Start with `bobbin://index/stats` to see the index status."
+                list_symbols to see all symbols in a file, related for finding coupled files, read_chunk to \
+                view specific code sections, dependencies for import analysis, file_history for git history of a file, \
+                and status for index health. Start with `bobbin://index/stats` to see the index status."
                     .to_string(),
             ),
         }

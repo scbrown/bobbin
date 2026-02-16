@@ -63,6 +63,14 @@ When running as an MCP server (`bobbin serve`), these tools are available:
 | `list_symbols` | List all symbols in a file |
 | `read_chunk` | Read specific code sections |
 | `hotspots` | Find high-churn, high-complexity files |
+| `impact` | Predict files affected by a change |
+| `review` | Diff-aware context for code review |
+| `similar` | Find similar code or duplicate clusters |
+| `dependencies` | Show import dependencies for a file |
+| `file_history` | Commit history and stats for a file |
+| `status` | Index statistics and health |
+| `search_beads` | Search indexed issues/tasks |
+| `commit_search` | Semantic git commit search |
 | `prime` | Get this project overview with live stats |
 
 ## Quick Start
