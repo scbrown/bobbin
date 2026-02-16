@@ -1,0 +1,15 @@
+id: cargo-004
+repo: rust-lang/cargo
+commit: 7a5192f9da416dcac679728e73796431683ec2f7
+description: |
+  Fix the `cargo fix` suggestion in `cargo check` output to always include
+  `-p <package_name>`. When `cargo check` finds fixable warnings in a bin
+  target within a workspace, it suggests `cargo fix --bin "foo"` without
+  the `-p` flag, which fails because the bin target is ambiguous across
+  packages. Always include `-p <package_name>` in the suggested fix command.
+  This actually simplifies the code by removing the conditional that omitted
+  `-p` for non-lib targets.
+test_command: "cargo test --test testsuite -- check::check_virtual_manifest_one_bin_project_not_in_default_members"
+language: rust
+difficulty: easy
+tags: [bug-fix, check, diagnostics, workspace, ux]

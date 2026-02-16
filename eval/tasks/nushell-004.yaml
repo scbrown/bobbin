@@ -1,0 +1,15 @@
+id: nushell-004
+repo: nushell/nushell
+commit: a148aa744e6fbc98a266ea4a901550058d62b3a3
+description: |
+  Fix `math median` returning incorrect results when NaN values are present
+  in the input. The command filters out NaN values before sorting, but uses
+  the original `values.len()` (which includes the filtered-out NaN entries)
+  to determine even/odd and compute median indices. This causes
+  `[NaN NaN 1 2 3 4] | math median` to return 3.5 instead of the correct 2.5.
+  Move the even/odd check and index calculations to use `sorted.len()` after
+  NaN filtering.
+test_command: "cargo test -p nu-command -- math::median::test::test_median_with_nan_values"
+language: rust
+difficulty: easy
+tags: [math, bug-fix, wrong-variable, single-file]

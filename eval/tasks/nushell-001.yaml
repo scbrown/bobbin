@@ -1,0 +1,15 @@
+id: nushell-001
+repo: nushell/nushell
+commit: 28ddcf1934517de084b0d38709b3d0c549503dbd
+description: |
+  Fix the parser to allow match expressions with multiple arms AND a guard
+  expression. Currently, `match 3 {1 | 2 | 3 if true => 'test'}` fails to
+  parse because the guard check (`if` after the pattern) is skipped for
+  multi-arm expressions. The logic expecting `=>` runs before the guard is
+  parsed, causing a parse error. Fix the control flow in
+  `parse_match_block_expression` so the guard check runs correctly after
+  multi-arm pattern parsing completes.
+test_command: "cargo test -p nu-command -- match_with_guard_multiarm"
+language: rust
+difficulty: easy
+tags: [parser, bug-fix, match-expression, control-flow]

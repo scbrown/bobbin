@@ -1,0 +1,14 @@
+id: cargo-005
+repo: rust-lang/cargo
+commit: ce69df6f72a3b6a2b5c722ba68ddef255344b31c
+description: |
+  Fix `target.<host>.runner` to not incorrectly apply to build script
+  execution. Setting `target.<host>.runner = "nonexistent-runner"` causes
+  build scripts to fail with "could not execute process" because the host
+  runner is applied unconditionally. Add a guard in the compilation runner
+  selection logic to only apply the host runner when `-Zhost-config` is
+  explicitly enabled via `target_applies_to_host`.
+test_command: "cargo test --test testsuite -- build_script::target_runner_does_not_apply_to_build_script"
+language: rust
+difficulty: medium
+tags: [bug-fix, runner, build-script, config, regression]

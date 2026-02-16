@@ -1,0 +1,15 @@
+id: cargo-003
+repo: rust-lang/cargo
+commit: 2b7dbd9f3d28609c94d5452c651d663a0d1df716
+description: |
+  Fix config include paths to explicitly reject glob patterns and template
+  braces. Currently, include paths containing glob characters like
+  `config-*.toml` or template braces like `{workspace-root}/config.toml`
+  are silently accepted but never expanded, causing confusing "file not found"
+  errors. Add validation in `_load_includes()` that detects glob characters
+  (`*`, `?`, `[`) and template braces (`{`, `}`) and returns clear,
+  descriptive error messages explaining that these syntaxes are not supported.
+test_command: "cargo test --test testsuite -- config_include::disallow_glob_syntax"
+language: rust
+difficulty: medium
+tags: [bug-fix, config, validation, error-message, input-validation]

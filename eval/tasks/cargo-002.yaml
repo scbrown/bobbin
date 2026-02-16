@@ -1,0 +1,15 @@
+id: cargo-002
+repo: rust-lang/cargo
+commit: cf622c4be3c798518862bf805d0b976f4a9026f9
+description: |
+  Fix `cargo vendor` to filter `.gitattributes`, `.gitignore`, and `.git/`
+  directories at any depth in vendored packages, not just at the package root.
+  Currently, files like `subdir/.gitattributes` or `deep/nested/.git/config`
+  are kept in the vendored output, breaking checksums when vendored code is
+  checked into git. Refactor the filtering logic in `vendor_this()` to use
+  path `components()` for recursive `.git` directory checking and `file_name()`
+  for `.gitattributes`/`.gitignore` matching at any depth.
+test_command: "cargo test --test testsuite -- vendor::vendor_filters_git_files_recursively"
+language: rust
+difficulty: medium
+tags: [bug-fix, vendor, git, path-handling, checksum]

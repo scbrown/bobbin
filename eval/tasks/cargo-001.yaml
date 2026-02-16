@@ -1,0 +1,13 @@
+id: cargo-001
+repo: rust-lang/cargo
+commit: a96e747227001f0752344077e25402ceb5cbf214
+description: |
+  Fix `cargo check` to not panic when using `build-dir` config with a workspace
+  containing a proc macro that depends on a dylib crate. The code in
+  `compilation_files.rs` calls `.expect("artifact-dir was not locked")` but
+  artifact-dir is never locked for check builds. Replace the `.expect()` calls
+  with `?` to propagate the None gracefully instead of panicking.
+test_command: "cargo test --test testsuite -- check::check_build_should_not_uplift_proc_macro_dylib_deps"
+language: rust
+difficulty: easy
+tags: [bug-fix, check, artifact-dir, panic, error-handling]

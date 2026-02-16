@@ -1,0 +1,13 @@
+id: nushell-002
+repo: nushell/nushell
+commit: 13067f13ce8df8a13f1fa2233e9e4e5ea32c2791
+description: |
+  Fix an arithmetic underflow in the range parser. Parsing input like `) ..`
+  causes a panic in debug mode or wraparound in release because `parse_range`
+  calculates parenthesis depth as `open_count - close_count` without checking
+  whether close_count exceeds open_count. Replace the unchecked subtraction
+  with `checked_sub` and handle the underflow case gracefully.
+test_command: "cargo test --test main -- parsing::wacky_range_unmatched_paren"
+language: rust
+difficulty: easy
+tags: [parser, bug-fix, arithmetic-overflow, checked-math]

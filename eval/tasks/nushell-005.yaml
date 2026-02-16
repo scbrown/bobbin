@@ -1,0 +1,14 @@
+id: nushell-005
+repo: nushell/nushell
+commit: 4650193ea010611b682571eef4e4158dd189d710
+description: |
+  Fix the parser to reject pipeline forms of `let` that assign to builtin
+  variables. Currently, `1 | let $nu` silently succeeds while the non-pipeline
+  form `let $nu = 1` correctly errors with "name is builtin var". The pipeline
+  form goes through `parse_internal_call` which lacks the builtin-variable-name
+  check. Extract the existing validation into a shared helper function and call
+  it from `parse_internal_call` when the command is `let`, `const`, or `mut`.
+test_command: "cargo test --test main -- parsing::parse_let_pipeline_builtin_var"
+language: rust
+difficulty: medium
+tags: [parser, bug-fix, validation, refactor]

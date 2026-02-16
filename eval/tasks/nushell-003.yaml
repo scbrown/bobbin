@@ -1,0 +1,15 @@
+id: nushell-003
+repo: nushell/nushell
+commit: 86851d03e35da867cbfb6fec85f3bda5340feaa9
+description: |
+  Fix a panic when running `[{index: 0, data: yes}] | table -i false`. The
+  table renderer unconditionally strips any column named "index" from the
+  headers, assuming it is the auto-generated index column. When `--index false`
+  is set, no auto-index exists, so stripping the user's "index" column causes
+  a mismatch between headers and data rows, resulting in a panic. Add a guard
+  to only filter out the "index" column name when the auto-index feature
+  (`with_index`) is enabled.
+test_command: "cargo test -p nu-command -- table_index_column_with_index_flag_false"
+language: rust
+difficulty: medium
+tags: [table-rendering, bug-fix, panic, conditional-logic]
