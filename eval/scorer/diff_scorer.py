@@ -119,6 +119,12 @@ def score_diff(
         )
         agent_files = {f for f in result.stdout.strip().splitlines() if f}
 
+    # Exclude bobbin/claude infrastructure files from both sets so that
+    # tool scaffolding (.bobbin/, .claude/) doesn't affect precision/recall.
+    _INFRA_PREFIXES = (".bobbin/", ".claude/")
+    agent_files = {f for f in agent_files if not any(f.startswith(p) for p in _INFRA_PREFIXES)}
+    gt_files = {f for f in gt_files if not any(f.startswith(p) for p in _INFRA_PREFIXES)}
+
     # Compute precision / recall.
     if not agent_files:
         precision = 0.0
