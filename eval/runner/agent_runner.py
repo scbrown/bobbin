@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -186,6 +187,11 @@ def run_agent(
     start = time.monotonic()
     timed_out = False
 
+    # Build a clean environment for the agent subprocess.  Remove CLAUDECODE
+    # so the CLI doesn't refuse to start when eval is launched from inside an
+    # existing Claude Code session.
+    agent_env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
     with _isolate_global_settings():
         try:
             proc = subprocess.run(
@@ -194,6 +200,7 @@ def run_agent(
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env=agent_env,
             )
             exit_code = proc.returncode
             stdout = proc.stdout
