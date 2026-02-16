@@ -1,0 +1,17 @@
+id: django-002
+repo: django/django
+commit: 922c4cf972e04b1ce7ecee592231106724dcfd09
+description: |
+  Fix the `querystring` template tag losing multi-value QueryDict support.
+  When `request.GET` contains multi-value keys (e.g., `?x=1&x=2`), only
+  the last value is preserved because the code uses `d.items()` instead
+  of `d.lists()` for QueryDict instances. Additionally, None values within
+  iterable values are not being properly filtered. Fix `defaulttags.py`
+  to use `d.lists()` when the source is a QueryDict and properly handle
+  None filtering within iterable values. Add tests for multi-value
+  QueryDict preservation in the querystring tag.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install -e . --quiet"
+test_command: "cd tests && ../.venv/bin/python -m django test template_tests.syntax_tests.test_querystring --settings=test_sqlite"
+language: python
+difficulty: easy
+tags: [bug-fix, template-tag, querystring, querydict]

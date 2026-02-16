@@ -1,0 +1,18 @@
+id: typst-001
+repo: typst/typst
+commit: b0f11424b49479f0678aaf26995fe80c476d0f61
+description: |
+  Fix panic when division overflows in `calc` functions. Computing
+  `calc.div-euclid(i64::MIN, -1)`, `calc.quo(i64::MIN, -1)`, or
+  `calc.gcd(i64::MIN, -1)` panics because Rust's unchecked integer
+  division overflows when the mathematical result (+2^63) exceeds
+  i64::MAX. Replace unchecked division/remainder with checked variants
+  (`checked_div`, `checked_rem`, etc.) and propagate or handle the
+  error. For `gcd`, change the return type to `StrResult<i64>` to
+  propagate errors. For `rem` on integers, `i64::MIN % -1` is
+  mathematically zero, so `unwrap_or(0)` is appropriate. Add tests
+  for the overflow edge cases.
+test_command: "cargo test --workspace --test tests -- calc-div-euclid-too-large calc-quo-too-large calc-gcd-too-large"
+language: rust
+difficulty: easy
+tags: [bug-fix, panic, integer-overflow, calc]

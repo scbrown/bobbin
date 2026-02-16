@@ -1,0 +1,17 @@
+id: django-003
+repo: django/django
+commit: 192bc7a7be92e20cc250907fb4083df689715679
+description: |
+  Fix tuple `__in` lookup with subqueries on backends lacking native tuple
+  support. When performing an `__in` lookup involving a composite primary
+  key and a subquery, the fallback codepath in `TupleIn.get_fallback_sql()`
+  does not handle `Query` (subquery) objects as the right-hand side. It
+  only handles direct value lists and non-direct-value expressions. Add a
+  new branch that converts subquery lookups into an `EXISTS` clause with
+  correlated conditions. Fix `tuple_lookups.py` and add test cases using
+  `unittest.mock.patch` to simulate a backend without native tuple support.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install -e . --quiet"
+test_command: "cd tests && ../.venv/bin/python -m django test composite_pk.test_filter --settings=test_sqlite"
+language: python
+difficulty: medium
+tags: [bug-fix, orm, composite-pk, tuple-lookups, subquery]

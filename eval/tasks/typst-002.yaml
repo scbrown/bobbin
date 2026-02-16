@@ -1,0 +1,17 @@
+id: typst-002
+repo: typst/typst
+commit: f9980e7cbe9d2d724ca849d3d4747b3b2f2452b0
+description: |
+  Fix tab indentation in raw blocks when the source text uses CRLF line
+  endings. The `align_tabs` function in raw text handling only recognizes
+  `\n` as a newline when resetting column counters for tab alignment.
+  With `\r\n` line endings, the column counter is not reset at line
+  boundaries, causing tabs to expand to incorrect widths and producing
+  garbled indentation. Fix by handling the `\r\n` grapheme cluster and
+  using `typst_syntax::is_newline` for proper newline detection, so the
+  column counter resets on all newline variants. Add a test for CRLF
+  tab indentation in raw blocks.
+test_command: "cargo test --workspace --test tests -- issue-6961-tab-crlf-raw-indent"
+language: rust
+difficulty: medium
+tags: [bug-fix, raw-text, crlf, tab-indentation]

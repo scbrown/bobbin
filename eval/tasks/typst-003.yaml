@@ -1,0 +1,18 @@
+id: typst-003
+repo: typst/typst
+commit: 584dd5fec69ad80feedf4018e02b427f2c812716
+description: |
+  Fix panic when sampling across two coincident gradient stops. When a
+  gradient has two stops at the same position (e.g., `(red, 0%)` and
+  `(green, 0%)`), the `sample_stops` function divides by zero when
+  interpolating because `pos_1 - pos_0 == 0`. The manual binary search
+  also has an off-by-one issue that can select the wrong stop pair.
+  Replace the manual binary search with `partition_point` for cleaner
+  boundary detection. When sampling at or before the first stop, skip
+  past any coincident stops at position 0 and return the last one
+  directly to avoid the division by zero. Add a test for coincident
+  gradient stops.
+test_command: "cargo test --workspace --test tests -- issue-6162-coincident-gradient-stops"
+language: rust
+difficulty: medium
+tags: [bug-fix, panic, division-by-zero, gradient, visualization]

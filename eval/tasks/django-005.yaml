@@ -1,0 +1,20 @@
+id: django-005
+repo: django/django
+commit: c075508b4de8edf9db553b409f8a8ed2f26ecead
+description: |
+  Fix `HttpRequest.get_preferred_type()` to consider media type parameters
+  per RFC 7231. The `MediaType` class does not account for parameters
+  (e.g., `version=4.0` in `text/vcard; version=4.0`) when matching and
+  ordering Accept header types. Multiple issues: `match()` is too
+  simplistic and doesn't handle wildcards bidirectionally; `accepted_types`
+  sorts quality before specificity (should be reversed); `accepted_type()`
+  matches in the wrong direction; `specificity` doesn't account for
+  parameters; and types with `q=0` (explicitly rejected) are not filtered
+  out. Fix the `MediaType` class methods: make `params` exclude the `q`
+  parameter via `cached_property`, implement proper parameter-aware
+  matching, fix sort key order, and filter out `q=0` entries.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install -e . --quiet"
+test_command: "cd tests && ../.venv/bin/python -m django test requests_tests.test_accept_header --settings=test_sqlite"
+language: python
+difficulty: hard
+tags: [bug-fix, http, content-negotiation, media-type, rfc-compliance]

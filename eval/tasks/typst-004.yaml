@@ -1,0 +1,18 @@
+id: typst-004
+repo: typst/typst
+commit: b9f3a95e03bd792bca4926959eab5f9f6edd1a9d
+description: |
+  Fix citation ordering in RTL (right-to-left) text. Elements in a text
+  line are collected and committed to frames in visual (LTR) order. For
+  RTL text, this means citation elements appear in the wrong order during
+  layout, causing citation numbers to be assigned incorrectly. Thread a
+  logical index through the `Items` data structure by changing it from
+  `Vec<ItemEntry>` to `Vec<(usize, ItemEntry)>`, where each item carries
+  its logical index from the paragraph's item sequence. Before committing
+  frames to the output, sort them by logical index using
+  `sort_unstable_by_key` so introspection sees elements in document order
+  regardless of text direction. Add a test for RTL citation ordering.
+test_command: "cargo test --workspace --test tests -- issue-5775-cite-order-rtl"
+language: rust
+difficulty: medium
+tags: [bug-fix, rtl, citation, layout, ordering]

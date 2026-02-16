@@ -1,0 +1,19 @@
+id: typst-005
+repo: typst/typst
+commit: 978b16ee6e36b46e0c71474a95fe8e79fd2c07c7
+description: |
+  Fix footnote back-links breaking when footnote entries have custom show
+  rules. The old implementation attaches a derived location (`loc.variant(1)`)
+  to the `FootnoteEntry` during its show rule, but a custom show rule
+  discards this location. The footnote marker links to `loc.variant(1)`
+  which no longer exists on the styled entry. Fix by attaching the derived
+  location directly when laying out the footnote entry in `compose.rs`
+  via `.located(loc.variant(1))` instead of in the show rule. Simplify
+  the show rule in `rules.rs` to just link to the destination without
+  setting its own location. Update jump tests in `typst-ide` to verify
+  bidirectional footnote links work with custom show rules. This is a
+  cross-crate fix spanning typst-layout and typst-ide.
+test_command: "cargo test -p typst-ide -- test_footnote"
+language: rust
+difficulty: medium
+tags: [bug-fix, footnote, show-rules, cross-crate, layout]

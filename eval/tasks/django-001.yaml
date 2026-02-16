@@ -1,0 +1,18 @@
+id: django-001
+repo: django/django
+commit: 95394443bff2cd6c5cb47c752422fe1f391bb43d
+description: |
+  Fix XML serialization of None values in natural keys. Currently, None
+  values in natural keys are serialized as the string "None" in XML
+  output, causing deserialization to fail. Both FK and M2M serialization
+  paths need to emit `<None/>` elements inside `<natural>` tags for None
+  values, and the deserialization logic needs to check for `<None/>`
+  elements within `<natural>` tags (not just at the top level). Fix
+  both the serialization and deserialization code paths in
+  `xml_serializer.py`. Add test models and test cases for natural key
+  XML round-tripping with None values.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install -e . --quiet"
+test_command: "cd tests && ../.venv/bin/python -m django test serializers.test_natural --settings=test_sqlite"
+language: python
+difficulty: medium
+tags: [bug-fix, serialization, xml, natural-keys, cross-file]
