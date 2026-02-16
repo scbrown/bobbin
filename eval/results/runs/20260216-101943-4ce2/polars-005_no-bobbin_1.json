@@ -1,0 +1,344 @@
+{
+  "task_id": "polars-005",
+  "approach": "no-bobbin",
+  "attempt": 1,
+  "status": "completed",
+  "timestamp": "2026-02-16T10:43:07.486488+00:00",
+  "task": {
+    "repo": "pola-rs/polars",
+    "commit": "8f60a2d641daf7f9eeac69694b5c952f4cc34099",
+    "test_command": ".venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pytest py-polars/tests/unit/expr/test_literal.py -x -k test_floordiv_mod",
+    "language": "rust",
+    "difficulty": "medium"
+  },
+  "agent_config": {
+    "model": "claude-opus-4-6",
+    "budget_usd": 100.0,
+    "timeout_seconds": 3600,
+    "index_timeout_seconds": 600
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 296.17,
+    "timed_out": false,
+    "cost_usd": 1.3791483500000004,
+    "input_tokens": 1475568,
+    "output_tokens": 8618,
+    "model_usage": {
+      "claude-haiku-4-5-20251001": {
+        "inputTokens": 22885,
+        "outputTokens": 8176,
+        "cacheReadInputTokens": 938806,
+        "cacheCreationInputTokens": 50850,
+        "webSearchRequests": 0,
+        "costUSD": 0.2212081000000001,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      },
+      "claude-opus-4-6": {
+        "inputTokens": 41,
+        "outputTokens": 8618,
+        "cacheReadInputTokens": 1439958,
+        "cacheCreationInputTokens": 35569,
+        "webSearchRequests": 0,
+        "costUSD": 1.1579402499999998,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    },
+    "num_turns": 44
+  },
+  "token_usage": {
+    "total_cost_usd": 1.3791483500000004,
+    "input_tokens": 41,
+    "output_tokens": 8618,
+    "cache_creation_tokens": 35569,
+    "cache_read_tokens": 1439958,
+    "num_turns": 44,
+    "model_usage": {
+      "claude-haiku-4-5-20251001": {
+        "inputTokens": 22885,
+        "outputTokens": 8176,
+        "cacheReadInputTokens": 938806,
+        "cacheCreationInputTokens": 50850,
+        "webSearchRequests": 0,
+        "costUSD": 0.2212081000000001,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      },
+      "claude-opus-4-6": {
+        "inputTokens": 41,
+        "outputTokens": 8618,
+        "cacheReadInputTokens": 1439958,
+        "cacheCreationInputTokens": 35569,
+        "webSearchRequests": 0,
+        "costUSD": 1.1579402499999998,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    }
+  },
+  "agent_output": {
+    "num_turns": 44,
+    "session_id": "ea42bcb6-4d83-4964-a7ed-3fbf4501f44d",
+    "stop_reason": null
+  },
+  "agent_stderr": "",
+  "test_result": {
+    "passed": true,
+    "total": 0,
+    "failures": 0,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0
+    },
+    "output": "\u270f\ufe0f Setting installed package as editable\n============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-9.0.2, pluggy-1.6.0\nrootdir: /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars/py-polars\nconfigfile: pyproject.toml\nplugins: hypothesis-6.151.7\ncollected 20 items / 12 deselected / 8 selected\n\npy-polars/tests/unit/expr/test_literal.py ........                       [100%]\n\n======================= 8 passed, 12 deselected in 0.03s =======================\n\ud83c\udf79 Building a mixed python/rust project\n\ud83d\udd17 Found pyo3 bindings with abi3 support\n\ud83d\udc0d Found CPython 3.12 at /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars/.venv/bin/python\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.41s\n\ud83d\udce6 Built wheel for abi3 Python \u2265 3.10 to /tmp/.tmpHCrYxn/polars_runtime_32-1.38.1-cp310-abi3-linux_x86_64.whl\n\ud83d\udee0 Installed polars-runtime-32-1.38.1\n",
+    "exit_code": 0,
+    "timed_out": false
+  },
+  "diff_result": {
+    "file_precision": 1.0,
+    "file_recall": 0.5,
+    "f1": 0.6667,
+    "files_touched": [
+      "crates/polars-plan/src/plans/optimizer/simplify_expr/mod.rs",
+      "py-polars/tests/unit/expr/test_literal.py"
+    ],
+    "ground_truth_files": [
+      "crates/polars-plan/src/dsl/expr/mod.rs",
+      "crates/polars-plan/src/plans/optimizer/simplify_expr/mod.rs",
+      "crates/polars-utils/src/floor_divmod.rs",
+      "py-polars/tests/unit/expr/test_literal.py"
+    ],
+    "exact_file_match": false
+  },
+  "agent_diff": "diff --git a/crates/polars-plan/src/plans/optimizer/simplify_expr/mod.rs b/crates/polars-plan/src/plans/optimizer/simplify_expr/mod.rs\nindex f3c40f1875..fb840be24c 100644\n--- a/crates/polars-plan/src/plans/optimizer/simplify_expr/mod.rs\n+++ b/crates/polars-plan/src/plans/optimizer/simplify_expr/mod.rs\n@@ -18,6 +18,46 @@ fn new_null_count(input: &[ExprIR]) -> AExpr {\n     }\n }\n \n+/// Check if both sides are literals and the right-hand side is zero.\n+/// If so, return a null literal (division by zero -> null).\n+fn check_div_by_zero_lit(left: &AExpr, right: &AExpr) -> Option<AExpr> {\n+    if let (AExpr::Literal(lit_left), AExpr::Literal(lit_right)) = (left, right) {\n+        let is_zero = match lit_right {\n+            LiteralValue::Scalar(s) => match s.as_any_value() {\n+                AnyValue::Int8(v) => v == 0,\n+                AnyValue::Int16(v) => v == 0,\n+                AnyValue::Int32(v) => v == 0,\n+                AnyValue::Int64(v) => v == 0,\n+                AnyValue::Int128(v) => v == 0,\n+                AnyValue::UInt8(v) => v == 0,\n+                AnyValue::UInt16(v) => v == 0,\n+                AnyValue::UInt32(v) => v == 0,\n+                AnyValue::UInt64(v) => v == 0,\n+                AnyValue::UInt128(v) => v == 0,\n+                AnyValue::Float32(v) => v == 0.0,\n+                AnyValue::Float64(v) => v == 0.0,\n+                AnyValue::Float16(v) => f32::from(v) == 0.0,\n+                _ => false,\n+            },\n+            LiteralValue::Dyn(DynLiteralValue::Int(v)) => *v == 0,\n+            LiteralValue::Dyn(DynLiteralValue::Float(v)) => *v == 0.0,\n+            _ => false,\n+        };\n+\n+        if is_zero {\n+            // Determine the dtype from the left operand for the null scalar.\n+            let dtype = match lit_left {\n+                LiteralValue::Scalar(s) => s.dtype().clone(),\n+                LiteralValue::Dyn(DynLiteralValue::Int(_)) => DataType::Int32,\n+                LiteralValue::Dyn(DynLiteralValue::Float(_)) => DataType::Float64,\n+                _ => return None,\n+            };\n+            return Some(AExpr::Literal(Scalar::null(dtype).into()));\n+        }\n+    }\n+    None\n+}\n+\n macro_rules! eval_binary_same_type {\n     ($lhs:expr, $rhs:expr, |$l: ident, $r: ident| $ret: expr) => {{\n         if let (AExpr::Literal(lit_left), AExpr::Literal(lit_right)) = ($lhs, $rhs) {\n@@ -671,9 +711,15 @@ impl OptimizationRule for SimplifyExprRule {\n                             None\n                         }\n                     },\n-                    Modulus => eval_binary_same_type!(left_aexpr, right_aexpr, |l, r| l\n-                        .wrapping_floor_div_mod(r)\n-                        .1),\n+                    Modulus => {\n+                        if let Some(null_lit) = check_div_by_zero_lit(left_aexpr, right_aexpr) {\n+                            Some(null_lit)\n+                        } else {\n+                            eval_binary_same_type!(left_aexpr, right_aexpr, |l, r| l\n+                                .wrapping_floor_div_mod(r)\n+                                .1)\n+                        }\n+                    },\n                     Lt => eval_binary_cmp_same_type!(left_aexpr, <, right_aexpr),\n                     Gt => eval_binary_cmp_same_type!(left_aexpr, >, right_aexpr),\n                     Eq | EqValidity => eval_binary_cmp_same_type!(left_aexpr, ==, right_aexpr),\n@@ -685,9 +731,15 @@ impl OptimizationRule for SimplifyExprRule {\n                     And | LogicalAnd => eval_bitwise(left_aexpr, right_aexpr, |l, r| l & r),\n                     Or | LogicalOr => eval_bitwise(left_aexpr, right_aexpr, |l, r| l | r),\n                     Xor => eval_bitwise(left_aexpr, right_aexpr, |l, r| l ^ r),\n-                    FloorDivide => eval_binary_same_type!(left_aexpr, right_aexpr, |l, r| l\n-                        .wrapping_floor_div_mod(r)\n-                        .0),\n+                    FloorDivide => {\n+                        if let Some(null_lit) = check_div_by_zero_lit(left_aexpr, right_aexpr) {\n+                            Some(null_lit)\n+                        } else {\n+                            eval_binary_same_type!(left_aexpr, right_aexpr, |l, r| l\n+                                .wrapping_floor_div_mod(r)\n+                                .0)\n+                        }\n+                    },\n                 };\n                 if out.is_some() {\n                     return Ok(out);\ndiff --git a/py-polars/tests/unit/expr/test_literal.py b/py-polars/tests/unit/expr/test_literal.py\nindex f214f98546..e95230a72c 100644\n--- a/py-polars/tests/unit/expr/test_literal.py\n+++ b/py-polars/tests/unit/expr/test_literal.py\n@@ -124,6 +124,29 @@ def test_literal_datetime_timezone_utc_error() -> None:\n         pl.select(dt=pl.lit(value, dtype=pl.Datetime(time_zone=\"Pacific/Galapagos\")))\n \n \n+@pytest.mark.parametrize(\n+    \"dtype\",\n+    [\n+        pl.Int8,\n+        pl.Int16,\n+        pl.Int32,\n+        pl.Int64,\n+        pl.UInt8,\n+        pl.UInt16,\n+        pl.UInt32,\n+        pl.UInt64,\n+    ],\n+)\n+def test_floordiv_mod_literal_by_zero(dtype: pl.DataType) -> None:\n+    \"\"\"Floor division and modulo of literals by zero should return null.\"\"\"\n+    result = pl.select(\n+        floordiv=pl.lit(1, dtype=dtype) // pl.lit(0, dtype=dtype),\n+        mod=pl.lit(1, dtype=dtype) % pl.lit(0, dtype=dtype),\n+    )\n+    assert result[\"floordiv\"].item() is None\n+    assert result[\"mod\"].item() is None\n+\n+\n def test_literal_object_25679() -> None:\n     df = pl.DataFrame(\n         data={\"colx\": [0, 0, 1, 2, None, 3, 3, None]},\n",
+  "ground_truth_diff": "diff --git a/crates/polars-plan/src/dsl/expr/mod.rs b/crates/polars-plan/src/dsl/expr/mod.rs\nindex e4911e5ca1..34e20abfad 100644\n--- a/crates/polars-plan/src/dsl/expr/mod.rs\n+++ b/crates/polars-plan/src/dsl/expr/mod.rs\n@@ -719,7 +719,7 @@ pub enum Operator {\n     Plus,\n     Minus,\n     Multiply,\n-    /// Rust division semantics, this is what Rust interface `/` fispatches to\n+    /// Rust division semantics, this is what Rust interface `/` dispatches to\n     RustDivide,\n     /// Python division semantics, converting to floats. This is what python `/` operator dispatches to\n     TrueDivide,\ndiff --git a/crates/polars-plan/src/plans/optimizer/simplify_expr/mod.rs b/crates/polars-plan/src/plans/optimizer/simplify_expr/mod.rs\nindex f3c40f1875..168390d628 100644\n--- a/crates/polars-plan/src/plans/optimizer/simplify_expr/mod.rs\n+++ b/crates/polars-plan/src/plans/optimizer/simplify_expr/mod.rs\n@@ -1,5 +1,6 @@\n mod simplify_functions;\n \n+use num_traits::Zero;\n use polars_utils::float16::pf16;\n use polars_utils::floor_divmod::FloorDivMod;\n use polars_utils::total_ord::ToTotalOrd;\n@@ -671,9 +672,14 @@ impl OptimizationRule for SimplifyExprRule {\n                             None\n                         }\n                     },\n-                    Modulus => eval_binary_same_type!(left_aexpr, right_aexpr, |l, r| l\n-                        .wrapping_floor_div_mod(r)\n-                        .1),\n+                    Modulus => eval_binary_same_type!(left_aexpr, right_aexpr, |l, r| {\n+                        if r.is_zero() {\n+                            // TODO: this should optimize to `null` once we can express \"is dynamic int but actually contains null\"\n+                            return Ok(None);\n+                        }\n+\n+                        l.wrapping_floor_div_mod(r).1\n+                    }),\n                     Lt => eval_binary_cmp_same_type!(left_aexpr, <, right_aexpr),\n                     Gt => eval_binary_cmp_same_type!(left_aexpr, >, right_aexpr),\n                     Eq | EqValidity => eval_binary_cmp_same_type!(left_aexpr, ==, right_aexpr),\n@@ -685,9 +691,14 @@ impl OptimizationRule for SimplifyExprRule {\n                     And | LogicalAnd => eval_bitwise(left_aexpr, right_aexpr, |l, r| l & r),\n                     Or | LogicalOr => eval_bitwise(left_aexpr, right_aexpr, |l, r| l | r),\n                     Xor => eval_bitwise(left_aexpr, right_aexpr, |l, r| l ^ r),\n-                    FloorDivide => eval_binary_same_type!(left_aexpr, right_aexpr, |l, r| l\n-                        .wrapping_floor_div_mod(r)\n-                        .0),\n+                    FloorDivide => eval_binary_same_type!(left_aexpr, right_aexpr, |l, r| {\n+                        if r.is_zero() {\n+                            // TODO: this should optimize to `null` once we can express \"is dynamic int but actually contains null\"\n+                            return Ok(None);\n+                        }\n+\n+                        l.wrapping_floor_div_mod(r).0\n+                    }),\n                 };\n                 if out.is_some() {\n                     return Ok(out);\ndiff --git a/crates/polars-utils/src/floor_divmod.rs b/crates/polars-utils/src/floor_divmod.rs\nindex 94ddb3806d..a06e44dee9 100644\n--- a/crates/polars-utils/src/floor_divmod.rs\n+++ b/crates/polars-utils/src/floor_divmod.rs\n@@ -26,6 +26,10 @@ macro_rules! impl_unsigned_div_mod {\n         impl FloorDivMod for $T {\n             #[inline]\n             fn wrapping_floor_div_mod(self, other: Self) -> (Self, Self) {\n+                if other == 0 {\n+                    return (0, 0);\n+                }\n+\n                 (self / other, self % other)\n             }\n         }\ndiff --git a/py-polars/tests/unit/expr/test_literal.py b/py-polars/tests/unit/expr/test_literal.py\nindex f214f98546..85f09a621d 100644\n--- a/py-polars/tests/unit/expr/test_literal.py\n+++ b/py-polars/tests/unit/expr/test_literal.py\n@@ -1,7 +1,7 @@\n from __future__ import annotations\n \n from datetime import datetime, timezone\n-from typing import Any\n+from typing import TYPE_CHECKING, Any\n from zoneinfo import ZoneInfo\n \n import pytest\n@@ -10,6 +10,9 @@ from dateutil.tz import tzoffset\n import polars as pl\n from polars.testing import assert_frame_equal\n \n+if TYPE_CHECKING:\n+    from polars._typing import PolarsDataType\n+\n \n def test_literal_scalar_list_18686() -> None:\n     df = pl.DataFrame({\"column1\": [1, 2], \"column2\": [\"A\", \"B\"]})\n@@ -134,3 +137,52 @@ def test_literal_object_25679() -> None:\n \n     assert res.schema == {\"colx\": pl.Object()}\n     assert res[\"colx\"].to_list() == [0, 0, 1, 2, 0, 3, 3, 0]\n+\n+\n+@pytest.mark.parametrize(\n+    (\"numerator\", \"divisor\", \"floordiv\", \"mod\"),\n+    [\n+        (10, 3, 3, 1),\n+        (10, 2, 5, 0),\n+        (1, 2, 0, 1),\n+        (0, 10, 0, 0),\n+        (1, 0, None, None),\n+    ],\n+)\n+@pytest.mark.parametrize(\n+    (\"numerator_dtype\", \"divisor_dtype\"),\n+    [\n+        (x, y)\n+        for x in [pl.Int8, pl.UInt8, None]\n+        for y in [pl.Int8, pl.UInt8, None]\n+        if x == y or x is None or y is None\n+    ],\n+)\n+def test_floordiv_mod(\n+    numerator: int,\n+    divisor: int,\n+    floordiv: int | None,\n+    mod: int | None,\n+    numerator_dtype: PolarsDataType | None,\n+    divisor_dtype: PolarsDataType | None,\n+) -> None:\n+    assert_frame_equal(\n+        pl.select(\n+            pl.lit(numerator, dtype=numerator_dtype)\n+            // pl.lit(divisor, dtype=divisor_dtype)\n+        ),\n+        pl.DataFrame(\n+            {\"literal\": [floordiv]},\n+            schema={\"literal\": numerator_dtype or divisor_dtype or pl.Int32},\n+        ),\n+    )\n+    assert_frame_equal(\n+        pl.select(\n+            pl.lit(numerator, dtype=numerator_dtype)\n+            % pl.lit(divisor, dtype=divisor_dtype)\n+        ),\n+        pl.DataFrame(\n+            {\"literal\": [mod]},\n+            schema={\"literal\": numerator_dtype or divisor_dtype or pl.Int32},\n+        ),\n+    )\n",
+  "project_metadata": {
+    "CSS": {
+      "files": 2,
+      "lines": 145,
+      "code": 107,
+      "comments": 13,
+      "blanks": 25
+    },
+    "HTML": {
+      "files": 4,
+      "lines": 254,
+      "code": 253,
+      "comments": 0,
+      "blanks": 1
+    },
+    "JavaScript": {
+      "files": 1,
+      "lines": 19,
+      "code": 18,
+      "comments": 0,
+      "blanks": 1
+    },
+    "JSON": {
+      "files": 8,
+      "lines": 408,
+      "code": 408,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Makefile": {
+      "files": 7,
+      "lines": 576,
+      "code": 461,
+      "comments": 18,
+      "blanks": 97
+    },
+    "Markdown": {
+      "files": 168,
+      "lines": 12867,
+      "code": 0,
+      "comments": 9114,
+      "blanks": 3753
+    },
+    "Nix": {
+      "files": 1,
+      "lines": 502,
+      "code": 409,
+      "comments": 52,
+      "blanks": 41
+    },
+    "Python": {
+      "files": 726,
+      "lines": 267441,
+      "code": 229301,
+      "comments": 5848,
+      "blanks": 32292
+    },
+    "ReStructuredText": {
+      "files": 102,
+      "lines": 8098,
+      "code": 6624,
+      "comments": 0,
+      "blanks": 1474
+    },
+    "Rust": {
+      "files": 2008,
+      "lines": 421859,
+      "code": 361852,
+      "comments": 13212,
+      "blanks": 46795
+    },
+    "SVG": {
+      "files": 3,
+      "lines": 271,
+      "code": 271,
+      "comments": 0,
+      "blanks": 0
+    },
+    "Plain Text": {
+      "files": 9,
+      "lines": 233,
+      "code": 0,
+      "comments": 214,
+      "blanks": 19
+    },
+    "TOML": {
+      "files": 50,
+      "lines": 4712,
+      "code": 4218,
+      "comments": 142,
+      "blanks": 352
+    },
+    "YAML": {
+      "files": 2,
+      "lines": 764,
+      "code": 743,
+      "comments": 10,
+      "blanks": 11
+    },
+    "Total": {
+      "files": 0,
+      "lines": 740005,
+      "code": 607442,
+      "comments": 44992,
+      "blanks": 87571
+    }
+  },
+  "bobbin_metadata": null,
+  "bobbin_metrics": null,
+  "tool_use_summary": {
+    "by_tool": {
+      "TodoWrite": 4,
+      "Task": 2,
+      "Glob": 5,
+      "Grep": 25,
+      "Bash": 23,
+      "Read": 22,
+      "Edit": 4
+    },
+    "tool_sequence": [
+      "TodoWrite",
+      "Task",
+      "Glob",
+      "Task",
+      "Grep",
+      "Bash",
+      "Grep",
+      "Grep",
+      "Read",
+      "Grep",
+      "Grep",
+      "Glob",
+      "Grep",
+      "Glob",
+      "Glob",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Grep",
+      "Bash",
+      "Glob",
+      "Grep",
+      "Grep",
+      "Read",
+      "Grep",
+      "Grep",
+      "Read",
+      "Grep",
+      "Grep",
+      "Bash",
+      "Grep",
+      "Read",
+      "Read",
+      "Bash",
+      "Bash",
+      "Read",
+      "Read",
+      "Bash",
+      "Read",
+      "Read",
+      "Read",
+      "Bash",
+      "Read",
+      "Bash",
+      "Bash",
+      "Read",
+      "Read",
+      "Read",
+      "Grep",
+      "Grep",
+      "Grep",
+      "Grep",
+      "Grep",
+      "Grep",
+      "Grep",
+      "Read",
+      "Grep",
+      "Grep",
+      "Grep",
+      "Read",
+      "TodoWrite",
+      "Read",
+      "Read",
+      "Read",
+      "Edit",
+      "Edit",
+      "Edit",
+      "Read",
+      "Read",
+      "TodoWrite",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Grep",
+      "Read",
+      "Edit",
+      "Bash",
+      "TodoWrite"
+    ],
+    "first_edit_turn": 78,
+    "bobbin_commands": [
+      "find /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars -name \"test_literal.py\" -type f",
+      "grep -r \"test_floordiv_mod\" /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars/py-polars/tests/ 2>/dev/null | head -20",
+      "find /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars -type d -name optimizer",
+      "grep -r \"floordiv\\|test.*mod\" /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars/py-polars/tests/unit/expr/ 2>/dev/null | grep \"def test\" | head -20",
+      "find /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars -type f -name \"*.py\" | xargs grep -l \"floordiv_mod\" 2>/dev/null",
+      "grep -n \"def test_bool_floordiv\\|def test_floordiv_truediv\" /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py",
+      "find /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars/crates -name \"*.rs\" -type f | xargs grep -l \"FloorDivide\" | head -20",
+      "find /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars/crates -name \"*.rs\" -type f | xargs grep -l \"enum Operator\" | head -10",
+      "grep -n \"pub enum Operator\" /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars/crates/polars-plan/src/dsl/expr/mod.rs | head -5",
+      "find /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars -name \"*.rs\" -type f | xargs grep -l \"wrapping_floor_div_mod\" | head -10",
+      "find /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars -name \"*.rs\" -type f -path \"*/tests/*\" | xargs grep -l \"FloorDivide\\|floor_div\" 2>/dev/null | head -5",
+      "grep -A 10 -B 2 \"FloorDivide\\|floor_div\" /tmp/bobbin-eval-polars-005-nxc952yy/pola-rs--polars/crates/polars/tests/it/lazy/exprs.rs | head -50"
+    ]
+  },
+  "output_summary": "All tests pass. Here's a summary of the fix:\n\n## Problem\n\nWhen dividing literals by zero (`pl.lit(1) // pl.lit(0)`), the optimizer's constant folding produced inconsistent results:\n- **Unsigned types** (u8, u16, etc.): panicked due to Rust's integer division-by-zero\n- **Signed types** (i8, i16, etc.): returned `0` (from `wrapping_floor_div_mod`'s `(0, 0)` fallback)\n- **Mixed types**: returned `null` (because they bypassed the optimizer and hit runtime)\n\nThe correct behavior is to always return `null` when dividing by zero.\n\n## Fix\n\n**`crates/polars-plan/src/plans/optimizer/simplify_expr/mod.rs`**: Added a `check_div_by_zero_lit()` helper function that checks if both operands are literals and the right-hand side is zero. If so, it returns a null literal with the appropriate dtype. This function is called before the existing `eval_binary_same_type!` macro for both `FloorDivide` and `Modulus` operations.\n\n**`py-polars/tests/unit/expr/test_literal.py`**: Added `test_floordiv_mod_literal_by_zero` parametrized test covering all 8 integer types (Int8/16/32/64, UInt8/16/32/64) to verify that both `//` and `%` return `null` when dividing by zero.",
+  "run_id": "20260216-101943-4ce2"
+}
