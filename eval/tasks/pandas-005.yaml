@@ -1,0 +1,22 @@
+id: pandas-005
+repo: pandas-dev/pandas
+commit: 65f88ea9e43670928bc18ffd1d0ed1f295adcf96
+description: |
+  Fix DataFrame.loc filling b'' (empty bytes) instead of NaN when adding
+  a new row and new columns simultaneously. When `df.loc["x", ["C","D"]]`
+  is used to expand both rows and columns, `reindex_indexer` calls
+  `take_nd` on np.void placeholder blocks, which promotes them to object
+  dtype with b'' fill values. Once the dtype is object,
+  `_setitem_single_column` no longer recognizes the placeholders and
+  skips dtype inference, leaving b'' in the DataFrame.
+
+  The fix is in `pandas/core/internals/managers.py` in `reindex_indexer`.
+  When iterating over blocks, check if the block dtype is `np.void`. If
+  so, instead of calling `take_nd`, create a fresh `np.void` array of the
+  correct size. This preserves the placeholder so that downstream
+  `_setitem_single_column` can detect it and infer the proper dtype.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install -e '.[test]' --quiet"
+test_command: ".venv/bin/pytest pandas/tests/indexing/test_loc.py -x -k test_loc_setitem_with_expansion_new_row_and_new_columns"
+language: python
+difficulty: medium
+tags: [bug-fix, indexing, loc, internals, dtype-inference]

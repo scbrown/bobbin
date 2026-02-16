@@ -1,0 +1,20 @@
+id: pandas-004
+repo: pandas-dev/pandas
+commit: 196417f53f120e560fdaf9b04b07760c8a9f46e9
+description: |
+  Fix read_excel infinite loop when `skiprows` is a callable that returns
+  True for all rows. The `_check_skiprows_func` method counts file rows
+  until it has accumulated `nrows` non-skipped rows, but if the callable
+  skips every row, the loop never terminates. The fix adds a guard: if
+  the row counter reaches the Excel maximum row count (1,048,576), the
+  method returns None instead of continuing forever.
+
+  In `pandas/io/excel/_base.py`, add an `EXCEL_ROWS_MAX = 1_048_576`
+  constant and modify `_check_skiprows_func` to return None when `i`
+  reaches that limit. Update the return type annotation to `int | None`.
+  The calling code in `_calc_rows` already handles None correctly.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install -e '.[test]' --quiet"
+test_command: ".venv/bin/pytest pandas/tests/io/excel/test_readers.py -x -k test_read_excel_skiprows_callable_all"
+language: python
+difficulty: easy
+tags: [bug-fix, io-excel, infinite-loop, read-excel]

@@ -1,0 +1,18 @@
+id: pandas-001
+repo: pandas-dev/pandas
+commit: bb0d1cb5af55b9696ea05ab1566eb381f40fc0bc
+description: |
+  Fix Series.clip failing when `lower` or `upper` is a 0-dimensional numpy
+  array (e.g., `np.array(0)`). The `_flex_method` on Series treats any
+  numpy array as a sequence and tries to check its length, but a
+  0-dimensional array has no length. The fix is to add an `ndim > 0` check
+  so that 0-dimensional numpy arrays fall through to the scalar code path
+  instead of the sequence code path.
+
+  The fix is in `pandas/core/series.py` in the `_flex_method`. Modify the
+  `isinstance` check for `np.ndarray` to also require `other.ndim > 0`.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install -e '.[test]' --quiet"
+test_command: ".venv/bin/pytest pandas/tests/series/methods/test_clip.py -x -k test_clip_with_scalar_array_lower"
+language: python
+difficulty: easy
+tags: [bug-fix, numeric-operations, series, numpy-compat]

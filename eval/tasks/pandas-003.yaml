@@ -1,0 +1,21 @@
+id: pandas-003
+repo: pandas-dev/pandas
+commit: 27fdae8f461e16fd46484f89f8b42390e1a8840d
+description: |
+  Fix json_normalize inconsistent validation of the `meta` parameter.
+  When `meta` contains non-string elements (e.g., integers), the function
+  sometimes silently accepts them (when no record_path is given) and
+  sometimes raises a TypeError (when record_path is given). The fix adds
+  a `_validate_meta` helper function that checks all elements of `meta`
+  are strings or lists of strings, and calls it at the top of
+  `json_normalize` before any processing occurs.
+
+  Add the `_validate_meta` function in `pandas/io/json/_normalize.py`
+  that raises a TypeError with a clear message if any element in `meta`
+  is not a string or list of strings. Then call it at the start of
+  `json_normalize`.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install -e '.[test]' --quiet"
+test_command: ".venv/bin/pytest pandas/tests/io/json/test_normalize.py -x -k test_json_normalize_meta_string_validation"
+language: python
+difficulty: easy
+tags: [bug-fix, io-json, validation, json-normalize]

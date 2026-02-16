@@ -1,0 +1,16 @@
+id: go-004
+repo: golang/go
+commit: f2e7fa6d31143b2d9fbb94df7aa05b3a0919d112
+description: |
+  Fix go/build.Context.importGo to return errNoModules when UseAllFiles is
+  set. The importGo method invokes the `go` command to resolve module
+  information, but when UseAllFiles is true the caller wants to process all
+  files regardless of build constraints, and invoking the go command is
+  incorrect in this mode. Add `ctxt.UseAllFiles` to the existing early-return
+  condition in importGo that checks for non-standard Context configurations
+  and returns errNoModules. The fix is a single boolean check added to the
+  condition in build.go.
+test_command: "cd src && go test go/build -run TestContextImportGoWithUseAllFiles -count=1"
+language: go
+difficulty: easy
+tags: [bug-fix, go-build, module, configuration, one-liner]

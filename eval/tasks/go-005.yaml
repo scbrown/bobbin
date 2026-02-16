@@ -1,0 +1,19 @@
+id: go-005
+repo: golang/go
+commit: e2a34c7e9b04564ddad50bd7ec7b52fabde74192
+description: |
+  Fix a data race in crypto/tls when canceling a QUICConn's context
+  concurrently with handshake operations. The race was introduced by a
+  prior CL that added a new error event on context cancellation, causing
+  asynchronous state changes visible to the race detector. The fix
+  reworks quicState to store the full context.Context instead of just a
+  cancel channel (<-chan struct{}), and modifies quicWaitForSignal to
+  check ctx.Err() synchronously after signaling rather than using a
+  select on the cancel channel. This ensures cancellation is only
+  processed during user calls (Close, HandleData), not asynchronously.
+  Changes span conn.go (1 line), quic.go (restructured signal flow),
+  and quic_test.go (new race test).
+test_command: "cd src && go test crypto/tls -run TestQUICContextCancelation -race -count=1"
+language: go
+difficulty: medium
+tags: [bug-fix, crypto, tls, quic, data-race, concurrency]

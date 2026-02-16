@@ -1,0 +1,21 @@
+id: pandas-002
+repo: pandas-dev/pandas
+commit: a4523484f6267501ae0bc240c5baf2108c622373
+description: |
+  Fix groupby with categorical columns and NA values producing incorrect
+  group assignments. When grouping by multiple keys where one is a
+  Categorical with NA values and dropna=True, the group IDs are computed
+  as `len(unob_index) * ob_ids + unob_ids`. However, when dropna=True,
+  rows with NA get an ob_ids or unob_ids of -1, and the arithmetic
+  produces a wrong (but non-negative) ID instead of -1, causing those
+  rows to be assigned to the wrong group.
+
+  The fix is in `pandas/core/groupby/ops.py` in the
+  `result_index_and_ids` method. After computing the combined `ids`
+  array, add a correction step: when `self.dropna` is True, set ids to
+  -1 wherever either `ob_ids` or `unob_ids` is -1, using `np.where`.
+setup_command: "python3 -m venv .venv && .venv/bin/pip install -e '.[test]' --quiet"
+test_command: ".venv/bin/pytest pandas/tests/groupby/test_categorical.py -x -k test_categorical_with_noncategorical_na"
+language: python
+difficulty: medium
+tags: [bug-fix, groupby, categorical, missing-data]

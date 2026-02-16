@@ -1,0 +1,16 @@
+id: go-002
+repo: golang/go
+commit: 0430fa977573866f93e66aa61a66b37ff0738aba
+description: |
+  Fix inconsistent state in database/sql Null* types when Scan encounters
+  a conversion error. The Scan methods for NullString, NullInt64, NullInt32,
+  NullFloat64, NullBool, and NullTime set Valid=true before calling
+  convertAssign. If convertAssign returns an error, Valid remains true,
+  creating an inconsistent state where Valid=true but err!=nil. Fix each
+  Scan method to capture the error from convertAssign first, then set
+  Valid only when err==nil. Seven Scan methods need the same pattern change
+  in sql.go (the six named types plus the generic Null[T]).
+test_command: "cd src && go test database/sql -run TestNullTypeScanErrorConsistency -count=1"
+language: go
+difficulty: easy
+tags: [bug-fix, database, sql, error-handling, consistency]
