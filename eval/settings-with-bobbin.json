@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "bobbin hook inject-context --gate-threshold 0.45",
+            "command": "bobbin hook inject-context --gate-threshold 0.0",
             "statusMessage": "Loading code context...",
             "timeout": 10,
             "type": "command"
@@ -18,6 +18,31 @@
           {
             "command": "bobbin hook prime-context",
             "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "command": "bobbin hook post-tool-use",
+            "timeout": 10,
+            "statusMessage": "Analyzing file changes...",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "command": "bobbin hook post-tool-use-failure",
+            "timeout": 10,
+            "statusMessage": "Searching for related context...",
             "type": "command"
           }
         ]

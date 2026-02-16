@@ -16,16 +16,29 @@ logger = logging.getLogger(__name__)
 _WORKSPACE_CLAUDE_MD = """\
 # Project Tools
 
-This project is indexed by **bobbin**, a code context engine.
-Use these commands to explore the codebase:
+This project is indexed by **bobbin**, a semantic code search engine.
 
-- `bobbin search <query>` — find code by meaning (semantic search)
-- `bobbin context <query>` — get a focused context bundle for a task
-- `bobbin related <file>` — find files that frequently change together
-- `bobbin refs <symbol>` — find definitions and usages of a symbol
-- `bobbin grep <pattern>` — regex/keyword search across all files
+## How to navigate this codebase
 
-Prefer bobbin tools over manual grep/find for navigating unfamiliar code.
+Use bobbin commands instead of manual grep/find — they search by meaning, not just text:
+
+```bash
+bobbin search "error handling in auth"    # semantic + keyword hybrid search
+bobbin context "fix PYI034 rule"          # focused context bundle for a task
+bobbin related src/rules/some_rule.rs     # files that change together
+bobbin refs SomeFunction                  # find definitions and usages
+bobbin grep "pattern"                     # regex search across all files
+```
+
+## Workflow
+
+1. **Start with `bobbin search`** to find relevant code for your task
+2. **Use `bobbin related`** on key files to discover test files and dependencies
+3. **Use `bobbin refs`** to trace symbol usage across the codebase
+4. Read the files bobbin identifies, then make targeted changes
+
+Bobbin context is also injected automatically when you submit prompts and after
+file edits — check the system messages for relevant code snippets.
 """
 
 

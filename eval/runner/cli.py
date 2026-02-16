@@ -72,11 +72,12 @@ def _build_prompt(task: dict, approach: str = "no-bobbin") -> str:
     )
     if approach == "with-bobbin":
         base += (
-            "\n\nThis project has bobbin installed (a code context engine). "
-            "Use `bobbin search <query>` to find relevant code by meaning, "
-            "`bobbin context <query>` for task-aware context assembly, "
-            "and `bobbin related <file>` to discover co-changing files. "
-            "These tools can help you navigate the codebase efficiently."
+            "\n\nThis project has bobbin installed (a semantic code search engine). "
+            "Before exploring manually, use bobbin to find relevant code:\n"
+            "- `bobbin search \"<key terms from the task>\"` — semantic + keyword search\n"
+            "- `bobbin related <file>` — find test files and co-changing dependencies\n"
+            "- `bobbin refs <SymbolName>` — trace definitions and usages\n"
+            "Start with bobbin search to orient yourself, then read the files it identifies."
         )
     return base
 
