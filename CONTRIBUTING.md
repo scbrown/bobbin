@@ -45,6 +45,21 @@ just check           # Type check without building
 just lint            # Lint with clippy
 ```
 
+## CI Pipeline
+
+GitHub Actions runs on every push to `main` and on pull requests. The CI workflow:
+
+1. Installs system dependencies (`protoc`, `cmake`, `g++`)
+2. Runs `cargo check`
+3. Runs `cargo test`
+4. Runs `cargo clippy`
+
+Ensure all three pass locally before pushing:
+
+```bash
+just check && just test && just lint
+```
+
 ## Feature Integration Checklist
 
 When adding new features to bobbin (new search signals, data sources, chunk types, or storage capabilities), review whether the `bobbin context` command should incorporate the new signal.

@@ -50,27 +50,27 @@ related: [appendix/vision.md, appendix/changelog.md]
 - [ ] Integration tests against real repos
 - [ ] Performance optimizations at scale
 
-### Phase 3.5: Production Hardening -- Planned
+### Phase 3.5: Production Hardening -- In Progress
 
 See `docs/plans/production-hardening.md` for details.
 
-- [ ] Install protoc + `just setup` recipe (bobbin-1nv)
-- [ ] Clean up tambour references (bobbin-7pn)
-- [ ] Fix production unwrap() calls (bobbin-ehp)
-- [ ] Integration test foundation (bobbin-ul6)
+- [x] Install protoc + `just setup` recipe (bobbin-1nv)
+- [x] Clean up tambour references (bobbin-7pn)
+- [x] Fix production unwrap() calls (bobbin-ehp)
+- [x] Integration test foundation (bobbin-ul6)
 - [ ] Add missing MCP tools — deps, history, status (bobbin-tnt)
-- [ ] Add missing HTTP endpoints (bobbin-pid)
-- [ ] Wire up incremental indexing (bobbin-thb)
-- [ ] CI pipeline — GitHub Actions (bobbin-ola)
-- [ ] Update AGENTS.md and CONTRIBUTING.md (bobbin-6lx)
+- [x] Add missing HTTP endpoints (bobbin-pid)
+- [x] Wire up incremental indexing (bobbin-thb)
+- [x] CI pipeline — GitHub Actions (bobbin-ola)
+- [x] Update AGENTS.md and CONTRIBUTING.md (bobbin-6lx)
 
-## Phase 4: Higher-Order Analysis -- Planned
+## Phase 4: Higher-Order Analysis -- In Progress
 
 Compose existing signals into capabilities greater than the sum of their parts.
 See `docs/plans/backlog.md` for detailed exploration of each feature.
 
 - [ ] Test coverage mapping via git coupling
-- [ ] Claude Code hooks / tool integration
+- [x] Claude Code hooks / tool integration
 - [ ] Semantic commit indexing
 - [ ] Refactoring planner (rename, move, extract)
 - [ ] Cross-repo temporal coupling
