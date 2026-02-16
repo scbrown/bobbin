@@ -38,6 +38,12 @@ enum HookCommands {
     /// Output bobbin primer + live stats at SessionStart (internal, called by Claude Code)
     PrimeContext(PrimeContextArgs),
 
+    /// Handle PostToolUse events for file edits (internal, called by Claude Code)
+    PostToolUse(PostToolUseArgs),
+
+    /// Handle PostToolUseFailure events (internal, called by Claude Code)
+    PostToolUseFailure(PostToolUseFailureArgs),
+
     /// Install a post-commit git hook for automatic indexing
     InstallGitHook(InstallGitHookArgs),
 
@@ -119,6 +125,20 @@ struct SessionContextArgs {
 struct PrimeContextArgs {}
 
 #[derive(Args)]
+struct PostToolUseArgs {
+    /// Maximum lines of context (overrides config)
+    #[arg(long)]
+    budget: Option<usize>,
+}
+
+#[derive(Args)]
+struct PostToolUseFailureArgs {
+    /// Maximum lines of context (overrides config)
+    #[arg(long)]
+    budget: Option<usize>,
+}
+
+#[derive(Args)]
 struct InstallGitHookArgs {}
 
 #[derive(Args)]
@@ -163,6 +183,8 @@ pub async fn run(args: HookArgs, output: OutputConfig) -> Result<()> {
         HookCommands::InjectContext(a) => run_inject_context(a, output).await,
         HookCommands::SessionContext(a) => run_session_context(a, output).await,
         HookCommands::PrimeContext(a) => run_prime_context(a, output).await,
+        HookCommands::PostToolUse(a) => run_post_tool_use(a, output).await,
+        HookCommands::PostToolUseFailure(a) => run_post_tool_use_failure(a, output).await,
         HookCommands::InstallGitHook(a) => run_install_git_hook(a, output).await,
         HookCommands::UninstallGitHook(a) => run_uninstall_git_hook(a, output).await,
         HookCommands::HotTopics(a) => run_hot_topics(a, output).await,
@@ -214,6 +236,31 @@ fn bobbin_hook_entries() -> serde_json::Value {
                             "command": "bobbin hook session-context",
                             "timeout": 10,
                             "statusMessage": "Recovering project context..."
+                        }
+                    ]
+                }
+            ],
+            "PostToolUse": [
+                {
+                    "matcher": "Write|Edit",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "bobbin hook post-tool-use",
+                            "timeout": 10,
+                            "statusMessage": "Analyzing file changes..."
+                        }
+                    ]
+                }
+            ],
+            "PostToolUseFailure": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "bobbin hook post-tool-use-failure",
+                            "timeout": 10,
+                            "statusMessage": "Searching for related context..."
                         }
                     ]
                 }
@@ -356,8 +403,10 @@ async fn run_install(args: InstallArgs, output: OutputConfig) -> Result<()> {
             scope.cyan()
         );
         println!("  Location: {}", settings_path.display().to_string().dimmed());
-        println!("  UserPromptSubmit: {}", "inject-context".cyan());
-        println!("  SessionStart:     {}", "session-context (compact)".cyan());
+        println!("  UserPromptSubmit:    {}", "inject-context".cyan());
+        println!("  SessionStart:        {}", "session-context (compact)".cyan());
+        println!("  PostToolUse:         {}", "post-tool-use (Write|Edit)".cyan());
+        println!("  PostToolUseFailure:  {}", "post-tool-use-failure".cyan());
     }
 
     Ok(())
@@ -687,6 +736,43 @@ struct HookInput {
     #[serde(default)]
     cwd: String,
     /// Claude Code session ID (used as metrics source identity)
+    #[serde(default)]
+    session_id: String,
+}
+
+/// Claude Code PostToolUse hook input
+#[derive(Deserialize)]
+struct PostToolUseInput {
+    /// Tool name (e.g., "Write", "Edit", "Bash")
+    #[serde(default)]
+    tool_name: String,
+    /// Tool input parameters
+    #[serde(default)]
+    tool_input: serde_json::Value,
+    /// Working directory when the hook was invoked
+    #[serde(default)]
+    cwd: String,
+    /// Claude Code session ID
+    #[serde(default)]
+    session_id: String,
+}
+
+/// Claude Code PostToolUseFailure hook input
+#[derive(Deserialize)]
+struct PostToolUseFailureInput {
+    /// Tool name (e.g., "Bash", "Write", "Edit")
+    #[serde(default)]
+    tool_name: String,
+    /// Tool input parameters
+    #[serde(default)]
+    tool_input: serde_json::Value,
+    /// Error message from the failed tool
+    #[serde(default)]
+    error: String,
+    /// Working directory when the hook was invoked
+    #[serde(default)]
+    cwd: String,
+    /// Claude Code session ID
     #[serde(default)]
     session_id: String,
 }
@@ -1328,6 +1414,332 @@ fn extract_brief(primer: &str) -> String {
         result.push('\n');
     }
     result.trim_end().to_string()
+}
+
+async fn run_post_tool_use(_args: PostToolUseArgs, _output: OutputConfig) -> Result<()> {
+    // Never block tool completion — any error exits silently
+    match run_post_tool_use_inner(_args).await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            eprintln!("bobbin post-tool-use: {:#}", e);
+            Ok(())
+        }
+    }
+}
+
+/// PostToolUse handler: When a file is written/edited, inject related files and
+/// coupling information so the agent understands ripple effects of their changes.
+async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
+    let hook_start = std::time::Instant::now();
+
+    // 1. Read stdin JSON
+    let input: PostToolUseInput = serde_json::from_reader(std::io::stdin().lock())
+        .context("Failed to parse stdin JSON")?;
+
+    // 2. Extract file path from tool input
+    let file_path = input
+        .tool_input
+        .get("file_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if file_path.is_empty() {
+        return Ok(());
+    }
+
+    // 3. Resolve bobbin root and config
+    let cwd = if input.cwd.is_empty() {
+        std::env::current_dir().context("Failed to get cwd")?
+    } else {
+        PathBuf::from(&input.cwd)
+    };
+
+    let repo_root = match find_bobbin_root(&cwd) {
+        Some(r) => r,
+        None => return Ok(()), // Not a bobbin-indexed project
+    };
+
+    let config = Config::load(&Config::config_path(&repo_root)).unwrap_or_default();
+    let budget = args.budget.unwrap_or(config.hooks.budget / 2); // Use half budget for post-tool
+
+    let metrics_source = crate::metrics::resolve_source(
+        None,
+        if input.session_id.is_empty() { None } else { Some(&input.session_id) },
+    );
+
+    // 4. Make file path relative to repo root
+    let abs_path = if Path::new(file_path).is_absolute() {
+        PathBuf::from(file_path)
+    } else {
+        cwd.join(file_path)
+    };
+    let rel_path = abs_path
+        .strip_prefix(&repo_root)
+        .unwrap_or(abs_path.as_path())
+        .to_string_lossy()
+        .to_string();
+
+    // 5. Open metadata store for coupling queries
+    let db_path = Config::db_path(&repo_root);
+    let metadata_store = match MetadataStore::open(&db_path) {
+        Ok(ms) => ms,
+        Err(_) => return Ok(()), // No metadata store yet
+    };
+
+    // 6. Query coupled files (files that frequently change together)
+    let coupled_raw = metadata_store.get_coupling(&rel_path, 5)?;
+    // Extract the "other" file from each coupling pair and filter by threshold
+    let coupled: Vec<(&str, f32)> = coupled_raw
+        .iter()
+        .filter(|c| c.score >= 0.1)
+        .map(|c| {
+            let other = if c.file_a == rel_path {
+                c.file_b.as_str()
+            } else {
+                c.file_a.as_str()
+            };
+            (other, c.score)
+        })
+        .collect();
+
+    // 7. Query symbols in the edited file from vector store
+    let lance_path = Config::lance_path(&repo_root);
+    let symbols = if let Ok(vs) = VectorStore::open(&lance_path).await {
+        vs.get_chunks_for_file(&rel_path, None)
+            .await
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    // Skip if nothing useful to report
+    if coupled.is_empty() && symbols.is_empty() {
+        return Ok(());
+    }
+
+    // 8. Format output
+    let mut context = String::new();
+    use std::fmt::Write;
+
+    let _ = writeln!(context, "## File Change Context: {}", rel_path);
+
+    if !coupled.is_empty() {
+        let _ = writeln!(context, "\n### Coupled Files (frequently change together)");
+        let _ = writeln!(context, "Consider reviewing or updating these related files:\n");
+        let mut lines_used = 4;
+        for (coupled_file, score) in &coupled {
+            if lines_used >= budget {
+                break;
+            }
+            let _ = writeln!(context, "- `{}` (coupling: {:.2})", coupled_file, score);
+            lines_used += 1;
+        }
+    }
+
+    if !symbols.is_empty() {
+        let _ = writeln!(context, "\n### Symbols in Modified File");
+        let mut lines_used = context.lines().count();
+        for chunk in &symbols {
+            if lines_used >= budget {
+                break;
+            }
+            let name = chunk.name.as_deref().unwrap_or("<anonymous>");
+            let _ = writeln!(
+                context,
+                "- {} (lines {}-{})",
+                name, chunk.start_line, chunk.end_line
+            );
+            lines_used += 1;
+        }
+    }
+
+    // 9. Output hook response JSON
+    let response = HookResponse {
+        hook_specific_output: HookSpecificOutput {
+            hook_event_name: "PostToolUse".to_string(),
+            additional_context: context,
+        },
+    };
+    println!("{}", serde_json::to_string(&response)?);
+
+    // 10. Emit metric
+    crate::metrics::emit(
+        &repo_root,
+        &crate::metrics::event(
+            &metrics_source,
+            "hook_post_tool_use",
+            "hook post-tool-use",
+            hook_start.elapsed().as_millis() as u64,
+            serde_json::json!({
+                "tool_name": input.tool_name,
+                "file": rel_path,
+                "coupled_count": coupled.len(),
+                "symbol_count": symbols.len(),
+            }),
+        ),
+    );
+
+    Ok(())
+}
+
+async fn run_post_tool_use_failure(
+    _args: PostToolUseFailureArgs,
+    _output: OutputConfig,
+) -> Result<()> {
+    // Never block on failure handling — any error exits silently
+    match run_post_tool_use_failure_inner(_args).await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            eprintln!("bobbin post-tool-use-failure: {:#}", e);
+            Ok(())
+        }
+    }
+}
+
+/// PostToolUseFailure handler: When a tool fails, search bobbin for context
+/// related to the error to help the agent recover.
+async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result<()> {
+    use crate::index::Embedder;
+    use crate::search::context::{ContentMode, ContextAssembler, ContextConfig};
+
+    let hook_start = std::time::Instant::now();
+
+    // 1. Read stdin JSON
+    let input: PostToolUseFailureInput = serde_json::from_reader(std::io::stdin().lock())
+        .context("Failed to parse stdin JSON")?;
+
+    // Skip if no error message to search with
+    if input.error.trim().is_empty() {
+        return Ok(());
+    }
+
+    // 2. Resolve bobbin root and config
+    let cwd = if input.cwd.is_empty() {
+        std::env::current_dir().context("Failed to get cwd")?
+    } else {
+        PathBuf::from(&input.cwd)
+    };
+
+    let repo_root = match find_bobbin_root(&cwd) {
+        Some(r) => r,
+        None => return Ok(()), // Not a bobbin-indexed project
+    };
+
+    let config = Config::load(&Config::config_path(&repo_root)).unwrap_or_default();
+    let budget = args.budget.unwrap_or(config.hooks.budget / 2); // Use half budget for failure context
+
+    let metrics_source = crate::metrics::resolve_source(
+        None,
+        if input.session_id.is_empty() { None } else { Some(&input.session_id) },
+    );
+
+    // 3. Build search query from error context
+    // Combine tool name, relevant input info, and error message for a targeted search
+    let file_hint = input
+        .tool_input
+        .get("file_path")
+        .and_then(|v| v.as_str())
+        .or_else(|| input.tool_input.get("command").and_then(|v| v.as_str()))
+        .unwrap_or("");
+
+    // Truncate error to avoid overwhelming the search
+    let error_excerpt = if input.error.len() > 200 {
+        &input.error[..200]
+    } else {
+        &input.error
+    };
+
+    let query = format!(
+        "{} {} error: {}",
+        input.tool_name, file_hint, error_excerpt
+    );
+
+    // 4. Open stores
+    let lance_path = Config::lance_path(&repo_root);
+    let db_path = Config::db_path(&repo_root);
+    let model_dir = Config::model_cache_dir()?;
+
+    let vector_store = match VectorStore::open(&lance_path).await {
+        Ok(vs) => vs,
+        Err(_) => return Ok(()),
+    };
+
+    if vector_store.count().await? == 0 {
+        return Ok(());
+    }
+
+    let metadata_store = match MetadataStore::open(&db_path) {
+        Ok(ms) => ms,
+        Err(_) => return Ok(()),
+    };
+
+    // 5. Check model consistency
+    let current_model = config.embedding.model.as_str();
+    if let Some(stored) = metadata_store.get_meta("embedding_model")? {
+        if stored != current_model {
+            return Ok(());
+        }
+    }
+
+    let embedder = Embedder::from_config(&config.embedding, &model_dir)
+        .context("Failed to load embedding model")?;
+
+    // 6. Assemble context with smaller budget and fewer results
+    let context_config = ContextConfig {
+        budget_lines: budget,
+        depth: 0, // No coupling expansion for failure context (keep it fast)
+        max_coupled: 0,
+        coupling_threshold: 0.1,
+        semantic_weight: config.search.semantic_weight,
+        content_mode: ContentMode::Preview,
+        search_limit: 10, // Fewer results since we want speed
+    };
+
+    let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let bundle = assembler.assemble(&query, None).await?;
+
+    if bundle.files.is_empty() {
+        return Ok(());
+    }
+
+    // 7. Gate: skip if results aren't relevant enough
+    if bundle.summary.top_semantic_score < 0.3 {
+        return Ok(());
+    }
+
+    // 8. Format output
+    let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false);
+    let header = format!(
+        "Bobbin found {} relevant chunks for this error (via search fallback):\n\n",
+        bundle.summary.total_chunks,
+    );
+
+    let response = HookResponse {
+        hook_specific_output: HookSpecificOutput {
+            hook_event_name: "PostToolUseFailure".to_string(),
+            additional_context: format!("{}{}", header, context_text),
+        },
+    };
+    println!("{}", serde_json::to_string(&response)?);
+
+    // 9. Emit metric
+    crate::metrics::emit(
+        &repo_root,
+        &crate::metrics::event(
+            &metrics_source,
+            "hook_post_tool_use_failure",
+            "hook post-tool-use-failure",
+            hook_start.elapsed().as_millis() as u64,
+            serde_json::json!({
+                "tool_name": input.tool_name,
+                "error_excerpt": error_excerpt,
+                "files_returned": bundle.summary.total_files,
+                "top_score": bundle.summary.top_semantic_score,
+            }),
+        ),
+    );
+
+    Ok(())
 }
 
 async fn run_session_context(args: SessionContextArgs, _output: OutputConfig) -> Result<()> {
@@ -2880,7 +3292,7 @@ mod tests {
 
         merge_hooks(&mut settings);
 
-        // All original events preserved
+        // Unrelated events preserved
         let hooks = &settings["hooks"];
         assert_eq!(hooks["PreToolUse"].as_array().unwrap().len(), 1);
         assert_eq!(
@@ -2888,11 +3300,18 @@ mod tests {
             "gt tap guard pr-workflow"
         );
         assert_eq!(hooks["Stop"].as_array().unwrap().len(), 1);
-        assert_eq!(hooks["PostToolUseFailure"].as_array().unwrap().len(), 1);
+
+        // PostToolUseFailure: original dp hook + new bobbin hook
+        assert_eq!(hooks["PostToolUseFailure"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            hooks["PostToolUseFailure"][0]["hooks"][0]["command"].as_str().unwrap(),
+            "dp record --source claude-code"
+        );
 
         // Bobbin events added
         assert!(hooks["UserPromptSubmit"].is_array());
         assert!(hooks["SessionStart"].is_array());
+        assert!(hooks["PostToolUse"].is_array());
     }
 
     #[test]
@@ -3027,6 +3446,71 @@ mod tests {
         let ss = hooks["SessionStart"].as_array().unwrap();
         assert_eq!(ss.len(), 1);
         assert_eq!(ss[0]["matcher"].as_str().unwrap(), "compact");
+
+        // PostToolUse
+        let ptu = hooks["PostToolUse"].as_array().unwrap();
+        assert_eq!(ptu.len(), 1);
+        assert_eq!(ptu[0]["matcher"].as_str().unwrap(), "Write|Edit");
+        assert_eq!(
+            ptu[0]["hooks"][0]["command"].as_str().unwrap(),
+            "bobbin hook post-tool-use"
+        );
+        assert_eq!(ptu[0]["hooks"][0]["timeout"].as_i64().unwrap(), 10);
+
+        // PostToolUseFailure
+        let ptuf = hooks["PostToolUseFailure"].as_array().unwrap();
+        assert_eq!(ptuf.len(), 1);
+        assert_eq!(
+            ptuf[0]["hooks"][0]["command"].as_str().unwrap(),
+            "bobbin hook post-tool-use-failure"
+        );
+        assert_eq!(ptuf[0]["hooks"][0]["timeout"].as_i64().unwrap(), 10);
+    }
+
+    #[test]
+    fn test_post_tool_use_input_deserialization() {
+        let json = r#"{"session_id":"abc","tool_name":"Write","tool_input":{"file_path":"/tmp/test.rs","content":"fn main() {}"},"cwd":"/home/user/project","hook_event_name":"PostToolUse"}"#;
+        let input: PostToolUseInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.tool_name, "Write");
+        assert_eq!(input.session_id, "abc");
+        assert_eq!(input.cwd, "/home/user/project");
+        assert_eq!(
+            input.tool_input["file_path"].as_str().unwrap(),
+            "/tmp/test.rs"
+        );
+    }
+
+    #[test]
+    fn test_post_tool_use_failure_input_deserialization() {
+        let json = r#"{"session_id":"abc","tool_name":"Bash","tool_input":{"command":"cargo test"},"error":"Command exited with non-zero status code 1","cwd":"/home/user/project","hook_event_name":"PostToolUseFailure"}"#;
+        let input: PostToolUseFailureInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.tool_name, "Bash");
+        assert_eq!(input.error, "Command exited with non-zero status code 1");
+        assert_eq!(input.cwd, "/home/user/project");
+        assert_eq!(
+            input.tool_input["command"].as_str().unwrap(),
+            "cargo test"
+        );
+    }
+
+    #[test]
+    fn test_post_tool_use_input_defaults() {
+        // Minimal input - all fields should default gracefully
+        let json = r#"{}"#;
+        let input: PostToolUseInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.tool_name, "");
+        assert_eq!(input.cwd, "");
+        assert_eq!(input.session_id, "");
+        assert!(input.tool_input.is_null());
+    }
+
+    #[test]
+    fn test_post_tool_use_failure_input_defaults() {
+        let json = r#"{}"#;
+        let input: PostToolUseFailureInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.tool_name, "");
+        assert_eq!(input.error, "");
+        assert_eq!(input.cwd, "");
     }
 
     #[test]
