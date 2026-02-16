@@ -598,9 +598,11 @@ async fn inject_context_remote(
     }
 
     // 4. Assemble context via remote server (uses full ContextAssembler on server
-    //    side, including coupling expansion and provenance bridging)
+    //    side, including coupling expansion and provenance bridging).
+    //    Falls back to /search if /context returns 404 (e.g., Traefik proxy
+    //    not forwarding the endpoint).
     let client = Client::new(server_url);
-    let resp = client
+    let context_result = client
         .context(
             prompt,
             Some(budget),
@@ -610,31 +612,49 @@ async fn inject_context_remote(
             Some(0.1),  // coupling_threshold
             None,       // repo filter
         )
-        .await
-        .context("Remote context assembly failed")?;
+        .await;
 
-    if resp.files.is_empty() {
-        return Ok(());
-    }
+    match context_result {
+        Ok(resp) => {
+            if resp.files.is_empty() {
+                return Ok(());
+            }
 
-    // 5. Gate check: skip if top score is too low
-    let top_score = resp.files.iter()
-        .flat_map(|f| f.chunks.iter())
-        .map(|c| c.score)
-        .fold(0.0_f32, f32::max);
-    if top_score < 0.005 {
-        if output.verbose {
-            eprintln!(
-                "bobbin: skipped (score={:.3} < gate=0.005)",
-                top_score,
-            );
+            // Gate check: skip if top score is too low
+            let top_score = resp.files.iter()
+                .flat_map(|f| f.chunks.iter())
+                .map(|c| c.score)
+                .fold(0.0_f32, f32::max);
+            if top_score < 0.005 {
+                if output.verbose {
+                    eprintln!(
+                        "bobbin: skipped (score={:.3} < gate=0.005)",
+                        top_score,
+                    );
+                }
+                return Ok(());
+            }
+
+            // Format structured context output
+            let out = format_context_response(&resp, budget, hooks_cfg.show_docs);
+            print!("{}", out);
+            Ok(())
         }
-        return Ok(());
+        Err(_) => {
+            // Fallback: /context endpoint unavailable, use /search
+            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, output).await
+        }
     }
+}
 
-    // 6. Format structured context output
-    let mut out = String::new();
+/// Format a ContextResponse into structured text for injection.
+fn format_context_response(
+    resp: &crate::http::client::ContextResponse,
+    budget: usize,
+    show_docs: bool,
+) -> String {
     use std::fmt::Write;
+    let mut out = String::new();
 
     // Header with summary
     let _ = writeln!(
@@ -648,7 +668,7 @@ async fn inject_context_remote(
         budget,
     );
 
-    // Partition files by relevance type for structured output
+    // Partition files by type
     let is_doc = |path: &str| -> bool {
         path.ends_with(".md") || path.ends_with(".txt") || path.ends_with(".rst")
             || path.ends_with(".adoc") || path.contains("/docs/")
@@ -659,18 +679,97 @@ async fn inject_context_remote(
 
     let mut line_count = out.lines().count();
 
-    // Emit source files
     if !source_files.is_empty() {
         let _ = write!(out, "\n=== Source Files ===\n");
         line_count += 2;
         format_remote_file_chunks(&mut out, &source_files, budget, &mut line_count);
     }
 
-    // Emit documentation
-    if hooks_cfg.show_docs && !doc_files.is_empty() {
+    if show_docs && !doc_files.is_empty() {
         let _ = write!(out, "\n=== Documentation ===\n");
         line_count += 2;
         format_remote_file_chunks(&mut out, &doc_files, budget, &mut line_count);
+    }
+
+    out
+}
+
+/// Fallback: use /search when /context endpoint is unavailable (e.g., behind
+/// a Traefik proxy that only forwards certain paths).
+async fn inject_context_remote_search_fallback(
+    client: &crate::http::client::Client,
+    prompt: &str,
+    budget: usize,
+    show_docs: bool,
+    output: &OutputConfig,
+) -> Result<()> {
+    let resp = client
+        .search(prompt, "hybrid", None, 10, None)
+        .await
+        .context("Remote search failed")?;
+
+    if resp.results.is_empty() {
+        return Ok(());
+    }
+
+    // Gate check
+    let top_score = resp.results.first().map(|r| r.score).unwrap_or(0.0);
+    if top_score < 0.005 {
+        if output.verbose {
+            eprintln!(
+                "bobbin: skipped (score={:.3} < gate=0.005)",
+                top_score,
+            );
+        }
+        return Ok(());
+    }
+
+    let result_count = resp.results.iter().filter(|r| r.score >= 0.005).count();
+    if result_count == 0 {
+        return Ok(());
+    }
+
+    let mut out = format!("Bobbin found {} relevant chunks (via search fallback):\n", result_count);
+    out.push_str("\n=== Source Files ===\n");
+
+    let mut line_count = out.lines().count();
+    for result in &resp.results {
+        if result.score < 0.005 {
+            continue;
+        }
+
+        // Skip docs if show_docs is false
+        if !show_docs && (result.file_path.ends_with(".md") || result.file_path.contains("/docs/")) {
+            continue;
+        }
+
+        let name = result
+            .name
+            .as_ref()
+            .map(|n| format!(" {}", n))
+            .unwrap_or_default();
+        let chunk_section = format!(
+            "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n{}{}\n",
+            result.file_path,
+            result.start_line,
+            result.end_line,
+            name,
+            result.chunk_type,
+            result.score,
+            result.content_preview,
+            if result.content_preview.ends_with('\n') {
+                ""
+            } else {
+                ""
+            },
+        );
+
+        let chunk_line_count = chunk_section.lines().count();
+        if line_count + chunk_line_count > budget {
+            break;
+        }
+        line_count += chunk_line_count;
+        out.push_str(&chunk_section);
     }
 
     print!("{}", out);
