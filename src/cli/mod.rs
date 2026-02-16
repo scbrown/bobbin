@@ -8,6 +8,7 @@ mod hook;
 mod hotspots;
 mod impact;
 mod index;
+mod log;
 mod prime;
 mod init;
 mod refs;
@@ -81,6 +82,9 @@ enum Commands {
     /// Show commit history for a file
     History(history::HistoryArgs),
 
+    /// Search git commits semantically (find commits by what they did)
+    Log(log::LogArgs),
+
     /// Identify code hotspots (high churn + high complexity)
     Hotspots(hotspots::HotspotsArgs),
 
@@ -130,6 +134,7 @@ impl Commands {
             Commands::Refs(_) => "refs",
             Commands::Related(_) => "related",
             Commands::History(_) => "history",
+            Commands::Log(_) => "log",
             Commands::Hotspots(_) => "hotspots",
             Commands::Impact(_) => "impact",
             Commands::Review(_) => "review",
@@ -169,6 +174,7 @@ impl Cli {
             Commands::Refs(args) => refs::run(args, output).await,
             Commands::Related(args) => related::run(args, output).await,
             Commands::History(args) => history::run(args, output).await,
+            Commands::Log(args) => log::run(args, output).await,
             Commands::Hotspots(args) => hotspots::run(args, output).await,
             Commands::Impact(args) => impact::run(args, output).await,
             Commands::Review(args) => review::run(args, output).await,

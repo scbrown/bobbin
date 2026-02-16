@@ -1504,6 +1504,119 @@ impl BobbinMcpServer {
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
+
+    /// Search git commits semantically to find commits by what they did
+    #[tool(description = "Search git commit history using natural language. Finds commits by what they did, not just by message keywords. Best for: 'when was authentication added?', 'commits that changed the parser', 'who refactored the database layer?'. Filter by author or file path. Requires commits to be indexed (enabled by default in bobbin index).")]
+    async fn commit_search(
+        &self,
+        Parameters(req): Parameters<CommitSearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let limit = req.limit.unwrap_or(10);
+
+        let config_path = Config::config_path(&self.repo_root);
+        let config = Config::load(&config_path)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let model_dir = Config::model_cache_dir()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let embedder = Embedder::from_config(&config.embedding, &model_dir)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let mut search = HybridSearch::new(
+            embedder,
+            vector_store,
+            config.search.semantic_weight,
+        );
+
+        // Fetch extra results to filter down to commits
+        let search_results = search
+            .search(&req.query, limit * 5, None)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Filter to commit chunks, then apply author/file filters
+        let filtered: Vec<SearchResult> = search_results
+            .into_iter()
+            .filter(|r| r.chunk.chunk_type == ChunkType::Commit)
+            .filter(|r| {
+                if let Some(ref author) = req.author {
+                    let lower = author.to_lowercase();
+                    r.chunk.content.to_lowercase().contains(&lower)
+                } else {
+                    true
+                }
+            })
+            .filter(|r| {
+                if let Some(ref file) = req.file {
+                    r.chunk.content.to_lowercase().contains(&file.to_lowercase())
+                } else {
+                    true
+                }
+            })
+            .take(limit)
+            .collect();
+
+        let results: Vec<CommitResultItem> = filtered
+            .iter()
+            .map(|r| {
+                let hash = r.chunk.id
+                    .strip_prefix("commit:")
+                    .unwrap_or(&r.chunk.id)
+                    .to_string();
+
+                let content = &r.chunk.content;
+                let mut message = String::new();
+                let mut author = None;
+                let mut date = None;
+                let mut files = Vec::new();
+                let mut in_files = false;
+
+                for line in content.lines() {
+                    if line.starts_with("Author: ") {
+                        author = Some(line[8..].to_string());
+                    } else if line.starts_with("Date: ") {
+                        date = Some(line[6..].to_string());
+                    } else if line == "Files changed:" {
+                        in_files = true;
+                    } else if in_files && !line.is_empty() {
+                        files.push(line.to_string());
+                    } else if !in_files && author.is_none() && !line.is_empty() {
+                        if !message.is_empty() {
+                            message.push(' ');
+                        }
+                        message.push_str(line);
+                    }
+                }
+
+                if message.is_empty() {
+                    message = r.chunk.name.clone().unwrap_or_default();
+                }
+
+                CommitResultItem {
+                    hash,
+                    message,
+                    author,
+                    date,
+                    files,
+                    score: r.score,
+                }
+            })
+            .collect();
+
+        let response = CommitSearchResponse {
+            query: req.query,
+            count: results.len(),
+            results,
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
 }
 
 /// Extract a field value from bead content like "Status: open | Priority: P2 | ..."

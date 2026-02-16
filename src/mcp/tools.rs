@@ -646,3 +646,45 @@ pub struct BeadResultItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snippet: Option<String>,
 }
+
+/// Request for semantic commit search
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CommitSearchRequest {
+    /// Natural language search query describing what the commit did (e.g. "added error handling", "refactored auth")
+    #[schemars(description = "Natural language query describing what commit(s) you're looking for. Examples: 'added authentication', 'fixed memory leak', 'refactored database layer'")]
+    pub query: String,
+
+    /// Filter by commit author name (substring match)
+    #[schemars(description = "Filter to commits by a specific author (case-insensitive substring match)")]
+    pub author: Option<String>,
+
+    /// Filter to commits touching a specific file (substring match on file paths)
+    #[schemars(description = "Filter to commits that touched a specific file path (substring match)")]
+    pub file: Option<String>,
+
+    /// Maximum number of results (default: 10)
+    #[schemars(description = "Maximum number of commit results to return (default: 10)")]
+    pub limit: Option<usize>,
+}
+
+/// Response for semantic commit search
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct CommitSearchResponse {
+    pub query: String,
+    pub count: usize,
+    pub results: Vec<CommitResultItem>,
+}
+
+/// A single commit search result
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct CommitResultItem {
+    pub hash: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
+    pub score: f32,
+}
