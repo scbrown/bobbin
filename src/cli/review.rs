@@ -147,6 +147,7 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
         semantic_weight: config.search.semantic_weight,
         content_mode,
         search_limit: 20,
+        doc_demotion: 0.5,
     };
 
     // Build description of the diff for the query field

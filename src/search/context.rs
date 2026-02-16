@@ -16,6 +16,10 @@ pub struct ContextConfig {
     pub semantic_weight: f32,
     pub content_mode: ContentMode,
     pub search_limit: usize,
+    /// Demotion factor for Documentation/Config files in search ranking.
+    /// Applied as a multiplier to RRF scores: 1.0 = no demotion, 0.5 = half score.
+    /// Source/Test files are unaffected. Default: 0.5.
+    pub doc_demotion: f32,
 }
 
 /// How much content to include in output
@@ -498,7 +502,20 @@ impl ContextAssembler {
                 ));
         }
 
-        let mut combined: Vec<_> = scores.into_values().collect();
+        // Apply category-based demotion: doc/config files get demoted so
+        // source/test files rank higher when RRF scores are close.
+        let doc_demotion = self.config.doc_demotion;
+        let mut combined: Vec<_> = scores
+            .into_values()
+            .map(|(result, score)| {
+                let category = classify_file(&result.file_path);
+                let adjusted = match category {
+                    FileCategory::Documentation | FileCategory::Config => score * doc_demotion,
+                    _ => score,
+                };
+                (result, adjusted)
+            })
+            .collect();
         combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
         // Normalize RRF scores to [0, 1] so downstream threshold filters
@@ -877,6 +894,7 @@ mod tests {
             semantic_weight: 0.7,
             content_mode: ContentMode::Full,
             search_limit: 20,
+            doc_demotion: 0.5,
         };
 
         let seeds = vec![
@@ -901,6 +919,7 @@ mod tests {
             semantic_weight: 0.7,
             content_mode: ContentMode::Full,
             search_limit: 20,
+            doc_demotion: 0.5,
         };
 
         let seeds = vec![
@@ -922,6 +941,7 @@ mod tests {
             semantic_weight: 0.7,
             content_mode: ContentMode::Full,
             search_limit: 20,
+            doc_demotion: 0.5,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -940,6 +960,7 @@ mod tests {
             semantic_weight: 0.7,
             content_mode: ContentMode::Full,
             search_limit: 20,
+            doc_demotion: 0.5,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -962,6 +983,7 @@ mod tests {
             semantic_weight: 0.7,
             content_mode: ContentMode::Full,
             search_limit: 20,
+            doc_demotion: 0.5,
         };
 
         let seeds = vec![
@@ -985,6 +1007,7 @@ mod tests {
             semantic_weight: 0.7,
             content_mode: ContentMode::Full,
             search_limit: 20,
+            doc_demotion: 0.5,
         };
 
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)

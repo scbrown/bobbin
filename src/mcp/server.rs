@@ -577,6 +577,7 @@ impl BobbinMcpServer {
             semantic_weight: config.search.semantic_weight,
             content_mode: ContentMode::Full, // Always full content for MCP
             search_limit: req.limit.unwrap_or(20),
+            doc_demotion: 0.5,
         };
 
         let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1030,6 +1031,7 @@ impl BobbinMcpServer {
             semantic_weight: config.search.semantic_weight,
             content_mode: ContentMode::Full,
             search_limit: 20,
+            doc_demotion: 0.5,
         };
 
         let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

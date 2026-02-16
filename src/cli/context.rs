@@ -148,6 +148,7 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         semantic_weight: config.search.semantic_weight,
         content_mode,
         search_limit: args.limit,
+        doc_demotion: 0.5,
     };
 
     let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

@@ -1,0 +1,8 @@
+Quarantined eval tasks — excluded from active runs.
+
+flask-001 through flask-005: 0% test pass rate on BOTH with-bobbin and
+no-bobbin approaches (47 runs, Feb 10-11 2026). Root cause appears to be
+setup_command or test_command issues, not bobbin. Re-enable after fixing
+the flask task definitions.
+
+Moved here 2026-02-15 as part of aegis-rdpt investigation.

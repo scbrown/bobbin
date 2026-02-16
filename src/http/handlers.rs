@@ -676,6 +676,7 @@ pub(super) async fn context(
         semantic_weight: state.config.search.semantic_weight,
         content_mode: ContentMode::Full,
         search_limit: params.limit.unwrap_or(20),
+        doc_demotion: 0.5,
     };
 
     let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1242,6 +1243,7 @@ pub(super) async fn review(
         semantic_weight: state.config.search.semantic_weight,
         content_mode: ContentMode::Full,
         search_limit: 20,
+        doc_demotion: 0.5,
     };
 
     let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
