@@ -45,6 +45,88 @@ def _setup_logging(verbose: bool) -> None:
     )
 
 
+def _check_session_budget(force: bool = False) -> None:
+    """Check Claude account session budget before starting expensive eval runs.
+
+    Reads ~/.claude/.credentials.json for token expiry and active session count.
+    Aborts if token is expired or critical (< 1h remaining).
+    Warns if token is low (< 4h remaining).
+
+    Pass force=True to skip the check (--force-budget flag).
+    """
+    if force:
+        return
+
+    creds_path = Path.home() / ".claude" / ".credentials.json"
+    if not creds_path.exists():
+        click.echo("Warning: No Claude credentials found, cannot check session budget.", err=True)
+        return
+
+    try:
+        creds = json.loads(creds_path.read_text())
+        oauth = creds.get("claudeAiOauth", {})
+        expires_ms = oauth.get("expiresAt")
+        subscription = oauth.get("subscriptionType", "unknown")
+        tier = oauth.get("rateLimitTier", "unknown")
+
+        if not expires_ms:
+            click.echo("Warning: Could not read token expiry from credentials.", err=True)
+            return
+
+        now_ms = datetime.now(timezone.utc).timestamp() * 1000
+        remaining_h = (expires_ms - now_ms) / 3_600_000
+
+        if remaining_h <= 0:
+            click.echo(
+                f"ABORT: Claude token has EXPIRED. "
+                f"Subscription: {subscription}, tier: {tier}. "
+                f"Run `ccm` to refresh or switch accounts.",
+                err=True,
+            )
+            sys.exit(2)
+
+        if remaining_h < 1:
+            click.echo(
+                f"ABORT: Claude token expires in {remaining_h:.1f}h — too low for eval runs. "
+                f"Use --force-budget to override.",
+                err=True,
+            )
+            sys.exit(2)
+
+        if remaining_h < 4:
+            click.echo(
+                f"WARNING: Claude token expires in {remaining_h:.1f}h. "
+                f"Eval runs may be interrupted by token expiry.",
+                err=True,
+            )
+
+        # Check active session count (proxy for load)
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["tmux", "list-sessions", "-F", "#{session_name}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            sessions = [s for s in result.stdout.splitlines() if s.startswith("gt-")]
+            if len(sessions) > 10:
+                click.echo(
+                    f"WARNING: {len(sessions)} active Gas Town sessions. "
+                    f"Eval runs will compete for rate limit budget.",
+                    err=True,
+                )
+        except Exception:
+            pass  # tmux check is best-effort
+
+        click.echo(
+            f"Session budget: {subscription} ({tier}), "
+            f"{remaining_h:.1f}h remaining",
+            err=True,
+        )
+
+    except (json.JSONDecodeError, KeyError, OSError) as exc:
+        click.echo(f"Warning: Could not check session budget: {exc}", err=True)
+
+
 def _resolve_tasks_dir(tasks_dir: str) -> Path:
     """Resolve tasks directory relative to the eval root."""
     p = Path(tasks_dir)
@@ -638,6 +720,7 @@ def cli(verbose: bool):
 @click.option("--index-timeout", default=600, type=int, help="Bobbin index timeout in seconds.")
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
 @click.option("--save-stream/--no-save-stream", default=True, help="Save raw JSONL stream alongside results.")
+@click.option("--force-budget", is_flag=True, help="Skip session budget check (run even if token is low).")
 def run_task(
     task_id: str,
     attempts: int,
@@ -651,11 +734,14 @@ def run_task(
     index_timeout: int,
     skip_verify: bool,
     save_stream: bool,
+    force_budget: bool,
 ):
     """Run evaluation for a single task.
 
     TASK_ID is the task identifier (e.g., ruff-001).
     """
+    _check_session_budget(force=force_budget)
+
     tasks_path = _resolve_tasks_dir(tasks_dir)
     rdir = Path(results_dir)
 
@@ -736,6 +822,7 @@ def run_task(
 @click.option("--index-timeout", default=600, type=int, help="Bobbin index timeout in seconds.")
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
 @click.option("--save-stream/--no-save-stream", default=True, help="Save raw JSONL stream alongside results.")
+@click.option("--force-budget", is_flag=True, help="Skip session budget check (run even if token is low).")
 def run_all(
     tasks_dir: str,
     results_dir: str,
@@ -748,8 +835,11 @@ def run_all(
     index_timeout: int,
     skip_verify: bool,
     save_stream: bool,
+    force_budget: bool,
 ):
     """Run evaluation for all tasks in the tasks directory."""
+    _check_session_budget(force=force_budget)
+
     tasks_path = _resolve_tasks_dir(tasks_dir)
     rdir = Path(results_dir)
 
