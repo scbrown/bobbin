@@ -35,3 +35,6 @@ uv.lock
 .claude/
 .logs/
 .beads/
+
+# mdbook build output
+book/_build/
