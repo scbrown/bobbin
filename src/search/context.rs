@@ -439,15 +439,17 @@ impl ContextAssembler {
     ) -> Result<(Vec<SeedResult>, f32)> {
         let fetch_limit = self.config.search_limit * 2;
 
+        // Semantic search uses raw query (embeddings handle natural language)
         let query_embedding = self.embedder.embed(query).await?;
         let semantic_results = self
             .vector_store
             .search(&query_embedding, fetch_limit, repo)
             .await?;
-        // FTS may fail (e.g. index not built yet) — fall back to semantic-only
+        // FTS uses preprocessed query (stopwords removed for better BM25)
+        let keyword_query = crate::search::preprocess::preprocess_for_keywords(query);
         let keyword_results = self
             .vector_store
-            .search_fts(query, fetch_limit, repo)
+            .search_fts(&keyword_query, fetch_limit, repo)
             .await
             .unwrap_or_default();
 

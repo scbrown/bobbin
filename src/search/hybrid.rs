@@ -77,17 +77,22 @@ impl HybridSearch {
         self
     }
 
-    /// Perform hybrid search combining semantic and keyword results, optionally filtered by repo
+    /// Perform hybrid search combining semantic and keyword results, optionally filtered by repo.
+    ///
+    /// The raw query is used for semantic search (embeddings handle natural language well).
+    /// A preprocessed version (stopwords removed, prefixes stripped) is used for keyword
+    /// search (BM25), improving relevance for conversational prompts.
     pub async fn search(&mut self, query: &str, limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
         // Request more results from each source to have a good pool for fusion
         let fetch_limit = limit * 2;
 
-        // Run semantic search
+        // Run semantic search with raw query (embeddings handle natural language)
         let query_embedding = self.embedder.embed(query).await?;
         let semantic_results = self.vector_store.search(&query_embedding, fetch_limit, repo).await?;
 
-        // Run keyword search via LanceDB FTS
-        let keyword_results = self.vector_store.search_fts(query, fetch_limit, repo).await?;
+        // Preprocess query for keyword search (remove stopwords, strip prefixes)
+        let keyword_query = super::preprocess::preprocess_for_keywords(query);
+        let keyword_results = self.vector_store.search_fts(&keyword_query, fetch_limit, repo).await?;
 
         // Combine using RRF with recency boosting
         Self::combine_with_recency(
