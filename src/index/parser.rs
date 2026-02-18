@@ -38,6 +38,10 @@ impl Parser {
         };
 
         if lang == "markdown" {
+            // Check if this is a human-intent record (transcript)
+            if crate::index::archive::is_intent_record(content) {
+                return Ok(self.chunk_transcript(path, content));
+            }
             return Ok(self.chunk_markdown(path, content));
         }
 
@@ -518,6 +522,98 @@ impl Parser {
             }
             _ => None,
         }
+    }
+
+    /// Chunk a human-intent transcript record.
+    ///
+    /// One record = one chunk (preserving atomic human intent).
+    /// If body exceeds 100 lines, split at paragraph breaks.
+    fn chunk_transcript(&self, path: &Path, content: &str) -> Vec<Chunk> {
+        let (fm, body, body_start_line) = extract_frontmatter(content);
+
+        let body = body.trim();
+        if body.is_empty() {
+            return vec![];
+        }
+
+        // Extract record ID from frontmatter for the chunk name
+        let record_name = fm
+            .as_deref()
+            .and_then(|fm| {
+                fm.lines()
+                    .find(|l| l.trim().starts_with("id:"))
+                    .map(|l| l.trim().trim_start_matches("id:").trim().to_string())
+            });
+
+        let lines: Vec<&str> = body.lines().collect();
+
+        if lines.len() <= 100 {
+            // Single chunk — the common case
+            let end_line = body_start_line + lines.len() - 1;
+            return vec![Chunk {
+                id: generate_chunk_id(path, body_start_line as u32, end_line as u32),
+                file_path: path.to_string_lossy().to_string(),
+                chunk_type: ChunkType::Section,
+                name: record_name,
+                start_line: body_start_line as u32,
+                end_line: end_line as u32,
+                content: body.to_string(),
+                language: "transcript".to_string(),
+            }];
+        }
+
+        // Overflow: split at paragraph breaks (empty lines)
+        let mut chunks = Vec::new();
+        let mut chunk_start = 0;
+        let overlap = 10;
+
+        while chunk_start < lines.len() {
+            let chunk_end = if chunk_start + 100 >= lines.len() {
+                lines.len()
+            } else {
+                // Find nearest paragraph break within 80-100 line range
+                let search_start = chunk_start + 80;
+                let search_end = (chunk_start + 100).min(lines.len());
+                let mut break_at = search_end;
+                for i in search_start..search_end {
+                    if lines[i].trim().is_empty() {
+                        break_at = i;
+                        break;
+                    }
+                }
+                break_at
+            };
+
+            let chunk_content = lines[chunk_start..chunk_end].join("\n");
+            let sl = body_start_line + chunk_start;
+            let el = body_start_line + chunk_end - 1;
+
+            let name = record_name.as_ref().map(|n| {
+                if chunks.is_empty() {
+                    n.clone()
+                } else {
+                    format!("{}:{}", n, chunks.len())
+                }
+            });
+
+            chunks.push(Chunk {
+                id: generate_chunk_id(path, sl as u32, el as u32),
+                file_path: path.to_string_lossy().to_string(),
+                chunk_type: ChunkType::Section,
+                name,
+                start_line: sl as u32,
+                end_line: el as u32,
+                content: chunk_content,
+                language: "transcript".to_string(),
+            });
+
+            if chunk_end >= lines.len() {
+                break;
+            }
+            chunk_start = chunk_end.saturating_sub(overlap);
+        }
+
+        chunks
     }
 
     /// Fall back to line-based chunking for unknown languages

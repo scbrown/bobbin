@@ -13,6 +13,7 @@ pub struct Config {
     pub dependencies: DependencyConfig,
     pub hooks: HooksConfig,
     pub beads: BeadsConfig,
+    pub archive: ArchiveConfig,
 }
 
 /// Configuration for indexing behavior
@@ -337,6 +338,28 @@ impl Default for BeadsConfig {
             include_comments: true,
             include_closed: false,
             max_age_days: 90,
+        }
+    }
+}
+
+/// Configuration for the Human Intent Archive integration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ArchiveConfig {
+    /// Enable intent archive indexing
+    pub enabled: bool,
+    /// Path to archive records directory
+    pub archive_path: String,
+    /// Webhook secret for push notifications (empty = no auth)
+    pub webhook_secret: String,
+}
+
+impl Default for ArchiveConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            archive_path: String::new(),
+            webhook_secret: String::new(),
         }
     }
 }

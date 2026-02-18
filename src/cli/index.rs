@@ -806,6 +806,78 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
+    // Index intent archive records if enabled
+    let mut archive_indexed: usize = 0;
+    if config.archive.enabled && !config.archive.archive_path.is_empty() {
+        if !output.quiet && !output.json {
+            println!("  Indexing intent archive...");
+        }
+
+        match crate::index::archive::fetch_archive(&config.archive) {
+            Ok(archive_chunks) if !archive_chunks.is_empty() => {
+                let embed_texts: Vec<String> =
+                    archive_chunks.iter().map(|c| c.content.clone()).collect();
+                let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
+
+                match embed.embed_batch(&embed_refs).await {
+                    Ok(embeddings) => {
+                        let contexts = vec![None; archive_chunks.len()];
+                        let now = chrono::Utc::now().timestamp().to_string();
+
+                        // Delete existing archive chunks (re-index all each time)
+                        let archive_ids: Vec<String> =
+                            archive_chunks.iter().map(|c| c.id.clone()).collect();
+                        vector_store.delete(&archive_ids).await.ok();
+
+                        if let Err(e) = vector_store
+                            .insert(
+                                &archive_chunks,
+                                &embeddings,
+                                &contexts,
+                                repo_name,
+                                "archive",
+                                &now,
+                            )
+                            .await
+                        {
+                            if !output.quiet && !output.json {
+                                println!(
+                                    "{} Failed to store archive chunks: {}",
+                                    "!".yellow(),
+                                    e
+                                );
+                            }
+                        } else {
+                            archive_indexed = archive_chunks.len();
+                            if output.verbose && !output.quiet && !output.json {
+                                println!("  Indexed {} archive records", archive_indexed);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if !output.quiet && !output.json {
+                            println!(
+                                "{} Failed to embed archive records: {}",
+                                "!".yellow(),
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(_) => {
+                if output.verbose && !output.quiet && !output.json {
+                    println!("  No archive records to index");
+                }
+            }
+            Err(e) => {
+                if !output.quiet && !output.json {
+                    println!("{} Failed to fetch archive: {}", "!".yellow(), e);
+                }
+            }
+        }
+    }
+
     // Compact fragmented lance data after indexing — each file insert creates a
     // new fragment, and compaction merges them for better read performance.
     // Stats queries on heavily fragmented tables return incomplete results.

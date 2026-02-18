@@ -45,6 +45,9 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/similar", get(similar))
         .route("/prime", get(prime))
         .route("/beads", get(search_beads))
+        .route("/archive/search", get(archive_search))
+        .route("/archive/entry/{id}", get(archive_entry))
+        .route("/archive/recent", get(archive_recent))
         .route("/status", get(status))
         .route("/metrics", get(metrics))
         .route("/webhook/push", post(webhook_push))
@@ -1536,6 +1539,331 @@ pub(super) async fn prime(
         initialized: true,
         stats,
     }))
+}
+
+// -- /archive/search --
+
+#[derive(Deserialize)]
+struct ArchiveSearchParams {
+    q: String,
+    mode: Option<String>,
+    limit: Option<usize>,
+    after: Option<String>,
+    before: Option<String>,
+    channel: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ArchiveSearchResponse {
+    query: String,
+    mode: String,
+    results: Vec<ArchiveResultItem>,
+    total: usize,
+}
+
+#[derive(Serialize)]
+struct ArchiveResultItem {
+    id: String,
+    content: String,
+    source: String,
+    timestamp: String,
+    score: f32,
+    file_path: String,
+}
+
+pub(super) async fn archive_search(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ArchiveSearchParams>,
+) -> Result<Json<ArchiveSearchResponse>, (StatusCode, Json<ErrorBody>)> {
+    let limit = params.limit.unwrap_or(10);
+    let mode = params.mode.as_deref().unwrap_or("hybrid");
+
+    let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
+    let embedder =
+        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+
+    // Search with extra results to filter down
+    let search_results = match mode {
+        "keyword" => vector_store
+            .search_fts(&params.q, limit * 3, None)
+            .await
+            .map_err(|e| internal_error(e.into()))?,
+        "semantic" => {
+            let mut search = SemanticSearch::new(embedder, vector_store);
+            search
+                .search(&params.q, limit * 3, None)
+                .await
+                .map_err(|e| internal_error(e.into()))?
+        }
+        _ => {
+            let mut search =
+                HybridSearch::new(embedder, vector_store, state.config.search.semantic_weight);
+            search
+                .search(&params.q, limit * 3, None)
+                .await
+                .map_err(|e| internal_error(e.into()))?
+        }
+    };
+
+    // Filter to transcript chunks only
+    let mut filtered: Vec<SearchResult> = search_results
+        .into_iter()
+        .filter(|r| r.chunk.language == "transcript")
+        .collect();
+
+    // Apply date filters on file_path (archive:YYYY/MM/DD/...)
+    if let Some(ref after) = params.after {
+        filtered.retain(|r| {
+            extract_date_from_archive_path(&r.chunk.file_path)
+                .is_some_and(|d| d.as_str() >= after.as_str())
+        });
+    }
+    if let Some(ref before) = params.before {
+        filtered.retain(|r| {
+            extract_date_from_archive_path(&r.chunk.file_path)
+                .is_some_and(|d| d.as_str() <= before.as_str())
+        });
+    }
+
+    // Apply channel filter on chunk name (channel/id format)
+    if let Some(ref channel) = params.channel {
+        filtered.retain(|r| {
+            r.chunk
+                .name
+                .as_ref()
+                .is_some_and(|n| n.starts_with(&format!("{}/", channel)))
+        });
+    }
+
+    filtered.truncate(limit);
+    let total = filtered.len();
+
+    let results: Vec<ArchiveResultItem> = filtered
+        .iter()
+        .map(|r| ArchiveResultItem {
+            id: r.chunk.name.clone().unwrap_or_default(),
+            content: r.chunk.content.clone(),
+            source: r
+                .chunk
+                .name
+                .as_ref()
+                .and_then(|n| n.split('/').next())
+                .unwrap_or("")
+                .to_string(),
+            timestamp: extract_date_from_archive_path(&r.chunk.file_path)
+                .unwrap_or_default(),
+            score: r.score,
+            file_path: r.chunk.file_path.clone(),
+        })
+        .collect();
+
+    Ok(Json(ArchiveSearchResponse {
+        query: params.q,
+        mode: mode.to_string(),
+        results,
+        total,
+    }))
+}
+
+// -- /archive/entry/{id} --
+
+#[derive(Serialize)]
+struct ArchiveEntryResponse {
+    id: String,
+    content: String,
+    source: String,
+    file_path: String,
+}
+
+pub(super) async fn archive_entry(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ArchiveEntryResponse>, (StatusCode, Json<ErrorBody>)> {
+    if !state.config.archive.enabled || state.config.archive.archive_path.is_empty() {
+        return Err(bad_request("Intent archive not configured".to_string()));
+    }
+
+    let archive_root = std::path::Path::new(&state.config.archive.archive_path);
+
+    // Walk the archive to find the record by ID in filename
+    let record = find_record_by_id(archive_root, &id);
+
+    match record {
+        Some((content, rel_path)) => {
+            let source = content
+                .lines()
+                .find(|l| l.trim().starts_with("channel:"))
+                .map(|l| l.trim().trim_start_matches("channel:").trim().to_string())
+                .unwrap_or_default();
+
+            // Extract body after frontmatter
+            let body = extract_body(&content).unwrap_or_default();
+
+            Ok(Json(ArchiveEntryResponse {
+                id,
+                content: body,
+                source,
+                file_path: format!("archive:{}", rel_path),
+            }))
+        }
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorBody {
+                error: format!("Record not found: {}", id),
+            }),
+        )),
+    }
+}
+
+// -- /archive/recent --
+
+#[derive(Deserialize)]
+struct ArchiveRecentParams {
+    after: String,
+    limit: Option<usize>,
+}
+
+#[derive(Serialize)]
+struct ArchiveRecentResponse {
+    results: Vec<ArchiveResultItem>,
+    total: usize,
+}
+
+pub(super) async fn archive_recent(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ArchiveRecentParams>,
+) -> Result<Json<ArchiveRecentResponse>, (StatusCode, Json<ErrorBody>)> {
+    if !state.config.archive.enabled || state.config.archive.archive_path.is_empty() {
+        return Err(bad_request("Intent archive not configured".to_string()));
+    }
+
+    let limit = params.limit.unwrap_or(50);
+    let archive_root = std::path::Path::new(&state.config.archive.archive_path);
+
+    let mut records: Vec<(String, String, String)> = Vec::new(); // (id, content, rel_path)
+    collect_recent_records(archive_root, archive_root, &params.after, &mut records);
+
+    // Sort by path (date-partitioned, so lexicographic = chronological)
+    records.sort_by(|a, b| a.2.cmp(&b.2));
+    records.truncate(limit);
+
+    let total = records.len();
+    let results: Vec<ArchiveResultItem> = records
+        .into_iter()
+        .map(|(id, content, rel_path)| {
+            let source = content
+                .lines()
+                .find(|l| l.trim().starts_with("channel:"))
+                .map(|l| l.trim().trim_start_matches("channel:").trim().to_string())
+                .unwrap_or_default();
+            let body = extract_body(&content).unwrap_or_default();
+            let timestamp =
+                extract_date_from_archive_path(&format!("archive:{}", rel_path))
+                    .unwrap_or_default();
+
+            ArchiveResultItem {
+                id,
+                content: body,
+                source,
+                timestamp,
+                score: 1.0,
+                file_path: format!("archive:{}", rel_path),
+            }
+        })
+        .collect();
+
+    Ok(Json(ArchiveRecentResponse { results, total }))
+}
+
+/// Extract a date string from an archive path like "archive:2026/02/17/hi-xxx.md"
+fn extract_date_from_archive_path(path: &str) -> Option<String> {
+    let after_prefix = path.strip_prefix("archive:")?;
+    // Path format: YYYY/MM/DD/filename.md
+    let parts: Vec<&str> = after_prefix.splitn(4, '/').collect();
+    if parts.len() >= 3 {
+        Some(format!("{}-{}-{}", parts[0], parts[1], parts[2]))
+    } else {
+        None
+    }
+}
+
+/// Find a record file by ID (searches for filename containing the ID)
+fn find_record_by_id(
+    root: &std::path::Path,
+    id: &str,
+) -> Option<(String, String)> {
+    find_record_recursive(root, root, id)
+}
+
+fn find_record_recursive(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    id: &str,
+) -> Option<(String, String)> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_record_recursive(root, &path, id) {
+                return Some(found);
+            }
+        } else if path.file_stem().is_some_and(|s| s.to_string_lossy().contains(id)) {
+            let content = std::fs::read_to_string(&path).ok()?;
+            let rel = path.strip_prefix(root).ok()?;
+            return Some((content, rel.to_string_lossy().to_string()));
+        }
+    }
+    None
+}
+
+/// Collect archive records whose date path is >= the `after` date
+fn collect_recent_records(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    after: &str,
+    results: &mut Vec<(String, String, String)>,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_recent_records(root, &path, after, results);
+        } else if path.extension().is_some_and(|e| e == "md") {
+            let rel = match path.strip_prefix(root) {
+                Ok(r) => r.to_string_lossy().to_string(),
+                Err(_) => continue,
+            };
+            let date = extract_date_from_archive_path(&format!("archive:{}", rel));
+            if date.as_deref().is_some_and(|d| d >= after) {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    let id = path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    results.push((id, content, rel));
+                }
+            }
+        }
+    }
+}
+
+/// Extract body text after YAML frontmatter
+fn extract_body(content: &str) -> Option<String> {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return Some(content.to_string());
+    }
+    let close = trimmed[3..].find("\n---")?;
+    let body_start = 3 + close + 4;
+    let body = if body_start < trimmed.len() {
+        trimmed[body_start..].trim()
+    } else {
+        ""
+    };
+    Some(body.to_string())
 }
 
 // -- /beads --
