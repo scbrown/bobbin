@@ -49,6 +49,7 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/archive/entry/{id}", get(archive_entry))
         .route("/archive/recent", get(archive_recent))
         .route("/status", get(status))
+        .route("/commands", get(list_commands))
         .route("/metrics", get(metrics))
         .route("/webhook/push", post(webhook_push))
         .layer(CorsLayer::permissive())
@@ -274,6 +275,63 @@ struct StatusResponse {
     status: String,
     index: crate::types::IndexStats,
 }
+
+// -- /commands (user-defined convenience commands) --
+
+#[derive(Serialize)]
+struct CommandsListResponse {
+    count: usize,
+    commands: std::collections::BTreeMap<String, CommandEntry>,
+}
+
+#[derive(Serialize)]
+struct CommandEntry {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    command: String,
+    args: Vec<String>,
+    expands_to: String,
+}
+
+pub(super) async fn list_commands(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<CommandsListResponse>, (StatusCode, Json<ErrorBody>)> {
+    let commands = crate::commands::load_commands(&state.repo_root)
+        .map_err(|e| internal_error(e.into()))?;
+
+    let entries: std::collections::BTreeMap<String, CommandEntry> = commands
+        .into_iter()
+        .map(|(name, def)| {
+            let expands_to = {
+                let mut parts = vec![format!("bobbin {}", def.command)];
+                for arg in &def.args {
+                    if arg.contains(' ') {
+                        parts.push(format!("\"{}\"", arg));
+                    } else {
+                        parts.push(arg.clone());
+                    }
+                }
+                parts.join(" ")
+            };
+            (
+                name,
+                CommandEntry {
+                    description: def.description,
+                    command: def.command,
+                    args: def.args,
+                    expands_to,
+                },
+            )
+        })
+        .collect();
+
+    Ok(Json(CommandsListResponse {
+        count: entries.len(),
+        commands: entries,
+    }))
+}
+
+// -- /status --
 
 pub(super) async fn status(
     State(state): State<Arc<AppState>>,

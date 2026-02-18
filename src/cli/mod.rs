@@ -14,6 +14,7 @@ mod init;
 mod refs;
 mod related;
 mod review;
+mod run;
 mod search;
 mod serve;
 mod similar;
@@ -120,6 +121,9 @@ enum Commands {
 
     /// Show LLM-friendly project overview with live stats
     Prime(prime::PrimeArgs),
+
+    /// Execute or manage user-defined convenience commands
+    Run(run::RunArgs),
 }
 
 impl Commands {
@@ -147,6 +151,7 @@ impl Commands {
             Commands::Hook(_) => "hook",
             Commands::Tour(_) => "tour",
             Commands::Prime(_) => "prime",
+            Commands::Run(_) => "run",
         }
     }
 }
@@ -160,37 +165,30 @@ impl Cli {
             server: self.server,
         };
 
-        let command_name = self.command.name();
         let metrics_source = self.metrics_source.clone();
         let start = std::time::Instant::now();
 
-        let result = match self.command {
-            Commands::Init(args) => init::run(args, output).await,
-            Commands::Index(args) => index::run(args, output).await,
-            Commands::Search(args) => search::run(args, output).await,
-            Commands::Context(args) => context::run(args, output).await,
-            Commands::Deps(args) => deps::run(args, output).await,
-            Commands::Grep(args) => grep::run(args, output).await,
-            Commands::Refs(args) => refs::run(args, output).await,
-            Commands::Related(args) => related::run(args, output).await,
-            Commands::History(args) => history::run(args, output).await,
-            Commands::Log(args) => log::run(args, output).await,
-            Commands::Hotspots(args) => hotspots::run(args, output).await,
-            Commands::Impact(args) => impact::run(args, output).await,
-            Commands::Review(args) => review::run(args, output).await,
-            Commands::Similar(args) => similar::run(args, output).await,
-            Commands::Status(args) => status::run(args, output).await,
-            Commands::Serve(args) => serve::run(args, output).await,
-            Commands::Benchmark(args) => benchmark::run(args, output).await,
-            Commands::Watch(args) => watch::run(args, output).await,
-            Commands::Completions(args) => {
-                completions::run(args);
-                Ok(())
-            }
-            Commands::Hook(args) => hook::run(args, output).await,
-            Commands::Tour(args) => tour::run(args, output).await,
-            Commands::Prime(args) => prime::run(args, output).await,
+        // Resolve `run` commands: either a management op (done) or a re-dispatch
+        let (command, output) = match self.command {
+            Commands::Run(args) => match run::resolve(args, &output)? {
+                run::RunResult::Done => return Ok(()),
+                run::RunResult::Execute(resolved_args) => {
+                    let resolved = Cli::try_parse_from(&resolved_args)
+                        .map_err(|e| anyhow::anyhow!("{}", e))?;
+                    let resolved_output = OutputConfig {
+                        json: resolved.json,
+                        quiet: resolved.quiet,
+                        verbose: resolved.verbose,
+                        server: resolved.server,
+                    };
+                    (resolved.command, resolved_output)
+                }
+            },
+            cmd => (cmd, output),
         };
+
+        let command_name = command.name();
+        let result = dispatch_command(command, output).await;
 
         // Best-effort metrics emission (don't skip hooks — they emit their own events)
         if command_name != "hook" {
@@ -213,6 +211,40 @@ impl Cli {
         }
 
         result
+    }
+}
+
+/// Dispatch a resolved command. This is separated from `Cli::run()` to avoid
+/// async recursion when `bobbin run` re-dispatches to the underlying command.
+async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()> {
+    match command {
+        Commands::Init(args) => init::run(args, output).await,
+        Commands::Index(args) => index::run(args, output).await,
+        Commands::Search(args) => search::run(args, output).await,
+        Commands::Context(args) => context::run(args, output).await,
+        Commands::Deps(args) => deps::run(args, output).await,
+        Commands::Grep(args) => grep::run(args, output).await,
+        Commands::Refs(args) => refs::run(args, output).await,
+        Commands::Related(args) => related::run(args, output).await,
+        Commands::History(args) => history::run(args, output).await,
+        Commands::Log(args) => log::run(args, output).await,
+        Commands::Hotspots(args) => hotspots::run(args, output).await,
+        Commands::Impact(args) => impact::run(args, output).await,
+        Commands::Review(args) => review::run(args, output).await,
+        Commands::Similar(args) => similar::run(args, output).await,
+        Commands::Status(args) => status::run(args, output).await,
+        Commands::Serve(args) => serve::run(args, output).await,
+        Commands::Benchmark(args) => benchmark::run(args, output).await,
+        Commands::Watch(args) => watch::run(args, output).await,
+        Commands::Completions(args) => {
+            completions::run(args);
+            Ok(())
+        }
+        Commands::Hook(args) => hook::run(args, output).await,
+        Commands::Tour(args) => tour::run(args, output).await,
+        Commands::Prime(args) => prime::run(args, output).await,
+        // Run commands are resolved before dispatch, so this is unreachable
+        Commands::Run(_) => anyhow::bail!("Nested run commands are not supported"),
     }
 }
 
