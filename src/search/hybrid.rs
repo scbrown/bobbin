@@ -52,6 +52,7 @@ pub struct HybridSearch {
     semantic_weight: f32,
     recency_half_life_days: f32,
     recency_weight: f32,
+    rrf_k: f32,
 }
 
 impl HybridSearch {
@@ -67,6 +68,7 @@ impl HybridSearch {
             semantic_weight,
             recency_half_life_days: 30.0,
             recency_weight: 0.3,
+            rrf_k: 60.0,
         }
     }
 
@@ -74,6 +76,12 @@ impl HybridSearch {
     pub fn with_recency(mut self, half_life_days: f32, weight: f32) -> Self {
         self.recency_half_life_days = half_life_days;
         self.recency_weight = weight;
+        self
+    }
+
+    /// Configure the RRF constant k
+    pub fn with_rrf_k(mut self, k: f32) -> Self {
+        self.rrf_k = k;
         self
     }
 
@@ -102,6 +110,7 @@ impl HybridSearch {
             limit,
             self.recency_half_life_days,
             self.recency_weight,
+            self.rrf_k,
         )
     }
 
@@ -112,7 +121,7 @@ impl HybridSearch {
         semantic_weight: f32,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        Self::combine_with_recency(semantic_results, keyword_results, semantic_weight, limit, 0.0, 0.0)
+        Self::combine_with_recency(semantic_results, keyword_results, semantic_weight, limit, 0.0, 0.0, 60.0)
     }
 
     /// Combine semantic and keyword results using RRF with optional recency boosting
@@ -123,9 +132,10 @@ impl HybridSearch {
         limit: usize,
         recency_half_life_days: f32,
         recency_weight: f32,
+        rrf_k: f32,
     ) -> Result<Vec<SearchResult>> {
         let keyword_weight = 1.0 - semantic_weight;
-        let k = 60.0; // RRF constant
+        let k = rrf_k;
 
         // Build a map of chunk_id -> (best_result, combined_score)
         let mut scores: HashMap<String, (SearchResult, f32)> = HashMap::new();

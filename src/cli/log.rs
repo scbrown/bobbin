@@ -164,7 +164,8 @@ pub async fn run(args: LogArgs, output: OutputConfig) -> Result<()> {
                         embedder,
                         vector_store,
                         config.search.semantic_weight,
-                    );
+                    )
+                    .with_rrf_k(config.search.rrf_k);
                     search
                         .search(query_str, search_limit, None)
                         .await

@@ -1272,9 +1272,10 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         semantic_weight: config.search.semantic_weight,
         content_mode,
         search_limit: 20,
-        doc_demotion: 0.5,
+        doc_demotion: config.search.doc_demotion,
         recency_half_life_days: config.search.recency_half_life_days,
         recency_weight: config.search.recency_weight,
+        rrf_k: config.search.rrf_k,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1795,9 +1796,10 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         semantic_weight: config.search.semantic_weight,
         content_mode: ContentMode::Preview,
         search_limit: 10, // Fewer results since we want speed
-        doc_demotion: 0.5,
+        doc_demotion: config.search.doc_demotion,
         recency_half_life_days: config.search.recency_half_life_days,
         recency_weight: config.search.recency_weight,
+        rrf_k: config.search.rrf_k,
     };
 
     let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

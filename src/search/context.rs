@@ -25,6 +25,8 @@ pub struct ContextConfig {
     pub recency_half_life_days: f32,
     /// Recency weight (0.0 = disabled, 0.3 = default)
     pub recency_weight: f32,
+    /// RRF constant k. Default: 60.0.
+    pub rrf_k: f32,
 }
 
 /// How much content to include in output
@@ -460,7 +462,7 @@ impl ContextAssembler {
             .unwrap_or(0.0);
 
         // RRF combination
-        let k = 60.0_f32;
+        let k = self.config.rrf_k;
         let keyword_weight = 1.0 - self.config.semantic_weight;
         let mut scores: HashMap<String, (SeedResult, f32)> = HashMap::new();
 
@@ -910,6 +912,7 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
         };
@@ -937,6 +940,7 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
         };
@@ -961,6 +965,7 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
         };
@@ -982,6 +987,7 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
         };
@@ -1007,6 +1013,7 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
         };
@@ -1033,6 +1040,7 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
         };

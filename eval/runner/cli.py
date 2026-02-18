@@ -1293,5 +1293,190 @@ def publish(results_dir: str, output_dir: str | None, tasks_dir: str, run_id: st
         click.echo(f"  {f}")
 
 
+def _parse_float_list(value: str) -> list[float]:
+    """Parse comma-separated float values."""
+    return [float(x.strip()) for x in value.split(",") if x.strip()]
+
+
+@cli.command()
+@click.option("--tasks-dir", default="tasks", help="Directory containing task YAML files.")
+@click.option("--task", "task_id", default=None, help="Calibrate a single task (by ID).")
+@click.option(
+    "--repos",
+    default=None,
+    help="Comma-separated repo prefixes to include (e.g. ruff,cargo).",
+)
+@click.option(
+    "--semantic-weights",
+    default="0.5,0.6,0.7,0.8,0.9",
+    help="Comma-separated semantic_weight values to test.",
+)
+@click.option(
+    "--doc-demotions",
+    default="0.3,0.5,0.7,1.0",
+    help="Comma-separated doc_demotion values to test.",
+)
+@click.option(
+    "--rrf-ks",
+    default="20.0,40.0,60.0,80.0",
+    help="Comma-separated RRF k values to test.",
+)
+@click.option(
+    "--output",
+    "-o",
+    default=None,
+    help="Output path for calibration report (default: results/calibration.md).",
+)
+@click.option(
+    "--json-output",
+    default=None,
+    help="Output path for raw JSON results.",
+)
+@click.option("--index-timeout", default=600, type=int, help="Bobbin index timeout in seconds.")
+@click.option("--max-tasks", default=0, type=int, help="Max tasks to calibrate (0=all).")
+def calibrate(
+    tasks_dir: str,
+    task_id: str | None,
+    repos: str | None,
+    semantic_weights: str,
+    doc_demotions: str,
+    rrf_ks: str,
+    output: str | None,
+    json_output: str | None,
+    index_timeout: int,
+    max_tasks: int,
+):
+    """Calibrate search weights by sweeping parameter configs against eval tasks.
+
+    Indexes each repo once, then runs bobbin context with every parameter
+    combination and measures precision/recall of returned files vs ground
+    truth. No LLM calls — pure search quality measurement.
+
+    Example::
+
+        bobbin-eval calibrate --task ruff-001 --semantic-weights 0.5,0.7,0.9
+        bobbin-eval calibrate --repos ruff --rrf-ks 40,60,80
+    """
+    from runner.calibrate import (
+        CalibrationError,
+        ParamConfig,
+        build_param_grid,
+        run_calibration,
+    )
+
+    tasks_path = _resolve_tasks_dir(tasks_dir)
+
+    # Load tasks
+    if task_id:
+        try:
+            tasks = [load_task_by_id(task_id, tasks_path)]
+        except TaskLoadError as exc:
+            click.echo(f"Error: {exc}", err=True)
+            sys.exit(1)
+    else:
+        try:
+            tasks = load_all_tasks(tasks_path)
+        except TaskLoadError as exc:
+            click.echo(f"Error: {exc}", err=True)
+            sys.exit(1)
+
+    # Filter by repo prefix
+    if repos:
+        repo_prefixes = [r.strip().lower() for r in repos.split(",")]
+        tasks = [
+            t for t in tasks
+            if any(t["id"].lower().startswith(p) for p in repo_prefixes)
+        ]
+
+    if max_tasks > 0:
+        tasks = tasks[:max_tasks]
+
+    if not tasks:
+        click.echo("No tasks matched the filters.", err=True)
+        sys.exit(1)
+
+    # Build parameter grid
+    sw_values = _parse_float_list(semantic_weights)
+    dd_values = _parse_float_list(doc_demotions)
+    k_values = _parse_float_list(rrf_ks)
+    configs = build_param_grid(sw_values, dd_values, k_values)
+
+    click.echo(
+        f"Calibrating {len(tasks)} tasks × {len(configs)} configs "
+        f"= {len(tasks) * len(configs)} probes"
+    )
+    click.echo(
+        f"  semantic_weight: {sw_values}\n"
+        f"  doc_demotion:    {dd_values}\n"
+        f"  rrf_k:           {k_values}"
+    )
+
+    # Run calibration
+    report = run_calibration(
+        tasks, configs, index_timeout=index_timeout
+    )
+
+    # Output report
+    if output is None:
+        output = str(Path("results") / "calibration.md")
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    md = report.to_markdown()
+    Path(output).write_text(md, encoding="utf-8")
+    click.echo(f"\nReport written to {output}")
+
+    # Output JSON
+    if json_output:
+        Path(json_output).parent.mkdir(parents=True, exist_ok=True)
+        json_data = {
+            "configs": [
+                {
+                    "semantic_weight": c.semantic_weight,
+                    "doc_demotion": c.doc_demotion,
+                    "rrf_k": c.rrf_k,
+                }
+                for c in configs
+            ],
+            "results": [
+                {
+                    "task_id": r.task_id,
+                    "config": r.config.label,
+                    "precision": r.precision,
+                    "recall": r.recall,
+                    "f1": r.f1,
+                    "top_semantic_score": r.top_semantic_score,
+                    "returned_files": r.returned_files,
+                    "ground_truth_files": r.ground_truth_files,
+                    "duration_ms": r.duration_ms,
+                }
+                for r in report.results
+            ],
+            "summary": report.summary_by_config(),
+        }
+        Path(json_output).write_text(
+            json.dumps(json_data, indent=2), encoding="utf-8"
+        )
+        click.echo(f"JSON results written to {json_output}")
+
+    # Print summary table
+    summaries = report.summary_by_config()
+    if summaries:
+        click.echo(f"\nTop configs (by F1, {len(report.results)} total probes):")
+        click.echo(
+            f"  {'Config':<40} {'P':>8} {'R':>8} {'F1':>8} {'TopSem':>8}"
+        )
+        click.echo("  " + "-" * 76)
+        for s in summaries[:10]:
+            click.echo(
+                f"  {s['config']:<40} {s['avg_precision']:>8.3f} "
+                f"{s['avg_recall']:>8.3f} {s['avg_f1']:>8.3f} "
+                f"{s['avg_top_semantic_score']:>8.3f}"
+            )
+        if summaries:
+            best = summaries[0]
+            click.echo(f"\n  Best: {best['config']} (F1={best['avg_f1']:.4f})")
+    else:
+        click.echo("\nNo results collected.")
+
+
 if __name__ == "__main__":
     cli()

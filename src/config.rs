@@ -216,6 +216,14 @@ pub struct SearchConfig {
     /// max weight=1.0, a very old result loses up to 100% of its score.
     /// At default 0.3, the maximum penalty for old results is 30%.
     pub recency_weight: f32,
+    /// RRF (Reciprocal Rank Fusion) constant `k`. Controls how quickly scores
+    /// decay with rank. Lower values make top ranks more dominant; higher values
+    /// flatten the distribution. Default: 60.0 (standard RRF).
+    pub rrf_k: f32,
+    /// Demotion factor for Documentation/Config files in search ranking.
+    /// Applied as a multiplier to RRF scores: 1.0 = no demotion, 0.0 = full demotion.
+    /// Source/Test files are unaffected. Default: 0.5 (halve doc/config scores).
+    pub doc_demotion: f32,
 }
 
 impl Default for SearchConfig {
@@ -225,6 +233,8 @@ impl Default for SearchConfig {
             semantic_weight: 0.7,
             recency_half_life_days: 30.0,
             recency_weight: 0.3,
+            rrf_k: 60.0,
+            doc_demotion: 0.5,
         }
     }
 }
@@ -589,6 +599,46 @@ coupling_depth = 500
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!(config.git.commits_enabled);
         assert_eq!(config.git.commits_depth, 0);
+    }
+
+    #[test]
+    fn test_search_config_defaults() {
+        let config = Config::default();
+        assert_eq!(config.search.default_limit, 10);
+        assert!((config.search.semantic_weight - 0.7).abs() < f32::EPSILON);
+        assert!((config.search.recency_half_life_days - 30.0).abs() < f32::EPSILON);
+        assert!((config.search.recency_weight - 0.3).abs() < f32::EPSILON);
+        assert!((config.search.rrf_k - 60.0).abs() < f32::EPSILON);
+        assert!((config.search.doc_demotion - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_search_config_custom() {
+        let toml_str = r#"
+[search]
+semantic_weight = 0.5
+rrf_k = 40.0
+doc_demotion = 0.3
+recency_weight = 0.1
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!((config.search.semantic_weight - 0.5).abs() < f32::EPSILON);
+        assert!((config.search.rrf_k - 40.0).abs() < f32::EPSILON);
+        assert!((config.search.doc_demotion - 0.3).abs() < f32::EPSILON);
+        assert!((config.search.recency_weight - 0.1).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_legacy_config_without_search_tuning_fields() {
+        // Old config without rrf_k/doc_demotion should use defaults
+        let toml_str = r#"
+[search]
+semantic_weight = 0.8
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!((config.search.semantic_weight - 0.8).abs() < f32::EPSILON);
+        assert!((config.search.rrf_k - 60.0).abs() < f32::EPSILON);
+        assert!((config.search.doc_demotion - 0.5).abs() < f32::EPSILON);
     }
 
     #[test]

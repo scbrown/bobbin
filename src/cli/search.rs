@@ -175,7 +175,8 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
                         embedder,
                         vector_store,
                         config.search.semantic_weight,
-                    );
+                    )
+                    .with_rrf_k(config.search.rrf_k);
                     search
                         .search(&args.query, search_limit, repo_filter)
                         .await

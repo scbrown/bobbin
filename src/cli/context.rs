@@ -40,6 +40,18 @@ pub struct ContextArgs {
     #[arg(long, default_value = "0.1")]
     coupling_threshold: f32,
 
+    /// Override semantic weight (0.0=keyword-only, 1.0=semantic-only)
+    #[arg(long)]
+    semantic_weight: Option<f32>,
+
+    /// Override doc demotion factor (0.0=full demotion, 1.0=no demotion)
+    #[arg(long)]
+    doc_demotion: Option<f32>,
+
+    /// Override RRF constant k (lower=top ranks dominate, higher=flatter)
+    #[arg(long)]
+    rrf_k: Option<f32>,
+
     /// Filter to specific repository
     #[arg(long, short = 'r')]
     repo: Option<String>,
@@ -145,12 +157,13 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         depth: args.depth,
         max_coupled: args.max_coupled,
         coupling_threshold: args.coupling_threshold,
-        semantic_weight: config.search.semantic_weight,
+        semantic_weight: args.semantic_weight.unwrap_or(config.search.semantic_weight),
         content_mode,
         search_limit: args.limit,
-        doc_demotion: 0.5,
+        doc_demotion: args.doc_demotion.unwrap_or(config.search.doc_demotion),
         recency_half_life_days: config.search.recency_half_life_days,
         recency_weight: config.search.recency_weight,
+        rrf_k: args.rrf_k.unwrap_or(config.search.rrf_k),
     };
 
     let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
