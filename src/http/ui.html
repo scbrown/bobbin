@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bobbin</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#242837;--border:#2e3347;
+  --text:#e2e8f0;--dim:#8892b0;--accent:#60a5fa;--accent2:#818cf8;
+  --green:#34d399;--amber:#fbbf24;--red:#f87171;--cyan:#22d3ee;
+  --mono:'JetBrains Mono','Fira Code','Cascadia Code',monospace;
+  --sans:system-ui,-apple-system,sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+
+/* Nav */
+nav{background:linear-gradient(135deg,#1e2235,#252a3e);border-bottom:1px solid var(--border);
+  padding:0 1.5rem;display:flex;align-items:center;gap:2rem;position:sticky;top:0;z-index:100;
+  backdrop-filter:blur(12px)}
+nav .logo{font-family:var(--mono);font-size:1.1rem;font-weight:700;color:var(--accent);
+  padding:0.8rem 0;letter-spacing:-0.5px}
+nav .tabs{display:flex;gap:0}
+nav .tab{padding:0.8rem 1rem;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;
+  transition:all 0.15s;font-size:0.85rem;font-weight:500}
+nav .tab:hover{color:var(--text)}
+nav .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+nav .pulse{margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--green);
+  animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+/* Layout */
+main{max-width:1200px;margin:0 auto;padding:1.5rem}
+.page{display:none}.page.active{display:block}
+h2{font-size:1.2rem;font-weight:600;margin-bottom:1rem;color:var(--text)}
+h3{font-size:0.95rem;font-weight:600;margin-bottom:0.5rem;color:var(--dim)}
+
+/* Cards */
+.grid{display:grid;gap:1rem}
+.grid-4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.grid-3{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem}
+.card-header{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--dim);margin-bottom:0.5rem}
+.stat-value{font-size:1.8rem;font-weight:700;font-family:var(--mono)}
+.stat-value.accent{color:var(--accent)}
+.stat-value.green{color:var(--green)}
+.stat-value.amber{color:var(--amber)}
+
+/* Search */
+.search-box{display:flex;gap:0.5rem;margin-bottom:1rem}
+.search-box input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:0.6rem 1rem;color:var(--text);font-size:0.9rem;font-family:var(--sans);outline:none}
+.search-box input:focus{border-color:var(--accent)}
+.search-box select{background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:0.6rem 0.75rem;color:var(--text);font-size:0.85rem;outline:none}
+.search-box button{background:var(--accent);color:#fff;border:none;border-radius:6px;
+  padding:0.6rem 1.2rem;cursor:pointer;font-weight:600;font-size:0.85rem}
+.search-box button:hover{opacity:0.9}
+
+/* Results */
+.result{background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:0.75rem 1rem;margin-bottom:0.5rem}
+.result-header{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem}
+.result-path{font-family:var(--mono);font-size:0.85rem;color:var(--accent)}
+.result-type{font-size:0.7rem;padding:2px 6px;border-radius:3px;background:var(--surface2);color:var(--dim)}
+.result-score{font-family:var(--mono);font-size:0.75rem;color:var(--dim);margin-left:auto}
+.result-name{font-family:var(--mono);font-size:0.85rem;font-weight:600;color:var(--cyan)}
+.result-preview{font-family:var(--mono);font-size:0.8rem;color:var(--dim);white-space:pre-wrap;
+  overflow:hidden;max-height:80px;line-height:1.4;margin-top:0.25rem;
+  background:var(--bg);padding:0.5rem;border-radius:4px}
+.result-lines{font-size:0.75rem;color:var(--dim)}
+
+/* Lang bars */
+.lang-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin:0.5rem 0}
+.lang-segment{height:100%}
+.lang-list{display:flex;flex-wrap:wrap;gap:0.75rem;margin-top:0.5rem}
+.lang-item{display:flex;align-items:center;gap:0.35rem;font-size:0.8rem}
+.lang-dot{width:8px;height:8px;border-radius:50%}
+
+/* File tree */
+.file-item{padding:0.4rem 0.75rem;display:flex;align-items:center;gap:0.5rem;
+  border-bottom:1px solid var(--border);font-size:0.85rem}
+.file-item:hover{background:var(--surface2)}
+.file-path{font-family:var(--mono);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-chunks{font-family:var(--mono);color:var(--dim);font-size:0.8rem}
+
+/* Bead results */
+.bead{background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:0.75rem 1rem;margin-bottom:0.5rem;display:flex;align-items:flex-start;gap:0.75rem}
+.bead-id{font-family:var(--mono);font-size:0.8rem;color:var(--accent);white-space:nowrap}
+.bead-priority{font-family:var(--mono);font-size:0.7rem;padding:1px 5px;border-radius:3px;font-weight:700}
+.bead-priority.P1{background:rgba(248,113,113,0.2);color:var(--red)}
+.bead-priority.P2{background:rgba(251,191,36,0.2);color:var(--amber)}
+.bead-priority.P3{background:rgba(148,163,184,0.2);color:var(--dim)}
+.bead-title{font-size:0.9rem}
+.bead-meta{font-size:0.75rem;color:var(--dim);margin-top:0.25rem}
+
+/* Spinner */
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;animation:spin 0.6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading{text-align:center;padding:2rem;color:var(--dim)}
+
+/* Empty state */
+.empty{text-align:center;padding:2rem;color:var(--dim);font-style:italic}
+
+/* Tables */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;
+  color:var(--dim);padding:0.5rem 0.75rem;border-bottom:1px solid var(--border)}
+td{padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);font-size:0.85rem}
+td.mono{font-family:var(--mono)}
+
+@media(max-width:768px){
+  .grid-4{grid-template-columns:repeat(2,1fr)}
+  nav{padding:0 0.75rem;gap:1rem}
+  main{padding:0.75rem}
+}
+</style>
+</head>
+<body>
+<nav>
+  <div class="logo">bobbin</div>
+  <div class="tabs">
+    <div class="tab active" data-page="status">Status</div>
+    <div class="tab" data-page="search">Search</div>
+    <div class="tab" data-page="repos">Repos</div>
+    <div class="tab" data-page="beads">Beads</div>
+    <div class="tab" data-page="hotspots">Hotspots</div>
+  </div>
+  <div class="pulse" id="pulse" title="Connected"></div>
+</nav>
+
+<main>
+  <!-- STATUS PAGE -->
+  <div class="page active" id="page-status">
+    <h2>Index Status</h2>
+    <div class="grid grid-4" id="status-stats"></div>
+    <div style="margin-top:1.5rem">
+      <h3>Languages</h3>
+      <div id="lang-bar"></div>
+      <div id="lang-list" class="lang-list"></div>
+    </div>
+    <div style="margin-top:1.5rem">
+      <h3>Prometheus Metrics</h3>
+      <div class="card"><pre id="metrics-raw" style="font-family:var(--mono);font-size:0.8rem;color:var(--dim);white-space:pre-wrap"></pre></div>
+    </div>
+  </div>
+
+  <!-- SEARCH PAGE -->
+  <div class="page" id="page-search">
+    <h2>Search</h2>
+    <div class="search-box">
+      <input type="text" id="search-q" placeholder="Search code, docs, symbols..." autofocus>
+      <select id="search-mode">
+        <option value="hybrid">Hybrid</option>
+        <option value="semantic">Semantic</option>
+        <option value="keyword">Keyword</option>
+      </select>
+      <input type="number" id="search-limit" value="20" min="1" max="100" style="width:60px" title="Max results">
+      <button onclick="doSearch()">Search</button>
+    </div>
+    <div id="search-results"></div>
+  </div>
+
+  <!-- REPOS PAGE -->
+  <div class="page" id="page-repos">
+    <h2>Indexed Files</h2>
+    <div class="search-box">
+      <input type="text" id="repo-filter" placeholder="Filter files..." oninput="filterFiles()">
+    </div>
+    <div class="card" style="max-height:70vh;overflow-y:auto">
+      <div id="file-list"></div>
+    </div>
+  </div>
+
+  <!-- BEADS PAGE -->
+  <div class="page" id="page-beads">
+    <h2>Beads Search</h2>
+    <div class="search-box">
+      <input type="text" id="beads-q" placeholder="Search beads by title, description...">
+      <select id="beads-status">
+        <option value="">Any status</option>
+        <option value="open" selected>Open</option>
+        <option value="in_progress">In Progress</option>
+        <option value="closed">Closed</option>
+      </select>
+      <button onclick="doBeadsSearch()">Search</button>
+    </div>
+    <div id="beads-results"></div>
+  </div>
+
+  <!-- HOTSPOTS PAGE -->
+  <div class="page" id="page-hotspots">
+    <h2>Code Hotspots</h2>
+    <p style="color:var(--dim);margin-bottom:1rem;font-size:0.85rem">Files with highest churn + complexity. Candidates for refactoring.</p>
+    <div id="hotspots-table"></div>
+  </div>
+</main>
+
+<script>
+const API = '';  // same origin
+
+// Tab navigation
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('page-' + tab.dataset.page).classList.add('active');
+    if (tab.dataset.page === 'repos' && !window._filesLoaded) loadFiles();
+    if (tab.dataset.page === 'hotspots' && !window._hotspotsLoaded) loadHotspots();
+  });
+});
+
+// Keyboard shortcut: Enter to search
+document.getElementById('search-q').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+document.getElementById('beads-q').addEventListener('keydown', e => { if (e.key === 'Enter') doBeadsSearch(); });
+
+// Language colors
+const LANG_COLORS = {
+  rust:'#dea584',go:'#00add8',python:'#3572a5',javascript:'#f1e05a',
+  typescript:'#3178c6',markdown:'#083fa1',git:'#f44d27',ruby:'#701516',
+  java:'#b07219',c:'#555555',cpp:'#f34b7d',shell:'#89e051',yaml:'#cb171e',
+  toml:'#9c4221',json:'#292929',html:'#e34c26',css:'#563d7c',sql:'#e38c00'
+};
+function langColor(lang) { return LANG_COLORS[lang] || '#6b7280'; }
+
+// Format timestamp
+function timeAgo(ts) {
+  if (!ts) return 'never';
+  const d = Date.now()/1000 - ts;
+  if (d < 60) return 'just now';
+  if (d < 3600) return Math.floor(d/60) + 'm ago';
+  if (d < 86400) return Math.floor(d/3600) + 'h ago';
+  return Math.floor(d/86400) + 'd ago';
+}
+
+// Load status page
+async function loadStatus() {
+  try {
+    const [status, metricsText] = await Promise.all([
+      fetch(API + '/status').then(r => r.json()),
+      fetch(API + '/metrics').then(r => r.text())
+    ]);
+    const ix = status.index;
+    document.getElementById('status-stats').innerHTML = `
+      <div class="card"><div class="card-header">Files Indexed</div><div class="stat-value accent">${ix.total_files.toLocaleString()}</div></div>
+      <div class="card"><div class="card-header">Chunks</div><div class="stat-value green">${ix.total_chunks.toLocaleString()}</div></div>
+      <div class="card"><div class="card-header">Embeddings</div><div class="stat-value">${ix.total_embeddings.toLocaleString()}</div></div>
+      <div class="card"><div class="card-header">Last Indexed</div><div class="stat-value amber" style="font-size:1rem">${timeAgo(ix.last_indexed)}</div></div>
+    `;
+    // Language breakdown
+    const langs = ix.languages.sort((a,b) => b.chunk_count - a.chunk_count);
+    const total = langs.reduce((s,l) => s + l.chunk_count, 0);
+    document.getElementById('lang-bar').innerHTML = '<div class="lang-bar">' +
+      langs.map(l => `<div class="lang-segment" style="width:${(l.chunk_count/total*100).toFixed(1)}%;background:${langColor(l.language)}" title="${l.language}: ${l.chunk_count} chunks"></div>`).join('') +
+      '</div>';
+    document.getElementById('lang-list').innerHTML = langs.map(l =>
+      `<div class="lang-item"><div class="lang-dot" style="background:${langColor(l.language)}"></div>${l.language} <span style="color:var(--dim)">${l.file_count} files / ${l.chunk_count} chunks</span></div>`
+    ).join('');
+    document.getElementById('metrics-raw').textContent = metricsText;
+    document.getElementById('pulse').style.background = 'var(--green)';
+  } catch(e) {
+    document.getElementById('pulse').style.background = 'var(--red)';
+    document.getElementById('status-stats').innerHTML = '<div class="card"><div class="stat-value" style="color:var(--red)">Offline</div><div style="color:var(--dim);margin-top:0.5rem">' + e.message + '</div></div>';
+  }
+}
+
+// Search
+async function doSearch() {
+  const q = document.getElementById('search-q').value.trim();
+  if (!q) return;
+  const mode = document.getElementById('search-mode').value;
+  const limit = document.getElementById('search-limit').value;
+  const el = document.getElementById('search-results');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Searching...</div>';
+  try {
+    const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}&mode=${mode}&limit=${limit}`);
+    const data = await r.json();
+    if (!data.results || data.results.length === 0) {
+      el.innerHTML = '<div class="empty">No results found</div>';
+      return;
+    }
+    el.innerHTML = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${data.count} results (${mode} mode)</div>` +
+      data.results.map(res => `
+        <div class="result">
+          <div class="result-header">
+            <span class="result-path">${res.file_path}</span>
+            <span class="result-type">${res.chunk_type || ''}</span>
+            <span class="result-lines">L${res.start_line}-${res.end_line}</span>
+            <span class="result-score">${(res.score * 100).toFixed(0)}%</span>
+          </div>
+          ${res.name ? `<div class="result-name">${esc(res.name)}</div>` : ''}
+          ${res.content_preview ? `<div class="result-preview">${esc(res.content_preview)}</div>` : ''}
+        </div>
+      `).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+// Files/Repos
+async function loadFiles() {
+  const el = document.getElementById('file-list');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Loading index...</div>';
+  try {
+    // Use search with broad query to discover files, or use status + grep
+    const status = await fetch(API + '/status').then(r => r.json());
+    // We'll use a broad search to get file listing — bobbin doesn't have a dedicated /files endpoint
+    // So we search for common patterns across all files
+    const results = await fetch(`${API}/search?q=*&mode=keyword&limit=500`).then(r => r.json());
+    const fileMap = {};
+    if (results.results) {
+      for (const r of results.results) {
+        if (!fileMap[r.file_path]) fileMap[r.file_path] = { path: r.file_path, lang: r.language, chunks: 0 };
+        fileMap[r.file_path].chunks++;
+      }
+    }
+    window._allFiles = Object.values(fileMap).sort((a,b) => a.path.localeCompare(b.path));
+    window._filesLoaded = true;
+    renderFiles(window._allFiles);
+    // Show stats
+    const langCounts = {};
+    for (const f of window._allFiles) {
+      langCounts[f.lang] = (langCounts[f.lang] || 0) + 1;
+    }
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+function renderFiles(files) {
+  const el = document.getElementById('file-list');
+  if (files.length === 0) {
+    el.innerHTML = '<div class="empty">No files match filter</div>';
+    return;
+  }
+  el.innerHTML = files.map(f => `
+    <div class="file-item">
+      <div class="lang-dot" style="background:${langColor(f.lang)}"></div>
+      <div class="file-path">${f.path}</div>
+      <div class="file-chunks">${f.chunks} chunks</div>
+    </div>
+  `).join('');
+}
+
+function filterFiles() {
+  if (!window._allFiles) return;
+  const q = document.getElementById('repo-filter').value.toLowerCase();
+  renderFiles(q ? window._allFiles.filter(f => f.path.toLowerCase().includes(q)) : window._allFiles);
+}
+
+// Beads search
+async function doBeadsSearch() {
+  const q = document.getElementById('beads-q').value.trim();
+  if (!q) return;
+  const status = document.getElementById('beads-status').value;
+  const el = document.getElementById('beads-results');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Searching beads...</div>';
+  try {
+    let url = `${API}/beads?q=${encodeURIComponent(q)}&limit=30&compact=false`;
+    if (status) url += `&status=${status}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    if (data.error) {
+      el.innerHTML = `<div class="empty">${esc(data.error)}</div>`;
+      return;
+    }
+    if (!data.results || data.results.length === 0) {
+      el.innerHTML = '<div class="empty">No beads found</div>';
+      return;
+    }
+    el.innerHTML = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${data.count} results</div>` +
+      data.results.map(b => `
+        <div class="bead">
+          <div>
+            <span class="bead-priority ${b.priority}">${b.priority}</span>
+          </div>
+          <div style="flex:1">
+            <div class="bead-title"><span class="bead-id">${esc(b.bead_id)}</span> ${esc(b.title)}</div>
+            <div class="bead-meta">${b.status} | ${b.issue_type || ''} ${b.assignee ? '| @' + b.assignee : ''} ${b.labels && b.labels.length ? '| ' + b.labels.join(', ') : ''}</div>
+            ${b.snippet ? `<div class="result-preview" style="margin-top:0.5rem">${esc(b.snippet)}</div>` : ''}
+          </div>
+        </div>
+      `).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+// Hotspots
+async function loadHotspots() {
+  const el = document.getElementById('hotspots-table');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Analyzing hotspots...</div>';
+  try {
+    const data = await fetch(`${API}/hotspots?limit=30`).then(r => r.json());
+    window._hotspotsLoaded = true;
+    if (!data.hotspots || data.hotspots.length === 0) {
+      el.innerHTML = '<div class="empty">No hotspots found</div>';
+      return;
+    }
+    const maxScore = Math.max(...data.hotspots.map(h => h.score));
+    el.innerHTML = `<table>
+      <thead><tr><th>File</th><th>Language</th><th>Churn</th><th>Complexity</th><th>Score</th><th></th></tr></thead>
+      <tbody>${data.hotspots.map(h => `<tr>
+        <td class="mono" style="color:var(--accent)">${h.file}</td>
+        <td><span class="lang-item"><span class="lang-dot" style="background:${langColor(h.language)}"></span>${h.language}</span></td>
+        <td class="mono">${h.churn}</td>
+        <td class="mono">${h.complexity.toFixed(1)}</td>
+        <td class="mono">${h.score.toFixed(2)}</td>
+        <td><div style="width:60px;height:4px;background:var(--surface2);border-radius:2px"><div style="width:${(h.score/maxScore*100).toFixed(0)}%;height:100%;background:${h.score/maxScore > 0.7 ? 'var(--red)' : h.score/maxScore > 0.4 ? 'var(--amber)' : 'var(--green)'};border-radius:2px"></div></div></td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// Init
+loadStatus();
+</script>
+</body>
+</html>

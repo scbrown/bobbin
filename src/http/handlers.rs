@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::response::{Html, IntoResponse};
 use axum::Json;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,7 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
     use tower_http::trace::TraceLayer;
 
     axum::Router::new()
+        .route("/", get(ui_page))
         .route("/search", get(search))
         .route("/grep", get(grep))
         .route("/context", get(context))
@@ -67,6 +68,13 @@ fn internal_error(err: anyhow::Error) -> (StatusCode, Json<ErrorBody>) {
             error: err.to_string(),
         }),
     )
+}
+
+// -- / (UI) --
+
+/// Serve the embedded web UI
+async fn ui_page() -> Html<&'static str> {
+    Html(include_str!("ui.html"))
 }
 
 // -- /search --
