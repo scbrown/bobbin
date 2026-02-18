@@ -572,6 +572,7 @@ mod tests {
             },
             score: 0.95,
             match_type: Some(MatchType::Semantic),
+            indexed_at: None,
         }];
 
         let output = SearchOutput {

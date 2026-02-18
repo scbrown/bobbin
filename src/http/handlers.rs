@@ -746,6 +746,8 @@ pub(super) async fn context(
         content_mode: ContentMode::Full,
         search_limit: params.limit.unwrap_or(20),
         doc_demotion: 0.5,
+        recency_half_life_days: state.config.search.recency_half_life_days,
+        recency_weight: state.config.search.recency_weight,
     };
 
     let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1313,6 +1315,8 @@ pub(super) async fn review(
         content_mode: ContentMode::Full,
         search_limit: 20,
         doc_demotion: 0.5,
+        recency_half_life_days: state.config.search.recency_half_life_days,
+        recency_weight: state.config.search.recency_weight,
     };
 
     let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

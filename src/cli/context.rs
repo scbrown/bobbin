@@ -149,6 +149,8 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         content_mode,
         search_limit: args.limit,
         doc_demotion: 0.5,
+        recency_half_life_days: config.search.recency_half_life_days,
+        recency_weight: config.search.recency_weight,
     };
 
     let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

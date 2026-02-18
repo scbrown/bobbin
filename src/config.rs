@@ -208,6 +208,14 @@ pub struct SearchConfig {
     pub default_limit: usize,
     /// Weight for semantic vs keyword search (0.0 = keyword only, 1.0 = semantic only)
     pub semantic_weight: f32,
+    /// Half-life for recency decay in days. After this many days, a result's
+    /// recency boost drops to 50%. Set to 0.0 to disable recency boosting.
+    pub recency_half_life_days: f32,
+    /// How much recency affects final score (0.0 = no effect, 1.0 = full effect).
+    /// The final score is: `score * (1.0 - weight + weight * decay)` so at
+    /// max weight=1.0, a very old result loses up to 100% of its score.
+    /// At default 0.3, the maximum penalty for old results is 30%.
+    pub recency_weight: f32,
 }
 
 impl Default for SearchConfig {
@@ -215,6 +223,8 @@ impl Default for SearchConfig {
         Self {
             default_limit: 10,
             semantic_weight: 0.7,
+            recency_half_life_days: 30.0,
+            recency_weight: 0.3,
         }
     }
 }

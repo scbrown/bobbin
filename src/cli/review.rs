@@ -148,6 +148,8 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
         content_mode,
         search_limit: 20,
         doc_demotion: 0.5,
+        recency_half_life_days: config.search.recency_half_life_days,
+        recency_weight: config.search.recency_weight,
     };
 
     // Build description of the diff for the query field

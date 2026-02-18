@@ -75,6 +75,9 @@ pub struct SearchResult {
     pub score: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub match_type: Option<MatchType>,
+    /// Unix timestamp when this chunk was indexed (used for recency boosting)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub indexed_at: Option<i64>,
 }
 
 /// How a result was matched

@@ -544,6 +544,11 @@ impl VectorStore {
                 .downcast_ref::<Float32Array>()
                 .context("_distance column has wrong type")?;
 
+            // indexed_at is optional (may not be present in older indices)
+            let indexed_ats = batch
+                .column_by_name("indexed_at")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             for i in 0..batch.num_rows() {
                 let chunk = Chunk {
                     id: ids.value(i).to_string(),
@@ -563,10 +568,14 @@ impl VectorStore {
                 let distance = distances.value(i);
                 let score = 1.0 / (1.0 + distance);
 
+                let indexed_at = indexed_ats
+                    .and_then(|arr| arr.value(i).parse::<i64>().ok());
+
                 search_results.push(SearchResult {
                     chunk,
                     score,
                     match_type: Some(match_type),
+                    indexed_at,
                 });
             }
         }
@@ -640,6 +649,11 @@ impl VectorStore {
                 .column_by_name("_score")
                 .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
 
+            // indexed_at is optional (may not be present in older indices)
+            let indexed_ats = batch
+                .column_by_name("indexed_at")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             for i in 0..batch.num_rows() {
                 let chunk = Chunk {
                     id: ids.value(i).to_string(),
@@ -658,10 +672,14 @@ impl VectorStore {
 
                 let score = scores.map(|s| s.value(i)).unwrap_or(1.0);
 
+                let indexed_at = indexed_ats
+                    .and_then(|arr| arr.value(i).parse::<i64>().ok());
+
                 search_results.push(SearchResult {
                     chunk,
                     score,
                     match_type: Some(MatchType::Keyword),
+                    indexed_at,
                 });
             }
         }

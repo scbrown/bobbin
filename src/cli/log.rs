@@ -369,6 +369,7 @@ mod tests {
             },
             score,
             match_type: Some(MatchType::Semantic),
+            indexed_at: None,
         }
     }
 

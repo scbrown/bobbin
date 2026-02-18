@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::index::Embedder;
 use crate::index::git::GitAnalyzer;
+use crate::search::hybrid::apply_recency_boost;
 use crate::storage::{MetadataStore, VectorStore};
 use crate::types::{Chunk, ChunkType, FileCategory, MatchType, classify_file};
 
@@ -20,6 +21,10 @@ pub struct ContextConfig {
     /// Applied as a multiplier to RRF scores: 1.0 = no demotion, 0.5 = half score.
     /// Source/Test files are unaffected. Default: 0.5.
     pub doc_demotion: f32,
+    /// Half-life for recency decay in days (0.0 = disabled)
+    pub recency_half_life_days: f32,
+    /// Recency weight (0.0 = disabled, 0.3 = default)
+    pub recency_weight: f32,
 }
 
 /// How much content to include in output
@@ -151,6 +156,7 @@ struct SeedResult {
     content: String,
     score: f32,
     match_type: Option<MatchType>,
+    indexed_at: Option<i64>,
 }
 
 /// Internal struct for coupled chunk information
@@ -257,6 +263,7 @@ impl ContextAssembler {
                     content: s.chunk.content,
                     score: s.score,
                     match_type,
+                    indexed_at: None, // External seeds don't carry indexed_at
                 }
             })
             .collect();
@@ -471,6 +478,7 @@ impl ContextAssembler {
                         content: result.chunk.content,
                         score: 0.0,
                         match_type: result.match_type,
+                        indexed_at: result.indexed_at,
                     },
                     rrf_score,
                 ),
@@ -497,22 +505,27 @@ impl ContextAssembler {
                         content: result.chunk.content,
                         score: 0.0,
                         match_type: result.match_type,
+                        indexed_at: result.indexed_at,
                     },
                     rrf_score,
                 ));
         }
 
-        // Apply category-based demotion: doc/config files get demoted so
-        // source/test files rank higher when RRF scores are close.
+        // Apply category-based demotion and recency boost: doc/config files get
+        // demoted so source/test files rank higher when RRF scores are close.
+        // Recency boost favors recently-indexed content over stale results.
         let doc_demotion = self.config.doc_demotion;
+        let recency_hl = self.config.recency_half_life_days;
+        let recency_w = self.config.recency_weight;
         let mut combined: Vec<_> = scores
             .into_values()
             .map(|(result, score)| {
                 let category = classify_file(&result.file_path);
-                let adjusted = match category {
+                let demoted = match category {
                     FileCategory::Documentation | FileCategory::Config => score * doc_demotion,
                     _ => score,
                 };
+                let adjusted = apply_recency_boost(demoted, result.indexed_at, recency_hl, recency_w);
                 (result, adjusted)
             })
             .collect();
@@ -895,6 +908,8 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
         };
 
         let seeds = vec![
@@ -920,6 +935,8 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
         };
 
         let seeds = vec![
@@ -942,6 +959,8 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -961,6 +980,8 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -984,6 +1005,8 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
         };
 
         let seeds = vec![
@@ -1008,6 +1031,8 @@ mod tests {
             content_mode: ContentMode::Full,
             search_limit: 20,
             doc_demotion: 0.5,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
         };
 
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)
@@ -1025,6 +1050,7 @@ mod tests {
             language: "rust".to_string(),
             name: Some(format!("fn_{}", id)),
             chunk_type: ChunkType::Function,
+            indexed_at: None,
             start_line: start,
             end_line: end,
             content: "fn test() {}".to_string(),

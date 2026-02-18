@@ -440,6 +440,7 @@ mod tests {
             },
             score: 0.9,
             match_type: Some(crate::types::MatchType::Semantic),
+            indexed_at: None,
         };
 
         let explanation = build_explanation(&result);
@@ -461,6 +462,7 @@ mod tests {
             },
             score: 0.9,
             match_type: Some(crate::types::MatchType::Semantic),
+            indexed_at: None,
         };
 
         let explanation = build_explanation(&result);
