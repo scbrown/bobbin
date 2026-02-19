@@ -160,6 +160,9 @@ td.mono{font-family:var(--mono)}
         <option value="keyword">Keyword</option>
       </select>
       <input type="number" id="search-limit" value="20" min="1" max="100" style="width:60px" title="Max results">
+      <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.8rem;color:var(--dim);cursor:pointer;white-space:nowrap">
+        <input type="checkbox" id="search-archive" style="accent-color:var(--accent)"> Include archive
+      </label>
       <button onclick="doSearch()">Search</button>
     </div>
     <div id="search-results"></div>
@@ -269,34 +272,81 @@ async function loadStatus() {
   }
 }
 
+// Strip bobbin index prefix to get repo-relative path
+const INDEX_PREFIX = '/var/lib/bobbin/repos/';
+function relPath(fp) {
+  return fp.startsWith(INDEX_PREFIX) ? fp.slice(INDEX_PREFIX.length) : fp;
+}
+
+// Build a link to the file on git.svc
+function repoLink(fp, startLine) {
+  const rel = relPath(fp);
+  const slashIdx = rel.indexOf('/');
+  if (slashIdx < 0) return null;
+  const repo = rel.slice(0, slashIdx);
+  const filePath = rel.slice(slashIdx + 1);
+  let url = `http://git.svc/stiwi/${repo}/src/branch/main/${filePath}`;
+  if (startLine) url += `#L${startLine}`;
+  return url;
+}
+
 // Search
 async function doSearch() {
   const q = document.getElementById('search-q').value.trim();
   if (!q) return;
   const mode = document.getElementById('search-mode').value;
   const limit = document.getElementById('search-limit').value;
+  const includeArchive = document.getElementById('search-archive').checked;
   const el = document.getElementById('search-results');
   el.innerHTML = '<div class="loading"><div class="spinner"></div> Searching...</div>';
   try {
-    const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}&mode=${mode}&limit=${limit}`);
-    const data = await r.json();
-    if (!data.results || data.results.length === 0) {
+    const fetches = [fetch(`${API}/search?q=${encodeURIComponent(q)}&mode=${mode}&limit=${limit}`).then(r => r.json())];
+    if (includeArchive) {
+      fetches.push(fetch(`${API}/archive/search?q=${encodeURIComponent(q)}&limit=10`).then(r => r.json()).catch(() => ({results:[]})));
+    }
+    const [data, archiveData] = await Promise.all(fetches);
+    let results = data.results || [];
+    const archiveResults = includeArchive && archiveData ? (archiveData.results || []) : [];
+    if (results.length === 0 && archiveResults.length === 0) {
       el.innerHTML = '<div class="empty">No results found</div>';
       return;
     }
-    el.innerHTML = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${data.count} results (${mode} mode)</div>` +
-      data.results.map(res => `
+    // Normalize scores relative to top result
+    const maxScore = results.length > 0 ? Math.max(...results.map(r => r.score)) : 1;
+    let html = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${results.length} results (${mode} mode)${archiveResults.length > 0 ? ` + ${archiveResults.length} archive` : ''}</div>`;
+    html += results.map(res => {
+      const rel = relPath(res.file_path);
+      const link = repoLink(res.file_path, res.start_line);
+      const pct = maxScore > 0 ? Math.round((res.score / maxScore) * 100) : 0;
+      return `
         <div class="result">
           <div class="result-header">
-            <span class="result-path">${res.file_path}</span>
+            ${link ? `<a class="result-path" href="${link}" target="_blank">${esc(rel)}</a>` : `<span class="result-path">${esc(rel)}</span>`}
             <span class="result-type">${res.chunk_type || ''}</span>
             <span class="result-lines">L${res.start_line}-${res.end_line}</span>
-            <span class="result-score">${(res.score * 100).toFixed(0)}%</span>
+            <span class="result-score">${pct}%</span>
           </div>
           ${res.name ? `<div class="result-name">${esc(res.name)}</div>` : ''}
           ${res.content_preview ? `<div class="result-preview">${esc(res.content_preview)}</div>` : ''}
         </div>
+      `;
+    }).join('');
+    // Archive results section
+    if (archiveResults.length > 0) {
+      html += '<h3 style="margin-top:1rem;color:var(--amber)">Archive Results</h3>';
+      html += archiveResults.map(a => `
+        <div class="result" style="border-left:3px solid var(--amber)">
+          <div class="result-header">
+            <span class="result-path">${esc(a.id || a.file_path || '')}</span>
+            <span class="result-type">archive</span>
+            ${a.score ? `<span class="result-score">${(a.score * 100).toFixed(0)}</span>` : ''}
+          </div>
+          ${a.title ? `<div class="result-name">${esc(a.title)}</div>` : ''}
+          ${a.snippet || a.content_preview ? `<div class="result-preview">${esc(a.snippet || a.content_preview)}</div>` : ''}
+        </div>
       `).join('');
+    }
+    el.innerHTML = html;
   } catch(e) {
     el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
   }
@@ -338,13 +388,16 @@ function renderFiles(files) {
     el.innerHTML = '<div class="empty">No files match filter</div>';
     return;
   }
-  el.innerHTML = files.map(f => `
+  el.innerHTML = files.map(f => {
+    const rel = relPath(f.path);
+    const link = repoLink(f.path);
+    return `
     <div class="file-item">
       <div class="lang-dot" style="background:${langColor(f.lang)}"></div>
-      <div class="file-path">${f.path}</div>
+      ${link ? `<a class="file-path" href="${link}" target="_blank">${rel}</a>` : `<div class="file-path">${rel}</div>`}
       <div class="file-chunks">${f.chunks} chunks</div>
     </div>
-  `).join('');
+  `}).join('');
 }
 
 function filterFiles() {
