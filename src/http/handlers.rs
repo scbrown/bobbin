@@ -49,6 +49,9 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/archive/entry/{id}", get(archive_entry))
         .route("/archive/recent", get(archive_recent))
         .route("/status", get(status))
+        .route("/healthz", get(healthz))
+        .route("/repos", get(list_repos))
+        .route("/repos/{name}/files", get(list_repo_files))
         .route("/commands", get(list_commands))
         .route("/metrics", get(metrics))
         .route("/webhook/push", post(webhook_push))
@@ -274,6 +277,105 @@ pub(super) async fn get_chunk(
 struct StatusResponse {
     status: String,
     index: crate::types::IndexStats,
+}
+
+// -- /healthz (lightweight liveness probe — does NOT query the index) --
+
+pub(super) async fn healthz() -> Json<serde_json::Value> {
+    Json(serde_json::json!({"status": "ok"}))
+}
+
+// -- /repos --
+
+#[derive(Serialize)]
+struct ReposListResponse {
+    count: usize,
+    repos: Vec<RepoSummary>,
+}
+
+#[derive(Serialize)]
+struct RepoSummary {
+    name: String,
+    file_count: u64,
+    chunk_count: u64,
+    languages: Vec<crate::types::LanguageStats>,
+}
+
+pub(super) async fn list_repos(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ReposListResponse>, (StatusCode, Json<ErrorBody>)> {
+    let store = open_vector_store(&state).await.map_err(internal_error)?;
+
+    let repos = store
+        .get_all_repos()
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+
+    let mut summaries = Vec::new();
+    for repo_name in &repos {
+        let stats = store
+            .get_stats(Some(repo_name))
+            .await
+            .map_err(|e| internal_error(e.into()))?;
+        summaries.push(RepoSummary {
+            name: repo_name.clone(),
+            file_count: stats.total_files,
+            chunk_count: stats.total_chunks,
+            languages: stats.languages,
+        });
+    }
+
+    // Sort by chunk count descending
+    summaries.sort_by(|a, b| b.chunk_count.cmp(&a.chunk_count));
+
+    Ok(Json(ReposListResponse {
+        count: summaries.len(),
+        repos: summaries,
+    }))
+}
+
+// -- /repos/{name}/files --
+
+#[derive(Serialize)]
+struct RepoFilesResponse {
+    repo: String,
+    count: usize,
+    files: Vec<RepoFileItem>,
+}
+
+#[derive(Serialize)]
+struct RepoFileItem {
+    path: String,
+    language: String,
+}
+
+pub(super) async fn list_repo_files(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Result<Json<RepoFilesResponse>, (StatusCode, Json<ErrorBody>)> {
+    let store = open_vector_store(&state).await.map_err(internal_error)?;
+
+    let files = store
+        .get_all_file_paths(Some(&name))
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+
+    let items: Vec<RepoFileItem> = files
+        .into_iter()
+        .map(|p| {
+            let lang = detect_language(&p);
+            RepoFileItem {
+                path: p,
+                language: lang,
+            }
+        })
+        .collect();
+
+    Ok(Json(RepoFilesResponse {
+        repo: name,
+        count: items.len(),
+        files: items,
+    }))
 }
 
 // -- /commands (user-defined convenience commands) --

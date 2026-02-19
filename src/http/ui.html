@@ -170,12 +170,19 @@ td.mono{font-family:var(--mono)}
 
   <!-- REPOS PAGE -->
   <div class="page" id="page-repos">
-    <h2>Indexed Files</h2>
-    <div class="search-box">
-      <input type="text" id="repo-filter" placeholder="Filter files..." oninput="filterFiles()">
-    </div>
-    <div class="card" style="max-height:70vh;overflow-y:auto">
-      <div id="file-list"></div>
+    <h2>Repositories</h2>
+    <div id="repos-list"></div>
+    <div id="repo-files-section" style="display:none;margin-top:1.5rem">
+      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem">
+        <h3 id="repo-files-title" style="margin:0"></h3>
+        <span style="color:var(--dim);cursor:pointer;font-size:0.85rem" onclick="closeRepoFiles()">[close]</span>
+      </div>
+      <div class="search-box">
+        <input type="text" id="repo-filter" placeholder="Filter files..." oninput="filterFiles()">
+      </div>
+      <div class="card" style="max-height:50vh;overflow-y:auto">
+        <div id="file-list"></div>
+      </div>
     </div>
   </div>
 
@@ -213,7 +220,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('page-' + tab.dataset.page).classList.add('active');
-    if (tab.dataset.page === 'repos' && !window._filesLoaded) loadFiles();
+    if (tab.dataset.page === 'repos' && !window._reposLoaded) loadRepos();
     if (tab.dataset.page === 'hotspots' && !window._hotspotsLoaded) loadHotspots();
   });
 });
@@ -352,34 +359,62 @@ async function doSearch() {
   }
 }
 
-// Files/Repos
-async function loadFiles() {
-  const el = document.getElementById('file-list');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div> Loading index...</div>';
+// Repos
+async function loadRepos() {
+  const el = document.getElementById('repos-list');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Loading repositories...</div>';
   try {
-    // Use search with broad query to discover files, or use status + grep
-    const status = await fetch(API + '/status').then(r => r.json());
-    // We'll use a broad search to get file listing — bobbin doesn't have a dedicated /files endpoint
-    // So we search for common patterns across all files
-    const results = await fetch(`${API}/search?q=*&mode=keyword&limit=500`).then(r => r.json());
-    const fileMap = {};
-    if (results.results) {
-      for (const r of results.results) {
-        if (!fileMap[r.file_path]) fileMap[r.file_path] = { path: r.file_path, lang: r.language, chunks: 0 };
-        fileMap[r.file_path].chunks++;
-      }
+    const data = await fetch(API + '/repos').then(r => r.json());
+    window._reposLoaded = true;
+    if (!data.repos || data.repos.length === 0) {
+      el.innerHTML = '<div class="empty">No repositories indexed</div>';
+      return;
     }
-    window._allFiles = Object.values(fileMap).sort((a,b) => a.path.localeCompare(b.path));
-    window._filesLoaded = true;
-    renderFiles(window._allFiles);
-    // Show stats
-    const langCounts = {};
-    for (const f of window._allFiles) {
-      langCounts[f.lang] = (langCounts[f.lang] || 0) + 1;
-    }
+    const totalFiles = data.repos.reduce((s,r) => s + r.file_count, 0);
+    const totalChunks = data.repos.reduce((s,r) => s + r.chunk_count, 0);
+    el.innerHTML = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${data.count} repos — ${totalFiles.toLocaleString()} files — ${totalChunks.toLocaleString()} chunks</div>` +
+      '<div class="grid grid-3">' + data.repos.map(repo => {
+        const topLangs = repo.languages.slice(0, 4);
+        const langTotal = repo.languages.reduce((s,l) => s + l.chunk_count, 0);
+        return `
+          <div class="card" style="cursor:pointer" onclick="loadRepoFiles('${esc(repo.name)}')">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+              <a class="result-path" style="font-size:0.95rem;font-weight:600" href="http://git.svc/stiwi/${esc(repo.name)}" target="_blank" onclick="event.stopPropagation()">${esc(repo.name)}</a>
+            </div>
+            <div style="display:flex;gap:1.5rem;margin-bottom:0.5rem">
+              <div><span class="stat-value accent" style="font-size:1.2rem">${repo.file_count}</span> <span style="color:var(--dim);font-size:0.8rem">files</span></div>
+              <div><span class="stat-value green" style="font-size:1.2rem">${repo.chunk_count.toLocaleString()}</span> <span style="color:var(--dim);font-size:0.8rem">chunks</span></div>
+            </div>
+            <div class="lang-bar">${topLangs.map(l => `<div class="lang-segment" style="width:${(l.chunk_count/langTotal*100).toFixed(1)}%;background:${langColor(l.language)}" title="${l.language}: ${l.file_count} files"></div>`).join('')}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.35rem">${topLangs.map(l => `<span style="font-size:0.7rem;color:var(--dim)"><span class="lang-dot" style="display:inline-block;width:6px;height:6px;background:${langColor(l.language)}"></span> ${l.language}</span>`).join('')}</div>
+          </div>
+        `;
+      }).join('') + '</div>';
   } catch(e) {
     el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
   }
+}
+
+// Repo files
+async function loadRepoFiles(repoName) {
+  const section = document.getElementById('repo-files-section');
+  const el = document.getElementById('file-list');
+  const title = document.getElementById('repo-files-title');
+  section.style.display = 'block';
+  title.textContent = repoName;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Loading files...</div>';
+  try {
+    const data = await fetch(`${API}/repos/${encodeURIComponent(repoName)}/files`).then(r => r.json());
+    window._allFiles = data.files.map(f => ({ path: f.path, lang: f.language, repo: repoName }));
+    renderFiles(window._allFiles);
+    section.scrollIntoView({behavior:'smooth'});
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+function closeRepoFiles() {
+  document.getElementById('repo-files-section').style.display = 'none';
 }
 
 function renderFiles(files) {
@@ -388,16 +423,17 @@ function renderFiles(files) {
     el.innerHTML = '<div class="empty">No files match filter</div>';
     return;
   }
-  el.innerHTML = files.map(f => {
-    const rel = relPath(f.path);
-    const link = repoLink(f.path);
-    return `
-    <div class="file-item">
-      <div class="lang-dot" style="background:${langColor(f.lang)}"></div>
-      ${link ? `<a class="file-path" href="${link}" target="_blank">${rel}</a>` : `<div class="file-path">${rel}</div>`}
-      <div class="file-chunks">${f.chunks} chunks</div>
-    </div>
-  `}).join('');
+  el.innerHTML = `<div style="color:var(--dim);font-size:0.8rem;margin-bottom:0.5rem">${files.length} files</div>` +
+    files.map(f => {
+      const rel = relPath(f.path);
+      const link = repoLink(f.path);
+      return `
+      <div class="file-item">
+        <div class="lang-dot" style="background:${langColor(f.lang)}"></div>
+        ${link ? `<a class="file-path" href="${link}" target="_blank">${esc(rel)}</a>` : `<div class="file-path">${esc(rel)}</div>`}
+      </div>
+    `;
+    }).join('');
 }
 
 function filterFiles() {
