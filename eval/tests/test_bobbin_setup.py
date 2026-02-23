@@ -5,13 +5,25 @@ Uses mocks for subprocess since we don't invoke real bobbin binary.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from runner.bobbin_setup import BobbinSetupError, _find_bobbin, _parse_profile, setup_bobbin
+from runner.bobbin_setup import (
+    ALLOWED_OVERRIDE_KEYS,
+    BobbinSetupError,
+    _find_bobbin,
+    _format_toml_value,
+    _parse_profile,
+    _set_toml_value,
+    apply_config_overrides,
+    generate_override_settings,
+    parse_config_override,
+    setup_bobbin,
+)
 
 
 class TestFindBobbin:
@@ -232,3 +244,232 @@ class TestParseProfile:
 
     def test_returns_none_for_empty_string(self):
         assert _parse_profile("") is None
+
+
+_SAMPLE_CONFIG = """\
+[index]
+use_gitignore = true
+
+[search]
+semantic_weight = 0.7
+recency_weight = 0.3
+doc_demotion = 0.5
+rrf_k = 60.0
+
+[git]
+coupling_enabled = true
+coupling_depth = 5000
+
+[hooks]
+gate_threshold = 0.75
+show_docs = true
+"""
+
+
+class TestParseConfigOverride:
+    def test_valid_override(self):
+        key, val = parse_config_override("semantic_weight=0.5")
+        assert key == "semantic_weight"
+        assert val == "0.5"
+
+    def test_strips_whitespace(self):
+        key, val = parse_config_override("  gate_threshold = 1.0 ")
+        assert key == "gate_threshold"
+        assert val == "1.0"
+
+    def test_unknown_key_raises(self):
+        with pytest.raises(ValueError, match="Unknown override key"):
+            parse_config_override("bogus_key=42")
+
+    def test_no_equals_raises(self):
+        with pytest.raises(ValueError, match="Invalid override format"):
+            parse_config_override("semantic_weight")
+
+    def test_all_keys_valid(self):
+        for key in ALLOWED_OVERRIDE_KEYS:
+            k, _ = parse_config_override(f"{key}=1")
+            assert k == key
+
+
+class TestSetTomlValue:
+    def test_replace_existing_key(self):
+        result = _set_toml_value(_SAMPLE_CONFIG, "search", "semantic_weight", 0.0)
+        assert "semantic_weight = 0.0" in result
+        assert "semantic_weight = 0.7" not in result
+
+    def test_add_missing_key_to_existing_section(self):
+        result = _set_toml_value(_SAMPLE_CONFIG, "search", "new_param", 42)
+        assert "new_param = 42" in result
+        # Should be between [search] and [git]
+        lines = result.splitlines()
+        search_idx = next(i for i, l in enumerate(lines) if l.strip() == "[search]")
+        git_idx = next(i for i, l in enumerate(lines) if l.strip() == "[git]")
+        new_idx = next(i for i, l in enumerate(lines) if "new_param" in l)
+        assert search_idx < new_idx <= git_idx
+
+    def test_add_missing_section_and_key(self):
+        result = _set_toml_value(_SAMPLE_CONFIG, "new_section", "foo", True)
+        assert "[new_section]" in result
+        assert "foo = true" in result
+
+    def test_replace_int_value(self):
+        result = _set_toml_value(_SAMPLE_CONFIG, "git", "coupling_depth", 0)
+        assert "coupling_depth = 0" in result
+        assert "coupling_depth = 5000" not in result
+
+    def test_replace_bool_value(self):
+        result = _set_toml_value(_SAMPLE_CONFIG, "hooks", "show_docs", False)
+        assert "show_docs = false" in result
+        assert "show_docs = true" not in result
+
+
+class TestFormatTomlValue:
+    def test_bool_true(self):
+        assert _format_toml_value(True) == "true"
+
+    def test_bool_false(self):
+        assert _format_toml_value(False) == "false"
+
+    def test_int(self):
+        assert _format_toml_value(42) == "42"
+
+    def test_float(self):
+        result = _format_toml_value(0.5)
+        assert "." in result
+        assert float(result) == 0.5
+
+    def test_float_zero(self):
+        result = _format_toml_value(0.0)
+        assert "." in result
+        assert float(result) == 0.0
+
+
+class TestApplyConfigOverrides:
+    def test_modifies_config_file(self, tmp_path: Path):
+        config_dir = tmp_path / ".bobbin"
+        config_dir.mkdir()
+        (config_dir / "config.toml").write_text(_SAMPLE_CONFIG)
+
+        apply_config_overrides(str(tmp_path), {"semantic_weight": "0.0"})
+
+        content = (config_dir / "config.toml").read_text()
+        assert "semantic_weight = 0.0" in content
+
+    def test_multiple_overrides(self, tmp_path: Path):
+        config_dir = tmp_path / ".bobbin"
+        config_dir.mkdir()
+        (config_dir / "config.toml").write_text(_SAMPLE_CONFIG)
+
+        apply_config_overrides(str(tmp_path), {
+            "semantic_weight": "0.0",
+            "gate_threshold": "1.0",
+            "coupling_depth": "0",
+        })
+
+        content = (config_dir / "config.toml").read_text()
+        assert "semantic_weight = 0.0" in content
+        assert "gate_threshold = 1.0" in content
+        assert "coupling_depth = 0" in content
+
+    def test_missing_config_raises(self, tmp_path: Path):
+        with pytest.raises(BobbinSetupError, match="Config not found"):
+            apply_config_overrides(str(tmp_path), {"semantic_weight": "0.0"})
+
+    def test_blame_bridging_maps_to_show_docs(self, tmp_path: Path):
+        config_dir = tmp_path / ".bobbin"
+        config_dir.mkdir()
+        (config_dir / "config.toml").write_text(_SAMPLE_CONFIG)
+
+        apply_config_overrides(str(tmp_path), {"blame_bridging": "false"})
+
+        content = (config_dir / "config.toml").read_text()
+        assert "show_docs = false" in content
+
+
+class TestGenerateOverrideSettings:
+    def test_rewrites_gate_threshold(self, tmp_path: Path):
+        base = tmp_path / "settings.json"
+        base.write_text(json.dumps({
+            "hooks": {
+                "UserPromptSubmit": [{
+                    "hooks": [{
+                        "command": "bobbin hook inject-context --gate-threshold 0.0 --show-docs false",
+                        "type": "command",
+                    }],
+                }],
+            },
+        }))
+
+        out = tmp_path / "override.json"
+        generate_override_settings(str(base), {"gate_threshold": "0.9"}, str(out))
+
+        settings = json.loads(out.read_text())
+        cmd = settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+        assert "--gate-threshold 0.9" in cmd
+        assert "--gate-threshold 0.0" not in cmd
+
+    def test_rewrites_blame_bridging_to_show_docs(self, tmp_path: Path):
+        base = tmp_path / "settings.json"
+        base.write_text(json.dumps({
+            "hooks": {
+                "UserPromptSubmit": [{
+                    "hooks": [{
+                        "command": "bobbin hook inject-context --gate-threshold 0.0 --show-docs false",
+                        "type": "command",
+                    }],
+                }],
+            },
+        }))
+
+        out = tmp_path / "override.json"
+        generate_override_settings(str(base), {"blame_bridging": "true"}, str(out))
+
+        settings = json.loads(out.read_text())
+        cmd = settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+        assert "--show-docs true" in cmd
+
+    def test_missing_base_raises(self, tmp_path: Path):
+        with pytest.raises(BobbinSetupError, match="Base settings not found"):
+            generate_override_settings(
+                str(tmp_path / "nope.json"), {}, str(tmp_path / "out.json"),
+            )
+
+
+class TestSetupBobbinWithOverrides:
+    @pytest.fixture()
+    def mock_bobbin(self):
+        popen_inst = MagicMock()
+        popen_inst.stderr = iter([])
+        popen_inst.stdout.read.return_value = ""
+        popen_inst.wait.return_value = None
+        popen_inst.returncode = 0
+
+        with (
+            patch("runner.bobbin_setup._find_bobbin", return_value="/usr/bin/bobbin"),
+            patch("runner.bobbin_setup.subprocess.run") as mock_run,
+            patch("runner.bobbin_setup.subprocess.Popen") as mock_popen,
+        ):
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr="",
+            )
+            mock_popen.return_value = popen_inst
+            yield mock_run, mock_popen
+
+    def test_applies_overrides_after_init(self, mock_bobbin, tmp_path: Path):
+        """config_overrides are applied to config.toml created by init."""
+        mock_run, _ = mock_bobbin
+
+        # Pre-create the config file that bobbin init would produce.
+        config_dir = tmp_path / ".bobbin"
+        config_dir.mkdir(exist_ok=True)
+        (config_dir / "config.toml").write_text(_SAMPLE_CONFIG)
+
+        mock_run.side_effect = [
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),  # init
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="{}", stderr=""),  # status
+        ]
+
+        setup_bobbin(str(tmp_path), config_overrides={"semantic_weight": "0.0"})
+
+        content = (config_dir / "config.toml").read_text()
+        assert "semantic_weight = 0.0" in content

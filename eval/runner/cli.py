@@ -26,6 +26,11 @@ from pathlib import Path
 
 import click
 
+from runner.bobbin_setup import (
+    ALLOWED_OVERRIDE_KEYS,
+    generate_override_settings,
+    parse_config_override,
+)
 from runner.task_loader import TaskLoadError, load_all_tasks, load_task_by_id
 
 logger = logging.getLogger(__name__)
@@ -33,6 +38,31 @@ logger = logging.getLogger(__name__)
 _EVAL_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_SETTINGS = _EVAL_ROOT / "settings-with-bobbin.json"
 _NO_BOBBIN_SETTINGS = _EVAL_ROOT / "settings-no-bobbin.json"
+
+
+def _parse_override_specs(specs: tuple[str, ...]) -> list[dict[str, str]]:
+    """Parse ``--config-overrides`` specs into per-ablation override dicts.
+
+    Each spec is a ``key=value`` string.  Each spec becomes a separate
+    ablation variant (one override at a time) to isolate the effect of
+    individual parameters.
+
+    Returns a list of single-key dicts, one per ablation variant.
+    """
+    variants: list[dict[str, str]] = []
+    for spec in specs:
+        key, raw_value = parse_config_override(spec)
+        variants.append({key: raw_value})
+    return variants
+
+
+def _override_approach_name(overrides: dict[str, str]) -> str:
+    """Build a short approach name for an override variant.
+
+    Example: ``"with-bobbin+semantic_weight=0.0"``
+    """
+    parts = [f"{k}={v}" for k, v in sorted(overrides.items())]
+    return "with-bobbin+" + ",".join(parts)
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -152,7 +182,8 @@ def _build_prompt(task: dict, approach: str = "no-bobbin") -> str:
         f"{desc}\n\n"
         f"Implement the fix. Run the test suite with `{test_cmd}` to verify."
     )
-    if approach == "with-bobbin":
+    # Override approaches (with-bobbin+key=value) also get the bobbin prompt.
+    if approach == "with-bobbin" or approach.startswith("with-bobbin+"):
         base += (
             "\n\nThis project has bobbin installed (a semantic code search engine). "
             "Before exploring manually, use bobbin to find relevant code:\n"
@@ -333,6 +364,7 @@ def _run_single(
     index_timeout: int = 600,
     skip_verify: bool = False,
     save_stream: bool = True,
+    config_overrides: dict[str, str] | None = None,
 ) -> dict:
     """Execute a single task × approach × attempt evaluation run.
 
@@ -385,13 +417,21 @@ def _run_single(
         except Exception as exc:
             click.echo(f"    LOC stats collection failed (non-fatal): {exc}", err=True)
 
-        # 2b. Bobbin setup (with-bobbin only).
+        # 2b. Bobbin setup (with-bobbin and override approaches).
         pre_agent_baseline = None
         bobbin_metadata = None
-        if approach == "with-bobbin":
-            click.echo("    Running bobbin init + index...")
+        is_bobbin_approach = approach == "with-bobbin" or approach.startswith("with-bobbin+")
+        if is_bobbin_approach:
+            override_label = ""
+            if config_overrides:
+                override_label = f" (overrides: {config_overrides})"
+            click.echo(f"    Running bobbin init + index...{override_label}")
             try:
-                bobbin_metadata = setup_bobbin(str(ws), timeout=index_timeout)
+                bobbin_metadata = setup_bobbin(
+                    str(ws),
+                    timeout=index_timeout,
+                    config_overrides=config_overrides,
+                )
             except Exception as exc:
                 click.echo(f"    Bobbin setup failed: {exc}", err=True)
                 result = {
@@ -401,6 +441,7 @@ def _run_single(
                     "status": "bobbin_setup_error",
                     "error": str(exc),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "config_overrides": config_overrides,
                 }
                 _save_result(result, results_dir, run_id=run_id)
                 return result
@@ -413,7 +454,15 @@ def _run_single(
         click.echo(f"    Running Claude Code (model={model}, budget=${budget:.2f})...")
         # Always pass a settings file to isolate from user's global hooks.
         # no-bobbin gets a clean settings file; with-bobbin gets the bobbin one.
-        if approach == "with-bobbin":
+        # Override approaches get a modified settings file with hook-level overrides.
+        if is_bobbin_approach and config_overrides and settings_file:
+            override_settings_path = str(
+                Path(tmpdir) / f"settings-override-{attempt}.json"
+            )
+            run_settings = generate_override_settings(
+                settings_file, config_overrides, override_settings_path,
+            )
+        elif is_bobbin_approach:
             run_settings = settings_file
         else:
             run_settings = str(_NO_BOBBIN_SETTINGS) if _NO_BOBBIN_SETTINGS.exists() else None
@@ -446,9 +495,9 @@ def _run_single(
         agent_diff = diff_snapshot(ws, diff_base, snap)
         ground_truth_diff = diff_snapshot(ws, parent, task["commit"])
 
-        # 5. Read bobbin metrics (with-bobbin only).
+        # 5. Read bobbin metrics (bobbin approaches only).
         bobbin_metrics = None
-        if approach == "with-bobbin":
+        if is_bobbin_approach:
             bobbin_metrics = _read_bobbin_metrics(
                 ws, metrics_tag, diff_result.get("ground_truth_files", []),
             )
@@ -532,6 +581,7 @@ def _run_single(
             "bobbin_metadata": bobbin_metadata,
             "bobbin_metrics": bobbin_metrics,
             "injection_result": injection_result,
+            "config_overrides": config_overrides,
             "tool_use_summary": agent_result.get("tool_use_summary"),
             "output_summary": _extract_output_summary(agent_result),
         }
@@ -731,6 +781,17 @@ def cli(verbose: bool):
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
 @click.option("--save-stream/--no-save-stream", default=True, help="Save raw JSONL stream alongside results.")
 @click.option("--force-budget", is_flag=True, help="Skip session budget check (run even if token is low).")
+@click.option(
+    "--config-overrides", "-C",
+    multiple=True,
+    help=(
+        "Override bobbin config for ablation testing (repeatable). "
+        "Each KEY=VALUE creates a separate ablation approach. "
+        "Supported keys: semantic_weight, coupling_depth, gate_threshold, "
+        "doc_demotion, recency_weight, blame_bridging. "
+        "Example: -C semantic_weight=0.0 -C gate_threshold=1.0"
+    ),
+)
 def run_task(
     task_id: str,
     attempts: int,
@@ -745,10 +806,20 @@ def run_task(
     skip_verify: bool,
     save_stream: bool,
     force_budget: bool,
+    config_overrides: tuple[str, ...],
 ):
     """Run evaluation for a single task.
 
     TASK_ID is the task identifier (e.g., ruff-001).
+
+    Use --config-overrides/-C for ablation testing.  Each override creates a
+    separate with-bobbin variant where one parameter is changed, isolating its
+    effect on eval outcomes.
+
+    \b
+    Examples:
+        bobbin-eval run-task ruff-001 -C semantic_weight=0.0
+        bobbin-eval run-task ruff-001 -C semantic_weight=0.0 -C gate_threshold=1.0
     """
     _check_session_budget(force=force_budget)
 
@@ -759,6 +830,9 @@ def run_task(
     if settings_file is None and _DEFAULT_SETTINGS.exists():
         settings_file = str(_DEFAULT_SETTINGS)
 
+    # Parse config overrides into ablation variants.
+    override_variants = _parse_override_specs(config_overrides) if config_overrides else []
+
     try:
         task = load_task_by_id(task_id, tasks_path)
     except TaskLoadError as exc:
@@ -766,16 +840,24 @@ def run_task(
         sys.exit(1)
 
     approach_list = _resolve_approaches(approaches)
-    total = len(approach_list) * attempts
+    # Each override variant adds an ablation approach.
+    ablation_approaches = [
+        (_override_approach_name(v), v) for v in override_variants
+    ]
+    all_approach_names = approach_list + [name for name, _ in ablation_approaches]
+    total = len(all_approach_names) * attempts
     run_id = _generate_run_id()
     started_at = datetime.now(timezone.utc).isoformat()
     click.echo(
         f"Running task {task_id}: {total} runs "
-        f"({len(approach_list)} approaches × {attempts} attempts) "
+        f"({len(all_approach_names)} approaches × {attempts} attempts) "
         f"[run {run_id}]"
     )
+    if ablation_approaches:
+        click.echo(f"  Ablation variants: {[n for n, _ in ablation_approaches]}")
 
     results = []
+    # Run standard approaches (no-bobbin, with-bobbin).
     for approach in approach_list:
         for attempt in range(attempts):
             result = _run_single(
@@ -794,6 +876,26 @@ def run_task(
             )
             results.append(result)
 
+    # Run ablation approaches (with-bobbin + one override each).
+    for approach_name, overrides in ablation_approaches:
+        for attempt in range(attempts):
+            result = _run_single(
+                task,
+                approach_name,
+                attempt,
+                rdir,
+                run_id=run_id,
+                settings_file=settings_file,
+                model=model,
+                budget=budget,
+                timeout=timeout,
+                index_timeout=index_timeout,
+                skip_verify=skip_verify,
+                save_stream=save_stream,
+                config_overrides=overrides,
+            )
+            results.append(result)
+
     completed_at = datetime.now(timezone.utc).isoformat()
     completed_count = sum(1 for r in results if r.get("status") == "completed")
     _write_manifest(
@@ -806,7 +908,7 @@ def run_task(
         timeout=timeout,
         index_timeout=index_timeout,
         attempts_per_approach=attempts,
-        approaches=approach_list,
+        approaches=all_approach_names,
         tasks=[task_id],
         total_results=len(results),
         completed_results=completed_count,
@@ -833,6 +935,17 @@ def run_task(
 @click.option("--skip-verify", is_flag=True, help="Skip test verification at parent commit.")
 @click.option("--save-stream/--no-save-stream", default=True, help="Save raw JSONL stream alongside results.")
 @click.option("--force-budget", is_flag=True, help="Skip session budget check (run even if token is low).")
+@click.option(
+    "--config-overrides", "-C",
+    multiple=True,
+    help=(
+        "Override bobbin config for ablation testing (repeatable). "
+        "Each KEY=VALUE creates a separate ablation approach. "
+        "Supported keys: semantic_weight, coupling_depth, gate_threshold, "
+        "doc_demotion, recency_weight, blame_bridging. "
+        "Example: -C semantic_weight=0.0 -C gate_threshold=1.0"
+    ),
+)
 def run_all(
     tasks_dir: str,
     results_dir: str,
@@ -846,8 +959,13 @@ def run_all(
     skip_verify: bool,
     save_stream: bool,
     force_budget: bool,
+    config_overrides: tuple[str, ...],
 ):
-    """Run evaluation for all tasks in the tasks directory."""
+    """Run evaluation for all tasks in the tasks directory.
+
+    Use --config-overrides/-C for ablation testing.  See ``run-task --help``
+    for details.
+    """
     _check_session_budget(force=force_budget)
 
     tasks_path = _resolve_tasks_dir(tasks_dir)
@@ -857,6 +975,9 @@ def run_all(
     if settings_file is None and _DEFAULT_SETTINGS.exists():
         settings_file = str(_DEFAULT_SETTINGS)
 
+    # Parse config overrides into ablation variants.
+    override_variants = _parse_override_specs(config_overrides) if config_overrides else []
+
     try:
         tasks = load_all_tasks(tasks_path)
     except TaskLoadError as exc:
@@ -864,18 +985,25 @@ def run_all(
         sys.exit(1)
 
     approach_list = _resolve_approaches(approaches)
-    total = len(tasks) * len(approach_list) * attempts
+    ablation_approaches = [
+        (_override_approach_name(v), v) for v in override_variants
+    ]
+    all_approach_names = approach_list + [name for name, _ in ablation_approaches]
+    total = len(tasks) * len(all_approach_names) * attempts
     run_id = _generate_run_id()
     started_at = datetime.now(timezone.utc).isoformat()
     click.echo(
         f"Running {len(tasks)} tasks: {total} total runs "
-        f"({len(approach_list)} approaches × {attempts} attempts) "
+        f"({len(all_approach_names)} approaches × {attempts} attempts) "
         f"[run {run_id}]"
     )
+    if ablation_approaches:
+        click.echo(f"  Ablation variants: {[n for n, _ in ablation_approaches]}")
 
     all_results = []
     for task in tasks:
         click.echo(f"\n--- {task['id']}: {task['repo']} ---")
+        # Standard approaches.
         for approach in approach_list:
             for attempt in range(attempts):
                 result = _run_single(
@@ -893,6 +1021,25 @@ def run_all(
                     save_stream=save_stream,
                 )
                 all_results.append(result)
+        # Ablation approaches.
+        for approach_name, overrides in ablation_approaches:
+            for attempt in range(attempts):
+                result = _run_single(
+                    task,
+                    approach_name,
+                    attempt,
+                    rdir,
+                    run_id=run_id,
+                    settings_file=settings_file,
+                    model=model,
+                    budget=budget,
+                    timeout=timeout,
+                    index_timeout=index_timeout,
+                    skip_verify=skip_verify,
+                    save_stream=save_stream,
+                    config_overrides=overrides,
+                )
+                all_results.append(result)
 
     completed_at = datetime.now(timezone.utc).isoformat()
     completed_count = sum(1 for r in all_results if r.get("status") == "completed")
@@ -907,7 +1054,7 @@ def run_all(
         timeout=timeout,
         index_timeout=index_timeout,
         attempts_per_approach=attempts,
-        approaches=approach_list,
+        approaches=all_approach_names,
         tasks=task_ids,
         total_results=len(all_results),
         completed_results=completed_count,

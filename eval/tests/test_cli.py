@@ -12,6 +12,8 @@ from runner.cli import (
     _extract_cost_metrics,
     _extract_output_summary,
     _extract_token_usage,
+    _override_approach_name,
+    _parse_override_specs,
     _read_bobbin_metrics,
     _save_raw_stream,
     cli,
@@ -140,6 +142,41 @@ class TestReportCommand:
         assert result.exit_code != 0
 
 
+class TestParseOverrideSpecs:
+    def test_single_override(self):
+        variants = _parse_override_specs(("semantic_weight=0.0",))
+        assert len(variants) == 1
+        assert variants[0] == {"semantic_weight": "0.0"}
+
+    def test_multiple_overrides(self):
+        variants = _parse_override_specs((
+            "semantic_weight=0.0",
+            "gate_threshold=1.0",
+            "coupling_depth=0",
+        ))
+        assert len(variants) == 3
+        assert variants[0] == {"semantic_weight": "0.0"}
+        assert variants[1] == {"gate_threshold": "1.0"}
+        assert variants[2] == {"coupling_depth": "0"}
+
+    def test_empty_tuple(self):
+        assert _parse_override_specs(()) == []
+
+    def test_invalid_key_raises(self):
+        with pytest.raises(ValueError, match="Unknown override key"):
+            _parse_override_specs(("invalid_key=42",))
+
+
+class TestOverrideApproachName:
+    def test_single_key(self):
+        name = _override_approach_name({"semantic_weight": "0.0"})
+        assert name == "with-bobbin+semantic_weight=0.0"
+
+    def test_multiple_keys_sorted(self):
+        name = _override_approach_name({"gate_threshold": "1.0", "doc_demotion": "0.3"})
+        assert name == "with-bobbin+doc_demotion=0.3,gate_threshold=1.0"
+
+
 class TestRunTaskCommand:
     def test_run_task_nonexistent_task(self, tmp_path):
         tasks_dir = tmp_path / "tasks"
@@ -160,6 +197,7 @@ class TestRunTaskCommand:
         assert "TASK_ID" in result.output
         assert "--attempts" in result.output
         assert "--save-stream" in result.output
+        assert "--config-overrides" in result.output
 
 
 class TestExtractTokenUsage:
@@ -235,6 +273,7 @@ class TestRunAllCommand:
         assert "--tasks-dir" in result.output
         assert "--attempts" in result.output
         assert "--save-stream" in result.output
+        assert "--config-overrides" in result.output
 
 
 class TestReadBobbinMetrics:

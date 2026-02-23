@@ -13,6 +13,20 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Mapping from override key to (TOML section, TOML key, value type).
+# blame_bridging maps to [hooks] show_docs as a proxy — full support requires
+# a Rust-side config toggle (see docs/tasks/).
+OVERRIDE_MAP: dict[str, tuple[str, str, type]] = {
+    "semantic_weight": ("search", "semantic_weight", float),
+    "coupling_depth": ("git", "coupling_depth", int),
+    "gate_threshold": ("hooks", "gate_threshold", float),
+    "doc_demotion": ("search", "doc_demotion", float),
+    "recency_weight": ("search", "recency_weight", float),
+    "blame_bridging": ("hooks", "show_docs", bool),
+}
+
+ALLOWED_OVERRIDE_KEYS = frozenset(OVERRIDE_MAP.keys())
+
 _WORKSPACE_CLAUDE_MD = """\
 # Project Tools
 
@@ -96,7 +110,12 @@ def _parse_profile(output: str) -> dict[str, Any] | None:
     return profile if profile else None
 
 
-def setup_bobbin(workspace: str, *, timeout: int = 1800) -> dict[str, Any]:
+def setup_bobbin(
+    workspace: str,
+    *,
+    timeout: int = 1800,
+    config_overrides: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Run bobbin init and index on the given workspace.
 
     Parameters
@@ -105,6 +124,9 @@ def setup_bobbin(workspace: str, *, timeout: int = 1800) -> dict[str, Any]:
         Path to the git working copy where bobbin should be initialized.
     timeout:
         Max seconds for the index step (init is fast, index can be slow).
+    config_overrides:
+        Optional dict of ``{key: raw_value}`` overrides to apply to
+        ``.bobbin/config.toml`` after init but before indexing.
 
     Returns a metadata dict with index timing and bobbin status info.
 
@@ -125,6 +147,11 @@ def setup_bobbin(workspace: str, *, timeout: int = 1800) -> dict[str, Any]:
         )
     except subprocess.CalledProcessError as exc:
         raise BobbinSetupError(f"bobbin init failed: {exc.stderr.strip()}") from exc
+
+    # Apply config overrides between init and index so that index-time
+    # parameters (coupling_depth) take effect.
+    if config_overrides:
+        apply_config_overrides(workspace, config_overrides)
 
     # Write workspace CLAUDE.md for agent guidance.
     claude_dir = ws / ".claude"
@@ -191,3 +218,181 @@ def setup_bobbin(workspace: str, *, timeout: int = 1800) -> dict[str, Any]:
 
     logger.info("Bobbin setup complete for %s (indexed in %.1fs)", ws, index_duration)
     return metadata
+
+
+def parse_config_override(spec: str) -> tuple[str, str]:
+    """Parse a ``key=value`` override string.
+
+    Returns ``(key, raw_value)`` after validating the key is in
+    :data:`ALLOWED_OVERRIDE_KEYS`.
+
+    Raises :class:`ValueError` on unknown keys or malformed specs.
+    """
+    if "=" not in spec:
+        raise ValueError(
+            f"Invalid override format: {spec!r}  (expected key=value)"
+        )
+    key, _, raw_value = spec.partition("=")
+    key = key.strip()
+    raw_value = raw_value.strip()
+    if key not in ALLOWED_OVERRIDE_KEYS:
+        raise ValueError(
+            f"Unknown override key: {key!r}  "
+            f"(allowed: {', '.join(sorted(ALLOWED_OVERRIDE_KEYS))})"
+        )
+    return key, raw_value
+
+
+def apply_config_overrides(
+    workspace: str, overrides: dict[str, str],
+) -> None:
+    """Modify ``.bobbin/config.toml`` in *workspace* to apply *overrides*.
+
+    Each entry in *overrides* maps an override key (e.g. ``"semantic_weight"``)
+    to a raw string value (e.g. ``"0.0"``).  The value is cast to the
+    appropriate type and written into the correct TOML section.
+
+    Must be called **after** ``bobbin init`` (which creates the config file)
+    and **before** ``bobbin index`` if the override affects indexing
+    (e.g. ``coupling_depth``).
+    """
+    config_path = Path(workspace) / ".bobbin" / "config.toml"
+    if not config_path.exists():
+        raise BobbinSetupError(
+            f"Config not found at {config_path} — run bobbin init first"
+        )
+
+    content = config_path.read_text(encoding="utf-8")
+
+    for key, raw_value in overrides.items():
+        section, toml_key, value_type = OVERRIDE_MAP[key]
+        typed = _cast_value(key, raw_value, value_type)
+        content = _set_toml_value(content, section, toml_key, typed)
+        logger.info("Config override: [%s] %s = %r", section, toml_key, typed)
+
+    config_path.write_text(content, encoding="utf-8")
+
+
+def generate_override_settings(
+    base_settings_path: str,
+    overrides: dict[str, str],
+    output_path: str,
+) -> str:
+    """Create a modified settings JSON with hook-level overrides applied.
+
+    For overrides that affect hook commands (``gate_threshold``), rewrites
+    the hook command line in the settings file.  Returns the path to the
+    generated settings file.
+    """
+    base = Path(base_settings_path)
+    if not base.exists():
+        raise BobbinSetupError(f"Base settings not found: {base}")
+
+    settings = json.loads(base.read_text(encoding="utf-8"))
+
+    # gate_threshold: rewrite --gate-threshold in the hook command
+    if "gate_threshold" in overrides:
+        gt_val = overrides["gate_threshold"]
+        _rewrite_hook_flag(settings, "--gate-threshold", gt_val)
+
+    # blame_bridging: rewrite --show-docs in the hook command
+    if "blame_bridging" in overrides:
+        show_docs = "true" if overrides["blame_bridging"].lower() in ("true", "1", "yes") else "false"
+        _rewrite_hook_flag(settings, "--show-docs", show_docs)
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    return str(out)
+
+
+def _rewrite_hook_flag(settings: dict, flag: str, value: str) -> None:
+    """Replace or append *flag* in all hook commands in *settings*."""
+    hooks = settings.get("hooks", {})
+    for _event, hook_groups in hooks.items():
+        if not isinstance(hook_groups, list):
+            continue
+        for group in hook_groups:
+            for hook in group.get("hooks", []):
+                cmd = hook.get("command", "")
+                if "bobbin" not in cmd:
+                    continue
+                # Replace existing flag value or append
+                pattern = re.compile(rf"{re.escape(flag)}\s+\S+")
+                if pattern.search(cmd):
+                    hook["command"] = pattern.sub(f"{flag} {value}", cmd)
+                else:
+                    hook["command"] = f"{cmd} {flag} {value}"
+
+
+def _cast_value(key: str, raw: str, vtype: type) -> int | float | bool:
+    """Cast a raw string value to the expected type."""
+    try:
+        if vtype is bool:
+            return raw.lower() in ("true", "1", "yes")
+        if vtype is int:
+            return int(raw)
+        return float(raw)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(
+            f"Cannot cast override {key}={raw!r} to {vtype.__name__}"
+        ) from exc
+
+
+def _set_toml_value(
+    content: str, section: str, key: str, value: int | float | bool,
+) -> str:
+    """Replace or insert a value in a TOML string.
+
+    Uses simple line-based parsing — sufficient for bobbin's flat config
+    structure.  If the key exists under ``[section]``, its value is replaced.
+    If the section exists but the key doesn't, the key is appended.
+    If the section doesn't exist, both are appended.
+    """
+    toml_val = _format_toml_value(value)
+    lines = content.splitlines(keepends=True)
+    section_header = f"[{section}]"
+
+    in_section = False
+    section_start = -1
+    section_end = len(lines)
+    key_line_idx = -1
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == section_header:
+            in_section = True
+            section_start = i
+            continue
+        if in_section and stripped.startswith("[") and stripped.endswith("]"):
+            section_end = i
+            break
+        if in_section and stripped.startswith(f"{key} ") or (
+            in_section and stripped.startswith(f"{key}=")
+        ):
+            key_line_idx = i
+
+    if key_line_idx >= 0:
+        # Replace existing key
+        lines[key_line_idx] = f"{key} = {toml_val}\n"
+    elif section_start >= 0:
+        # Section exists but key missing — insert after last key in section
+        lines.insert(section_end, f"{key} = {toml_val}\n")
+    else:
+        # Section missing — append at end
+        lines.append(f"\n{section_header}\n{key} = {toml_val}\n")
+
+    return "".join(lines)
+
+
+def _format_toml_value(value: int | float | bool) -> str:
+    """Format a Python value as a TOML literal."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    # Float: ensure at least one decimal
+    s = f"{value:.6g}"
+    if "." not in s and "e" not in s.lower():
+        s += ".0"
+    return s
