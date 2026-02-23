@@ -2,7 +2,7 @@
 
 What "healthy" looks like for the Bobbin rig. Strider checks against this during patrol.
 
-_Last verified: 2026-02-17_
+_Last verified: 2026-02-22_
 
 ## Bobbin System Components
 
@@ -11,15 +11,19 @@ _Last verified: 2026-02-17_
 | Rust codebase | Active development | Main language, built with `just` |
 | LanceDB | Embedded | Vector storage for semantic search |
 | MCP tools | Deployed | `dependencies`, `file_history`, `status`, `commit_search` |
-| CLI | Functional | `bobbin index`, `bobbin search`, `bobbin context`, `bobbin log` |
-| Eval suite | Growing | Go, pandas, polars task suites |
+| CLI | Functional | `index`, `search`, `context`, `log`, `run` (user commands) |
+| Web UI | New | Status, search, repos, beads, hotspots endpoints |
+| Eval suite | Growing | Flask, ruff, Go, pandas, polars, nushell, cargo, typst, django |
+| Calibration tool | New | calibrate.py — sweep search params without LLM calls |
 | mdbook | Scaffolded | Dracula theme + Intel One Mono |
+| Query preprocessing | New | Stopword removal, conversational prefix stripping |
+| Recency boosting | New | Exponential decay with configurable half-life |
 
 ## Rig Inventory
 
 | Role | Agent | Status | Purpose |
 |------|-------|--------|---------|
-| Ranger | strider | NEW | System advocate (you) |
+| Ranger | strider | Active | System advocate (you) |
 | Keeper | ian (aegis) | Active | Search & Context strategy |
 | Polecats | rust, nitro | Active | Code execution |
 | Refinery | bobbin | Active | Merge queue processing |
@@ -56,13 +60,29 @@ _Last verified: 2026-02-17_
 
 ## Known State
 
-_Snapshot as of 2026-02-17 — update during patrols._
+_Snapshot as of 2026-02-22 — update during patrols._
 
-- Bobbin is under active development with semantic indexing and MCP tool focus
-- Recent work: MCP tools (dependencies, file_history, status, commit_search), CLI `log` command
-- Eval suite expanding with Go and pandas task suites
-- mdbook documentation scaffolded with Dracula theme
-- This is strider's first deployment — initial planning docs not yet created
+- **Direction**: Stiwi wants injection context quality push toward publishing findings
+- All major quality features shipped: file classification, git blame bridging, gate, dedup,
+  query preprocessing, recency boosting, doc demotion, sectioned output, calibration tool
+- Eval results are STALE (predate quality improvements) — need fresh run
+- bobbin-24ui (search weight calibration) in progress, assigned to dearing
+- seth coordinating on running calibration sweeps
+- Web UI added with /status, /search, /repos endpoints
+- User-defined convenience commands (`bobbin run`) shipped
+- Intent archive indexing added
+
+### Search Config Defaults
+
+| Param | Value | Notes |
+|-------|-------|-------|
+| semantic_weight | 0.7 | 70% semantic, 30% keyword |
+| recency_half_life_days | 30.0 | Content older than 30d gets 50% boost |
+| recency_weight | 0.3 | Max 30% score penalty for old content |
+| rrf_k | 60.0 | Standard RRF constant |
+| doc_demotion | 0.5 | Halves doc/config scores in RRF |
+| gate_threshold | 0.75 | Min raw cosine sim to inject |
+| budget | 300 | Max lines of injected context |
 
 ## Recovery Procedures
 
