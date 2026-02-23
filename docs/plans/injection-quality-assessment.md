@@ -106,8 +106,23 @@ Current AST-based chunking is good but could be improved for specific patterns:
 - **dearing** — assigned to bobbin-24ui (calibration bead), external to bobbin rig
 - **ian** — keeper, needs briefing on injection quality direction
 
-## Open Questions
+## PO Targets (from ian, 2026-02-23)
 
-1. What are the quantitative "injection context targets"? (F1 > X? Precision > Y?)
-2. Should eval measure injection quality separately from agent task completion?
-3. What publication format? (Blog post? Paper? mdbook chapter?)
+| Metric | Target | Current (stale) | Gap |
+|--------|--------|-----------------|-----|
+| Precision | >= 85% | 88.9% | May already meet (need fresh data) |
+| Recall | >= 65% | 54.2% | -10.8pp (biggest gap) |
+| F1 | >= 72% | 64.8% | -7.2pp |
+| Gate pass rate | >= 50% | ~0% at 0.75 | Gating everything — #1 problem |
+
+**Key insight from ian**: Measure injection quality separately from task completion.
+Injection quality = did bobbin surface the right files? We control injection, not the agent.
+
+**Publication**: Too early to discuss format. Hit targets first.
+
+## Priority Sequence (PO-approved)
+
+1. **Gate threshold calibration** — sweep 0.50, 0.55, 0.60, 0.65 (current 0.75 gates ALL queries)
+2. **Fresh eval run** with current defaults to establish true baseline
+3. **Semantic weight + doc demotion sweep** to optimize ranking
+4. **Commit tuned defaults** based on calibration data
