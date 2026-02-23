@@ -342,6 +342,7 @@ def _run_single(
     from runner.bobbin_setup import setup_bobbin
     from runner.workspace import collect_loc_stats, diff_snapshot, setup_workspace, snapshot
     from scorer.diff_scorer import score_diff
+    from scorer.injection_scorer import score_injection_usage
     from scorer.test_scorer import run_tests
 
     # Resolve settings file to absolute path so it works from any cwd.
@@ -452,6 +453,14 @@ def _run_single(
                 ws, metrics_tag, diff_result.get("ground_truth_files", []),
             )
 
+        # 5b. Score injection usage (with-bobbin only).
+        injection_result = None
+        if bobbin_metrics and bobbin_metrics.get("injected_files"):
+            injection_result = score_injection_usage(
+                injected_files=bobbin_metrics["injected_files"],
+                files_touched=diff_result.get("files_touched", []),
+            )
+
         # 6. Preserve raw metrics.jsonl before temp workspace cleanup.
         _preserve_raw_metrics(
             ws, results_dir,
@@ -522,6 +531,7 @@ def _run_single(
             "project_metadata": project_metadata,
             "bobbin_metadata": bobbin_metadata,
             "bobbin_metrics": bobbin_metrics,
+            "injection_result": injection_result,
             "tool_use_summary": agent_result.get("tool_use_summary"),
             "output_summary": _extract_output_summary(agent_result),
         }
@@ -984,10 +994,22 @@ def score(results_dir: str):
         avg_f1 = sum(f1s) / len(f1s) if f1s else 0
         avg_time = sum(durations) / len(durations) if durations else 0
 
-        click.echo(
+        line = (
             f"{approach:<16} {n:>5} {passed:>5} {rate:>7.1%} "
             f"{avg_prec:>8.3f} {avg_recall:>8.3f} {avg_f1:>8.3f} {avg_time:>9.1f}s"
         )
+
+        # Append injection usage metrics for with-bobbin runs.
+        inj_f1s = [
+            r["injection_result"]["injection_f1"]
+            for r in runs
+            if r.get("injection_result", {}).get("injection_f1") is not None
+        ]
+        if inj_f1s:
+            avg_inj_f1 = sum(inj_f1s) / len(inj_f1s)
+            line += f"  inj_f1={avg_inj_f1:.3f}"
+
+        click.echo(line)
 
 
 @cli.command()

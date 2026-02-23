@@ -92,6 +92,17 @@ def aggregate_across_runs(results: list[dict[str, Any]]) -> dict[str, Any]:
         "avg_duration_seconds": _avg(["agent_result", "duration_seconds"]),
     }
 
+    # Aggregate injection usage results if present.
+    inj_precision = _avg(["injection_result", "injection_precision"])
+    inj_recall = _avg(["injection_result", "injection_recall"])
+    inj_f1 = _avg(["injection_result", "injection_f1"])
+    inj_count = sum(1 for r in results if r.get("injection_result"))
+    if inj_count > 0:
+        stats["avg_injection_precision"] = inj_precision
+        stats["avg_injection_recall"] = inj_recall
+        stats["avg_injection_f1"] = inj_f1
+        stats["injection_result_count"] = inj_count
+
     # Aggregate judge results if present.
     judge_wins = {"a": 0, "b": 0, "tie": 0}
     judge_count = 0
