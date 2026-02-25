@@ -4,7 +4,7 @@ use clap::Args;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use super::OutputConfig;
@@ -42,6 +42,14 @@ pub struct CalibrateArgs {
     #[arg(long)]
     verbose: bool,
 
+    /// Extended calibration: sweep recency and coupling parameters
+    #[arg(long)]
+    full: bool,
+
+    /// Resume an interrupted --full sweep from cache
+    #[arg(long)]
+    resume: bool,
+
     /// Directory to calibrate
     #[arg(default_value = ".")]
     path: PathBuf,
@@ -78,6 +86,15 @@ pub struct CalibratedConfig {
     pub semantic_weight: f32,
     pub doc_demotion: f32,
     pub rrf_k: f32,
+    /// Best recency half-life in days (only set by --full)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recency_half_life_days: Option<f32>,
+    /// Best recency weight (only set by --full)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recency_weight: Option<f32>,
+    /// Best coupling depth (only set by --full)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coupling_depth: Option<usize>,
 }
 
 /// Result for a single grid point
@@ -86,6 +103,12 @@ pub struct GridResult {
     pub semantic_weight: f32,
     pub doc_demotion: f32,
     pub rrf_k: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recency_half_life_days: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recency_weight: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coupling_depth: Option<usize>,
     pub precision: f32,
     pub recall: f32,
     pub f1: f32,
@@ -275,22 +298,52 @@ struct GridPoint {
     semantic_weight: f32,
     doc_demotion: f32,
     rrf_k: f32,
+    recency_half_life_days: Option<f32>,
+    recency_weight: Option<f32>,
 }
 
+/// Build the core parameter grid (sw × dd × k = 15 points).
 fn build_grid() -> Vec<GridPoint> {
+    build_grid_with_recency(&[], &[])
+}
+
+/// Build grid with optional recency parameter sweep.
+/// Empty recency slices → use config defaults (None in grid point).
+fn build_grid_with_recency(
+    half_lives: &[f32],
+    recency_weights: &[f32],
+) -> Vec<GridPoint> {
     let sws = [0.0, 0.3, 0.5, 0.7, 0.9];
     let dds = [0.1, 0.3, 0.5];
     let ks = [60.0]; // Keep k fixed for v1
+
+    // If no recency values specified, use a single None entry
+    let hl_iter: Vec<Option<f32>> = if half_lives.is_empty() {
+        vec![None]
+    } else {
+        half_lives.iter().map(|&v| Some(v)).collect()
+    };
+    let rw_iter: Vec<Option<f32>> = if recency_weights.is_empty() {
+        vec![None]
+    } else {
+        recency_weights.iter().map(|&v| Some(v)).collect()
+    };
 
     let mut grid = Vec::new();
     for &sw in &sws {
         for &dd in &dds {
             for &k in &ks {
-                grid.push(GridPoint {
-                    semantic_weight: sw,
-                    doc_demotion: dd,
-                    rrf_k: k,
-                });
+                for &hl in &hl_iter {
+                    for &rw in &rw_iter {
+                        grid.push(GridPoint {
+                            semantic_weight: sw,
+                            doc_demotion: dd,
+                            rrf_k: k,
+                            recency_half_life_days: hl,
+                            recency_weight: rw,
+                        });
+                    }
+                }
             }
         }
     }
@@ -368,6 +421,10 @@ fn calibration_path(repo_root: &std::path::Path) -> PathBuf {
     Config::data_dir(repo_root).join("calibration.json")
 }
 
+fn cache_path(repo_root: &std::path::Path) -> PathBuf {
+    Config::data_dir(repo_root).join("calibration_cache.json")
+}
+
 fn save_calibration(repo_root: &std::path::Path, result: &CalibrationResult) -> Result<()> {
     let path = calibration_path(repo_root);
     let json = serde_json::to_string_pretty(result)?;
@@ -380,6 +437,163 @@ pub fn load_calibration(repo_root: &std::path::Path) -> Option<CalibrationResult
     let path = calibration_path(repo_root);
     let content = std::fs::read_to_string(path).ok()?;
     serde_json::from_str(&content).ok()
+}
+
+// --- Sweep Cache (for --full resume) ---
+
+/// Cached results from an interrupted --full sweep.
+/// Keyed by coupling_depth → list of grid results for that depth.
+#[derive(Debug, Serialize, Deserialize)]
+struct SweepCache {
+    /// Map of coupling_depth → completed grid results
+    completed_depths: HashMap<String, Vec<GridResult>>,
+    /// Total commits sampled (must match to resume)
+    sample_count: usize,
+    /// Commit hashes for validation
+    sample_hashes: Vec<String>,
+}
+
+fn save_cache(repo_root: &std::path::Path, cache: &SweepCache) -> Result<()> {
+    let path = cache_path(repo_root);
+    let json = serde_json::to_string_pretty(cache)?;
+    std::fs::write(&path, json).with_context(|| format!("Failed to write cache {}", path.display()))?;
+    Ok(())
+}
+
+fn load_cache(repo_root: &std::path::Path) -> Option<SweepCache> {
+    let path = cache_path(repo_root);
+    let content = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+fn clear_cache(repo_root: &std::path::Path) {
+    let path = cache_path(repo_root);
+    let _ = std::fs::remove_file(path);
+}
+
+// --- Probe Runner ---
+
+/// Run probes for a grid against sampled commits. Returns scored grid results.
+/// The coupling_depth tag is attached to each result for --full sweeps.
+async fn run_probes(
+    grid: &[GridPoint],
+    commits: &[SampledCommit],
+    lance_path: &std::path::Path,
+    db_path: &std::path::Path,
+    config: &Config,
+    model_dir: &std::path::Path,
+    budget: usize,
+    search_limit: usize,
+    coupling_depth: Option<usize>,
+    pb: Option<&ProgressBar>,
+) -> Result<Vec<GridResult>> {
+    let mut grid_results: Vec<GridResult> = Vec::new();
+
+    for point in grid {
+        let mut total_precision = 0.0_f32;
+        let mut total_recall = 0.0_f32;
+        let mut total_f1 = 0.0_f32;
+        let mut valid_probes = 0usize;
+
+        for commit in commits {
+            let probe_vs = VectorStore::open(lance_path).await?;
+            let probe_ms = MetadataStore::open(db_path)?;
+            let embedder = Embedder::from_config(&config.embedding, model_dir)?;
+
+            let context_config = ContextConfig {
+                budget_lines: budget,
+                depth: 1,
+                max_coupled: 3,
+                coupling_threshold: 0.1,
+                semantic_weight: point.semantic_weight,
+                content_mode: ContentMode::None,
+                search_limit,
+                doc_demotion: point.doc_demotion,
+                recency_half_life_days: point
+                    .recency_half_life_days
+                    .unwrap_or(config.search.recency_half_life_days),
+                recency_weight: point
+                    .recency_weight
+                    .unwrap_or(config.search.recency_weight),
+                rrf_k: point.rrf_k,
+            };
+
+            let assembler =
+                ContextAssembler::new(embedder, probe_vs, probe_ms, context_config);
+            let bundle = assembler.assemble(&commit.message, None).await;
+
+            if let Ok(bundle) = bundle {
+                let injected: Vec<String> =
+                    bundle.files.iter().map(|f| f.path.clone()).collect();
+                let (p, r, f1) = score_probe(&injected, &commit.files);
+                total_precision += p;
+                total_recall += r;
+                total_f1 += f1;
+                valid_probes += 1;
+            }
+
+            if let Some(pb) = pb {
+                pb.inc(1);
+            }
+        }
+
+        let n = valid_probes.max(1) as f32;
+        grid_results.push(GridResult {
+            semantic_weight: point.semantic_weight,
+            doc_demotion: point.doc_demotion,
+            rrf_k: point.rrf_k,
+            recency_half_life_days: point.recency_half_life_days,
+            recency_weight: point.recency_weight,
+            coupling_depth,
+            precision: total_precision / n,
+            recall: total_recall / n,
+            f1: total_f1 / n,
+        });
+    }
+
+    Ok(grid_results)
+}
+
+/// Re-index coupling data for a specific depth, replacing existing coupling table.
+fn reindex_coupling(
+    git: &GitAnalyzer,
+    db_path: &std::path::Path,
+    depth: usize,
+    threshold: u32,
+) -> Result<()> {
+    let couplings = git.analyze_coupling(depth, threshold)?;
+    let ms = MetadataStore::open(db_path)?;
+    ms.clear_coupling()?;
+    ms.begin_transaction()?;
+    for c in &couplings {
+        ms.upsert_coupling(c)?;
+    }
+    ms.commit()?;
+    Ok(())
+}
+
+/// Format a GridResult line for display, adapting columns to --full mode.
+fn format_result(r: &GridResult, full: bool) -> String {
+    let mut s = format!(
+        "  sw={:.2} dd={:.2} k={:.0}",
+        r.semantic_weight, r.doc_demotion, r.rrf_k
+    );
+    if full {
+        if let Some(hl) = r.recency_half_life_days {
+            s.push_str(&format!(" hl={:.0}", hl));
+        }
+        if let Some(rw) = r.recency_weight {
+            s.push_str(&format!(" rw={:.2}", rw));
+        }
+        if let Some(cd) = r.coupling_depth {
+            s.push_str(&format!(" cd={}", cd));
+        }
+    }
+    s.push_str(&format!(
+        "  F1={:.3}  P={:.3}  R={:.3}",
+        r.f1, r.precision, r.recall
+    ));
+    s
 }
 
 // --- Main Entry Point ---
@@ -412,15 +626,21 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
         bail!("Index is empty. Run `bobbin index` first.");
     }
 
-    let metadata_store = MetadataStore::open(&db_path)?;
     let git = GitAnalyzer::new(&repo_root)?;
 
     // Phase 1: Sample commits
     if !output.quiet {
-        eprintln!(
-            "{}",
-            "Calibrating search parameters against git history...".bold()
-        );
+        if args.full {
+            eprintln!(
+                "{}",
+                "Extended calibration (includes recency and coupling parameters)...".bold()
+            );
+        } else {
+            eprintln!(
+                "{}",
+                "Calibrating search parameters against git history...".bold()
+            );
+        }
     }
 
     let commits = sample_commits(&git, &args.since, args.samples)?;
@@ -443,110 +663,34 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
         );
     }
 
-    // Phase 2: Build grid and run probes
-    let grid = build_grid();
-    let total_probes = grid.len() * commits.len();
-
-    if !output.quiet {
-        eprintln!(
-            "  Grid: {} configs × {} commits = {} probes",
-            grid.len(),
-            commits.len(),
-            total_probes
-        );
-    }
-
-    let pb = if !output.quiet {
-        let pb = ProgressBar::new(total_probes as u64);
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template("  Running {pos}/{len} probes {bar:30} {eta}")
-                .unwrap()
-                .progress_chars("█▓░"),
-        );
-        Some(pb)
-    } else {
-        None
-    };
-
     // Validate embedder can be loaded before starting the sweep
     let _embedder_check =
         Embedder::from_config(&config.embedding, &model_dir)
             .context("Failed to load embedding model")?;
 
-    let mut grid_results: Vec<GridResult> = Vec::new();
-
-    for point in &grid {
-        let mut total_precision = 0.0_f32;
-        let mut total_recall = 0.0_f32;
-        let mut total_f1 = 0.0_f32;
-        let mut valid_probes = 0usize;
-
-        for commit in &commits {
-            // Reopen stores per probe (cheap: just file handles)
-            let probe_vs = VectorStore::open(&lance_path).await?;
-            let probe_ms = MetadataStore::open(&db_path)?;
-            // Re-create embedder from config (shares cached model files)
-            let embedder =
-                Embedder::from_config(&config.embedding, &model_dir)?;
-
-            let context_config = ContextConfig {
-                budget_lines: args.budget,
-                depth: 1,
-                max_coupled: 3,
-                coupling_threshold: 0.1,
-                semantic_weight: point.semantic_weight,
-                content_mode: ContentMode::None,
-                search_limit: args.search_limit,
-                doc_demotion: point.doc_demotion,
-                recency_half_life_days: config.search.recency_half_life_days,
-                recency_weight: config.search.recency_weight,
-                rrf_k: point.rrf_k,
-            };
-
-            let assembler =
-                ContextAssembler::new(embedder, probe_vs, probe_ms, context_config);
-            let bundle = assembler.assemble(&commit.message, None).await;
-
-            if let Ok(bundle) = bundle {
-                let injected: Vec<String> =
-                    bundle.files.iter().map(|f| f.path.clone()).collect();
-                let (p, r, f1) = score_probe(&injected, &commit.files);
-                total_precision += p;
-                total_recall += r;
-                total_f1 += f1;
-                valid_probes += 1;
-            }
-
-            if let Some(pb) = &pb {
-                pb.inc(1);
-            }
-        }
-
-        let n = valid_probes.max(1) as f32;
-        grid_results.push(GridResult {
-            semantic_weight: point.semantic_weight,
-            doc_demotion: point.doc_demotion,
-            rrf_k: point.rrf_k,
-            precision: total_precision / n,
-            recall: total_recall / n,
-            f1: total_f1 / n,
-        });
-    }
-
-    if let Some(pb) = &pb {
-        pb.finish_and_clear();
-    }
+    // Phase 2: Build grid and run probes
+    let grid_results = if args.full {
+        run_full_sweep(
+            &args, &output, &config, &commits, &git, &lance_path, &db_path, &model_dir, &repo_root,
+        )
+        .await?
+    } else {
+        run_core_sweep(
+            &args, &output, &config, &commits, &lance_path, &db_path, &model_dir,
+        )
+        .await?
+    };
 
     // Phase 3: Sort results and report
-    grid_results.sort_by(|a, b| b.f1.partial_cmp(&a.f1).unwrap());
+    let mut sorted = grid_results;
+    sorted.sort_by(|a, b| b.f1.partial_cmp(&a.f1).unwrap());
 
-    let best = grid_results
+    let best = sorted
         .first()
         .expect("Grid should have at least one result");
 
     // Find current config result for comparison
-    let current_f1 = grid_results
+    let current_f1 = sorted
         .iter()
         .find(|r| {
             (r.semantic_weight - config.search.semantic_weight).abs() < 0.01
@@ -557,6 +701,7 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
 
     // Capture snapshot
     let snapshot = capture_snapshot(&vector_store, &git).await?;
+    let total_probes = sorted.len() * commits.len();
 
     let calibration = CalibrationResult {
         calibrated_at: Utc::now().to_rfc3339(),
@@ -565,8 +710,11 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
             semantic_weight: best.semantic_weight,
             doc_demotion: best.doc_demotion,
             rrf_k: best.rrf_k,
+            recency_half_life_days: best.recency_half_life_days,
+            recency_weight: best.recency_weight,
+            coupling_depth: best.coupling_depth,
         },
-        top_results: grid_results.iter().take(10).cloned().collect(),
+        top_results: sorted.iter().take(10).cloned().collect(),
         sample_count: commits.len(),
         probe_count: total_probes,
         terse_warning: is_terse,
@@ -578,16 +726,8 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
     } else if !output.quiet {
         eprintln!();
         eprintln!("{}", "Calibration results (top 5 by F1):".bold());
-        for result in grid_results.iter().take(5) {
-            eprintln!(
-                "  sw={:.2} dd={:.2} k={:.0}  F1={:.3}  P={:.3}  R={:.3}",
-                result.semantic_weight,
-                result.doc_demotion,
-                result.rrf_k,
-                result.f1,
-                result.precision,
-                result.recall
-            );
+        for result in sorted.iter().take(5) {
+            eprintln!("{}", format_result(result, args.full));
         }
 
         eprintln!();
@@ -624,7 +764,236 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
         );
     }
 
+    // Clean up cache on successful completion of --full
+    if args.full {
+        clear_cache(&repo_root);
+    }
+
     Ok(())
+}
+
+/// Core sweep: semantic_weight × doc_demotion × rrf_k (15 configs).
+async fn run_core_sweep(
+    args: &CalibrateArgs,
+    output: &OutputConfig,
+    config: &Config,
+    commits: &[SampledCommit],
+    lance_path: &std::path::Path,
+    db_path: &std::path::Path,
+    model_dir: &std::path::Path,
+) -> Result<Vec<GridResult>> {
+    let grid = build_grid();
+    let total_probes = grid.len() * commits.len();
+
+    if !output.quiet {
+        eprintln!(
+            "  Grid: {} configs × {} commits = {} probes",
+            grid.len(),
+            commits.len(),
+            total_probes
+        );
+    }
+
+    let pb = if !output.quiet {
+        let pb = ProgressBar::new(total_probes as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("  Running {pos}/{len} probes {bar:30} {eta}")
+                .unwrap()
+                .progress_chars("█▓░"),
+        );
+        Some(pb)
+    } else {
+        None
+    };
+
+    let results = run_probes(
+        &grid,
+        commits,
+        lance_path,
+        db_path,
+        config,
+        model_dir,
+        args.budget,
+        args.search_limit,
+        None,
+        pb.as_ref(),
+    )
+    .await?;
+
+    if let Some(pb) = &pb {
+        pb.finish_and_clear();
+    }
+
+    Ok(results)
+}
+
+/// Full sweep: core grid × recency params, then per coupling_depth.
+///
+/// Grid: 5 sw × 3 dd × 1 k × 4 hl × 4 rw = 240 configs
+/// Per coupling depth: 240 × 4 depths = 960 configs
+/// Total probes: 960 × 20 commits = 19,200 (with default samples)
+///
+/// Coupling depth sweep re-indexes coupling data per depth value,
+/// so each depth iteration is a separate probe run.
+async fn run_full_sweep(
+    args: &CalibrateArgs,
+    output: &OutputConfig,
+    config: &Config,
+    commits: &[SampledCommit],
+    git: &GitAnalyzer,
+    lance_path: &std::path::Path,
+    db_path: &std::path::Path,
+    model_dir: &std::path::Path,
+    repo_root: &std::path::Path,
+) -> Result<Vec<GridResult>> {
+    let half_lives: Vec<f32> = vec![7.0, 14.0, 30.0, 90.0];
+    let recency_weights: Vec<f32> = vec![0.0, 0.15, 0.30, 0.50];
+    let coupling_depths: Vec<usize> = vec![500, 2000, 5000, 20000];
+
+    let grid = build_grid_with_recency(&half_lives, &recency_weights);
+    let total_configs = grid.len() * coupling_depths.len();
+    let total_probes = total_configs * commits.len();
+
+    if !output.quiet {
+        eprintln!(
+            "  Grid: {} configs × {} coupling depths = {} total configs",
+            grid.len(),
+            coupling_depths.len(),
+            total_configs,
+        );
+        eprintln!(
+            "  Total: {} configs × {} commits = {} probes",
+            total_configs,
+            commits.len(),
+            total_probes,
+        );
+    }
+
+    // Load cache for resume
+    let mut cache = if args.resume {
+        load_cache(repo_root).unwrap_or_else(|| {
+            if !output.quiet {
+                eprintln!("  No cache found, starting fresh.");
+            }
+            SweepCache {
+                completed_depths: HashMap::new(),
+                sample_count: commits.len(),
+                sample_hashes: commits.iter().map(|c| c.hash.clone()).collect(),
+            }
+        })
+    } else {
+        SweepCache {
+            completed_depths: HashMap::new(),
+            sample_count: commits.len(),
+            sample_hashes: commits.iter().map(|c| c.hash.clone()).collect(),
+        }
+    };
+
+    // Validate cache matches current sample set
+    if args.resume && cache.sample_count != commits.len() {
+        if !output.quiet {
+            eprintln!(
+                "  {} Cache sample count mismatch ({} vs {}), starting fresh.",
+                "⚠".yellow(),
+                cache.sample_count,
+                commits.len()
+            );
+        }
+        cache.completed_depths.clear();
+    }
+
+    let mut all_results: Vec<GridResult> = Vec::new();
+
+    // Collect cached results
+    for (depth_key, results) in &cache.completed_depths {
+        if !output.quiet {
+            eprintln!("  Restored {} results from cache (depth={})", results.len(), depth_key);
+        }
+        all_results.extend(results.iter().cloned());
+    }
+
+    // Calculate remaining probes for progress bar
+    let remaining_depths: Vec<&usize> = coupling_depths
+        .iter()
+        .filter(|d| !cache.completed_depths.contains_key(&d.to_string()))
+        .collect();
+    let remaining_probes = remaining_depths.len() * grid.len() * commits.len();
+
+    let pb = if !output.quiet && remaining_probes > 0 {
+        let pb = ProgressBar::new(remaining_probes as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("  [{msg}] {pos}/{len} probes {bar:30} {eta}")
+                .unwrap()
+                .progress_chars("█▓░"),
+        );
+        Some(pb)
+    } else {
+        None
+    };
+
+    // Save original coupling data to restore after sweep
+    let original_coupling_depth = config.git.coupling_depth;
+
+    for &depth in &coupling_depths {
+        let depth_key = depth.to_string();
+        if cache.completed_depths.contains_key(&depth_key) {
+            continue;
+        }
+
+        if let Some(pb) = &pb {
+            pb.set_message(format!("cd={}", depth));
+        }
+
+        // Re-index coupling data for this depth
+        if !output.quiet {
+            if let Some(pb) = &pb {
+                pb.suspend(|| {
+                    eprintln!("  Re-indexing coupling data (depth={})...", depth);
+                });
+            }
+        }
+        reindex_coupling(git, db_path, depth, config.git.coupling_threshold)?;
+
+        // Run probes with this coupling depth
+        let depth_results = run_probes(
+            &grid,
+            commits,
+            lance_path,
+            db_path,
+            config,
+            model_dir,
+            args.budget,
+            args.search_limit,
+            Some(depth),
+            pb.as_ref(),
+        )
+        .await?;
+
+        all_results.extend(depth_results.iter().cloned());
+        cache
+            .completed_depths
+            .insert(depth_key, depth_results);
+
+        // Save cache after each depth completes
+        save_cache(repo_root, &cache)?;
+    }
+
+    if let Some(pb) = &pb {
+        pb.finish_and_clear();
+    }
+
+    // Restore original coupling data
+    if !output.quiet {
+        eprintln!(
+            "  Restoring coupling data (depth={})...",
+            original_coupling_depth
+        );
+    }
+    reindex_coupling(git, db_path, original_coupling_depth, config.git.coupling_threshold)?;
+
+    Ok(all_results)
 }
 
 // --- CalibrationGuard ---
@@ -692,6 +1061,8 @@ impl CalibrateArgs {
             budget: 300,
             apply: true,
             verbose: false,
+            full: false,
+            resume: false,
             path,
         }
     }
@@ -790,6 +1161,94 @@ mod tests {
         let grid = build_grid();
         // 5 sw × 3 dd × 1 k = 15
         assert_eq!(grid.len(), 15);
+        // Core grid points should have no recency overrides
+        assert!(grid[0].recency_half_life_days.is_none());
+        assert!(grid[0].recency_weight.is_none());
+    }
+
+    #[test]
+    fn test_build_grid_with_recency() {
+        let half_lives = [7.0, 14.0, 30.0, 90.0];
+        let recency_weights = [0.0, 0.15, 0.30, 0.50];
+        let grid = build_grid_with_recency(&half_lives, &recency_weights);
+        // 5 sw × 3 dd × 1 k × 4 hl × 4 rw = 240
+        assert_eq!(grid.len(), 240);
+        // All extended grid points should have recency overrides
+        assert!(grid[0].recency_half_life_days.is_some());
+        assert!(grid[0].recency_weight.is_some());
+    }
+
+    #[test]
+    fn test_build_grid_recency_empty_fallback() {
+        // Empty arrays should fall back to None (same as core grid)
+        let grid = build_grid_with_recency(&[], &[]);
+        assert_eq!(grid.len(), 15);
+        assert!(grid[0].recency_half_life_days.is_none());
+    }
+
+    #[test]
+    fn test_format_result_core() {
+        let r = GridResult {
+            semantic_weight: 0.3,
+            doc_demotion: 0.3,
+            rrf_k: 60.0,
+            recency_half_life_days: None,
+            recency_weight: None,
+            coupling_depth: None,
+            precision: 0.4,
+            recall: 0.5,
+            f1: 0.444,
+        };
+        let s = format_result(&r, false);
+        assert!(s.contains("sw=0.30"));
+        assert!(!s.contains("hl="));
+    }
+
+    #[test]
+    fn test_format_result_full() {
+        let r = GridResult {
+            semantic_weight: 0.3,
+            doc_demotion: 0.3,
+            rrf_k: 60.0,
+            recency_half_life_days: Some(14.0),
+            recency_weight: Some(0.15),
+            coupling_depth: Some(5000),
+            precision: 0.4,
+            recall: 0.5,
+            f1: 0.444,
+        };
+        let s = format_result(&r, true);
+        assert!(s.contains("hl=14"));
+        assert!(s.contains("rw=0.15"));
+        assert!(s.contains("cd=5000"));
+    }
+
+    #[test]
+    fn test_sweep_cache_roundtrip() {
+        let mut cache = SweepCache {
+            completed_depths: HashMap::new(),
+            sample_count: 20,
+            sample_hashes: vec!["abc123".into()],
+        };
+        cache.completed_depths.insert(
+            "5000".into(),
+            vec![GridResult {
+                semantic_weight: 0.3,
+                doc_demotion: 0.3,
+                rrf_k: 60.0,
+                recency_half_life_days: Some(30.0),
+                recency_weight: Some(0.3),
+                coupling_depth: Some(5000),
+                precision: 0.4,
+                recall: 0.5,
+                f1: 0.444,
+            }],
+        );
+        let json = serde_json::to_string(&cache).unwrap();
+        let loaded: SweepCache = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.sample_count, 20);
+        assert_eq!(loaded.completed_depths.len(), 1);
+        assert_eq!(loaded.completed_depths["5000"][0].f1, 0.444);
     }
 
     // --- CalibrationGuard tests ---
@@ -814,6 +1273,9 @@ mod tests {
                 semantic_weight: 0.7,
                 doc_demotion: 0.3,
                 rrf_k: 60.0,
+                recency_half_life_days: None,
+                recency_weight: None,
+                coupling_depth: None,
             },
             top_results: vec![],
             sample_count: 20,

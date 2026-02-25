@@ -1268,6 +1268,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let cal_sw = calibration.as_ref().map(|c| c.best_config.semantic_weight);
     let cal_dd = calibration.as_ref().map(|c| c.best_config.doc_demotion);
     let cal_rrf = calibration.as_ref().map(|c| c.best_config.rrf_k);
+    let cal_hl = calibration.as_ref().and_then(|c| c.best_config.recency_half_life_days);
+    let cal_rw = calibration.as_ref().and_then(|c| c.best_config.recency_weight);
 
     let context_config = ContextConfig {
         budget_lines: budget,
@@ -1278,8 +1280,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         content_mode,
         search_limit: 20,
         doc_demotion: cal_dd.unwrap_or(config.search.doc_demotion),
-        recency_half_life_days: config.search.recency_half_life_days,
-        recency_weight: config.search.recency_weight,
+        recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
+        recency_weight: cal_rw.unwrap_or(config.search.recency_weight),
         rrf_k: cal_rrf.unwrap_or(config.search.rrf_k),
     };
 
