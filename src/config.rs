@@ -230,11 +230,11 @@ impl Default for SearchConfig {
     fn default() -> Self {
         Self {
             default_limit: 10,
-            semantic_weight: 0.7,
+            semantic_weight: 0.9,
             recency_half_life_days: 30.0,
             recency_weight: 0.3,
             rrf_k: 60.0,
-            doc_demotion: 0.5,
+            doc_demotion: 0.3,
         }
     }
 }
@@ -318,7 +318,7 @@ impl Default for HooksConfig {
             budget: 300,
             content_mode: "full".into(),
             min_prompt_length: 10,
-            gate_threshold: 0.75,
+            gate_threshold: 0.50,
             dedup_enabled: true,
             show_docs: true,
         }
@@ -605,11 +605,11 @@ coupling_depth = 500
     fn test_search_config_defaults() {
         let config = Config::default();
         assert_eq!(config.search.default_limit, 10);
-        assert!((config.search.semantic_weight - 0.7).abs() < f32::EPSILON);
+        assert!((config.search.semantic_weight - 0.9).abs() < f32::EPSILON);
         assert!((config.search.recency_half_life_days - 30.0).abs() < f32::EPSILON);
         assert!((config.search.recency_weight - 0.3).abs() < f32::EPSILON);
         assert!((config.search.rrf_k - 60.0).abs() < f32::EPSILON);
-        assert!((config.search.doc_demotion - 0.5).abs() < f32::EPSILON);
+        assert!((config.search.doc_demotion - 0.3).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -638,7 +638,7 @@ semantic_weight = 0.8
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!((config.search.semantic_weight - 0.8).abs() < f32::EPSILON);
         assert!((config.search.rrf_k - 60.0).abs() < f32::EPSILON);
-        assert!((config.search.doc_demotion - 0.5).abs() < f32::EPSILON);
+        assert!((config.search.doc_demotion - 0.3).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -648,7 +648,7 @@ semantic_weight = 0.8
         assert_eq!(config.hooks.budget, 300);
         assert_eq!(config.hooks.content_mode, "full");
         assert_eq!(config.hooks.min_prompt_length, 10);
-        assert!((config.hooks.gate_threshold - 0.75).abs() < f32::EPSILON);
+        assert!((config.hooks.gate_threshold - 0.50).abs() < f32::EPSILON);
         assert!(config.hooks.dedup_enabled);
     }
 
@@ -682,19 +682,19 @@ batch_size = 32
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!((config.hooks.threshold - 0.5).abs() < f32::EPSILON);
         assert_eq!(config.hooks.budget, 300);
-        assert!((config.hooks.gate_threshold - 0.75).abs() < f32::EPSILON);
+        assert!((config.hooks.gate_threshold - 0.50).abs() < f32::EPSILON);
     }
 
     #[test]
     fn test_hooks_gate_threshold_backward_compatible() {
-        // Config with hooks section but no gate_threshold should default to 0.75
+        // Config with hooks section but no gate_threshold should default to 0.50
         let toml_str = r#"
 [hooks]
 threshold = 0.5
 budget = 300
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
-        assert!((config.hooks.gate_threshold - 0.75).abs() < f32::EPSILON);
+        assert!((config.hooks.gate_threshold - 0.50).abs() < f32::EPSILON);
         assert!(config.hooks.dedup_enabled);
     }
 
