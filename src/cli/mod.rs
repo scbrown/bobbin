@@ -1,4 +1,5 @@
 mod benchmark;
+mod calibrate;
 mod completions;
 mod context;
 mod deps;
@@ -61,6 +62,9 @@ enum Commands {
 
     /// Build or update the search index
     Index(index::IndexArgs),
+
+    /// Calibrate search parameters against git history
+    Calibrate(calibrate::CalibrateArgs),
 
     /// Semantic search for code
     Search(search::SearchArgs),
@@ -131,6 +135,7 @@ impl Commands {
         match self {
             Commands::Init(_) => "init",
             Commands::Index(_) => "index",
+            Commands::Calibrate(_) => "calibrate",
             Commands::Search(_) => "search",
             Commands::Context(_) => "context",
             Commands::Deps(_) => "deps",
@@ -220,6 +225,7 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
     match command {
         Commands::Init(args) => init::run(args, output).await,
         Commands::Index(args) => index::run(args, output).await,
+        Commands::Calibrate(args) => calibrate::run(args, output).await,
         Commands::Search(args) => search::run(args, output).await,
         Commands::Context(args) => context::run(args, output).await,
         Commands::Deps(args) => deps::run(args, output).await,

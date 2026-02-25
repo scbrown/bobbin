@@ -106,6 +106,11 @@ impl GitAnalyzer {
         })
     }
 
+    /// Get the repository root path
+    pub fn repo_root(&self) -> &Path {
+        &self.repo_root
+    }
+
     /// Analyze git history to find files that change together
     pub fn analyze_coupling(&self, depth: usize, threshold: u32) -> Result<Vec<FileCoupling>> {
         // Get commit log with files changed
