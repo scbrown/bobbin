@@ -351,10 +351,11 @@ def run_calibration(
                     logger.warning("Skipping %s: %s", task_id, exc)
                     continue
 
-                # Re-index for this commit state
+                # Re-index for this commit state (--force needed after checkout
+                # to avoid incremental indexing bugs with GPU ONNX sessions)
                 try:
                     subprocess.run(
-                        [bobbin, "index"],
+                        [bobbin, "index", "--force"],
                         cwd=ws,
                         check=True,
                         capture_output=True,

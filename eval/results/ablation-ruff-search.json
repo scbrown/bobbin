@@ -1,0 +1,745 @@
+{
+  "timestamp": "2026-02-25T21:17:58.098754+00:00",
+  "bobbin": "/home/braino/.local/bin/bobbin",
+  "baseline_config": {
+    "semantic_weight": 0.9,
+    "doc_demotion": 0.3,
+    "rrf_k": 60.0,
+    "depth": 1
+  },
+  "variants": [
+    {
+      "name": "baseline",
+      "description": "Full pipeline: sw=0.90, dd=0.30, k=60, depth=1",
+      "cli_overrides": {},
+      "config_patch": null
+    },
+    {
+      "name": "no_semantic",
+      "description": "Disable semantic search (pure keyword/BM25)",
+      "cli_overrides": {
+        "semantic_weight": "0.0"
+      },
+      "config_patch": null
+    },
+    {
+      "name": "no_keyword",
+      "description": "Disable keyword search (pure semantic/embedding)",
+      "cli_overrides": {
+        "semantic_weight": "1.0"
+      },
+      "config_patch": null
+    },
+    {
+      "name": "no_coupling",
+      "description": "Disable temporal coupling expansion",
+      "cli_overrides": {
+        "depth": "0"
+      },
+      "config_patch": null
+    },
+    {
+      "name": "no_doc_demotion",
+      "description": "Treat docs same as source (doc_demotion=1.0)",
+      "cli_overrides": {
+        "doc_demotion": "1.0"
+      },
+      "config_patch": null
+    },
+    {
+      "name": "no_recency",
+      "description": "Disable recency/freshness signal",
+      "cli_overrides": {},
+      "config_patch": {
+        "search.recency_weight": "0.0"
+      }
+    }
+  ],
+  "results": [
+    {
+      "task_id": "ruff-001",
+      "variant": "baseline",
+      "description": "Full pipeline: sw=0.90, dd=0.30, k=60, depth=1",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py",
+        "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs",
+        "crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap"
+      ],
+      "duration_ms": 13.30006099306047
+    },
+    {
+      "task_id": "ruff-001",
+      "variant": "no_semantic",
+      "description": "Disable semantic search (pure keyword/BM25)",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py",
+        "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs",
+        "crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap"
+      ],
+      "duration_ms": 9.806196903809905
+    },
+    {
+      "task_id": "ruff-001",
+      "variant": "no_keyword",
+      "description": "Disable keyword search (pure semantic/embedding)",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py",
+        "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs",
+        "crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap"
+      ],
+      "duration_ms": 9.676820132881403
+    },
+    {
+      "task_id": "ruff-001",
+      "variant": "no_coupling",
+      "description": "Disable temporal coupling expansion",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py",
+        "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs",
+        "crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap"
+      ],
+      "duration_ms": 10.78724511899054
+    },
+    {
+      "task_id": "ruff-001",
+      "variant": "no_doc_demotion",
+      "description": "Treat docs same as source (doc_demotion=1.0)",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py",
+        "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs",
+        "crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap"
+      ],
+      "duration_ms": 7.637945003807545
+    },
+    {
+      "task_id": "ruff-001",
+      "variant": "no_recency",
+      "description": "Disable recency/freshness signal",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py",
+        "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs",
+        "crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap"
+      ],
+      "duration_ms": 8.813565131276846
+    },
+    {
+      "task_id": "ruff-002",
+      "variant": "baseline",
+      "description": "Full pipeline: sw=0.90, dd=0.30, k=60, depth=1",
+      "returned_files": [
+        "crates/ty_ide/src/completion.rs",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/rules/ruff/mod.rs",
+        "crates/ruff_linter/src/checkers/ast/analyze/statement.rs",
+        "crates/ruff_linter/src/rules/airflow/rules/removal_in_3.rs",
+        "crates/ty_python_semantic/src/types/infer/builder.rs",
+        "crates/ty_python_semantic/src/types/function.rs",
+        "changelogs/0.14.x.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_boolean_trap/FBT.py",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT001_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT003_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__extend_allowed_callable.snap"
+      ],
+      "duration_ms": 926.3578630052507,
+      "precision": 0.125,
+      "recall": 0.2,
+      "f1": 0.1538
+    },
+    {
+      "task_id": "ruff-002",
+      "variant": "no_semantic",
+      "description": "Disable semantic search (pure keyword/BM25)",
+      "returned_files": [
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/checkers/ast/analyze/statement.rs",
+        "crates/ty_ide/src/completion.rs",
+        "crates/ruff_linter/src/rules/ruff/mod.rs",
+        "crates/ruff_linter/resources/test/fixtures/flake8_boolean_trap/FBT.py"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_boolean_trap/FBT.py",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT001_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT003_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__extend_allowed_callable.snap"
+      ],
+      "duration_ms": 827.4451261386275,
+      "precision": 0.4,
+      "recall": 0.4,
+      "f1": 0.4
+    },
+    {
+      "task_id": "ruff-002",
+      "variant": "no_keyword",
+      "description": "Disable keyword search (pure semantic/embedding)",
+      "returned_files": [
+        "crates/ty_ide/src/completion.rs",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/rules/ruff/mod.rs",
+        "crates/ruff_linter/src/checkers/ast/analyze/statement.rs",
+        "crates/ruff_linter/src/rules/airflow/rules/removal_in_3.rs",
+        "crates/ty_python_semantic/src/types/infer/builder.rs",
+        "crates/ty_python_semantic/src/types/function.rs",
+        "changelogs/0.14.x.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_boolean_trap/FBT.py",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT001_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT003_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__extend_allowed_callable.snap"
+      ],
+      "duration_ms": 825.4969178233296,
+      "precision": 0.125,
+      "recall": 0.2,
+      "f1": 0.1538
+    },
+    {
+      "task_id": "ruff-002",
+      "variant": "no_coupling",
+      "description": "Disable temporal coupling expansion",
+      "returned_files": [
+        "crates/ty_ide/src/completion.rs",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/rules/ruff/mod.rs",
+        "crates/ruff_linter/src/checkers/ast/analyze/statement.rs",
+        "crates/ruff_linter/src/rules/airflow/rules/removal_in_3.rs",
+        "crates/ty_python_semantic/src/types/infer/builder.rs",
+        "crates/ty_python_semantic/src/types/function.rs",
+        "changelogs/0.14.x.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_boolean_trap/FBT.py",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT001_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT003_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__extend_allowed_callable.snap"
+      ],
+      "duration_ms": 813.3641490712762,
+      "precision": 0.125,
+      "recall": 0.2,
+      "f1": 0.1538
+    },
+    {
+      "task_id": "ruff-002",
+      "variant": "no_doc_demotion",
+      "description": "Treat docs same as source (doc_demotion=1.0)",
+      "returned_files": [
+        "crates/ty_ide/src/completion.rs",
+        "changelogs/0.14.x.md",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/rules/ruff/mod.rs",
+        "crates/ruff_linter/src/checkers/ast/analyze/statement.rs"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_boolean_trap/FBT.py",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT001_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT003_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__extend_allowed_callable.snap"
+      ],
+      "duration_ms": 827.3952868767083,
+      "precision": 0.2,
+      "recall": 0.2,
+      "f1": 0.2
+    },
+    {
+      "task_id": "ruff-002",
+      "variant": "no_recency",
+      "description": "Disable recency/freshness signal",
+      "returned_files": [
+        "crates/ty_ide/src/completion.rs",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/rules/ruff/mod.rs",
+        "crates/ruff_linter/src/checkers/ast/analyze/statement.rs",
+        "crates/ruff_linter/src/rules/airflow/rules/removal_in_3.rs",
+        "crates/ty_python_semantic/src/types/infer/builder.rs",
+        "crates/ty_python_semantic/src/types/function.rs",
+        "changelogs/0.14.x.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_boolean_trap/FBT.py",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/helpers.rs",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT001_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__FBT003_FBT.py.snap",
+        "crates/ruff_linter/src/rules/flake8_boolean_trap/snapshots/ruff_linter__rules__flake8_boolean_trap__tests__extend_allowed_callable.snap"
+      ],
+      "duration_ms": 830.1201071590185,
+      "precision": 0.125,
+      "recall": 0.2,
+      "f1": 0.1538
+    },
+    {
+      "task_id": "ruff-003",
+      "variant": "baseline",
+      "description": "Full pipeline: sw=0.90, dd=0.30, k=60, depth=1",
+      "returned_files": [
+        "crates/ruff_linter/src/rules/pyupgrade/mod.rs",
+        "crates/ty_python_semantic/src/types/infer/builder.rs",
+        "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+        "crates/ruff_python_ast/src/lib.rs",
+        "crates/ty_python_semantic/src/types.rs",
+        "crates/ty/src/python_version.rs"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py",
+        "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+        "crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap"
+      ],
+      "duration_ms": 998.1493018567562,
+      "precision": 0.1667,
+      "recall": 0.3333,
+      "f1": 0.2222
+    },
+    {
+      "task_id": "ruff-003",
+      "variant": "no_semantic",
+      "description": "Disable semantic search (pure keyword/BM25)",
+      "returned_files": [
+        "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+        "crates/ruff_linter/src/rules/pyupgrade/mod.rs",
+        "crates/ruff_linter/src/rules/airflow/helpers.rs",
+        "crates/ty_python_semantic/src/types.rs",
+        "crates/ruff_linter/src/preview.rs",
+        "crates/ruff_linter/src/rules/airflow/rules/removal_in_3.rs"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py",
+        "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+        "crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap"
+      ],
+      "duration_ms": 814.1600990202278,
+      "precision": 0.1667,
+      "recall": 0.3333,
+      "f1": 0.2222
+    },
+    {
+      "task_id": "ruff-003",
+      "variant": "no_keyword",
+      "description": "Disable keyword search (pure semantic/embedding)",
+      "returned_files": [
+        "crates/ty_python_semantic/src/types/infer/builder.rs",
+        "crates/ruff_python_ast/src/lib.rs",
+        "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+        "crates/ty_python_semantic/src/types.rs",
+        "crates/ty/src/python_version.rs"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py",
+        "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+        "crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap"
+      ],
+      "duration_ms": 832.1546968072653,
+      "precision": 0.2,
+      "recall": 0.3333,
+      "f1": 0.25
+    },
+    {
+      "task_id": "ruff-003",
+      "variant": "no_coupling",
+      "description": "Disable temporal coupling expansion",
+      "returned_files": [
+        "crates/ruff_linter/src/rules/pyupgrade/mod.rs",
+        "crates/ty_python_semantic/src/types/infer/builder.rs",
+        "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+        "crates/ruff_python_ast/src/lib.rs",
+        "crates/ty_python_semantic/src/types.rs",
+        "crates/ty/src/python_version.rs"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py",
+        "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+        "crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap"
+      ],
+      "duration_ms": 812.2437200509012,
+      "precision": 0.1667,
+      "recall": 0.3333,
+      "f1": 0.2222
+    },
+    {
+      "task_id": "ruff-003",
+      "variant": "no_doc_demotion",
+      "description": "Treat docs same as source (doc_demotion=1.0)",
+      "returned_files": [
+        "crates/ty/docs/rules.md",
+        "crates/ruff_linter/src/rules/pyupgrade/mod.rs",
+        "crates/ruff_python_ast/src/lib.rs"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py",
+        "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+        "crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap"
+      ],
+      "duration_ms": 806.9901280105114,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "task_id": "ruff-003",
+      "variant": "no_recency",
+      "description": "Disable recency/freshness signal",
+      "returned_files": [
+        "crates/ruff_linter/src/rules/pyupgrade/mod.rs",
+        "crates/ty_python_semantic/src/types/infer/builder.rs",
+        "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+        "crates/ruff_python_ast/src/lib.rs",
+        "crates/ty_python_semantic/src/types.rs",
+        "crates/ty/src/python_version.rs"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py",
+        "crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs",
+        "crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap"
+      ],
+      "duration_ms": 798.1528791133314,
+      "precision": 0.1667,
+      "recall": 0.3333,
+      "f1": 0.2222
+    },
+    {
+      "task_id": "ruff-004",
+      "variant": "baseline",
+      "description": "Full pipeline: sw=0.90, dd=0.30, k=60, depth=1",
+      "returned_files": [
+        "crates/ruff_linter/src/rules/flake8_pyi/mod.rs",
+        "crates/ruff_linter/src/rules/flake8_builtins/mod.rs",
+        "crates/ruff_linter/src/rules/flake8_bugbear/mod.rs",
+        "crates/ruff_linter/src/rules/pyflakes/mod.rs",
+        "CHANGELOG.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py",
+        "crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs",
+        "crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap"
+      ],
+      "duration_ms": 1208.0629840493202,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "task_id": "ruff-004",
+      "variant": "no_semantic",
+      "description": "Disable semantic search (pure keyword/BM25)",
+      "returned_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py",
+        "crates/ruff_linter/src/rules/flake8_pyi/mod.rs",
+        "crates/ty_python_semantic/src/types.rs"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py",
+        "crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs",
+        "crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap"
+      ],
+      "duration_ms": 1164.6033101715147,
+      "precision": 0.3333,
+      "recall": 0.3333,
+      "f1": 0.3333
+    },
+    {
+      "task_id": "ruff-004",
+      "variant": "no_keyword",
+      "description": "Disable keyword search (pure semantic/embedding)",
+      "returned_files": [
+        "crates/ruff_linter/src/rules/flake8_pyi/mod.rs",
+        "crates/ruff_linter/src/rules/flake8_bugbear/mod.rs",
+        "crates/ruff_linter/src/rules/pyflakes/mod.rs",
+        "crates/ruff_linter/src/rules/flake8_builtins/mod.rs",
+        "CHANGELOG.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py",
+        "crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs",
+        "crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap"
+      ],
+      "duration_ms": 1133.3234191406518,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "task_id": "ruff-004",
+      "variant": "no_coupling",
+      "description": "Disable temporal coupling expansion",
+      "returned_files": [
+        "crates/ruff_linter/src/rules/flake8_pyi/mod.rs",
+        "crates/ruff_linter/src/rules/flake8_builtins/mod.rs",
+        "crates/ruff_linter/src/rules/flake8_bugbear/mod.rs",
+        "crates/ruff_linter/src/rules/pyflakes/mod.rs",
+        "CHANGELOG.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py",
+        "crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs",
+        "crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap"
+      ],
+      "duration_ms": 1157.391102053225,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "task_id": "ruff-004",
+      "variant": "no_doc_demotion",
+      "description": "Treat docs same as source (doc_demotion=1.0)",
+      "returned_files": [
+        "CHANGELOG.md",
+        "crates/ruff_linter/src/rules/flake8_pyi/mod.rs",
+        "crates/ruff_linter/src/rules/flake8_builtins/mod.rs",
+        "crates/ruff_linter/src/rules/flake8_bugbear/mod.rs",
+        "BREAKING_CHANGES.md",
+        "crates/ruff_linter/src/rules/pyflakes/mod.rs"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py",
+        "crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs",
+        "crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap"
+      ],
+      "duration_ms": 1154.1787202004343,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "task_id": "ruff-004",
+      "variant": "no_recency",
+      "description": "Disable recency/freshness signal",
+      "returned_files": [
+        "crates/ruff_linter/src/rules/flake8_pyi/mod.rs",
+        "crates/ruff_linter/src/rules/flake8_builtins/mod.rs",
+        "crates/ruff_linter/src/rules/flake8_bugbear/mod.rs",
+        "crates/ruff_linter/src/rules/pyflakes/mod.rs",
+        "CHANGELOG.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py",
+        "crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs",
+        "crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap"
+      ],
+      "duration_ms": 1177.7485150378197,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "task_id": "ruff-005",
+      "variant": "baseline",
+      "description": "Full pipeline: sw=0.90, dd=0.30, k=60, depth=1",
+      "returned_files": [
+        "crates/ruff_markdown/src/lib.rs",
+        "crates/ruff/tests/cli/format.rs",
+        "crates/ruff/tests/cli/lint.rs",
+        "crates/ruff/src/commands/format.rs",
+        "docs/formatter.md",
+        "BREAKING_CHANGES.md",
+        "docs/integrations.md",
+        "docs/tutorial.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff/src/commands/format.rs",
+        "crates/ruff/tests/cli/format.rs"
+      ],
+      "duration_ms": 1180.7784701231867,
+      "precision": 0.25,
+      "recall": 1.0,
+      "f1": 0.4
+    },
+    {
+      "task_id": "ruff-005",
+      "variant": "no_semantic",
+      "description": "Disable semantic search (pure keyword/BM25)",
+      "returned_files": [
+        "crates/ruff/tests/cli/format.rs",
+        "crates/ty/src/lib.rs",
+        "crates/ruff/src/lib.rs",
+        "crates/ruff/src/args.rs",
+        "crates/ty_project/src/metadata/options.rs",
+        "crates/ruff_linter/src/linter.rs"
+      ],
+      "ground_truth_files": [
+        "crates/ruff/src/commands/format.rs",
+        "crates/ruff/tests/cli/format.rs"
+      ],
+      "duration_ms": 1123.3062869869173,
+      "precision": 0.1667,
+      "recall": 0.5,
+      "f1": 0.25
+    },
+    {
+      "task_id": "ruff-005",
+      "variant": "no_keyword",
+      "description": "Disable keyword search (pure semantic/embedding)",
+      "returned_files": [
+        "crates/ruff_markdown/src/lib.rs",
+        "crates/ruff/tests/cli/format.rs",
+        "crates/ruff/tests/cli/lint.rs",
+        "crates/ruff/src/commands/format.rs",
+        "BREAKING_CHANGES.md",
+        "docs/formatter.md",
+        "docs/integrations.md",
+        "docs/tutorial.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff/src/commands/format.rs",
+        "crates/ruff/tests/cli/format.rs"
+      ],
+      "duration_ms": 1102.8155810199678,
+      "precision": 0.25,
+      "recall": 1.0,
+      "f1": 0.4
+    },
+    {
+      "task_id": "ruff-005",
+      "variant": "no_coupling",
+      "description": "Disable temporal coupling expansion",
+      "returned_files": [
+        "crates/ruff_markdown/src/lib.rs",
+        "crates/ruff/tests/cli/format.rs",
+        "crates/ruff/tests/cli/lint.rs",
+        "crates/ruff/src/commands/format.rs",
+        "docs/formatter.md",
+        "BREAKING_CHANGES.md",
+        "docs/integrations.md",
+        "docs/tutorial.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff/src/commands/format.rs",
+        "crates/ruff/tests/cli/format.rs"
+      ],
+      "duration_ms": 1112.0015061460435,
+      "precision": 0.25,
+      "recall": 1.0,
+      "f1": 0.4
+    },
+    {
+      "task_id": "ruff-005",
+      "variant": "no_doc_demotion",
+      "description": "Treat docs same as source (doc_demotion=1.0)",
+      "returned_files": [
+        "docs/formatter.md",
+        "docs/configuration.md",
+        "BREAKING_CHANGES.md",
+        "docs/integrations.md",
+        "crates/ruff_markdown/src/lib.rs",
+        "crates/ruff/tests/cli/format.rs",
+        "docs/linter.md",
+        "docs/tutorial.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff/src/commands/format.rs",
+        "crates/ruff/tests/cli/format.rs"
+      ],
+      "duration_ms": 1087.2592460364103,
+      "precision": 0.125,
+      "recall": 0.5,
+      "f1": 0.2
+    },
+    {
+      "task_id": "ruff-005",
+      "variant": "no_recency",
+      "description": "Disable recency/freshness signal",
+      "returned_files": [
+        "crates/ruff_markdown/src/lib.rs",
+        "crates/ruff/tests/cli/format.rs",
+        "crates/ruff/tests/cli/lint.rs",
+        "crates/ruff/src/commands/format.rs",
+        "docs/formatter.md",
+        "BREAKING_CHANGES.md",
+        "docs/integrations.md",
+        "docs/tutorial.md"
+      ],
+      "ground_truth_files": [
+        "crates/ruff/src/commands/format.rs",
+        "crates/ruff/tests/cli/format.rs"
+      ],
+      "duration_ms": 1104.0598000399768,
+      "precision": 0.25,
+      "recall": 1.0,
+      "f1": 0.4
+    }
+  ],
+  "summary": [
+    {
+      "variant": "no_semantic",
+      "tasks": 4,
+      "avg_precision": 0.2667,
+      "avg_recall": 0.3916,
+      "avg_f1": 0.3014,
+      "avg_duration_ms": 982.4
+    },
+    {
+      "variant": "no_keyword",
+      "tasks": 4,
+      "avg_precision": 0.1437,
+      "avg_recall": 0.3833,
+      "avg_f1": 0.201,
+      "avg_duration_ms": 973.4
+    },
+    {
+      "variant": "baseline",
+      "tasks": 4,
+      "avg_precision": 0.1354,
+      "avg_recall": 0.3833,
+      "avg_f1": 0.194,
+      "avg_duration_ms": 1078.3
+    },
+    {
+      "variant": "no_coupling",
+      "tasks": 4,
+      "avg_precision": 0.1354,
+      "avg_recall": 0.3833,
+      "avg_f1": 0.194,
+      "avg_duration_ms": 973.8
+    },
+    {
+      "variant": "no_recency",
+      "tasks": 4,
+      "avg_precision": 0.1354,
+      "avg_recall": 0.3833,
+      "avg_f1": 0.194,
+      "avg_duration_ms": 977.5
+    },
+    {
+      "variant": "no_doc_demotion",
+      "tasks": 4,
+      "avg_precision": 0.0813,
+      "avg_recall": 0.175,
+      "avg_f1": 0.1,
+      "avg_duration_ms": 969.0
+    }
+  ]
+}

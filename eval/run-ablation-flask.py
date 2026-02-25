@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Search-level ablation testing on flask tasks.
+"""Search-level ablation testing for eval tasks.
 
 Disables one search method at a time and measures P/R/F1 against the
 baseline config (sw=0.90, dd=0.30, k=60). No LLM calls — pure search
@@ -17,8 +17,9 @@ Ablation variants:
                         bobbin context)
 
 Usage:
-    python3 eval/run-ablation-flask.py
-    python3 eval/run-ablation-flask.py --task flask-004
+    python3 eval/run-ablation-flask.py --repo ruff
+    python3 eval/run-ablation-flask.py --repo flask
+    python3 eval/run-ablation-flask.py --task ruff-003
 """
 
 from __future__ import annotations
@@ -41,11 +42,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 EVAL_ROOT = Path(__file__).resolve().parent
-QUARANTINED = EVAL_ROOT / "tasks" / "_quarantined"
+TASKS_DIR = EVAL_ROOT / "tasks"
+QUARANTINED = TASKS_DIR / "_quarantined"
 RESULTS_DIR = EVAL_ROOT / "results"
-
-# Flask tasks to test (skip flask-001 — empty_index bug)
-FLASK_TASKS = ["flask-002", "flask-003", "flask-004", "flask-005"]
 
 # Baseline parameters (from calibration sweep — best F1=0.461)
 BASELINE = {
@@ -116,13 +115,26 @@ def find_bobbin() -> str:
 
 def load_task(task_id: str) -> dict:
     import yaml
-    path = QUARANTINED / f"{task_id}.yaml"
-    if not path.exists():
-        raise FileNotFoundError(f"Task {task_id} not found at {path}")
-    with open(path) as f:
-        data = yaml.safe_load(f)
-    data["id"] = data.get("id", task_id)
-    return data
+    # Search main tasks dir first, then quarantined
+    for d in [TASKS_DIR, QUARANTINED]:
+        path = d / f"{task_id}.yaml"
+        if path.exists():
+            with open(path) as f:
+                data = yaml.safe_load(f)
+            data["id"] = data.get("id", task_id)
+            return data
+    raise FileNotFoundError(f"Task {task_id} not found in {TASKS_DIR} or {QUARANTINED}")
+
+
+def find_tasks_for_repo(repo_prefix: str) -> list[str]:
+    """Find all task IDs matching a repo prefix (e.g. 'ruff' -> ruff-001..005)."""
+    import yaml
+    task_ids = []
+    for d in [TASKS_DIR, QUARANTINED]:
+        for path in sorted(d.glob("*.yaml")):
+            if path.stem.startswith(repo_prefix + "-"):
+                task_ids.append(path.stem)
+    return task_ids
 
 
 def get_ground_truth(workspace: Path, commit: str) -> list[str]:
@@ -403,9 +415,10 @@ def build_summary(per_variant: dict[str, list[dict]]) -> list[dict]:
     return sorted(summary, key=lambda s: s.get("avg_f1", 0), reverse=True)
 
 
-def generate_markdown(data: dict) -> str:
+def generate_markdown(data: dict, repo_name: str = "flask") -> str:
     """Generate markdown report from ablation results."""
-    lines = ["# Flask Search-Level Ablation Report\n"]
+    title = repo_name.capitalize()
+    lines = [f"# {title} Search-Level Ablation Report\n"]
     lines.append(f"Generated: {data['timestamp']}\n")
     lines.append(f"Baseline config: sw={BASELINE['semantic_weight']}, "
                  f"dd={BASELINE['doc_demotion']}, k={BASELINE['rrf_k']}, "
@@ -475,23 +488,39 @@ def generate_markdown(data: dict) -> str:
 def main():
     import sys
     task_ids = None
+    repo_name = "flask"  # default
+
+    if "--repo" in sys.argv:
+        idx = sys.argv.index("--repo")
+        if idx + 1 < len(sys.argv):
+            repo_name = sys.argv[idx + 1]
+            task_ids = find_tasks_for_repo(repo_name)
+            if not task_ids:
+                print(f"No tasks found for repo prefix '{repo_name}'")
+                sys.exit(1)
+
     if "--task" in sys.argv:
         idx = sys.argv.index("--task")
         if idx + 1 < len(sys.argv):
             task_ids = [sys.argv[idx + 1]]
+            repo_name = task_ids[0].rsplit("-", 1)[0]
 
-    logger.info("Starting flask ablation tests...")
+    if task_ids is None:
+        # Default: flask quarantined tasks (skip flask-001)
+        task_ids = ["flask-002", "flask-003", "flask-004", "flask-005"]
+
+    logger.info("Starting %s ablation tests (%d tasks)...", repo_name, len(task_ids))
     data = run_ablation(task_ids)
 
     # Save JSON
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    json_path = RESULTS_DIR / "ablation-flask-search.json"
+    json_path = RESULTS_DIR / f"ablation-{repo_name}-search.json"
     json_path.write_text(json.dumps(data, indent=2))
     logger.info("JSON results: %s", json_path)
 
     # Save markdown
-    md_path = RESULTS_DIR / "ablation-flask-search.md"
-    md_path.write_text(generate_markdown(data))
+    md_path = RESULTS_DIR / f"ablation-{repo_name}-search.md"
+    md_path.write_text(generate_markdown(data, repo_name))
     logger.info("Markdown report: %s", md_path)
 
     # Print summary
