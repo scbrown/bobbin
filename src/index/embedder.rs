@@ -11,6 +11,62 @@ use std::time::Instant;
 
 use crate::config::{EmbeddingBackend, EmbeddingConfig};
 
+/// Probe well-known locations for a CUDA-enabled libonnxruntime.so and set
+/// ORT_DYLIB_PATH + LD_LIBRARY_PATH so the `load-dynamic` ort crate picks it up.
+/// Safe to call multiple times — no-ops if ORT_DYLIB_PATH is already set.
+pub(crate) fn auto_resolve_gpu_dylib() {
+    // If ORT_DYLIB_PATH is already set to a CUDA-capable lib, nothing to do.
+    if let Ok(existing) = std::env::var("ORT_DYLIB_PATH") {
+        let existing_dir = Path::new(&existing).parent().unwrap_or(Path::new(""));
+        if existing_dir.join("libonnxruntime_providers_cuda.so").exists() {
+            return;
+        }
+        // Existing path is CPU-only (e.g., from Python onnxruntime) — override it.
+    }
+
+    const SEARCH_PATHS: &[&str] = &[
+        "/usr/local/lib/onnxruntime-gpu/libonnxruntime.so",
+        "/usr/local/lib/libonnxruntime.so",
+        "/opt/onnxruntime-gpu/lib/libonnxruntime.so",
+    ];
+
+    for candidate in SEARCH_PATHS {
+        let p = Path::new(candidate);
+        if !p.exists() {
+            continue;
+        }
+        let dir = p.parent().unwrap();
+        let cuda_provider = dir.join("libonnxruntime_providers_cuda.so");
+        if !cuda_provider.exists() {
+            continue;
+        }
+        // SAFETY: called before any ort Session is created.
+        unsafe {
+            std::env::set_var("ORT_DYLIB_PATH", candidate);
+        }
+        // Ensure the provider .so can find its own deps via LD_LIBRARY_PATH
+        let mut ld_path = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
+        let dir_str = dir.to_string_lossy();
+        if !ld_path.contains(dir_str.as_ref()) {
+            if !ld_path.is_empty() {
+                ld_path.push(':');
+            }
+            ld_path.push_str(&dir_str);
+            for cuda_dir in &["/usr/local/cuda/lib64", "/usr/local/cuda-12/lib64"] {
+                if Path::new(cuda_dir).exists() && !ld_path.contains(cuda_dir) {
+                    ld_path.push(':');
+                    ld_path.push_str(cuda_dir);
+                }
+            }
+            unsafe {
+                std::env::set_var("LD_LIBRARY_PATH", &ld_path);
+            }
+        }
+        eprintln!("auto-detected GPU ONNX Runtime at {}", candidate);
+        return;
+    }
+}
+
 /// Sub-phase timing breakdown for embedding operations.
 #[derive(Default, Debug, Clone)]
 pub struct EmbedTiming {
@@ -298,24 +354,26 @@ impl OnnxEmbedder {
                 (cpus / 2).max(2)
             });
 
+        // Auto-resolve GPU-capable ONNX Runtime library if not already set.
+        // The `load-dynamic` ort feature reads ORT_DYLIB_PATH at first use.
+        if use_gpu {
+            auto_resolve_gpu_dylib();
+        }
+
         let mut builder = Session::builder()
             .map_err(|e| anyhow::anyhow!("Failed to create ONNX session builder: {}", e))?;
 
         // Register CUDA execution provider if GPU requested.
-        // Falls back to CPU silently if CUDA is not available at runtime.
-        let mut gpu_active = false;
-        if use_gpu {
-            let cuda_ep = CUDA::default();
-            let cuda_available = cuda_ep.is_available().unwrap_or(false);
-            if cuda_available {
-                builder = builder
-                    .with_execution_providers([cuda_ep.build()])
-                    .map_err(|e| anyhow::anyhow!("Failed to register CUDA EP: {}", e))?;
-                gpu_active = true;
-            } else {
-                eprintln!("warning: GPU requested but CUDA execution provider not available, falling back to CPU");
-            }
-        }
+        // with_execution_providers silently falls back to CPU if CUDA is unavailable.
+        let gpu_active = if use_gpu {
+            builder = builder
+                .with_execution_providers([CUDA::default().build()])
+                .map_err(|e| anyhow::anyhow!("Failed to register CUDA EP: {}", e))?;
+            // Check if CUDA EP was actually registered (lib is now loaded)
+            CUDA::default().is_available().unwrap_or(false)
+        } else {
+            false
+        };
 
         let session = builder
             .with_intra_threads(num_threads)
@@ -329,8 +387,12 @@ impl OnnxEmbedder {
                 )
             })?;
 
-        if gpu_active {
-            eprintln!("ONNX session using CUDA GPU acceleration");
+        if use_gpu {
+            if gpu_active {
+                eprintln!("ONNX session using CUDA GPU acceleration");
+            } else {
+                eprintln!("warning: GPU requested but CUDA execution provider not available, falling back to CPU");
+            }
         }
 
         let tokenizer = Tokenizer::from_file(tokenizer_path)

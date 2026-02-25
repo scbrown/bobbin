@@ -172,6 +172,7 @@ impl EmbeddingConfig {
 
     /// Probe whether the CUDA execution provider is available at runtime.
     fn detect_cuda() -> bool {
+        crate::index::embedder::auto_resolve_gpu_dylib();
         use ort::ep::{ExecutionProvider, CUDA};
         CUDA::default().is_available().unwrap_or(false)
     }
