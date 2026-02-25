@@ -1,5 +1,7 @@
 # Design: Adaptive Defaults — Project-Aware Search Configuration
 
+**Status**: Approved (decisions finalized 2026-02-25)
+
 ## Problem
 
 Bobbin's search parameters are one-size-fits-all defaults tuned for small-to-mid
@@ -46,123 +48,61 @@ and `coupling_depth=[100, 1000, 5000, 20000]` to find signal.
 
 ## Design
 
-### 1. Project Inspection (`bobbin inspect`)
+### Key Decisions
 
-A new command that analyzes a project and recommends configuration. Can be run
-standalone or integrated into `bobbin init`.
+<!-- human-approved: stiwi 2026-02-25 -->
 
-```
-$ bobbin inspect
+1. **Merge inspect and calibrate.** No separate `bobbin inspect` phase. Calibrate
+   runs automatically after `bobbin index` and empirically finds optimal config.
+   Project profile info (language distribution, chunk count, etc.) becomes
+   diagnostic output in `bobbin status`.
 
-Project Profile
-  Languages:   rust (68%), python (23%), markdown (9%)
-  Files:       4,940
-  Chunks:      57,158 (estimated)
-  Repo age:    3.2 years
-  Commit rate: 12.4 commits/week
-  Structure:   monorepo (47 top-level crates)
+2. **Rust-native implementation.** No Python dependency. All pieces (git log
+   parsing, context probing, scoring) already exist in the binary.
 
-Recommended Configuration
-  semantic_weight:       0.30  (large codebase, identifier-heavy languages)
-  doc_demotion:          0.30  (standard)
-  rrf_k:                 60.0  (standard)
-  recency_half_life_days: 14.0 (active development)
-  recency_weight:        0.30  (standard)
-  coupling_depth:        10000 (3.2 year history)
+3. **Single-language scope.** Multi-language repos (50% Rust + 50% Python) are
+   backlogged. v1 treats the project as one unit. See [Backlog](#backlog).
 
-  Apply? [Y/n]
-```
+4. **Auto-recalibrate on significant change.** After indexing, bobbin checks
+   whether the project has changed enough since last calibration to warrant
+   re-running. The "what changed" detection is behind a trait so it's easy to
+   extend over time. See [Change Detection](#change-detection).
 
-**Inspection signals:**
+5. **Warn on terse commit messages.** If sampled commits have low-quality messages
+   (short, generic), warn the user that calibration accuracy may be reduced.
+   Fallback strategies (diff-content queries, PR titles) are backlogged.
+   See [Backlog](#backlog).
 
-| Signal | How to Measure | What it Affects |
-|--------|---------------|-----------------|
-| Chunk count (estimated) | Count files × avg chunks/file from language stats | `semantic_weight` |
-| Primary language | Tree-sitter language distribution | `semantic_weight` |
-| Identifier style | Sample identifiers, measure avg length + uniqueness | `semantic_weight` |
-| Repo age | `git log --reverse --format=%ct \| head -1` | `coupling_depth` |
-| Commit frequency | Recent commits / time window | `recency_half_life_days` |
-| Monorepo structure | Count top-level dirs with independent build files | `semantic_weight` |
-| Doc ratio | Markdown + config files vs source files | `doc_demotion` |
+### 1. Auto-Calibration (`bobbin calibrate`)
 
-### 2. Adaptive Defaults Tiers
-
-Rather than a continuous function, use discrete tiers that are easy to reason about:
-
-**Tier: Small Project** (< 5k chunks, estimated < 500 files)
-```toml
-[search]
-semantic_weight = 0.90
-doc_demotion = 0.30
-rrf_k = 60.0
-recency_half_life_days = 30.0
-recency_weight = 0.30
-```
-
-**Tier: Medium Project** (5k–30k chunks)
-```toml
-[search]
-semantic_weight = 0.70
-doc_demotion = 0.30
-rrf_k = 60.0
-recency_half_life_days = 30.0
-recency_weight = 0.30
-```
-
-**Tier: Large Project** (30k+ chunks)
-```toml
-[search]
-semantic_weight = 0.40
-doc_demotion = 0.30
-rrf_k = 60.0
-recency_half_life_days = 14.0
-recency_weight = 0.30
-```
-
-**Language modifier:** Identifier-heavy languages (Rust, Go, Java, C++) shift
-`semantic_weight` down by 0.1–0.2 from the tier default because BM25 is more
-effective on explicit naming conventions.
-
-**Monorepo modifier:** Detected monorepo structure shifts `semantic_weight` down
-by 0.1 due to embedding confusion from structurally similar subdirectories.
-
-### 3. Self-Service Calibration (`bobbin calibrate`)
-
-A user-facing tool that lets project owners find their optimal settings. Unlike
-the eval framework (which needs curated ground-truth tasks), this uses the
-project's own git history as ground truth.
+Runs automatically at the end of `bobbin index` (skippable with `--skip-calibrate`).
+Also available standalone for manual tuning.
 
 ```
-$ bobbin calibrate
+$ bobbin index
+Indexing 4,940 files...
+  Chunks: 57,158  Embeddings: ████████████████████████ done
 
-Calibrating search parameters against your git history...
-
-  Strategy: For each of 20 sampled commits, use the commit message as a query
-            and measure how well bobbin finds the files that were actually changed.
-
-  Sampling: 20 commits across last 6 months (varied sizes, skip merge commits)
+Calibrating search parameters against git history...
+  Sampling: 20 commits across last 6 months
   Grid:     semantic_weight=[0.0, 0.3, 0.5, 0.7, 0.9], doc_demotion=[0.1, 0.3, 0.5]
 
   Running 300 probes... ████████████████████████ 100%
 
-Results (top 5 by F1):
+Calibration results (top 3 by F1):
   sw=0.30 dd=0.30 k=60  F1=0.412  P=0.389  R=0.440
   sw=0.50 dd=0.30 k=60  F1=0.398  P=0.401  R=0.395
   sw=0.00 dd=0.30 k=60  F1=0.385  P=0.352  R=0.423
-  sw=0.70 dd=0.30 k=60  F1=0.341  P=0.380  R=0.309
-  sw=0.90 dd=0.30 k=60  F1=0.298  P=0.412  R=0.233
 
-  Current config F1: 0.298 (sw=0.90)
-  Best config F1:    0.412 (sw=0.30)  [+38% improvement]
+  Previous config F1: 0.298 (sw=0.90)
+  Best config F1:     0.412 (sw=0.30)  [+38% improvement]
 
-  Apply best config? [Y/n]
+  ✓ Applied best config to .bobbin/config.toml
 ```
 
-**Key design decisions:**
-
 **Ground truth from git history:** Each commit's diff-tree gives the files changed.
-The commit message (plus PR title if available) is the query. This gives real
-ground truth for the actual project without requiring curated eval tasks.
+The commit message is the query. This gives real ground truth for the actual
+project without requiring curated eval tasks.
 
 **Commit sampling strategy:**
 - Skip merge commits, revert commits, and commits touching >30 files (refactors)
@@ -170,32 +110,76 @@ ground truth for the actual project without requiring curated eval tasks.
 - Bias toward "interesting" commits: bug fixes, feature adds (heuristic from message)
 - Require minimum 2 files changed (single-file commits are trivial)
 
-**Parameter grid:** Smaller than the eval framework grid. Focus on the parameters
-that matter most (semantic_weight, doc_demotion) with a coarser grid.
+**Terse message detection:** If >50% of sampled commits have messages under 20
+characters or match generic patterns ("fix", "update", "wip"), emit a warning:
+```
+⚠ Many commit messages are too short for reliable calibration.
+  Calibration accuracy may be reduced. Consider running with --verbose
+  to inspect which commits were sampled.
+```
 
-**Execution:** Uses the same `bobbin context --json` probe mechanism as the eval
-framework. Single index, sweep all configs. With GPU: ~3 seconds per probe.
+**Parameter grid:** Focus on the parameters that matter most (`semantic_weight`,
+`doc_demotion`) with a coarse grid. With GPU: ~3 seconds per probe.
 300 probes = ~15 minutes for a large repo.
 
-### 4. Configuration Cascade
+**Execution:** Probes use the existing `ContextAssembler::assemble()` path
+internally (no subprocess overhead). Single index, sweep all configs by
+overriding `ContextConfig` fields per probe.
+
+### 2. Change Detection
+
+After indexing, bobbin decides whether to run calibration by consulting a
+`CalibrationGuard` trait:
+
+```rust
+/// Determines whether calibration should run after an index operation.
+trait CalibrationGuard {
+    /// Returns true if the project has changed enough to warrant recalibration.
+    fn should_recalibrate(&self, current: &ProjectSnapshot, previous: &ProjectSnapshot) -> bool;
+}
+
+/// Point-in-time snapshot of project characteristics relevant to calibration.
+struct ProjectSnapshot {
+    chunk_count: usize,
+    file_count: usize,
+    primary_language: String,
+    language_distribution: Vec<(String, f32)>,  // (language, fraction)
+    repo_age_days: u32,
+    recent_commit_rate: f32,  // commits/week over last 30 days
+    calibrated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+```
+
+**v1 implementation** (`DefaultCalibrationGuard`):
+- Recalibrate if no previous calibration exists
+- Recalibrate if chunk count changed by >20%
+- Recalibrate if primary language changed
+- Recalibrate if last calibration was >30 days ago
+
+The trait boundary makes it easy to add richer heuristics later (monorepo
+detection, identifier density shifts, etc.) without changing the index pipeline.
+
+The `ProjectSnapshot` is persisted in `.bobbin/calibration.json` alongside the
+calibration results.
+
+### 3. Configuration Cascade
 
 ```
 Highest priority
   ├── CLI flags (--semantic-weight 0.5)
   ├── .bobbin/config.toml [search] section (user-tuned)
-  ├── bobbin calibrate results (if --apply was used)
-  ├── bobbin inspect adaptive defaults (if --apply was used)
+  ├── Calibration results (.bobbin/calibration.json)
   └── Compiled defaults (current hardcoded values)
 Lowest priority
 ```
 
-`bobbin calibrate --apply` and `bobbin inspect --apply` both write to the same
-`.bobbin/config.toml`. The user always has final control.
+`bobbin calibrate` writes to `.bobbin/calibration.json` (not config.toml).
+This keeps auto-tuned values separate from explicit user overrides. If the user
+sets `semantic_weight = 0.5` in config.toml, that always wins over calibration.
 
-### 5. Recency & Coupling Exploration
+### 4. Extended Calibration (`--full`)
 
-The ablation showed neutral signal for both, but the parameter space is unexplored.
-`bobbin calibrate` should also sweep these when `--full` is passed:
+Sweeps recency and coupling parameters in addition to the core grid:
 
 ```
 $ bobbin calibrate --full
@@ -210,30 +194,49 @@ Extended calibration (includes recency and coupling parameters)...
   Running 2400 probes... ████████████ 45%
 ```
 
-This requires re-indexing with different `coupling_depth` values, so it's
+Coupling depth sweep requires re-indexing coupling data per depth value, so it's
 significantly slower. The `--full` flag makes the cost explicit.
+
+### 5. Project Profile in `bobbin status`
+
+The old "inspect" diagnostics surface here instead of as a separate command:
+
+```
+$ bobbin status
+
+Index
+  Chunks:      57,158
+  Files:       4,940
+  Languages:   rust (68%), python (23%), markdown (9%)
+  Last indexed: 2 hours ago
+
+Calibration
+  Status:      calibrated (2026-02-25)
+  Config:      sw=0.30 dd=0.30 k=60 (F1=0.412)
+  Stale:       no (chunk delta: +2%)
+
+Git
+  Repo age:    3.2 years
+  Commit rate: 12.4 commits/week
+  Structure:   monorepo (47 top-level crates)
+```
 
 ## Implementation Plan
 
-### Phase 1: `bobbin inspect` (Rust, low effort)
-- Add `inspect` subcommand
-- Count files by language using existing tree-sitter detection
-- Estimate chunk count from file counts
-- Detect monorepo structure (multiple build files at top level)
-- Git history stats (age, frequency)
-- Print recommended config
-- `--apply` flag to write config.toml
-- **Wire into `bobbin init`**: After creating default config, run inspect and
-  offer to apply adaptive defaults
+### Phase 1: `bobbin calibrate` (Rust, medium effort)
+- Commit sampler: git log parsing, filtering, stratified sampling
+- Probe runner: `ContextAssembler` with overridden config per probe
+- Scorer: precision/recall/F1 (file-level, matching eval framework)
+- Grid sweep with progress bar (indicatif)
+- Results output: terminal table + `.bobbin/calibration.json`
+- `ProjectSnapshot` capture and persistence
+- Terse message detection + warning
 
-### Phase 2: `bobbin calibrate` (Rust + Python bridge, medium effort)
-- Sample commits from git history
-- Use `bobbin context --json` for probes (already exists)
-- Parameter grid sweep with progress bar
-- Report generation (terminal table + optional markdown)
-- `--apply` flag to write config.toml
-- Consider implementing in Rust directly (avoids Python dependency) since all
-  the pieces (git log, bobbin context, scoring) are already in the binary
+### Phase 2: Auto-calibration integration (low effort)
+- `CalibrationGuard` trait + `DefaultCalibrationGuard`
+- Wire into `bobbin index`: after indexing, check guard, run calibrate if needed
+- `--skip-calibrate` flag on `bobbin index`
+- Config cascade: calibration.json read at search time
 
 ### Phase 3: Extended calibration (medium effort)
 - Coupling depth sweep (requires re-index per depth value)
@@ -241,28 +244,35 @@ significantly slower. The `--full` flag makes the cost explicit.
 - `--full` flag
 - Cache intermediate results to allow resuming
 
-### Phase 4: Integration (low effort)
-- `bobbin init` runs inspect automatically, offers to apply
-- `bobbin index` warns if config looks suboptimal for detected project size
-- `bobbin status` shows current tier and whether calibration has been run
+### Phase 4: Status integration (low effort)
+- `bobbin status` shows project profile + calibration state
+- Staleness indicator (how much has changed since last calibration)
 
-## Open Questions
+## Backlog
 
-1. **Should `bobbin calibrate` be Rust-native or Python?** Rust avoids the Python
-   dependency but the eval framework is Python. Could ship as a separate
-   `bobbin-eval` binary or keep it Rust-native with a simpler grid.
+Items explicitly deferred from v1. Track these as future beads when the
+foundation is stable.
 
-2. **How to handle projects that span multiple languages?** A repo with 50% Rust
-   and 50% Python has conflicting optimal configs. Weight by file count? Or use
-   a different strategy (language-aware scoring)?
+### Multi-language project handling
+**Context**: A repo with 50% Rust and 50% Python has conflicting optimal configs.
+Calibrate v1 treats the project as one unit. Future options:
+- Weight by file count in calibration scoring
+- Language-aware scoring (different weights per language at query time)
+- Per-directory config overrides (monorepo crate-level tuning)
 
-3. **Should adaptive defaults update automatically?** After a major refactor that
-   changes project size significantly, should `bobbin index` suggest re-running
-   inspect/calibrate?
+### Terse commit message fallbacks
+**Context**: Projects with poor commit messages ("fix bug", "update") produce
+unreliable calibration. v1 warns but doesn't compensate. Future options:
+- Use diff content (added lines) as fallback query material
+- Extract PR titles from GitHub/Forgejo API
+- Use file paths + function names from diff as structured query
+- Filter terse commits out entirely and require a minimum viable sample size
 
-4. **Commit message quality as ground truth:** Some projects have terse commit
-   messages ("fix bug") that make poor queries. Detect this and warn, or use
-   diff content as a fallback query?
+### Dependency-graph expansion signal
+**Context**: The implemented `deps` feature (import graph) could be used as a
+new expansion signal in `ContextAssembler` alongside coupling and bridging.
+Not wired into injection yet — would help full agentic runs but not the
+search-probe calibration. Track as separate work.
 
 ## Related
 
@@ -270,4 +280,5 @@ significantly slower. The `--full` flag makes the cost explicit.
 - `eval/results/ablation-ruff-search.json` — Ruff ablation data
 - `eval/runner/calibrate.py` — Existing calibration framework (eval-only)
 - `src/config.rs` — Current defaults and config structures
+- `src/search/context.rs` — Context assembler (probe target)
 - `docs/plans/eval-metrics-gate-tuning.md` — Related eval quality work
