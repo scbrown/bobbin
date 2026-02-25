@@ -1,0 +1,1178 @@
+{
+  "configs": [
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.2,
+      "rrf_k": 40.0
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.2,
+      "rrf_k": 60.0
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.5,
+      "rrf_k": 40.0
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.5,
+      "rrf_k": 60.0
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 1.0,
+      "rrf_k": 40.0
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 1.0,
+      "rrf_k": 60.0
+    },
+    {
+      "semantic_weight": 0.7,
+      "doc_demotion": 0.2,
+      "rrf_k": 40.0
+    },
+    {
+      "semantic_weight": 0.7,
+      "doc_demotion": 0.2,
+      "rrf_k": 60.0
+    },
+    {
+      "semantic_weight": 0.7,
+      "doc_demotion": 0.5,
+      "rrf_k": 40.0
+    },
+    {
+      "semantic_weight": 0.7,
+      "doc_demotion": 0.5,
+      "rrf_k": 60.0
+    },
+    {
+      "semantic_weight": 0.7,
+      "doc_demotion": 1.0,
+      "rrf_k": 40.0
+    },
+    {
+      "semantic_weight": 0.7,
+      "doc_demotion": 1.0,
+      "rrf_k": 60.0
+    },
+    {
+      "semantic_weight": 0.9,
+      "doc_demotion": 0.2,
+      "rrf_k": 40.0
+    },
+    {
+      "semantic_weight": 0.9,
+      "doc_demotion": 0.2,
+      "rrf_k": 60.0
+    },
+    {
+      "semantic_weight": 0.9,
+      "doc_demotion": 0.5,
+      "rrf_k": 40.0
+    },
+    {
+      "semantic_weight": 0.9,
+      "doc_demotion": 0.5,
+      "rrf_k": 60.0
+    },
+    {
+      "semantic_weight": 0.9,
+      "doc_demotion": 1.0,
+      "rrf_k": 40.0
+    },
+    {
+      "semantic_weight": 0.9,
+      "doc_demotion": 1.0,
+      "rrf_k": 60.0
+    }
+  ],
+  "results": [
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.50_dd=0.20_k=40.0",
+      "precision": 0.25,
+      "recall": 0.6666666666666666,
+      "f1": 0.36363636363636365,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py",
+        "src/flask/app.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 338.46585592254996
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.50_dd=0.20_k=60.0",
+      "precision": 0.25,
+      "recall": 0.6666666666666666,
+      "f1": 0.36363636363636365,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py",
+        "src/flask/app.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 341.9348979368806
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.50_dd=0.50_k=40.0",
+      "precision": 0.25,
+      "recall": 0.6666666666666666,
+      "f1": 0.36363636363636365,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py",
+        "src/flask/app.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 340.06115002557635
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.50_dd=0.50_k=60.0",
+      "precision": 0.25,
+      "recall": 0.6666666666666666,
+      "f1": 0.36363636363636365,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py",
+        "src/flask/app.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 330.07461205124855
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.50_dd=1.00_k=40.0",
+      "precision": 0.25,
+      "recall": 0.6666666666666666,
+      "f1": 0.36363636363636365,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "setup.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 327.4117859546095
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.50_dd=1.00_k=60.0",
+      "precision": 0.25,
+      "recall": 0.6666666666666666,
+      "f1": 0.36363636363636365,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "setup.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 342.36228885129094
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.70_dd=0.20_k=40.0",
+      "precision": 0.2857142857142857,
+      "recall": 0.6666666666666666,
+      "f1": 0.4,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 337.250781012699
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.70_dd=0.20_k=60.0",
+      "precision": 0.2857142857142857,
+      "recall": 0.6666666666666666,
+      "f1": 0.4,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 344.8287509381771
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.70_dd=0.50_k=40.0",
+      "precision": 0.2857142857142857,
+      "recall": 0.6666666666666666,
+      "f1": 0.4,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 326.2403020635247
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.70_dd=0.50_k=60.0",
+      "precision": 0.2857142857142857,
+      "recall": 0.6666666666666666,
+      "f1": 0.4,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 321.00742822512984
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.70_dd=1.00_k=40.0",
+      "precision": 0.25,
+      "recall": 0.6666666666666666,
+      "f1": 0.36363636363636365,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "setup.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 330.5614050477743
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.70_dd=1.00_k=60.0",
+      "precision": 0.25,
+      "recall": 0.6666666666666666,
+      "f1": 0.36363636363636365,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "tests/test_helpers.py",
+        "src/flask/cli.py",
+        "tests/test_cli.py",
+        "setup.py",
+        "src/flask/scaffold.py",
+        "src/flask/helpers.py",
+        "tests/conftest.py",
+        "src/flask/testing.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 348.524026107043
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.90_dd=0.20_k=40.0",
+      "precision": 0.3333333333333333,
+      "recall": 0.6666666666666666,
+      "f1": 0.4444444444444444,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_helpers.py",
+        "tests/test_cli.py",
+        "tests/conftest.py",
+        "src/flask/helpers.py",
+        "src/flask/scaffold.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 342.9748711641878
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.90_dd=0.20_k=60.0",
+      "precision": 0.3333333333333333,
+      "recall": 0.6666666666666666,
+      "f1": 0.4444444444444444,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_helpers.py",
+        "tests/test_cli.py",
+        "tests/conftest.py",
+        "src/flask/helpers.py",
+        "src/flask/scaffold.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 341.069022892043
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.90_dd=0.50_k=40.0",
+      "precision": 0.3333333333333333,
+      "recall": 0.6666666666666666,
+      "f1": 0.4444444444444444,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_helpers.py",
+        "tests/test_cli.py",
+        "tests/conftest.py",
+        "src/flask/helpers.py",
+        "src/flask/scaffold.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 324.4496288243681
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.90_dd=0.50_k=60.0",
+      "precision": 0.3333333333333333,
+      "recall": 0.6666666666666666,
+      "f1": 0.4444444444444444,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_helpers.py",
+        "tests/test_cli.py",
+        "tests/conftest.py",
+        "src/flask/helpers.py",
+        "src/flask/scaffold.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 320.7877720706165
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.90_dd=1.00_k=40.0",
+      "precision": 0.25,
+      "recall": 0.6666666666666666,
+      "f1": 0.36363636363636365,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_helpers.py",
+        "tests/test_cli.py",
+        "tests/conftest.py",
+        "src/flask/helpers.py",
+        "src/flask/scaffold.py",
+        "setup.py",
+        "src/flask/testing.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 312.8236560150981
+    },
+    {
+      "task_id": "flask-002",
+      "config": "sw=0.90_dd=1.00_k=60.0",
+      "precision": 0.25,
+      "recall": 0.6666666666666666,
+      "f1": 0.36363636363636365,
+      "top_semantic_score": 0.49201038,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_helpers.py",
+        "tests/test_cli.py",
+        "tests/conftest.py",
+        "src/flask/helpers.py",
+        "src/flask/scaffold.py",
+        "setup.py",
+        "src/flask/testing.py"
+      ],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 314.09048405475914
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.50_dd=0.20_k=40.0",
+      "precision": 0.125,
+      "recall": 0.2,
+      "f1": 0.15384615384615385,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/helpers.py",
+        "src/flask/templating.py",
+        "src/flask/ctx.py",
+        "tests/test_basic.py",
+        "src/flask/scaffold.py",
+        "src/flask/blueprints.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 300.7280470337719
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.50_dd=0.20_k=60.0",
+      "precision": 0.125,
+      "recall": 0.2,
+      "f1": 0.15384615384615385,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "src/flask/helpers.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "src/flask/ctx.py",
+        "tests/test_basic.py",
+        "src/flask/scaffold.py",
+        "src/flask/blueprints.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 294.7643781080842
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.50_dd=0.50_k=40.0",
+      "precision": 0.125,
+      "recall": 0.2,
+      "f1": 0.15384615384615385,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "src/flask/helpers.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "src/flask/ctx.py",
+        "tests/test_basic.py",
+        "src/flask/scaffold.py",
+        "src/flask/blueprints.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 302.19011404551566
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.50_dd=0.50_k=60.0",
+      "precision": 0.125,
+      "recall": 0.2,
+      "f1": 0.15384615384615385,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "src/flask/helpers.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "src/flask/ctx.py",
+        "tests/test_basic.py",
+        "src/flask/scaffold.py",
+        "src/flask/blueprints.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 294.38261897303164
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.50_dd=1.00_k=40.0",
+      "precision": 0.125,
+      "recall": 0.2,
+      "f1": 0.15384615384615385,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "src/flask/helpers.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "src/flask/ctx.py",
+        "tests/test_basic.py",
+        "src/flask/scaffold.py",
+        "src/flask/blueprints.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 295.33858480863273
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.50_dd=1.00_k=60.0",
+      "precision": 0.125,
+      "recall": 0.2,
+      "f1": 0.15384615384615385,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/helpers.py",
+        "src/flask/templating.py",
+        "src/flask/ctx.py",
+        "tests/test_basic.py",
+        "src/flask/scaffold.py",
+        "src/flask/blueprints.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 300.6205279380083
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.70_dd=0.20_k=40.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 296.7048599384725
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.70_dd=0.20_k=60.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 317.7541461773217
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.70_dd=0.50_k=40.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 311.718838987872
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.70_dd=0.50_k=60.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 305.5302652064711
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.70_dd=1.00_k=40.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 295.86387798190117
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.70_dd=1.00_k=60.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 313.3912580087781
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.90_dd=0.20_k=40.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "tests/test_basic.py",
+        "src/flask/cli.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 302.02487390488386
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.90_dd=0.20_k=60.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "src/flask/cli.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 301.51069606654346
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.90_dd=0.50_k=40.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "tests/test_basic.py",
+        "src/flask/cli.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 314.5170658826828
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.90_dd=0.50_k=60.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "src/flask/cli.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 350.84047308191657
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.90_dd=1.00_k=40.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "tests/test_basic.py",
+        "src/flask/cli.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 303.3095831051469
+    },
+    {
+      "task_id": "flask-003",
+      "config": "sw=0.90_dd=1.00_k=60.0",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "top_semantic_score": 0.56734043,
+      "returned_files": [
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "src/flask/cli.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 295.3061009757221
+    }
+  ],
+  "summary": [
+    {
+      "config": "sw=0.50_dd=0.20_k=40.0",
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.2,
+      "rrf_k": 40.0,
+      "tasks": 2,
+      "avg_precision": 0.1875,
+      "avg_recall": 0.4333,
+      "avg_f1": 0.2587,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 319.6
+    },
+    {
+      "config": "sw=0.50_dd=0.20_k=60.0",
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.2,
+      "rrf_k": 60.0,
+      "tasks": 2,
+      "avg_precision": 0.1875,
+      "avg_recall": 0.4333,
+      "avg_f1": 0.2587,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 318.3
+    },
+    {
+      "config": "sw=0.50_dd=0.50_k=40.0",
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.5,
+      "rrf_k": 40.0,
+      "tasks": 2,
+      "avg_precision": 0.1875,
+      "avg_recall": 0.4333,
+      "avg_f1": 0.2587,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 321.1
+    },
+    {
+      "config": "sw=0.50_dd=0.50_k=60.0",
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.5,
+      "rrf_k": 60.0,
+      "tasks": 2,
+      "avg_precision": 0.1875,
+      "avg_recall": 0.4333,
+      "avg_f1": 0.2587,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 312.2
+    },
+    {
+      "config": "sw=0.50_dd=1.00_k=40.0",
+      "semantic_weight": 0.5,
+      "doc_demotion": 1.0,
+      "rrf_k": 40.0,
+      "tasks": 2,
+      "avg_precision": 0.1875,
+      "avg_recall": 0.4333,
+      "avg_f1": 0.2587,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 311.4
+    },
+    {
+      "config": "sw=0.50_dd=1.00_k=60.0",
+      "semantic_weight": 0.5,
+      "doc_demotion": 1.0,
+      "rrf_k": 60.0,
+      "tasks": 2,
+      "avg_precision": 0.1875,
+      "avg_recall": 0.4333,
+      "avg_f1": 0.2587,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 321.5
+    },
+    {
+      "config": "sw=0.90_dd=0.20_k=40.0",
+      "semantic_weight": 0.9,
+      "doc_demotion": 0.2,
+      "rrf_k": 40.0,
+      "tasks": 2,
+      "avg_precision": 0.1667,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.2222,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 322.5
+    },
+    {
+      "config": "sw=0.90_dd=0.20_k=60.0",
+      "semantic_weight": 0.9,
+      "doc_demotion": 0.2,
+      "rrf_k": 60.0,
+      "tasks": 2,
+      "avg_precision": 0.1667,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.2222,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 321.3
+    },
+    {
+      "config": "sw=0.90_dd=0.50_k=40.0",
+      "semantic_weight": 0.9,
+      "doc_demotion": 0.5,
+      "rrf_k": 40.0,
+      "tasks": 2,
+      "avg_precision": 0.1667,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.2222,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 319.5
+    },
+    {
+      "config": "sw=0.90_dd=0.50_k=60.0",
+      "semantic_weight": 0.9,
+      "doc_demotion": 0.5,
+      "rrf_k": 60.0,
+      "tasks": 2,
+      "avg_precision": 0.1667,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.2222,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 335.8
+    },
+    {
+      "config": "sw=0.70_dd=0.20_k=40.0",
+      "semantic_weight": 0.7,
+      "doc_demotion": 0.2,
+      "rrf_k": 40.0,
+      "tasks": 2,
+      "avg_precision": 0.1429,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.2,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 317.0
+    },
+    {
+      "config": "sw=0.70_dd=0.20_k=60.0",
+      "semantic_weight": 0.7,
+      "doc_demotion": 0.2,
+      "rrf_k": 60.0,
+      "tasks": 2,
+      "avg_precision": 0.1429,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.2,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 331.3
+    },
+    {
+      "config": "sw=0.70_dd=0.50_k=40.0",
+      "semantic_weight": 0.7,
+      "doc_demotion": 0.5,
+      "rrf_k": 40.0,
+      "tasks": 2,
+      "avg_precision": 0.1429,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.2,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 319.0
+    },
+    {
+      "config": "sw=0.70_dd=0.50_k=60.0",
+      "semantic_weight": 0.7,
+      "doc_demotion": 0.5,
+      "rrf_k": 60.0,
+      "tasks": 2,
+      "avg_precision": 0.1429,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.2,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 313.3
+    },
+    {
+      "config": "sw=0.70_dd=1.00_k=40.0",
+      "semantic_weight": 0.7,
+      "doc_demotion": 1.0,
+      "rrf_k": 40.0,
+      "tasks": 2,
+      "avg_precision": 0.125,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.1818,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 313.2
+    },
+    {
+      "config": "sw=0.70_dd=1.00_k=60.0",
+      "semantic_weight": 0.7,
+      "doc_demotion": 1.0,
+      "rrf_k": 60.0,
+      "tasks": 2,
+      "avg_precision": 0.125,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.1818,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 331.0
+    },
+    {
+      "config": "sw=0.90_dd=1.00_k=40.0",
+      "semantic_weight": 0.9,
+      "doc_demotion": 1.0,
+      "rrf_k": 40.0,
+      "tasks": 2,
+      "avg_precision": 0.125,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.1818,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 308.1
+    },
+    {
+      "config": "sw=0.90_dd=1.00_k=60.0",
+      "semantic_weight": 0.9,
+      "doc_demotion": 1.0,
+      "rrf_k": 60.0,
+      "tasks": 2,
+      "avg_precision": 0.125,
+      "avg_recall": 0.3333,
+      "avg_f1": 0.1818,
+      "avg_top_semantic_score": 0.5297,
+      "avg_duration_ms": 304.7
+    }
+  ]
+}

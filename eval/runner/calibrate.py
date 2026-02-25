@@ -383,10 +383,14 @@ def run_calibration(
                         )
                         continue
 
-                    # Extract returned file paths
-                    returned_files = [
-                        f["path"] for f in result_data.get("files", [])
-                    ]
+                    # Extract returned file paths (normalize to relative)
+                    ws_prefix = str(ws) + "/"
+                    returned_files = []
+                    for f in result_data.get("files", []):
+                        p = f["path"]
+                        if p.startswith(ws_prefix):
+                            p = p[len(ws_prefix):]
+                        returned_files.append(p)
                     summary = result_data.get("summary", {})
 
                     precision, recall, f1 = _compute_file_metrics(
