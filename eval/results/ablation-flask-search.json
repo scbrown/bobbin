@@ -1,0 +1,628 @@
+{
+  "timestamp": "2026-02-25T18:11:13.640940+00:00",
+  "bobbin": "/home/braino/.local/bin/bobbin",
+  "baseline_config": {
+    "semantic_weight": 0.9,
+    "doc_demotion": 0.3,
+    "rrf_k": 60.0,
+    "depth": 1
+  },
+  "variants": [
+    {
+      "name": "baseline",
+      "description": "Full pipeline: sw=0.90, dd=0.30, k=60, depth=1",
+      "cli_overrides": {},
+      "config_patch": null
+    },
+    {
+      "name": "no_semantic",
+      "description": "Disable semantic search (pure keyword/BM25)",
+      "cli_overrides": {
+        "semantic_weight": "0.0"
+      },
+      "config_patch": null
+    },
+    {
+      "name": "no_keyword",
+      "description": "Disable keyword search (pure semantic/embedding)",
+      "cli_overrides": {
+        "semantic_weight": "1.0"
+      },
+      "config_patch": null
+    },
+    {
+      "name": "no_coupling",
+      "description": "Disable temporal coupling expansion",
+      "cli_overrides": {
+        "depth": "0"
+      },
+      "config_patch": null
+    },
+    {
+      "name": "no_doc_demotion",
+      "description": "Treat docs same as source (doc_demotion=1.0)",
+      "cli_overrides": {
+        "doc_demotion": "1.0"
+      },
+      "config_patch": null
+    },
+    {
+      "name": "no_recency",
+      "description": "Disable recency/freshness signal",
+      "cli_overrides": {},
+      "config_patch": {
+        "search.recency_weight": "0.0"
+      }
+    }
+  ],
+  "results": [
+    {
+      "task_id": "flask-002",
+      "variant": "baseline",
+      "description": "Full pipeline: sw=0.90, dd=0.30, k=60, depth=1",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 12.844027020037174
+    },
+    {
+      "task_id": "flask-002",
+      "variant": "no_semantic",
+      "description": "Disable semantic search (pure keyword/BM25)",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 11.214504949748516
+    },
+    {
+      "task_id": "flask-002",
+      "variant": "no_keyword",
+      "description": "Disable keyword search (pure semantic/embedding)",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 12.380345026031137
+    },
+    {
+      "task_id": "flask-002",
+      "variant": "no_coupling",
+      "description": "Disable temporal coupling expansion",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 11.92815788090229
+    },
+    {
+      "task_id": "flask-002",
+      "variant": "no_doc_demotion",
+      "description": "Treat docs same as source (doc_demotion=1.0)",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 11.808580020442605
+    },
+    {
+      "task_id": "flask-002",
+      "variant": "no_recency",
+      "description": "Disable recency/freshness signal",
+      "error": "empty_index",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "returned_files": [],
+      "ground_truth_files": [
+        "setup.cfg",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "duration_ms": 10.312240105122328
+    },
+    {
+      "task_id": "flask-003",
+      "variant": "baseline",
+      "description": "Full pipeline: sw=0.90, dd=0.30, k=60, depth=1",
+      "returned_files": [
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "src/flask/cli.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 358.3140349946916,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "task_id": "flask-003",
+      "variant": "no_semantic",
+      "description": "Disable semantic search (pure keyword/BM25)",
+      "returned_files": [
+        "src/flask/helpers.py",
+        "src/flask/cli.py",
+        "src/flask/ctx.py",
+        "src/flask/blueprints.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 327.75221415795386,
+      "precision": 0.2,
+      "recall": 0.2,
+      "f1": 0.2
+    },
+    {
+      "task_id": "flask-003",
+      "variant": "no_keyword",
+      "description": "Disable keyword search (pure semantic/embedding)",
+      "returned_files": [
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/cli.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 332.14427693746984,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "task_id": "flask-003",
+      "variant": "no_coupling",
+      "description": "Disable temporal coupling expansion",
+      "returned_files": [
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "src/flask/cli.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 326.65325817652047,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "task_id": "flask-003",
+      "variant": "no_doc_demotion",
+      "description": "Treat docs same as source (doc_demotion=1.0)",
+      "returned_files": [
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "src/flask/cli.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 330.2533880341798,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "task_id": "flask-003",
+      "variant": "no_recency",
+      "description": "Disable recency/freshness signal",
+      "returned_files": [
+        "tests/test_user_error_handler.py",
+        "src/flask/templating.py",
+        "src/flask/cli.py",
+        "tests/test_basic.py",
+        "src/flask/ctx.py",
+        "src/flask/sessions.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 313.9313370920718,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "task_id": "flask-004",
+      "variant": "baseline",
+      "description": "Full pipeline: sw=0.90, dd=0.30, k=60, depth=1",
+      "returned_files": [
+        "src/flask/cli.py",
+        "src/flask/app.py",
+        "git:542cf30",
+        "tests/test_helpers.py",
+        "src/flask/__init__.py",
+        "git:fdab801"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 294.0828239079565,
+      "precision": 0.5,
+      "recall": 0.6,
+      "f1": 0.5455
+    },
+    {
+      "task_id": "flask-004",
+      "variant": "no_semantic",
+      "description": "Disable semantic search (pure keyword/BM25)",
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_helpers.py",
+        "src/flask/helpers.py",
+        "git:fdab801",
+        "src/flask/__init__.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 319.1086498554796,
+      "precision": 0.6,
+      "recall": 0.6,
+      "f1": 0.6
+    },
+    {
+      "task_id": "flask-004",
+      "variant": "no_keyword",
+      "description": "Disable keyword search (pure semantic/embedding)",
+      "returned_files": [
+        "src/flask/cli.py",
+        "tests/test_helpers.py",
+        "src/flask/app.py",
+        "git:542cf30",
+        "src/flask/__init__.py",
+        "git:fdab801",
+        "src/flask/helpers.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 282.16223511844873,
+      "precision": 0.5714,
+      "recall": 0.8,
+      "f1": 0.6667
+    },
+    {
+      "task_id": "flask-004",
+      "variant": "no_coupling",
+      "description": "Disable temporal coupling expansion",
+      "returned_files": [
+        "src/flask/cli.py",
+        "src/flask/app.py",
+        "git:542cf30",
+        "tests/test_helpers.py",
+        "src/flask/__init__.py",
+        "git:fdab801"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 295.0283279642463,
+      "precision": 0.5,
+      "recall": 0.6,
+      "f1": 0.5455
+    },
+    {
+      "task_id": "flask-004",
+      "variant": "no_doc_demotion",
+      "description": "Treat docs same as source (doc_demotion=1.0)",
+      "returned_files": [
+        "src/flask/cli.py",
+        "src/flask/app.py",
+        "git:542cf30",
+        "tests/test_helpers.py",
+        "src/flask/__init__.py",
+        "git:fdab801"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 288.891693810001,
+      "precision": 0.5,
+      "recall": 0.6,
+      "f1": 0.5455
+    },
+    {
+      "task_id": "flask-004",
+      "variant": "no_recency",
+      "description": "Disable recency/freshness signal",
+      "returned_files": [
+        "src/flask/cli.py",
+        "src/flask/app.py",
+        "git:542cf30",
+        "tests/test_helpers.py",
+        "src/flask/__init__.py",
+        "git:fdab801"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/__init__.py",
+        "src/flask/app.py",
+        "src/flask/helpers.py",
+        "tests/test_helpers.py"
+      ],
+      "duration_ms": 286.56173893250525,
+      "precision": 0.5,
+      "recall": 0.6,
+      "f1": 0.5455
+    },
+    {
+      "task_id": "flask-005",
+      "variant": "baseline",
+      "description": "Full pipeline: sw=0.90, dd=0.30, k=60, depth=1",
+      "returned_files": [
+        "src/flask/scaffold.py",
+        "src/flask/app.py",
+        "tests/test_user_error_handler.py",
+        "tests/test_basic.py",
+        "src/flask/cli.py",
+        "src/flask/blueprints.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/scaffold.py",
+        "tests/test_basic.py",
+        "tests/test_user_error_handler.py"
+      ],
+      "duration_ms": 341.7331208474934,
+      "precision": 0.5,
+      "recall": 0.75,
+      "f1": 0.6
+    },
+    {
+      "task_id": "flask-005",
+      "variant": "no_semantic",
+      "description": "Disable semantic search (pure keyword/BM25)",
+      "returned_files": [
+        "src/flask/scaffold.py",
+        "tests/test_basic.py",
+        "tests/test_user_error_handler.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/scaffold.py",
+        "tests/test_basic.py",
+        "tests/test_user_error_handler.py"
+      ],
+      "duration_ms": 321.9734448939562,
+      "precision": 1.0,
+      "recall": 0.75,
+      "f1": 0.8571
+    },
+    {
+      "task_id": "flask-005",
+      "variant": "no_keyword",
+      "description": "Disable keyword search (pure semantic/embedding)",
+      "returned_files": [
+        "src/flask/scaffold.py",
+        "src/flask/app.py",
+        "tests/test_user_error_handler.py",
+        "tests/test_basic.py",
+        "src/flask/cli.py",
+        "src/flask/blueprints.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/scaffold.py",
+        "tests/test_basic.py",
+        "tests/test_user_error_handler.py"
+      ],
+      "duration_ms": 327.5727869477123,
+      "precision": 0.5,
+      "recall": 0.75,
+      "f1": 0.6
+    },
+    {
+      "task_id": "flask-005",
+      "variant": "no_coupling",
+      "description": "Disable temporal coupling expansion",
+      "returned_files": [
+        "src/flask/scaffold.py",
+        "src/flask/app.py",
+        "tests/test_user_error_handler.py",
+        "tests/test_basic.py",
+        "src/flask/cli.py",
+        "src/flask/blueprints.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/scaffold.py",
+        "tests/test_basic.py",
+        "tests/test_user_error_handler.py"
+      ],
+      "duration_ms": 317.05671409145,
+      "precision": 0.5,
+      "recall": 0.75,
+      "f1": 0.6
+    },
+    {
+      "task_id": "flask-005",
+      "variant": "no_doc_demotion",
+      "description": "Treat docs same as source (doc_demotion=1.0)",
+      "returned_files": [
+        "src/flask/scaffold.py",
+        "src/flask/app.py",
+        "tests/test_user_error_handler.py",
+        "tests/test_basic.py",
+        "src/flask/cli.py",
+        "src/flask/blueprints.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/scaffold.py",
+        "tests/test_basic.py",
+        "tests/test_user_error_handler.py"
+      ],
+      "duration_ms": 357.1976369712502,
+      "precision": 0.5,
+      "recall": 0.75,
+      "f1": 0.6
+    },
+    {
+      "task_id": "flask-005",
+      "variant": "no_recency",
+      "description": "Disable recency/freshness signal",
+      "returned_files": [
+        "src/flask/scaffold.py",
+        "src/flask/app.py",
+        "tests/test_user_error_handler.py",
+        "tests/test_basic.py",
+        "src/flask/cli.py",
+        "src/flask/blueprints.py"
+      ],
+      "ground_truth_files": [
+        "CHANGES.rst",
+        "src/flask/scaffold.py",
+        "tests/test_basic.py",
+        "tests/test_user_error_handler.py"
+      ],
+      "duration_ms": 316.89630006439984,
+      "precision": 0.5,
+      "recall": 0.75,
+      "f1": 0.6
+    }
+  ],
+  "summary": [
+    {
+      "variant": "no_semantic",
+      "tasks": 3,
+      "avg_precision": 0.6,
+      "avg_recall": 0.5167,
+      "avg_f1": 0.5524,
+      "avg_duration_ms": 322.9
+    },
+    {
+      "variant": "no_keyword",
+      "tasks": 3,
+      "avg_precision": 0.3571,
+      "avg_recall": 0.5167,
+      "avg_f1": 0.4222,
+      "avg_duration_ms": 314.0
+    },
+    {
+      "variant": "baseline",
+      "tasks": 3,
+      "avg_precision": 0.3333,
+      "avg_recall": 0.45,
+      "avg_f1": 0.3818,
+      "avg_duration_ms": 331.4
+    },
+    {
+      "variant": "no_coupling",
+      "tasks": 3,
+      "avg_precision": 0.3333,
+      "avg_recall": 0.45,
+      "avg_f1": 0.3818,
+      "avg_duration_ms": 312.9
+    },
+    {
+      "variant": "no_doc_demotion",
+      "tasks": 3,
+      "avg_precision": 0.3333,
+      "avg_recall": 0.45,
+      "avg_f1": 0.3818,
+      "avg_duration_ms": 325.4
+    },
+    {
+      "variant": "no_recency",
+      "tasks": 3,
+      "avg_precision": 0.3333,
+      "avg_recall": 0.45,
+      "avg_f1": 0.3818,
+      "avg_duration_ms": 305.8
+    }
+  ]
+}
