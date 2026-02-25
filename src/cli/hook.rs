@@ -1263,19 +1263,24 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let embedder = Embedder::from_config(&config.embedding, &model_dir)
         .context("Failed to load embedding model")?;
 
-    // 6. Assemble context
+    // 6. Assemble context (config cascade: calibration.json > config.toml)
+    let calibration = crate::cli::calibrate::load_calibration(&repo_root);
+    let cal_sw = calibration.as_ref().map(|c| c.best_config.semantic_weight);
+    let cal_dd = calibration.as_ref().map(|c| c.best_config.doc_demotion);
+    let cal_rrf = calibration.as_ref().map(|c| c.best_config.rrf_k);
+
     let context_config = ContextConfig {
         budget_lines: budget,
         depth: 1,
         max_coupled: 3,
         coupling_threshold: 0.1,
-        semantic_weight: config.search.semantic_weight,
+        semantic_weight: cal_sw.unwrap_or(config.search.semantic_weight),
         content_mode,
         search_limit: 20,
-        doc_demotion: config.search.doc_demotion,
+        doc_demotion: cal_dd.unwrap_or(config.search.doc_demotion),
         recency_half_life_days: config.search.recency_half_life_days,
         recency_weight: config.search.recency_weight,
-        rrf_k: config.search.rrf_k,
+        rrf_k: cal_rrf.unwrap_or(config.search.rrf_k),
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

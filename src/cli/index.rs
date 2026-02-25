@@ -37,6 +37,10 @@ pub struct IndexArgs {
     #[arg(long)]
     include_beads: bool,
 
+    /// Skip auto-calibration after indexing
+    #[arg(long)]
+    skip_calibrate: bool,
+
     /// Directory containing .bobbin/ config (defaults to current directory)
     #[arg(default_value = ".")]
     path: PathBuf,
@@ -1022,6 +1026,37 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                     lang.language, lang.file_count, lang.chunk_count
                 );
             }
+        }
+    }
+
+    // Auto-calibrate if needed (unless --skip-calibrate)
+    if !args.skip_calibrate {
+        use super::calibrate::{load_calibration, CalibrateArgs, DefaultCalibrationGuard, CalibrationGuard};
+
+        let calibration = load_calibration(&source_root);
+        // Capture a lightweight snapshot for the guard check
+        let guard_snapshot = super::calibrate::capture_snapshot_from_index(
+            vector_store.count().await.unwrap_or(0) as usize,
+        );
+        let guard = DefaultCalibrationGuard;
+        if guard.should_recalibrate(&guard_snapshot, calibration.as_ref()) {
+            if !output.quiet && !output.json {
+                eprintln!("  Calibrating search parameters...");
+            }
+            let cal_args = CalibrateArgs::default_for_auto(source_root.clone());
+            // Use quiet output — calibration is a background step, not the primary command
+            let cal_output = OutputConfig { json: false, quiet: true, verbose: false, server: None };
+            if let Err(e) = super::calibrate::run(cal_args, cal_output).await {
+                if !output.quiet && !output.json {
+                    eprintln!(
+                        "  {} Auto-calibration failed: {}",
+                        "!".yellow(),
+                        e
+                    );
+                }
+            }
+        } else if !output.quiet && !output.json && output.verbose {
+            eprintln!("  Calibration: skipped (no significant changes)");
         }
     }
 

@@ -349,6 +349,19 @@ fn git_repo_age_days(git: &GitAnalyzer) -> Result<u32> {
     Ok(((now - first_ts) / 86400) as u32)
 }
 
+/// Create a lightweight ProjectSnapshot from just a chunk count.
+/// Used by index.rs auto-calibrate guard to avoid reopening stores.
+pub fn capture_snapshot_from_index(chunk_count: usize) -> ProjectSnapshot {
+    ProjectSnapshot {
+        chunk_count,
+        file_count: 0,
+        primary_language: "unknown".to_string(),
+        language_distribution: vec![],
+        repo_age_days: 0,
+        recent_commit_rate: 0.0,
+    }
+}
+
 // --- Persistence ---
 
 fn calibration_path(repo_root: &std::path::Path) -> PathBuf {
@@ -614,6 +627,76 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
     Ok(())
 }
 
+// --- CalibrationGuard ---
+
+/// Determines whether a project needs (re)calibration.
+pub trait CalibrationGuard {
+    fn should_recalibrate(
+        &self,
+        current: &ProjectSnapshot,
+        previous: Option<&CalibrationResult>,
+    ) -> bool;
+}
+
+/// Default guard: recalibrate on first run, >20% chunk change,
+/// primary language change, or >30 days since last calibration.
+pub struct DefaultCalibrationGuard;
+
+impl CalibrationGuard for DefaultCalibrationGuard {
+    fn should_recalibrate(
+        &self,
+        current: &ProjectSnapshot,
+        previous: Option<&CalibrationResult>,
+    ) -> bool {
+        let Some(prev) = previous else {
+            return true;
+        };
+
+        // Chunk count changed >20%
+        let prev_chunks = prev.snapshot.chunk_count;
+        if prev_chunks > 0 {
+            let delta =
+                (current.chunk_count as f64 - prev_chunks as f64).abs() / prev_chunks as f64;
+            if delta > 0.2 {
+                return true;
+            }
+        }
+
+        // Primary language changed
+        if current.primary_language != prev.snapshot.primary_language
+            && current.primary_language != "unknown"
+            && prev.snapshot.primary_language != "unknown"
+        {
+            return true;
+        }
+
+        // Last calibration >30 days ago
+        if let Ok(cal_time) = chrono::DateTime::parse_from_rfc3339(&prev.calibrated_at) {
+            let age = Utc::now() - cal_time.with_timezone(&Utc);
+            if age.num_days() > 30 {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
+impl CalibrateArgs {
+    /// Construct args suitable for auto-calibration after indexing.
+    pub fn default_for_auto(path: PathBuf) -> Self {
+        Self {
+            samples: 20,
+            since: "6 months ago".to_string(),
+            search_limit: 20,
+            budget: 300,
+            apply: true,
+            verbose: false,
+            path,
+        }
+    }
+}
+
 // --- Tests ---
 
 #[cfg(test)]
@@ -707,5 +790,114 @@ mod tests {
         let grid = build_grid();
         // 5 sw × 3 dd × 1 k = 15
         assert_eq!(grid.len(), 15);
+    }
+
+    // --- CalibrationGuard tests ---
+
+    fn make_snapshot(chunks: usize, lang: &str) -> ProjectSnapshot {
+        ProjectSnapshot {
+            chunk_count: chunks,
+            file_count: 0,
+            primary_language: lang.to_string(),
+            language_distribution: vec![],
+            repo_age_days: 100,
+            recent_commit_rate: 5.0,
+        }
+    }
+
+    fn make_calibration(chunks: usize, lang: &str, days_ago: i64) -> CalibrationResult {
+        let cal_time = Utc::now() - chrono::Duration::days(days_ago);
+        CalibrationResult {
+            calibrated_at: cal_time.to_rfc3339(),
+            snapshot: make_snapshot(chunks, lang),
+            best_config: CalibratedConfig {
+                semantic_weight: 0.7,
+                doc_demotion: 0.3,
+                rrf_k: 60.0,
+            },
+            top_results: vec![],
+            sample_count: 20,
+            probe_count: 300,
+            terse_warning: false,
+        }
+    }
+
+    #[test]
+    fn test_guard_first_run_always_calibrates() {
+        let guard = DefaultCalibrationGuard;
+        let current = make_snapshot(1000, "rust");
+        assert!(guard.should_recalibrate(&current, None));
+    }
+
+    #[test]
+    fn test_guard_chunk_delta_over_20_pct() {
+        let guard = DefaultCalibrationGuard;
+        let current = make_snapshot(1300, "rust"); // 30% increase from 1000
+        let prev = make_calibration(1000, "rust", 5);
+        assert!(guard.should_recalibrate(&current, Some(&prev)));
+    }
+
+    #[test]
+    fn test_guard_chunk_delta_under_20_pct() {
+        let guard = DefaultCalibrationGuard;
+        let current = make_snapshot(1100, "rust"); // 10% increase from 1000
+        let prev = make_calibration(1000, "rust", 5);
+        assert!(!guard.should_recalibrate(&current, Some(&prev)));
+    }
+
+    #[test]
+    fn test_guard_language_change() {
+        let guard = DefaultCalibrationGuard;
+        let current = make_snapshot(1000, "python");
+        let prev = make_calibration(1000, "rust", 5);
+        assert!(guard.should_recalibrate(&current, Some(&prev)));
+    }
+
+    #[test]
+    fn test_guard_language_unknown_ignored() {
+        let guard = DefaultCalibrationGuard;
+        let current = make_snapshot(1000, "unknown");
+        let prev = make_calibration(1000, "rust", 5);
+        assert!(!guard.should_recalibrate(&current, Some(&prev)));
+    }
+
+    #[test]
+    fn test_guard_age_over_30_days() {
+        let guard = DefaultCalibrationGuard;
+        let current = make_snapshot(1000, "rust");
+        let prev = make_calibration(1000, "rust", 35);
+        assert!(guard.should_recalibrate(&current, Some(&prev)));
+    }
+
+    #[test]
+    fn test_guard_age_under_30_days() {
+        let guard = DefaultCalibrationGuard;
+        let current = make_snapshot(1000, "rust");
+        let prev = make_calibration(1000, "rust", 10);
+        assert!(!guard.should_recalibrate(&current, Some(&prev)));
+    }
+
+    #[test]
+    fn test_guard_no_change() {
+        let guard = DefaultCalibrationGuard;
+        let current = make_snapshot(1000, "rust");
+        let prev = make_calibration(1000, "rust", 5);
+        assert!(!guard.should_recalibrate(&current, Some(&prev)));
+    }
+
+    #[test]
+    fn test_default_for_auto() {
+        let args = CalibrateArgs::default_for_auto(PathBuf::from("/tmp/test"));
+        assert!(args.apply);
+        assert!(!args.verbose);
+        assert_eq!(args.samples, 20);
+        assert_eq!(args.path, PathBuf::from("/tmp/test"));
+    }
+
+    #[test]
+    fn test_capture_snapshot_from_index() {
+        let snap = capture_snapshot_from_index(500);
+        assert_eq!(snap.chunk_count, 500);
+        assert_eq!(snap.primary_language, "unknown");
     }
 }

@@ -171,12 +171,19 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
                         .context("Semantic search failed")?
                 }
                 SearchMode::Hybrid => {
+                    // Config cascade: calibration.json > config.toml
+                    let calibration = super::calibrate::load_calibration(&repo_root);
+                    let sw = calibration.as_ref().map(|c| c.best_config.semantic_weight)
+                        .unwrap_or(config.search.semantic_weight);
+                    let rrf = calibration.as_ref().map(|c| c.best_config.rrf_k)
+                        .unwrap_or(config.search.rrf_k);
+
                     let mut search = HybridSearch::new(
                         embedder,
                         vector_store,
-                        config.search.semantic_weight,
+                        sw,
                     )
-                    .with_rrf_k(config.search.rrf_k);
+                    .with_rrf_k(rrf);
                     search
                         .search(&args.query, search_limit, repo_filter)
                         .await
