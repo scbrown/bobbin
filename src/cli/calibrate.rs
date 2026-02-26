@@ -26,13 +26,13 @@ pub struct CalibrateArgs {
     #[arg(long, default_value = "6 months ago")]
     since: String,
 
-    /// Max results per probe (search limit)
-    #[arg(long, default_value = "20")]
-    search_limit: usize,
+    /// Max results per probe (search limit). If omitted, sweeps [10, 20, 30, 40].
+    #[arg(long)]
+    search_limit: Option<usize>,
 
-    /// Budget lines per probe
-    #[arg(long, default_value = "300")]
-    budget: usize,
+    /// Budget lines per probe. If omitted, sweeps [150, 300, 500].
+    #[arg(long)]
+    budget: Option<usize>,
 
     /// Apply best config to .bobbin/calibration.json
     #[arg(long)]
@@ -95,6 +95,12 @@ pub struct CalibratedConfig {
     /// Best coupling depth (only set by --full)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub coupling_depth: Option<usize>,
+    /// Best budget_lines (context line budget)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_lines: Option<usize>,
+    /// Best search_limit (initial search results)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_limit: Option<usize>,
 }
 
 /// Result for a single grid point
@@ -109,6 +115,10 @@ pub struct GridResult {
     pub recency_weight: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub coupling_depth: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_lines: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_limit: Option<usize>,
     pub precision: f32,
     pub recall: f32,
     pub f1: f32,
@@ -346,11 +356,13 @@ struct GridPoint {
     rrf_k: f32,
     recency_half_life_days: Option<f32>,
     recency_weight: Option<f32>,
+    budget_lines: usize,
+    search_limit: usize,
 }
 
-/// Build the core parameter grid (sw × dd × k = 15 points).
-fn build_grid() -> Vec<GridPoint> {
-    build_grid_with_recency(&[], &[])
+/// Build the core parameter grid (sw × dd × k × sl × b points).
+fn build_grid(budgets: &[usize], search_limits: &[usize]) -> Vec<GridPoint> {
+    build_grid_with_recency(&[], &[], budgets, search_limits)
 }
 
 /// Build grid with optional recency parameter sweep.
@@ -358,6 +370,8 @@ fn build_grid() -> Vec<GridPoint> {
 fn build_grid_with_recency(
     half_lives: &[f32],
     recency_weights: &[f32],
+    budgets: &[usize],
+    search_limits: &[usize],
 ) -> Vec<GridPoint> {
     let sws = [0.0, 0.3, 0.5, 0.7, 0.9];
     let dds = [0.1, 0.3, 0.5];
@@ -381,13 +395,19 @@ fn build_grid_with_recency(
             for &k in &ks {
                 for &hl in &hl_iter {
                     for &rw in &rw_iter {
-                        grid.push(GridPoint {
-                            semantic_weight: sw,
-                            doc_demotion: dd,
-                            rrf_k: k,
-                            recency_half_life_days: hl,
-                            recency_weight: rw,
-                        });
+                        for &b in budgets {
+                            for &sl in search_limits {
+                                grid.push(GridPoint {
+                                    semantic_weight: sw,
+                                    doc_demotion: dd,
+                                    rrf_k: k,
+                                    recency_half_life_days: hl,
+                                    recency_weight: rw,
+                                    budget_lines: b,
+                                    search_limit: sl,
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -528,8 +548,6 @@ async fn run_probes(
     db_path: &std::path::Path,
     config: &Config,
     model_dir: &std::path::Path,
-    budget: usize,
-    search_limit: usize,
     coupling_depth: Option<usize>,
     repo_root: &std::path::Path,
     pb: Option<&ProgressBar>,
@@ -548,13 +566,13 @@ async fn run_probes(
             let embedder = Embedder::from_config(&config.embedding, model_dir)?;
 
             let context_config = ContextConfig {
-                budget_lines: budget,
+                budget_lines: point.budget_lines,
                 depth: 1,
                 max_coupled: 3,
                 coupling_threshold: 0.1,
                 semantic_weight: point.semantic_weight,
                 content_mode: ContentMode::None,
-                search_limit,
+                search_limit: point.search_limit,
                 doc_demotion: point.doc_demotion,
                 recency_half_life_days: point
                     .recency_half_life_days
@@ -603,6 +621,8 @@ async fn run_probes(
             recency_half_life_days: point.recency_half_life_days,
             recency_weight: point.recency_weight,
             coupling_depth,
+            budget_lines: Some(point.budget_lines),
+            search_limit: Some(point.search_limit),
             precision: total_precision / n,
             recall: total_recall / n,
             f1: total_f1 / n,
@@ -636,6 +656,17 @@ fn format_result(r: &GridResult, full: bool) -> String {
         "  sw={:.2} dd={:.2} k={:.0}",
         r.semantic_weight, r.doc_demotion, r.rrf_k
     );
+    // Show budget/search_limit when they differ from defaults
+    if let Some(b) = r.budget_lines {
+        if b != 300 {
+            s.push_str(&format!(" b={}", b));
+        }
+    }
+    if let Some(sl) = r.search_limit {
+        if sl != 20 {
+            s.push_str(&format!(" sl={}", sl));
+        }
+    }
     if full {
         if let Some(hl) = r.recency_half_life_days {
             s.push_str(&format!(" hl={:.0}", hl));
@@ -771,6 +802,8 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
             recency_half_life_days: best.recency_half_life_days,
             recency_weight: best.recency_weight,
             coupling_depth: best.coupling_depth,
+            budget_lines: best.budget_lines,
+            search_limit: best.search_limit,
         },
         top_results: sorted.iter().take(10).cloned().collect(),
         sample_count: commits.len(),
@@ -830,7 +863,7 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
     Ok(())
 }
 
-/// Core sweep: semantic_weight × doc_demotion × rrf_k (15 configs).
+/// Core sweep: semantic_weight × doc_demotion × rrf_k × search_limit × budget.
 async fn run_core_sweep(
     args: &CalibrateArgs,
     output: &OutputConfig,
@@ -841,7 +874,15 @@ async fn run_core_sweep(
     model_dir: &std::path::Path,
     repo_root: &std::path::Path,
 ) -> Result<Vec<GridResult>> {
-    let grid = build_grid();
+    let budgets = match args.budget {
+        Some(b) => vec![b],
+        None => vec![150, 300, 500],
+    };
+    let search_limits = match args.search_limit {
+        Some(sl) => vec![sl],
+        None => vec![10, 20, 30, 40],
+    };
+    let grid = build_grid(&budgets, &search_limits);
     let total_probes = grid.len() * commits.len();
 
     if !output.quiet {
@@ -873,8 +914,6 @@ async fn run_core_sweep(
         db_path,
         config,
         model_dir,
-        args.budget,
-        args.search_limit,
         None,
         repo_root,
         pb.as_ref(),
@@ -910,8 +949,16 @@ async fn run_full_sweep(
     let half_lives: Vec<f32> = vec![7.0, 14.0, 30.0, 90.0];
     let recency_weights: Vec<f32> = vec![0.0, 0.15, 0.30, 0.50];
     let coupling_depths: Vec<usize> = vec![500, 2000, 5000, 20000];
+    let budgets: Vec<usize> = match args.budget {
+        Some(b) => vec![b],
+        None => vec![150, 300, 500],
+    };
+    let search_limits: Vec<usize> = match args.search_limit {
+        Some(sl) => vec![sl],
+        None => vec![10, 20, 30, 40],
+    };
 
-    let grid = build_grid_with_recency(&half_lives, &recency_weights);
+    let grid = build_grid_with_recency(&half_lives, &recency_weights, &budgets, &search_limits);
     let total_configs = grid.len() * coupling_depths.len();
     let total_probes = total_configs * commits.len();
 
@@ -1024,8 +1071,6 @@ async fn run_full_sweep(
             db_path,
             config,
             model_dir,
-            args.budget,
-            args.search_limit,
             Some(depth),
             repo_root,
             pb.as_ref(),
@@ -1118,8 +1163,8 @@ impl CalibrateArgs {
         Self {
             samples: 20,
             since: "6 months ago".to_string(),
-            search_limit: 20,
-            budget: 300,
+            search_limit: Some(20),
+            budget: Some(300),
             apply: true,
             verbose: false,
             full: false,
@@ -1219,20 +1264,29 @@ mod tests {
 
     #[test]
     fn test_build_grid_size() {
-        let grid = build_grid();
-        // 5 sw × 3 dd × 1 k = 15
+        let grid = build_grid(&[300], &[20]);
+        // 5 sw × 3 dd × 1 k × 1 b × 1 sl = 15
         assert_eq!(grid.len(), 15);
         // Core grid points should have no recency overrides
         assert!(grid[0].recency_half_life_days.is_none());
         assert!(grid[0].recency_weight.is_none());
+        assert_eq!(grid[0].budget_lines, 300);
+        assert_eq!(grid[0].search_limit, 20);
+    }
+
+    #[test]
+    fn test_build_grid_sweep_budget_search_limit() {
+        let grid = build_grid(&[150, 300, 500], &[10, 20, 30, 40]);
+        // 5 sw × 3 dd × 1 k × 3 b × 4 sl = 180
+        assert_eq!(grid.len(), 180);
     }
 
     #[test]
     fn test_build_grid_with_recency() {
         let half_lives = [7.0, 14.0, 30.0, 90.0];
         let recency_weights = [0.0, 0.15, 0.30, 0.50];
-        let grid = build_grid_with_recency(&half_lives, &recency_weights);
-        // 5 sw × 3 dd × 1 k × 4 hl × 4 rw = 240
+        let grid = build_grid_with_recency(&half_lives, &recency_weights, &[300], &[20]);
+        // 5 sw × 3 dd × 1 k × 4 hl × 4 rw × 1 b × 1 sl = 240
         assert_eq!(grid.len(), 240);
         // All extended grid points should have recency overrides
         assert!(grid[0].recency_half_life_days.is_some());
@@ -1242,7 +1296,7 @@ mod tests {
     #[test]
     fn test_build_grid_recency_empty_fallback() {
         // Empty arrays should fall back to None (same as core grid)
-        let grid = build_grid_with_recency(&[], &[]);
+        let grid = build_grid_with_recency(&[], &[], &[300], &[20]);
         assert_eq!(grid.len(), 15);
         assert!(grid[0].recency_half_life_days.is_none());
     }
@@ -1256,6 +1310,8 @@ mod tests {
             recency_half_life_days: None,
             recency_weight: None,
             coupling_depth: None,
+            budget_lines: Some(300),
+            search_limit: Some(20),
             precision: 0.4,
             recall: 0.5,
             f1: 0.444,
@@ -1263,6 +1319,29 @@ mod tests {
         let s = format_result(&r, false);
         assert!(s.contains("sw=0.30"));
         assert!(!s.contains("hl="));
+        // Default values should not appear in output
+        assert!(!s.contains("b="));
+        assert!(!s.contains("sl="));
+    }
+
+    #[test]
+    fn test_format_result_non_default_budget_search_limit() {
+        let r = GridResult {
+            semantic_weight: 0.3,
+            doc_demotion: 0.3,
+            rrf_k: 60.0,
+            recency_half_life_days: None,
+            recency_weight: None,
+            coupling_depth: None,
+            budget_lines: Some(500),
+            search_limit: Some(40),
+            precision: 0.4,
+            recall: 0.5,
+            f1: 0.444,
+        };
+        let s = format_result(&r, false);
+        assert!(s.contains("b=500"));
+        assert!(s.contains("sl=40"));
     }
 
     #[test]
@@ -1274,6 +1353,8 @@ mod tests {
             recency_half_life_days: Some(14.0),
             recency_weight: Some(0.15),
             coupling_depth: Some(5000),
+            budget_lines: Some(300),
+            search_limit: Some(20),
             precision: 0.4,
             recall: 0.5,
             f1: 0.444,
@@ -1300,6 +1381,8 @@ mod tests {
                 recency_half_life_days: Some(30.0),
                 recency_weight: Some(0.3),
                 coupling_depth: Some(5000),
+                budget_lines: Some(300),
+                search_limit: Some(20),
                 precision: 0.4,
                 recall: 0.5,
                 f1: 0.444,
@@ -1337,6 +1420,8 @@ mod tests {
                 recency_half_life_days: None,
                 recency_weight: None,
                 coupling_depth: None,
+                budget_lines: None,
+                search_limit: None,
             },
             top_results: vec![],
             sample_count: 20,
@@ -1414,6 +1499,8 @@ mod tests {
         assert!(args.apply);
         assert!(!args.verbose);
         assert_eq!(args.samples, 20);
+        assert_eq!(args.search_limit, Some(20));
+        assert_eq!(args.budget, Some(300));
         assert_eq!(args.path, PathBuf::from("/tmp/test"));
     }
 

@@ -1270,15 +1270,17 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let cal_rrf = calibration.as_ref().map(|c| c.best_config.rrf_k);
     let cal_hl = calibration.as_ref().and_then(|c| c.best_config.recency_half_life_days);
     let cal_rw = calibration.as_ref().and_then(|c| c.best_config.recency_weight);
+    let cal_budget = calibration.as_ref().and_then(|c| c.best_config.budget_lines);
+    let cal_sl = calibration.as_ref().and_then(|c| c.best_config.search_limit);
 
     let context_config = ContextConfig {
-        budget_lines: budget,
+        budget_lines: cal_budget.unwrap_or(budget),
         depth: 1,
         max_coupled: 3,
         coupling_threshold: 0.1,
         semantic_weight: cal_sw.unwrap_or(config.search.semantic_weight),
         content_mode,
-        search_limit: 20,
+        search_limit: cal_sl.unwrap_or(20),
         doc_demotion: cal_dd.unwrap_or(config.search.doc_demotion),
         recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
         recency_weight: cal_rw.unwrap_or(config.search.recency_weight),

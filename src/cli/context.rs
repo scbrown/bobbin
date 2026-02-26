@@ -159,7 +159,6 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
     let cal_rrf = calibration.as_ref().map(|c| c.best_config.rrf_k);
     let cal_hl = calibration.as_ref().and_then(|c| c.best_config.recency_half_life_days);
     let cal_rw = calibration.as_ref().and_then(|c| c.best_config.recency_weight);
-
     let context_config = ContextConfig {
         budget_lines: args.budget,
         depth: args.depth,

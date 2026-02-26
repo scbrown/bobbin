@@ -251,6 +251,16 @@ fn build_calibration_status(
     if let Some(cd) = bc.coupling_depth {
         summary.push_str(&format!(" cd={}", cd));
     }
+    if let Some(b) = bc.budget_lines {
+        if b != 300 {
+            summary.push_str(&format!(" b={}", b));
+        }
+    }
+    if let Some(sl) = bc.search_limit {
+        if sl != 20 {
+            summary.push_str(&format!(" sl={}", sl));
+        }
+    }
 
     let f1 = cal.top_results.first().map(|r| r.f1);
 
@@ -289,6 +299,16 @@ fn print_calibration_status(cal: &Option<CalibrationResult>, current_chunks: u64
     }
     if let Some(cd) = bc.coupling_depth {
         config_str.push_str(&format!(" cd={}", cd));
+    }
+    if let Some(b) = bc.budget_lines {
+        if b != 300 {
+            config_str.push_str(&format!(" b={}", b));
+        }
+    }
+    if let Some(sl) = bc.search_limit {
+        if sl != 20 {
+            config_str.push_str(&format!(" sl={}", sl));
+        }
     }
 
     let f1 = cal.top_results.first().map(|r| r.f1).unwrap_or(0.0);
