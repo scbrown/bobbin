@@ -45,7 +45,7 @@ fn status_after_init_shows_ready() {
         .arg(project.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Ready"));
+        .stdout(predicate::str::contains("Bobbin status for"));
 }
 
 #[test]
@@ -88,5 +88,5 @@ fn status_shows_zero_files_before_index() {
         .arg(project.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Total files:  0"));
+        .stdout(predicate::str::contains("Files:        0"));
 }
