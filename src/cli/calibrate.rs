@@ -531,6 +531,7 @@ async fn run_probes(
     budget: usize,
     search_limit: usize,
     coupling_depth: Option<usize>,
+    repo_root: &std::path::Path,
     pb: Option<&ProgressBar>,
 ) -> Result<Vec<GridResult>> {
     let mut grid_results: Vec<GridResult> = Vec::new();
@@ -569,8 +570,19 @@ async fn run_probes(
             let bundle = assembler.assemble(&commit.message, None).await;
 
             if let Ok(bundle) = bundle {
-                let injected: Vec<String> =
-                    bundle.files.iter().map(|f| f.path.clone()).collect();
+                // Strip repo_root prefix so paths are relative (matching git commit files)
+                let prefix = repo_root.to_string_lossy();
+                let injected: Vec<String> = bundle
+                    .files
+                    .iter()
+                    .map(|f| {
+                        f.path
+                            .strip_prefix(prefix.as_ref())
+                            .unwrap_or(&f.path)
+                            .trim_start_matches('/')
+                            .to_string()
+                    })
+                    .collect();
                 let (p, r, f1) = score_probe(&injected, &commit.files);
                 total_precision += p;
                 total_recall += r;
@@ -722,7 +734,7 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
         .await?
     } else {
         run_core_sweep(
-            &args, &output, &config, &commits, &lance_path, &db_path, &model_dir,
+            &args, &output, &config, &commits, &lance_path, &db_path, &model_dir, &repo_root,
         )
         .await?
     };
@@ -827,6 +839,7 @@ async fn run_core_sweep(
     lance_path: &std::path::Path,
     db_path: &std::path::Path,
     model_dir: &std::path::Path,
+    repo_root: &std::path::Path,
 ) -> Result<Vec<GridResult>> {
     let grid = build_grid();
     let total_probes = grid.len() * commits.len();
@@ -863,6 +876,7 @@ async fn run_core_sweep(
         args.budget,
         args.search_limit,
         None,
+        repo_root,
         pb.as_ref(),
     )
     .await?;
@@ -1013,6 +1027,7 @@ async fn run_full_sweep(
             args.budget,
             args.search_limit,
             Some(depth),
+            repo_root,
             pb.as_ref(),
         )
         .await?;
