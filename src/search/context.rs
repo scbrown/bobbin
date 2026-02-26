@@ -448,17 +448,23 @@ impl ContextAssembler {
 
         // Semantic search uses raw query (embeddings handle natural language)
         let query_embedding = self.embedder.embed(query).await?;
-        let semantic_results = self
+        let semantic_results: Vec<_> = self
             .vector_store
             .search(&query_embedding, fetch_limit, repo)
-            .await?;
+            .await?
+            .into_iter()
+            .filter(|r| r.chunk.chunk_type != ChunkType::Commit)
+            .collect();
         // FTS uses preprocessed query (stopwords removed for better BM25)
         let keyword_query = crate::search::preprocess::preprocess_for_keywords(query);
-        let keyword_results = self
+        let keyword_results: Vec<_> = self
             .vector_store
             .search_fts(&keyword_query, fetch_limit, repo)
             .await
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|r| r.chunk.chunk_type != ChunkType::Commit)
+            .collect();
 
         // Capture raw cosine similarity of the top semantic result before RRF
         let top_semantic_score = semantic_results
@@ -591,6 +597,14 @@ fn assemble_bundle(
     let max_chunk_lines = budget / 2; // Cap individual chunks at 50% of budget
     let mut used_lines: usize = 0;
     let mut seen_chunk_ids: HashSet<String> = HashSet::new();
+
+    // Filter out commit chunks — they're useful for `bobbin log` but shouldn't
+    // be injected into context. Commit messages pollute the context budget without
+    // providing actionable code.
+    let seed_results: Vec<SeedResult> = seed_results
+        .into_iter()
+        .filter(|r| r.chunk_type != ChunkType::Commit)
+        .collect();
 
     // Group seed results by file
     let mut direct_files: HashMap<String, Vec<SeedResult>> = HashMap::new();
@@ -1056,6 +1070,48 @@ mod tests {
         let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
         // The chunk uses min(15, 10) = 10 lines of budget
         assert_eq!(bundle.budget.used_lines, 10);
+    }
+
+    #[test]
+    fn test_commit_chunks_excluded_from_assembly() {
+        let config = ContextConfig {
+            budget_lines: 500,
+            depth: 0,
+            max_coupled: 3,
+            coupling_threshold: 0.1,
+            semantic_weight: 0.7,
+            content_mode: ContentMode::Full,
+            search_limit: 20,
+            doc_demotion: 0.5,
+            rrf_k: 60.0,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
+        };
+
+        // Mix of commit and function seeds — commits should be excluded
+        let seeds = vec![
+            SeedResult {
+                chunk_id: "commit:abc1234".to_string(),
+                file_path: "git:abc1234".to_string(),
+                language: "git".to_string(),
+                name: Some("fix: something".to_string()),
+                chunk_type: ChunkType::Commit,
+                indexed_at: None,
+                start_line: 0,
+                end_line: 0,
+                content: "fix: something\n\nAuthor: dev\nFiles: a.rs".to_string(),
+                score: 0.95,
+                match_type: Some(MatchType::Semantic),
+            },
+            make_seed("c1", "a.rs", 1, 5, 0.9),
+        ];
+
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+
+        // Only the function chunk should appear, not the commit
+        assert_eq!(bundle.summary.total_chunks, 1);
+        assert_eq!(bundle.files.len(), 1);
+        assert_eq!(bundle.files[0].path, "a.rs");
     }
 
     fn make_seed(id: &str, file: &str, start: u32, end: u32, score: f32) -> SeedResult {
