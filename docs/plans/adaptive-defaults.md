@@ -1,6 +1,6 @@
 # Design: Adaptive Defaults — Project-Aware Search Configuration
 
-**Status**: Approved (decisions finalized 2026-02-25)
+**Status**: COMPLETE — All 4 phases shipped (2026-02-26)
 
 ## Problem
 
@@ -221,32 +221,32 @@ Git
   Structure:   monorepo (47 top-level crates)
 ```
 
-## Implementation Plan
+## Implementation Plan — ALL COMPLETE
 
-### Phase 1: `bobbin calibrate` (Rust, medium effort)
-- Commit sampler: git log parsing, filtering, stratified sampling
-- Probe runner: `ContextAssembler` with overridden config per probe
-- Scorer: precision/recall/F1 (file-level, matching eval framework)
-- Grid sweep with progress bar (indicatif)
+### Phase 1: `bobbin calibrate` — ✅ SHIPPED (1753e04)
+- Commit sampler, probe runner, scorer, grid sweep, progress bar
 - Results output: terminal table + `.bobbin/calibration.json`
-- `ProjectSnapshot` capture and persistence
 - Terse message detection + warning
 
-### Phase 2: Auto-calibration integration (low effort)
+### Phase 2: Auto-calibration integration — ✅ SHIPPED (296968b)
 - `CalibrationGuard` trait + `DefaultCalibrationGuard`
-- Wire into `bobbin index`: after indexing, check guard, run calibrate if needed
-- `--skip-calibrate` flag on `bobbin index`
-- Config cascade: calibration.json read at search time
+- Auto-triggers after `bobbin index` (skippable with `--skip-calibrate`)
+- Config cascade: CLI > calibration.json > config.toml
 
-### Phase 3: Extended calibration (medium effort)
-- Coupling depth sweep (requires re-index per depth value)
-- Recency parameter sweep
-- `--full` flag
-- Cache intermediate results to allow resuming
+### Phase 3: Extended calibration — ✅ SHIPPED (d05b490)
+- `--full` flag: recency + coupling sweep (960 configs)
+- `--resume` flag: cache intermediate results
+- Coupling depth re-indexing per depth value
 
-### Phase 4: Status integration (low effort)
-- `bobbin status` shows project profile + calibration state
-- Staleness indicator (how much has changed since last calibration)
+### Phase 4: Status integration — ✅ SHIPPED (ae2e028)
+- `bobbin status` shows calibration state, config, F1, staleness
+- Git profile: repo age, commit rate
+- Language distribution with percentages
+
+### Real-world validation — ✅ COMPLETE (bcaa69e)
+- Ran 20-sample sweeps on flask, ruff, bobbin
+- Results in `docs/plans/calibration-sweep-results.md`
+- Fixed path mismatch bug (fb22160) that caused F1=0 on all probes
 
 ## Backlog
 

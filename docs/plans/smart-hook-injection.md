@@ -1,7 +1,7 @@
 # Smart Hook Context Injection
 
 **Bead**: bo-slk
-**Status**: Planning
+**Status**: COMPLETE (all 4 sub-beads shipped)
 **Priority**: P1
 
 ## Context
