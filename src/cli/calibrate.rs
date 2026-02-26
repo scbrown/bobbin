@@ -50,6 +50,10 @@ pub struct CalibrateArgs {
     #[arg(long)]
     resume: bool,
 
+    /// Sweep only bridge_mode + bridge_boost_factor using calibrated core params
+    #[arg(long)]
+    bridge_sweep: bool,
+
     /// Directory to calibrate
     #[arg(default_value = ".")]
     path: PathBuf,
@@ -702,7 +706,7 @@ fn reindex_coupling(
 }
 
 /// Format a GridResult line for display, adapting columns to --full mode.
-fn format_result(r: &GridResult, full: bool) -> String {
+fn format_result(r: &GridResult, full: bool, bridge_sweep: bool) -> String {
     let mut s = format!(
         "  sw={:.2} dd={:.2} k={:.0}",
         r.semantic_weight, r.doc_demotion, r.rrf_k
@@ -718,9 +722,9 @@ fn format_result(r: &GridResult, full: bool) -> String {
             s.push_str(&format!(" sl={}", sl));
         }
     }
-    // Show bridge_mode when not default inject
+    // Show bridge_mode (always in bridge_sweep, otherwise only when non-default)
     if let Some(bm) = r.bridge_mode {
-        if bm != BridgeMode::Inject {
+        if bridge_sweep || bm != BridgeMode::Inject {
             s.push_str(&format!(" bm={}", bm));
         }
     }
@@ -820,7 +824,12 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
             .context("Failed to load embedding model")?;
 
     // Phase 2: Build grid and run probes
-    let grid_results = if args.full {
+    let grid_results = if args.bridge_sweep {
+        run_bridge_sweep(
+            &output, &config, &commits, &lance_path, &db_path, &model_dir, &repo_root,
+        )
+        .await?
+    } else if args.full {
         run_full_sweep(
             &args, &output, &config, &commits, &git, &lance_path, &db_path, &model_dir, &repo_root,
         )
@@ -882,7 +891,7 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
         eprintln!();
         eprintln!("{}", "Calibration results (top 5 by F1):".bold());
         for result in sorted.iter().take(5) {
-            eprintln!("{}", format_result(result, args.full));
+            eprintln!("{}", format_result(result, args.full, args.bridge_sweep));
         }
 
         eprintln!();
@@ -955,6 +964,96 @@ async fn run_core_sweep(
             grid.len(),
             commits.len(),
             total_probes
+        );
+    }
+
+    let pb = if !output.quiet {
+        let pb = ProgressBar::new(total_probes as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("  Running {pos}/{len} probes {bar:30} {eta}")
+                .unwrap()
+                .progress_chars("█▓░"),
+        );
+        Some(pb)
+    } else {
+        None
+    };
+
+    let results = run_probes(
+        &grid,
+        commits,
+        lance_path,
+        db_path,
+        config,
+        model_dir,
+        None,
+        repo_root,
+        pb.as_ref(),
+    )
+    .await?;
+
+    if let Some(pb) = &pb {
+        pb.finish_and_clear();
+    }
+
+    Ok(results)
+}
+
+/// Bridge sweep: use calibrated core params, only sweep bridge_mode × bridge_boost_factor.
+///
+/// Grid: 4 bridge_modes × 3 boost_factors = 7 configs (off+inject don't use bbf)
+/// Total probes: 7 × 20 commits = 140 (very fast)
+///
+/// Requires existing calibration.json — run core sweep first.
+async fn run_bridge_sweep(
+    output: &OutputConfig,
+    config: &Config,
+    commits: &[SampledCommit],
+    lance_path: &std::path::Path,
+    db_path: &std::path::Path,
+    model_dir: &std::path::Path,
+    repo_root: &std::path::Path,
+) -> Result<Vec<GridResult>> {
+    let cal = load_calibration(repo_root)
+        .context("--bridge-sweep requires existing calibration.json (run core sweep first)")?;
+    let best = &cal.best_config;
+
+    let budgets = vec![best.budget_lines.unwrap_or(300)];
+    let search_limits = vec![best.search_limit.unwrap_or(20)];
+    let bridge_modes = [BridgeMode::Off, BridgeMode::Inject, BridgeMode::Boost, BridgeMode::BoostInject];
+    let bridge_boost_factors = [0.15, 0.3, 0.5];
+
+    // Build grid with fixed core params, sweep only bridge dimensions
+    let grid = build_grid_with_recency(
+        &[], &[], &budgets, &search_limits,
+        &bridge_modes, &bridge_boost_factors,
+    );
+    // Filter to only the calibrated sw/dd/k values
+    let sw = best.semantic_weight;
+    let dd = best.doc_demotion;
+    let k = best.rrf_k;
+    let grid: Vec<GridPoint> = grid
+        .into_iter()
+        .filter(|p| {
+            (p.semantic_weight - sw).abs() < 0.01
+                && (p.doc_demotion - dd).abs() < 0.01
+                && (p.rrf_k - k).abs() < 0.01
+        })
+        .collect();
+
+    let total_probes = grid.len() * commits.len();
+
+    if !output.quiet {
+        eprintln!(
+            "  Bridge sweep: {} configs × {} commits = {} probes (sw={:.2} dd={:.1} b={} sl={})",
+            grid.len(),
+            commits.len(),
+            total_probes,
+            sw,
+            dd,
+            budgets[0],
+            search_limits[0],
         );
     }
 
@@ -1238,6 +1337,7 @@ impl CalibrateArgs {
             verbose: false,
             full: false,
             resume: false,
+            bridge_sweep: false,
             path,
         }
     }
@@ -1404,7 +1504,7 @@ mod tests {
             recall: 0.5,
             f1: 0.444,
         };
-        let s = format_result(&r, false);
+        let s = format_result(&r, false, false);
         assert!(s.contains("sw=0.30"));
         assert!(!s.contains("hl="));
         // Default values should not appear in output
@@ -1429,7 +1529,7 @@ mod tests {
             recall: 0.5,
             f1: 0.444,
         };
-        let s = format_result(&r, false);
+        let s = format_result(&r, false, false);
         assert!(s.contains("b=500"));
         assert!(s.contains("sl=40"));
     }
@@ -1451,7 +1551,7 @@ mod tests {
             recall: 0.5,
             f1: 0.444,
         };
-        let s = format_result(&r, true);
+        let s = format_result(&r, true, false);
         assert!(s.contains("hl=14"));
         assert!(s.contains("rw=0.15"));
         assert!(s.contains("cd=5000"));

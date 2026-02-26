@@ -1,0 +1,118 @@
+{
+  "calibrated_at": "2026-02-26T17:51:10.969563952+00:00",
+  "snapshot": {
+    "chunk_count": 7171,
+    "file_count": 0,
+    "primary_language": "unknown",
+    "language_distribution": [],
+    "repo_age_days": 6,
+    "recent_commit_rate": 4.186046
+  },
+  "best_config": {
+    "semantic_weight": 0.5,
+    "doc_demotion": 0.1,
+    "rrf_k": 60.0,
+    "budget_lines": 500,
+    "search_limit": 10,
+    "bridge_mode": "off"
+  },
+  "top_results": [
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.1,
+      "rrf_k": 60.0,
+      "budget_lines": 500,
+      "search_limit": 10,
+      "bridge_mode": "off",
+      "precision": 0.16559523,
+      "recall": 0.14142857,
+      "f1": 0.13816738
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.1,
+      "rrf_k": 60.0,
+      "budget_lines": 500,
+      "search_limit": 10,
+      "bridge_mode": "inject",
+      "precision": 0.16559523,
+      "recall": 0.14142857,
+      "f1": 0.13816738
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.1,
+      "rrf_k": 60.0,
+      "budget_lines": 500,
+      "search_limit": 10,
+      "bridge_mode": "boost",
+      "bridge_boost_factor": 0.15,
+      "precision": 0.16559523,
+      "recall": 0.14142857,
+      "f1": 0.13816738
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.1,
+      "rrf_k": 60.0,
+      "budget_lines": 500,
+      "search_limit": 10,
+      "bridge_mode": "boost",
+      "bridge_boost_factor": 0.3,
+      "precision": 0.16559523,
+      "recall": 0.14142857,
+      "f1": 0.13816738
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.1,
+      "rrf_k": 60.0,
+      "budget_lines": 500,
+      "search_limit": 10,
+      "bridge_mode": "boost",
+      "bridge_boost_factor": 0.5,
+      "precision": 0.16559523,
+      "recall": 0.14142857,
+      "f1": 0.13816738
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.1,
+      "rrf_k": 60.0,
+      "budget_lines": 500,
+      "search_limit": 10,
+      "bridge_mode": "boost_inject",
+      "bridge_boost_factor": 0.15,
+      "precision": 0.16559523,
+      "recall": 0.14142857,
+      "f1": 0.13816738
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.1,
+      "rrf_k": 60.0,
+      "budget_lines": 500,
+      "search_limit": 10,
+      "bridge_mode": "boost_inject",
+      "bridge_boost_factor": 0.3,
+      "precision": 0.16559523,
+      "recall": 0.14142857,
+      "f1": 0.13816738
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.1,
+      "rrf_k": 60.0,
+      "budget_lines": 500,
+      "search_limit": 10,
+      "bridge_mode": "boost_inject",
+      "bridge_boost_factor": 0.5,
+      "precision": 0.16559523,
+      "recall": 0.14142857,
+      "f1": 0.13816738
+    }
+  ],
+  "sample_count": 20,
+  "probe_count": 160,
+  "terse_warning": false
+}

@@ -1,0 +1,134 @@
+{
+  "calibrated_at": "2026-02-26T17:36:49.065997884+00:00",
+  "snapshot": {
+    "chunk_count": 5103,
+    "file_count": 0,
+    "primary_language": "unknown",
+    "language_distribution": [],
+    "repo_age_days": 0,
+    "recent_commit_rate": 71.39535
+  },
+  "best_config": {
+    "semantic_weight": 0.0,
+    "doc_demotion": 0.1,
+    "rrf_k": 60.0,
+    "budget_lines": 300,
+    "search_limit": 40,
+    "bridge_mode": "inject"
+  },
+  "top_results": [
+    {
+      "semantic_weight": 0.0,
+      "doc_demotion": 0.1,
+      "rrf_k": 60.0,
+      "budget_lines": 300,
+      "search_limit": 40,
+      "bridge_mode": "inject",
+      "precision": 0.27755955,
+      "recall": 0.25059524,
+      "f1": 0.24612193
+    },
+    {
+      "semantic_weight": 0.0,
+      "doc_demotion": 0.5,
+      "rrf_k": 60.0,
+      "budget_lines": 300,
+      "search_limit": 40,
+      "bridge_mode": "inject",
+      "precision": 0.27333334,
+      "recall": 0.22559524,
+      "f1": 0.23539793
+    },
+    {
+      "semantic_weight": 0.0,
+      "doc_demotion": 0.3,
+      "rrf_k": 60.0,
+      "budget_lines": 300,
+      "search_limit": 40,
+      "bridge_mode": "inject",
+      "precision": 0.2687121,
+      "recall": 0.22559524,
+      "f1": 0.23306277
+    },
+    {
+      "semantic_weight": 0.7,
+      "doc_demotion": 0.1,
+      "rrf_k": 60.0,
+      "budget_lines": 500,
+      "search_limit": 30,
+      "bridge_mode": "inject",
+      "precision": 0.22034092,
+      "recall": 0.28214285,
+      "f1": 0.23114221
+    },
+    {
+      "semantic_weight": 0.3,
+      "doc_demotion": 0.5,
+      "rrf_k": 60.0,
+      "budget_lines": 300,
+      "search_limit": 40,
+      "bridge_mode": "inject",
+      "precision": 0.25603178,
+      "recall": 0.21726191,
+      "f1": 0.22304694
+    },
+    {
+      "semantic_weight": 0.3,
+      "doc_demotion": 0.5,
+      "rrf_k": 60.0,
+      "budget_lines": 300,
+      "search_limit": 20,
+      "bridge_mode": "inject",
+      "precision": 0.24208336,
+      "recall": 0.25892857,
+      "f1": 0.22286549
+    },
+    {
+      "semantic_weight": 0.0,
+      "doc_demotion": 0.5,
+      "rrf_k": 60.0,
+      "budget_lines": 300,
+      "search_limit": 30,
+      "bridge_mode": "inject",
+      "precision": 0.23805556,
+      "recall": 0.22559524,
+      "f1": 0.21992783
+    },
+    {
+      "semantic_weight": 0.3,
+      "doc_demotion": 0.3,
+      "rrf_k": 60.0,
+      "budget_lines": 300,
+      "search_limit": 20,
+      "bridge_mode": "inject",
+      "precision": 0.23625001,
+      "recall": 0.2672619,
+      "f1": 0.21977635
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.1,
+      "rrf_k": 60.0,
+      "budget_lines": 500,
+      "search_limit": 40,
+      "bridge_mode": "inject",
+      "precision": 0.22972223,
+      "recall": 0.2684524,
+      "f1": 0.21780606
+    },
+    {
+      "semantic_weight": 0.5,
+      "doc_demotion": 0.3,
+      "rrf_k": 60.0,
+      "budget_lines": 500,
+      "search_limit": 40,
+      "bridge_mode": "inject",
+      "precision": 0.22972223,
+      "recall": 0.2684524,
+      "f1": 0.21780606
+    }
+  ],
+  "sample_count": 20,
+  "probe_count": 3600,
+  "terse_warning": false
+}
