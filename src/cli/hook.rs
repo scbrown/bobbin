@@ -1191,7 +1191,7 @@ async fn run_hot_topics(args: HotTopicsArgs, _output: OutputConfig) -> Result<()
 /// Inner implementation that can return errors (caller swallows them).
 async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     use crate::index::Embedder;
-    use crate::search::context::{ContentMode, ContextAssembler, ContextConfig};
+    use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig};
     use crate::storage::{MetadataStore, VectorStore};
 
     let hook_start = std::time::Instant::now();
@@ -1272,6 +1272,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let cal_rw = calibration.as_ref().and_then(|c| c.best_config.recency_weight);
     let cal_budget = calibration.as_ref().and_then(|c| c.best_config.budget_lines);
     let cal_sl = calibration.as_ref().and_then(|c| c.best_config.search_limit);
+    let cal_bm = calibration.as_ref().and_then(|c| c.best_config.bridge_mode);
+    let cal_bbf = calibration.as_ref().and_then(|c| c.best_config.bridge_boost_factor);
 
     let context_config = ContextConfig {
         budget_lines: cal_budget.unwrap_or(budget),
@@ -1285,6 +1287,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
         recency_weight: cal_rw.unwrap_or(config.search.recency_weight),
         rrf_k: cal_rrf.unwrap_or(config.search.rrf_k),
+        bridge_mode: cal_bm.unwrap_or(BridgeMode::default()),
+        bridge_boost_factor: cal_bbf.unwrap_or(0.3),
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1712,7 +1716,7 @@ async fn run_post_tool_use_failure(
 /// related to the error to help the agent recover.
 async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result<()> {
     use crate::index::Embedder;
-    use crate::search::context::{ContentMode, ContextAssembler, ContextConfig};
+    use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig};
 
     let hook_start = std::time::Instant::now();
 
@@ -1809,6 +1813,8 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         recency_half_life_days: config.search.recency_half_life_days,
         recency_weight: config.search.recency_weight,
         rrf_k: config.search.rrf_k,
+        bridge_mode: BridgeMode::Off, // No bridging for failure context (speed)
+        bridge_boost_factor: 0.0,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

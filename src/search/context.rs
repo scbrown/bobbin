@@ -1,5 +1,5 @@
 use anyhow::Result;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 use crate::index::Embedder;
@@ -7,6 +7,50 @@ use crate::index::git::GitAnalyzer;
 use crate::search::hybrid::apply_recency_boost;
 use crate::storage::{MetadataStore, VectorStore};
 use crate::types::{Chunk, ChunkType, FileCategory, MatchType, classify_file};
+
+/// How bridging (doc→source, commit→source) affects search results.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BridgeMode {
+    /// No bridging at all (baseline)
+    Off,
+    /// Add discovered files as Bridged results (current behavior)
+    Inject,
+    /// Boost RRF scores of files already in search results
+    Boost,
+    /// Boost existing + inject undiscovered files
+    BoostInject,
+}
+
+impl Default for BridgeMode {
+    fn default() -> Self {
+        BridgeMode::Inject
+    }
+}
+
+impl std::fmt::Display for BridgeMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BridgeMode::Off => write!(f, "off"),
+            BridgeMode::Inject => write!(f, "inject"),
+            BridgeMode::Boost => write!(f, "boost"),
+            BridgeMode::BoostInject => write!(f, "boost_inject"),
+        }
+    }
+}
+
+impl std::str::FromStr for BridgeMode {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "off" => Ok(BridgeMode::Off),
+            "inject" => Ok(BridgeMode::Inject),
+            "boost" => Ok(BridgeMode::Boost),
+            "boost_inject" | "boost+inject" => Ok(BridgeMode::BoostInject),
+            _ => anyhow::bail!("Unknown bridge_mode '{}'. Use: off, inject, boost, boost_inject", s),
+        }
+    }
+}
 
 /// Configuration for context assembly
 pub struct ContextConfig {
@@ -27,6 +71,11 @@ pub struct ContextConfig {
     pub recency_weight: f32,
     /// RRF constant k. Default: 60.0.
     pub rrf_k: f32,
+    /// Bridging strategy: off, inject, boost, or boost_inject. Default: inject.
+    pub bridge_mode: BridgeMode,
+    /// Score multiplier for bridge-boosted files: final_score *= (1.0 + factor).
+    /// Only used in Boost and BoostInject modes. Default: 0.3.
+    pub bridge_boost_factor: f32,
 }
 
 /// How much content to include in output
@@ -208,7 +257,8 @@ impl ContextAssembler {
     /// then expands via coupling and applies budget constraints.
     pub async fn assemble(&mut self, query: &str, repo: Option<&str>) -> Result<ContextBundle> {
         // Phase 1: Seed via hybrid search
-        let (seed_results, top_semantic_score) = self.run_hybrid_search(query, repo).await?;
+        let (seed_results, top_semantic_score, commit_chunks) =
+            self.run_hybrid_search(query, repo).await?;
 
         // Convert internal SeedResults to public SeedChunks
         let seeds: Vec<SeedChunk> = seed_results
@@ -231,7 +281,9 @@ impl ContextAssembler {
             })
             .collect();
 
-        let mut bundle = self.assemble_from_seeds(query, seeds, repo).await?;
+        let mut bundle = self
+            .assemble_from_seeds_with_commits(query, seeds, commit_chunks, repo)
+            .await?;
         bundle.summary.top_semantic_score = top_semantic_score;
         Ok(bundle)
     }
@@ -245,6 +297,18 @@ impl ContextAssembler {
         &mut self,
         query: &str,
         seeds: Vec<SeedChunk>,
+        repo: Option<&str>,
+    ) -> Result<ContextBundle> {
+        self.assemble_from_seeds_with_commits(query, seeds, vec![], repo)
+            .await
+    }
+
+    /// Internal: assemble from seeds with optional commit chunks for commit→source bridging.
+    async fn assemble_from_seeds_with_commits(
+        &mut self,
+        query: &str,
+        seeds: Vec<SeedChunk>,
+        commit_chunks: Vec<Chunk>,
         repo: Option<&str>,
     ) -> Result<ContextBundle> {
         // Collect unique files from seeds
@@ -280,95 +344,138 @@ impl ContextAssembler {
             .expand_coupling(&seed_files, repo)
             .await?;
 
-        // Phase 2b: Bridge docs to source via git blame provenance
-        let bridged_chunks = self
-            .bridge_docs_via_provenance(&seed_results, repo)
-            .await?;
+        // Phase 2b: Collect bridge signals (commit→source + doc→source)
+        let bridge_files = self.collect_bridge_signals(&seed_results, &commit_chunks, repo).await?;
+
+        // Phase 2c: Apply bridge boost to seed scores if in Boost/BoostInject mode
+        let seed_results = if matches!(self.config.bridge_mode, BridgeMode::Boost | BridgeMode::BoostInject) {
+            let factor = self.config.bridge_boost_factor;
+            seed_results
+                .into_iter()
+                .map(|mut r| {
+                    if bridge_files.contains(&r.file_path) {
+                        r.score *= 1.0 + factor;
+                    }
+                    r
+                })
+                .collect()
+        } else {
+            seed_results
+        };
+
+        // Phase 2d: Collect bridged chunks for injection (Inject/BoostInject modes)
+        let bridged_chunks = if matches!(self.config.bridge_mode, BridgeMode::Inject | BridgeMode::BoostInject) {
+            self.fetch_bridged_chunks(&seed_results, &bridge_files, repo).await?
+        } else {
+            vec![]
+        };
 
         // Phase 3: Assemble with budget
         assemble_bundle(query, &self.config, seed_results, coupled_chunks, bridged_chunks)
     }
 
-    /// Bridge documentation chunks to source files via git blame provenance.
+    /// Collect bridge signal file paths from both doc→source and commit→source paths.
     ///
-    /// For each seed that is a documentation file, blame its line range to find
-    /// the commits that introduced those lines, then find source files changed
-    /// in those same commits. Returns additional SeedChunks for the discovered
-    /// source files, marked with Bridged relevance.
-    async fn bridge_docs_via_provenance(
+    /// Returns a set of source file paths discovered through bridging:
+    /// - Doc→source: blame doc chunks → commits → source files
+    /// - Commit→source: parse "Files changed:" from matching commit chunks
+    async fn collect_bridge_signals(
         &mut self,
         seeds: &[SeedResult],
-        repo: Option<&str>,
-    ) -> Result<Vec<CoupledChunkInfo>> {
-        let git = match &self.git_analyzer {
-            Some(g) => g,
-            None => return Ok(vec![]),
-        };
-
-        let mut bridged_chunks: Vec<CoupledChunkInfo> = Vec::new();
-        let mut seen_files: HashSet<String> = HashSet::new();
-
-        // Collect files already in seeds to avoid re-adding them
-        for seed in seeds {
-            seen_files.insert(seed.file_path.clone());
+        commit_chunks: &[Chunk],
+        _repo: Option<&str>,
+    ) -> Result<HashSet<String>> {
+        if self.config.bridge_mode == BridgeMode::Off {
+            return Ok(HashSet::new());
         }
 
-        for seed in seeds {
-            let category = classify_file(&seed.file_path);
-            if category != FileCategory::Documentation {
-                continue;
+        let mut bridge_files: HashSet<String> = HashSet::new();
+
+        // --- Commit→source bridging: extract file lists from commit chunk content ---
+        for chunk in commit_chunks {
+            for file_path in parse_commit_files(&chunk.content) {
+                let category = classify_file(&file_path);
+                if category == FileCategory::Source || category == FileCategory::Test {
+                    bridge_files.insert(file_path);
+                }
             }
+        }
 
-            // Blame the matching chunk's line range
-            let blame_entries = match git.blame_lines(&seed.file_path, seed.start_line, seed.end_line) {
-                Ok(entries) => entries,
-                Err(_) => continue, // Silent fail — never block injection
-            };
+        // --- Doc→source bridging: git blame → commits → source files ---
+        if let Some(git) = &self.git_analyzer {
+            for seed in seeds {
+                let category = classify_file(&seed.file_path);
+                if category != FileCategory::Documentation {
+                    continue;
+                }
 
-            // Deduplicate commit hashes
-            let commit_hashes: HashSet<String> = blame_entries
-                .into_iter()
-                .map(|e| e.commit_hash)
-                .collect();
-
-            for hash in &commit_hashes {
-                // Find source files changed in the same commit
-                let commit_files = match git.get_commit_files(hash) {
-                    Ok(files) => files,
+                let blame_entries = match git.blame_lines(&seed.file_path, seed.start_line, seed.end_line) {
+                    Ok(entries) => entries,
                     Err(_) => continue,
                 };
 
-                for file_path in commit_files {
-                    let file_category = classify_file(&file_path);
-                    if file_category != FileCategory::Source {
-                        continue;
-                    }
-                    if seen_files.contains(&file_path) {
-                        continue;
-                    }
-                    seen_files.insert(file_path.clone());
+                let commit_hashes: HashSet<String> = blame_entries
+                    .into_iter()
+                    .map(|e| e.commit_hash)
+                    .collect();
 
-                    // Fetch chunks for the bridged source file
-                    let chunks = match self.vector_store.get_chunks_for_file(&file_path, repo).await {
-                        Ok(c) => c,
+                for hash in &commit_hashes {
+                    let commit_files = match git.get_commit_files(hash) {
+                        Ok(files) => files,
                         Err(_) => continue,
                     };
 
-                    for chunk in chunks {
-                        bridged_chunks.push(CoupledChunkInfo {
-                            chunk_id: chunk.id.clone(),
-                            file_path: chunk.file_path.clone(),
-                            language: chunk.language.clone(),
-                            name: chunk.name.clone(),
-                            chunk_type: chunk.chunk_type,
-                            start_line: chunk.start_line,
-                            end_line: chunk.end_line,
-                            content: chunk.content.clone(),
-                            coupling_score: seed.score, // Use doc chunk's score as proxy
-                            coupled_to: seed.file_path.clone(),
-                        });
+                    for file_path in commit_files {
+                        let file_category = classify_file(&file_path);
+                        if file_category == FileCategory::Source || file_category == FileCategory::Test {
+                            bridge_files.insert(file_path);
+                        }
                     }
                 }
+            }
+        }
+
+        Ok(bridge_files)
+    }
+
+    /// Fetch chunks for bridged files not already in seeds (for Inject/BoostInject modes).
+    async fn fetch_bridged_chunks(
+        &mut self,
+        seeds: &[SeedResult],
+        bridge_files: &HashSet<String>,
+        repo: Option<&str>,
+    ) -> Result<Vec<CoupledChunkInfo>> {
+        let mut bridged_chunks: Vec<CoupledChunkInfo> = Vec::new();
+
+        // Files already in seeds — don't inject duplicates
+        let seed_files: HashSet<&str> = seeds.iter().map(|s| s.file_path.as_str()).collect();
+
+        // Use the best seed score as a proxy for bridged chunk scoring
+        let best_seed_score = seeds.iter().map(|s| s.score).fold(0.0_f32, f32::max);
+
+        for file_path in bridge_files {
+            if seed_files.contains(file_path.as_str()) {
+                continue;
+            }
+
+            let chunks = match self.vector_store.get_chunks_for_file(file_path, repo).await {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            for chunk in chunks {
+                bridged_chunks.push(CoupledChunkInfo {
+                    chunk_id: chunk.id.clone(),
+                    file_path: chunk.file_path.clone(),
+                    language: chunk.language.clone(),
+                    name: chunk.name.clone(),
+                    chunk_type: chunk.chunk_type,
+                    start_line: chunk.start_line,
+                    end_line: chunk.end_line,
+                    content: chunk.content.clone(),
+                    coupling_score: best_seed_score * 0.5, // Bridged files get half the best seed score
+                    coupled_to: "bridge".to_string(),
+                });
             }
         }
 
@@ -437,31 +544,56 @@ impl ContextAssembler {
     }
 
     /// Run hybrid search manually to avoid ownership issues with HybridSearch.
-    /// Returns `(results, top_semantic_score)` where `top_semantic_score` is the
-    /// raw cosine similarity of the best semantic match before RRF normalization.
+    /// Returns `(results, top_semantic_score, commit_chunks)` where `top_semantic_score`
+    /// is the raw cosine similarity of the best semantic match before RRF normalization,
+    /// and `commit_chunks` are matching commit chunks (for commit→source bridging).
     async fn run_hybrid_search(
         &mut self,
         query: &str,
         repo: Option<&str>,
-    ) -> Result<(Vec<SeedResult>, f32)> {
+    ) -> Result<(Vec<SeedResult>, f32, Vec<Chunk>)> {
         let fetch_limit = self.config.search_limit * 2;
 
         // Semantic search uses raw query (embeddings handle natural language)
         let query_embedding = self.embedder.embed(query).await?;
-        let semantic_results: Vec<_> = self
+        let all_semantic = self
             .vector_store
             .search(&query_embedding, fetch_limit, repo)
-            .await?
+            .await?;
+
+        // Capture commit chunks before filtering (for commit→source bridging)
+        let mut commit_chunks: Vec<Chunk> = Vec::new();
+        if self.config.bridge_mode != BridgeMode::Off {
+            for r in &all_semantic {
+                if r.chunk.chunk_type == ChunkType::Commit {
+                    commit_chunks.push(r.chunk.clone());
+                }
+            }
+        }
+
+        let semantic_results: Vec<_> = all_semantic
             .into_iter()
             .filter(|r| r.chunk.chunk_type != ChunkType::Commit)
             .collect();
         // FTS uses preprocessed query (stopwords removed for better BM25)
         let keyword_query = crate::search::preprocess::preprocess_for_keywords(query);
-        let keyword_results: Vec<_> = self
+        let all_keyword = self
             .vector_store
             .search_fts(&keyword_query, fetch_limit, repo)
             .await
-            .unwrap_or_default()
+            .unwrap_or_default();
+
+        // Capture commit chunks from keyword results too (deduplicate by id)
+        if self.config.bridge_mode != BridgeMode::Off {
+            let seen: HashSet<String> = commit_chunks.iter().map(|c| c.id.clone()).collect();
+            for r in &all_keyword {
+                if r.chunk.chunk_type == ChunkType::Commit && !seen.contains(&r.chunk.id) {
+                    commit_chunks.push(r.chunk.clone());
+                }
+            }
+        }
+
+        let keyword_results: Vec<_> = all_keyword
             .into_iter()
             .filter(|r| r.chunk.chunk_type != ChunkType::Commit)
             .collect();
@@ -564,7 +696,24 @@ impl ContextAssembler {
                 })
                 .collect(),
             top_semantic_score,
+            commit_chunks,
         ))
+    }
+}
+
+/// Parse file paths from a commit chunk's content field.
+///
+/// Commit content format: `<message>\n\nAuthor: ...\nDate: ...\n\nFiles changed:\nfile1\nfile2`
+fn parse_commit_files(content: &str) -> Vec<String> {
+    if let Some(idx) = content.find("Files changed:\n") {
+        let files_section = &content[idx + "Files changed:\n".len()..];
+        files_section
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| l.to_string())
+            .collect()
+    } else {
+        vec![]
     }
 }
 
@@ -934,6 +1083,8 @@ mod tests {
             rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
         };
 
         let seeds = vec![
@@ -962,6 +1113,8 @@ mod tests {
             rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
         };
 
         let seeds = vec![
@@ -987,6 +1140,8 @@ mod tests {
             rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1009,6 +1164,8 @@ mod tests {
             rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1035,6 +1192,8 @@ mod tests {
             rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
         };
 
         let seeds = vec![
@@ -1062,6 +1221,8 @@ mod tests {
             rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
         };
 
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)
@@ -1086,6 +1247,8 @@ mod tests {
             rrf_k: 60.0,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
         };
 
         // Mix of commit and function seeds — commits should be excluded
@@ -1149,6 +1312,29 @@ mod tests {
             content: "fn test() {}".to_string(),
             coupling_score,
             coupled_to: coupled_to.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_parse_commit_files() {
+        let content = "fix: handle edge case\n\nAuthor: dev\nDate: 2024-01-01\n\nFiles changed:\nsrc/main.rs\nsrc/lib.rs\nREADME.md";
+        let files = parse_commit_files(content);
+        assert_eq!(files, vec!["src/main.rs", "src/lib.rs", "README.md"]);
+    }
+
+    #[test]
+    fn test_parse_commit_files_no_files_section() {
+        let content = "fix: handle edge case\n\nAuthor: dev\nDate: 2024-01-01";
+        let files = parse_commit_files(content);
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_bridge_mode_roundtrip() {
+        for mode in [BridgeMode::Off, BridgeMode::Inject, BridgeMode::Boost, BridgeMode::BoostInject] {
+            let s = mode.to_string();
+            let parsed: BridgeMode = s.parse().unwrap();
+            assert_eq!(parsed, mode);
         }
     }
 }

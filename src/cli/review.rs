@@ -9,7 +9,7 @@ use crate::config::Config;
 use crate::index::{Embedder, GitAnalyzer};
 use crate::index::git::DiffSpec;
 use crate::search::context::{
-    ContentMode, ContextAssembler, ContextBundle, ContextConfig, FileRelevance,
+    BridgeMode, ContentMode, ContextAssembler, ContextBundle, ContextConfig, FileRelevance,
 };
 use crate::index::git::DiffFile;
 use crate::search::review::map_diff_to_chunks;
@@ -151,6 +151,8 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
         recency_half_life_days: config.search.recency_half_life_days,
         recency_weight: config.search.recency_weight,
         rrf_k: config.search.rrf_k,
+        bridge_mode: BridgeMode::default(),
+        bridge_boost_factor: 0.3,
     };
 
     // Build description of the diff for the query field

@@ -21,7 +21,7 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, S
 use super::tools::*;
 use crate::config::Config;
 use crate::index::Embedder;
-use crate::search::context::{ContentMode, ContextAssembler, ContextConfig, FileRelevance};
+use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig, FileRelevance};
 use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{MetadataStore, VectorStore};
 use crate::analysis::complexity::ComplexityAnalyzer;
@@ -581,6 +581,8 @@ impl BobbinMcpServer {
             recency_half_life_days: config.search.recency_half_life_days,
             recency_weight: config.search.recency_weight,
             rrf_k: config.search.rrf_k,
+            bridge_mode: BridgeMode::default(),
+            bridge_boost_factor: 0.3,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1038,6 +1040,8 @@ impl BobbinMcpServer {
             recency_half_life_days: config.search.recency_half_life_days,
             recency_weight: config.search.recency_weight,
             rrf_k: config.search.rrf_k,
+            bridge_mode: BridgeMode::default(),
+            bridge_boost_factor: 0.3,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

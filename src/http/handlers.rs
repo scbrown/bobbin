@@ -16,7 +16,7 @@ use crate::analysis::refs::RefAnalyzer;
 use crate::analysis::similar::{SimilarTarget, SimilarityAnalyzer};
 use crate::config::Config;
 use crate::index::{Embedder, GitAnalyzer};
-use crate::search::context::{ContentMode, ContextAssembler, ContextConfig, FileRelevance};
+use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig, FileRelevance};
 use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{MetadataStore, VectorStore};
 use crate::types::{ChunkType, MatchType, SearchResult};
@@ -851,6 +851,8 @@ pub(super) async fn context(
         recency_half_life_days: state.config.search.recency_half_life_days,
         recency_weight: state.config.search.recency_weight,
         rrf_k: state.config.search.rrf_k,
+        bridge_mode: BridgeMode::default(),
+        bridge_boost_factor: 0.3,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1421,6 +1423,8 @@ pub(super) async fn review(
         recency_half_life_days: state.config.search.recency_half_life_days,
         recency_weight: state.config.search.recency_weight,
         rrf_k: state.config.search.rrf_k,
+        bridge_mode: BridgeMode::default(),
+        bridge_boost_factor: 0.3,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

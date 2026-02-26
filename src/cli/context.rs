@@ -7,7 +7,7 @@ use super::OutputConfig;
 use crate::config::Config;
 use crate::index::Embedder;
 use crate::search::context::{
-    ContentMode, ContextAssembler, ContextBundle, ContextConfig, FileRelevance,
+    BridgeMode, ContentMode, ContextAssembler, ContextBundle, ContextConfig, FileRelevance,
 };
 use crate::storage::{MetadataStore, VectorStore};
 
@@ -171,6 +171,8 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
         recency_weight: cal_rw.unwrap_or(config.search.recency_weight),
         rrf_k: args.rrf_k.unwrap_or(cal_rrf.unwrap_or(config.search.rrf_k)),
+        bridge_mode: BridgeMode::default(),
+        bridge_boost_factor: 0.3,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

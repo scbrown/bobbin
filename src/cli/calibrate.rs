@@ -11,7 +11,7 @@ use super::OutputConfig;
 use crate::config::Config;
 use crate::index::git::GitAnalyzer;
 use crate::index::Embedder;
-use crate::search::context::{ContentMode, ContextAssembler, ContextConfig};
+use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig};
 use crate::storage::{MetadataStore, VectorStore};
 
 // --- CLI Args ---
@@ -101,6 +101,12 @@ pub struct CalibratedConfig {
     /// Best search_limit (initial search results)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search_limit: Option<usize>,
+    /// Best bridge mode (only set by --full)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bridge_mode: Option<BridgeMode>,
+    /// Best bridge boost factor (only set by --full)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bridge_boost_factor: Option<f32>,
 }
 
 /// Result for a single grid point
@@ -119,6 +125,10 @@ pub struct GridResult {
     pub budget_lines: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search_limit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bridge_mode: Option<BridgeMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bridge_boost_factor: Option<f32>,
     pub precision: f32,
     pub recall: f32,
     pub f1: f32,
@@ -358,20 +368,25 @@ struct GridPoint {
     recency_weight: Option<f32>,
     budget_lines: usize,
     search_limit: usize,
+    bridge_mode: BridgeMode,
+    bridge_boost_factor: f32,
 }
 
 /// Build the core parameter grid (sw × dd × k × sl × b points).
+/// Core grid always uses Inject mode (current default).
 fn build_grid(budgets: &[usize], search_limits: &[usize]) -> Vec<GridPoint> {
-    build_grid_with_recency(&[], &[], budgets, search_limits)
+    build_grid_with_recency(&[], &[], budgets, search_limits, &[BridgeMode::Inject], &[0.3])
 }
 
-/// Build grid with optional recency parameter sweep.
+/// Build grid with optional recency and bridge parameter sweep.
 /// Empty recency slices → use config defaults (None in grid point).
 fn build_grid_with_recency(
     half_lives: &[f32],
     recency_weights: &[f32],
     budgets: &[usize],
     search_limits: &[usize],
+    bridge_modes: &[BridgeMode],
+    bridge_boost_factors: &[f32],
 ) -> Vec<GridPoint> {
     let sws = [0.0, 0.3, 0.5, 0.7, 0.9];
     let dds = [0.1, 0.3, 0.5];
@@ -397,15 +412,26 @@ fn build_grid_with_recency(
                     for &rw in &rw_iter {
                         for &b in budgets {
                             for &sl in search_limits {
-                                grid.push(GridPoint {
-                                    semantic_weight: sw,
-                                    doc_demotion: dd,
-                                    rrf_k: k,
-                                    recency_half_life_days: hl,
-                                    recency_weight: rw,
-                                    budget_lines: b,
-                                    search_limit: sl,
-                                });
+                                for &bm in bridge_modes {
+                                    // Only sweep boost factors for modes that use them
+                                    let factors: &[f32] = match bm {
+                                        BridgeMode::Off | BridgeMode::Inject => &[0.0],
+                                        BridgeMode::Boost | BridgeMode::BoostInject => bridge_boost_factors,
+                                    };
+                                    for &bbf in factors {
+                                        grid.push(GridPoint {
+                                            semantic_weight: sw,
+                                            doc_demotion: dd,
+                                            rrf_k: k,
+                                            recency_half_life_days: hl,
+                                            recency_weight: rw,
+                                            budget_lines: b,
+                                            search_limit: sl,
+                                            bridge_mode: bm,
+                                            bridge_boost_factor: bbf,
+                                        });
+                                    }
+                                }
                             }
                         }
                     }
@@ -574,6 +600,8 @@ async fn run_probes(
         recency_half_life_days: config.search.recency_half_life_days,
         recency_weight: config.search.recency_weight,
         rrf_k: 60.0,
+        bridge_mode: BridgeMode::Inject,
+        bridge_boost_factor: 0.3,
     };
     let mut assembler = ContextAssembler::new(embedder, vs, ms, initial_config);
 
@@ -598,6 +626,8 @@ async fn run_probes(
                 .recency_weight
                 .unwrap_or(config.search.recency_weight),
             rrf_k: point.rrf_k,
+            bridge_mode: point.bridge_mode,
+            bridge_boost_factor: point.bridge_boost_factor,
         });
 
         let mut total_precision = 0.0_f32;
@@ -642,6 +672,8 @@ async fn run_probes(
             coupling_depth,
             budget_lines: Some(point.budget_lines),
             search_limit: Some(point.search_limit),
+            bridge_mode: Some(point.bridge_mode),
+            bridge_boost_factor: if point.bridge_boost_factor > 0.0 { Some(point.bridge_boost_factor) } else { None },
             precision: total_precision / n,
             recall: total_recall / n,
             f1: total_f1 / n,
@@ -684,6 +716,17 @@ fn format_result(r: &GridResult, full: bool) -> String {
     if let Some(sl) = r.search_limit {
         if sl != 20 {
             s.push_str(&format!(" sl={}", sl));
+        }
+    }
+    // Show bridge_mode when not default inject
+    if let Some(bm) = r.bridge_mode {
+        if bm != BridgeMode::Inject {
+            s.push_str(&format!(" bm={}", bm));
+        }
+    }
+    if let Some(bbf) = r.bridge_boost_factor {
+        if bbf > 0.0 {
+            s.push_str(&format!(" bbf={:.2}", bbf));
         }
     }
     if full {
@@ -823,6 +866,8 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
             coupling_depth: best.coupling_depth,
             budget_lines: best.budget_lines,
             search_limit: best.search_limit,
+            bridge_mode: best.bridge_mode,
+            bridge_boost_factor: best.bridge_boost_factor,
         },
         top_results: sorted.iter().take(10).cloned().collect(),
         sample_count: commits.len(),
@@ -977,7 +1022,12 @@ async fn run_full_sweep(
         None => vec![10, 20, 30, 40],
     };
 
-    let grid = build_grid_with_recency(&half_lives, &recency_weights, &budgets, &search_limits);
+    let bridge_modes = [BridgeMode::Off, BridgeMode::Inject, BridgeMode::Boost, BridgeMode::BoostInject];
+    let bridge_boost_factors = [0.15, 0.3, 0.5];
+    let grid = build_grid_with_recency(
+        &half_lives, &recency_weights, &budgets, &search_limits,
+        &bridge_modes, &bridge_boost_factors,
+    );
     let total_configs = grid.len() * coupling_depths.len();
     let total_probes = total_configs * commits.len();
 
@@ -1304,8 +1354,11 @@ mod tests {
     fn test_build_grid_with_recency() {
         let half_lives = [7.0, 14.0, 30.0, 90.0];
         let recency_weights = [0.0, 0.15, 0.30, 0.50];
-        let grid = build_grid_with_recency(&half_lives, &recency_weights, &[300], &[20]);
-        // 5 sw × 3 dd × 1 k × 4 hl × 4 rw × 1 b × 1 sl = 240
+        let grid = build_grid_with_recency(
+            &half_lives, &recency_weights, &[300], &[20],
+            &[BridgeMode::Inject], &[0.3],
+        );
+        // 5 sw × 3 dd × 1 k × 4 hl × 4 rw × 1 b × 1 sl × 1 bm = 240
         assert_eq!(grid.len(), 240);
         // All extended grid points should have recency overrides
         assert!(grid[0].recency_half_life_days.is_some());
@@ -1315,9 +1368,23 @@ mod tests {
     #[test]
     fn test_build_grid_recency_empty_fallback() {
         // Empty arrays should fall back to None (same as core grid)
-        let grid = build_grid_with_recency(&[], &[], &[300], &[20]);
+        let grid = build_grid_with_recency(&[], &[], &[300], &[20], &[BridgeMode::Inject], &[0.3]);
         assert_eq!(grid.len(), 15);
         assert!(grid[0].recency_half_life_days.is_none());
+    }
+
+    #[test]
+    fn test_build_grid_bridge_mode_sweep() {
+        // Sweep all 4 bridge modes with 2 boost factors
+        let bridge_modes = [BridgeMode::Off, BridgeMode::Inject, BridgeMode::Boost, BridgeMode::BoostInject];
+        let grid = build_grid_with_recency(
+            &[], &[], &[300], &[20],
+            &bridge_modes, &[0.15, 0.3],
+        );
+        // 5 sw × 3 dd × 1 k × 1 hl × 1 rw × 1 b × 1 sl × (2 off + 2 inject + 2×2 boost + 2×2 boost_inject) = 15 × 8 = 120
+        // Off: factor[0.0] only = 1, Inject: factor[0.0] only = 1, Boost: 2 factors, BoostInject: 2 factors
+        // Total per inner = 1 + 1 + 2 + 2 = 6
+        assert_eq!(grid.len(), 15 * 6);
     }
 
     #[test]
@@ -1331,6 +1398,8 @@ mod tests {
             coupling_depth: None,
             budget_lines: Some(300),
             search_limit: Some(20),
+            bridge_mode: None,
+            bridge_boost_factor: None,
             precision: 0.4,
             recall: 0.5,
             f1: 0.444,
@@ -1354,6 +1423,8 @@ mod tests {
             coupling_depth: None,
             budget_lines: Some(500),
             search_limit: Some(40),
+            bridge_mode: None,
+            bridge_boost_factor: None,
             precision: 0.4,
             recall: 0.5,
             f1: 0.444,
@@ -1374,6 +1445,8 @@ mod tests {
             coupling_depth: Some(5000),
             budget_lines: Some(300),
             search_limit: Some(20),
+            bridge_mode: None,
+            bridge_boost_factor: None,
             precision: 0.4,
             recall: 0.5,
             f1: 0.444,
@@ -1402,6 +1475,8 @@ mod tests {
                 coupling_depth: Some(5000),
                 budget_lines: Some(300),
                 search_limit: Some(20),
+                bridge_mode: None,
+                bridge_boost_factor: None,
                 precision: 0.4,
                 recall: 0.5,
                 f1: 0.444,
@@ -1441,6 +1516,8 @@ mod tests {
                 coupling_depth: None,
                 budget_lines: None,
                 search_limit: None,
+                bridge_mode: None,
+                bridge_boost_factor: None,
             },
             top_results: vec![],
             sample_count: 20,
