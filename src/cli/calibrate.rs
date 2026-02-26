@@ -220,24 +220,70 @@ fn is_noise_commit(message: &str) -> bool {
     noise_prefixes.iter().any(|p| lower.starts_with(p))
 }
 
-/// Parse a "since" string into a unix timestamp by asking git
+/// Parse a "since" string into a unix timestamp.
+///
+/// Uses `git log --format="" --since=<since> -1` to leverage git's date
+/// parsing, then uses `git log --format=%ct --since=<since> --diff-filter=A -1 --reverse`
+/// to find the boundary. We actually just need to compute what timestamp the
+/// --since flag resolves to, so we ask git for it via `--date=unix`.
 fn parse_since_timestamp(git: &GitAnalyzer, since: &str) -> Result<i64> {
-    // Get the oldest commit that matches --since to find the cutoff
+    // Use `git log` with --since to find the effective cutoff date.
+    // We ask for the boundary by getting the earliest commit IN the range
+    // and subtracting 1 second, so `commit.timestamp < since_ts` correctly
+    // excludes commits before the window.
+    //
+    // Simpler approach: compute relative date ourselves for common patterns.
+    let now = chrono::Utc::now().timestamp();
+
+    // Try common patterns first
+    let lower = since.to_lowercase();
+    if let Some(ts) = parse_relative_date(&lower, now) {
+        return Ok(ts);
+    }
+
+    // Fallback: ask git for the oldest commit in the range and use its timestamp - 1
     let output = std::process::Command::new("git")
         .args([
             "log",
-            "--reverse",
+            "--no-merges",
             "--format=%ct",
             &format!("--since={}", since),
-            "-1",
+            "--reverse",
         ])
         .current_dir(git.repo_root())
         .output()
         .context("Failed to parse --since timestamp")?;
 
-    let ts_str = String::from_utf8_lossy(&output.stdout);
-    let ts = ts_str.trim().parse::<i64>().unwrap_or(0);
-    Ok(ts)
+    let first_line = String::from_utf8_lossy(&output.stdout);
+    let ts = first_line
+        .lines()
+        .next()
+        .and_then(|l| l.trim().parse::<i64>().ok())
+        .unwrap_or(0);
+
+    // Return ts - 1 so that the boundary commit itself passes the < check
+    Ok(if ts > 0 { ts - 1 } else { 0 })
+}
+
+/// Parse common relative date strings into timestamps.
+fn parse_relative_date(s: &str, now: i64) -> Option<i64> {
+    let parts: Vec<&str> = s.split_whitespace().collect();
+    if parts.len() < 3 || parts.last() != Some(&"ago") {
+        return None;
+    }
+    let n: i64 = parts[0].parse().ok()?;
+    let unit = parts[1].trim_end_matches('s'); // "months" -> "month"
+    let seconds_per_unit = match unit {
+        "second" => 1,
+        "minute" => 60,
+        "hour" => 3600,
+        "day" => 86400,
+        "week" => 7 * 86400,
+        "month" => 30 * 86400,
+        "year" => 365 * 86400,
+        _ => return None,
+    };
+    Some(now - n * seconds_per_unit)
 }
 
 /// Detect terse commit messages in the sample
