@@ -1811,7 +1811,7 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         rrf_k: config.search.rrf_k,
     };
 
-    let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
     let bundle = assembler.assemble(&query, None).await?;
 
     if bundle.files.is_empty() {

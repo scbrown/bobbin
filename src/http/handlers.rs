@@ -853,7 +853,7 @@ pub(super) async fn context(
         rrf_k: state.config.search.rrf_k,
     };
 
-    let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
     let bundle = assembler
         .assemble(&params.q, params.repo.as_deref())
         .await
@@ -1423,7 +1423,7 @@ pub(super) async fn review(
         rrf_k: state.config.search.rrf_k,
     };
 
-    let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
     let bundle = assembler
         .assemble_from_seeds(&diff_description, seeds, params.repo.as_deref())
         .await

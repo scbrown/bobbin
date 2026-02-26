@@ -197,11 +197,16 @@ impl ContextAssembler {
         self
     }
 
+    /// Replace the context config (used by calibration to vary params without reopening stores)
+    pub fn set_config(&mut self, config: ContextConfig) {
+        self.config = config;
+    }
+
     /// Assemble a context bundle for the given query using hybrid search.
     ///
     /// This is the standard entry point: runs hybrid search to find seeds,
     /// then expands via coupling and applies budget constraints.
-    pub async fn assemble(mut self, query: &str, repo: Option<&str>) -> Result<ContextBundle> {
+    pub async fn assemble(&mut self, query: &str, repo: Option<&str>) -> Result<ContextBundle> {
         // Phase 1: Seed via hybrid search
         let (seed_results, top_semantic_score) = self.run_hybrid_search(query, repo).await?;
 
@@ -237,7 +242,7 @@ impl ContextAssembler {
     /// (from search, diff analysis, or any other source) and runs coupling
     /// expansion + budget assembly on them.
     pub async fn assemble_from_seeds(
-        mut self,
+        &mut self,
         query: &str,
         seeds: Vec<SeedChunk>,
         repo: Option<&str>,

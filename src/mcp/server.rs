@@ -583,7 +583,7 @@ impl BobbinMcpServer {
             rrf_k: config.search.rrf_k,
         };
 
-        let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+        let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
         let bundle = assembler
             .assemble(&req.query, req.repo.as_deref())
             .await
@@ -1040,7 +1040,7 @@ impl BobbinMcpServer {
             rrf_k: config.search.rrf_k,
         };
 
-        let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+        let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
         let bundle = assembler
             .assemble_from_seeds(&diff_description, seeds, req.repo.as_deref())
             .await

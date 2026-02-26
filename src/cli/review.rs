@@ -156,7 +156,7 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
     // Build description of the diff for the query field
     let diff_description = describe_diff(&diff_spec, &args.branch);
 
-    let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
     let bundle = assembler
         .assemble_from_seeds(&diff_description, seeds, args.repo.as_deref())
         .await

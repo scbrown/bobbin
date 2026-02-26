@@ -541,6 +541,10 @@ fn clear_cache(repo_root: &std::path::Path) {
 
 /// Run probes for a grid against sampled commits. Returns scored grid results.
 /// The coupling_depth tag is attached to each result for --full sweeps.
+///
+/// Opens VectorStore, MetadataStore, and Embedder once and reuses across all
+/// probes. ContextAssembler.set_config() swaps search params between grid points
+/// without reopening stores.
 async fn run_probes(
     grid: &[GridPoint],
     commits: &[SampledCommit],
@@ -552,44 +556,59 @@ async fn run_probes(
     repo_root: &std::path::Path,
     pb: Option<&ProgressBar>,
 ) -> Result<Vec<GridResult>> {
+    // Open stores and embedder once for all probes
+    let vs = VectorStore::open(lance_path).await?;
+    let ms = MetadataStore::open(db_path)?;
+    let embedder = Embedder::from_config(&config.embedding, model_dir)?;
+
+    // Build initial assembler with a placeholder config (overwritten per grid point)
+    let initial_config = ContextConfig {
+        budget_lines: 300,
+        depth: 1,
+        max_coupled: 3,
+        coupling_threshold: 0.1,
+        semantic_weight: 0.5,
+        content_mode: ContentMode::None,
+        search_limit: 20,
+        doc_demotion: 0.3,
+        recency_half_life_days: config.search.recency_half_life_days,
+        recency_weight: config.search.recency_weight,
+        rrf_k: 60.0,
+    };
+    let mut assembler = ContextAssembler::new(embedder, vs, ms, initial_config);
+
     let mut grid_results: Vec<GridResult> = Vec::new();
+    let prefix = repo_root.to_string_lossy();
 
     for point in grid {
+        // Swap config for this grid point
+        assembler.set_config(ContextConfig {
+            budget_lines: point.budget_lines,
+            depth: 1,
+            max_coupled: 3,
+            coupling_threshold: 0.1,
+            semantic_weight: point.semantic_weight,
+            content_mode: ContentMode::None,
+            search_limit: point.search_limit,
+            doc_demotion: point.doc_demotion,
+            recency_half_life_days: point
+                .recency_half_life_days
+                .unwrap_or(config.search.recency_half_life_days),
+            recency_weight: point
+                .recency_weight
+                .unwrap_or(config.search.recency_weight),
+            rrf_k: point.rrf_k,
+        });
+
         let mut total_precision = 0.0_f32;
         let mut total_recall = 0.0_f32;
         let mut total_f1 = 0.0_f32;
         let mut valid_probes = 0usize;
 
         for commit in commits {
-            let probe_vs = VectorStore::open(lance_path).await?;
-            let probe_ms = MetadataStore::open(db_path)?;
-            let embedder = Embedder::from_config(&config.embedding, model_dir)?;
-
-            let context_config = ContextConfig {
-                budget_lines: point.budget_lines,
-                depth: 1,
-                max_coupled: 3,
-                coupling_threshold: 0.1,
-                semantic_weight: point.semantic_weight,
-                content_mode: ContentMode::None,
-                search_limit: point.search_limit,
-                doc_demotion: point.doc_demotion,
-                recency_half_life_days: point
-                    .recency_half_life_days
-                    .unwrap_or(config.search.recency_half_life_days),
-                recency_weight: point
-                    .recency_weight
-                    .unwrap_or(config.search.recency_weight),
-                rrf_k: point.rrf_k,
-            };
-
-            let assembler =
-                ContextAssembler::new(embedder, probe_vs, probe_ms, context_config);
             let bundle = assembler.assemble(&commit.message, None).await;
 
             if let Ok(bundle) = bundle {
-                // Strip repo_root prefix so paths are relative (matching git commit files)
-                let prefix = repo_root.to_string_lossy();
                 let injected: Vec<String> = bundle
                     .files
                     .iter()

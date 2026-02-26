@@ -173,7 +173,7 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         rrf_k: args.rrf_k.unwrap_or(cal_rrf.unwrap_or(config.search.rrf_k)),
     };
 
-    let assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
     let bundle = assembler
         .assemble(&args.query, args.repo.as_deref())
         .await
