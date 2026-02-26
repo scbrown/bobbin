@@ -372,10 +372,12 @@ struct GridPoint {
     bridge_boost_factor: f32,
 }
 
-/// Build the core parameter grid (sw × dd × k × sl × b points).
-/// Core grid always uses Inject mode (current default).
+/// Build the core parameter grid (sw × dd × k × sl × b × bm points).
+/// Sweeps all 4 bridge modes with boost factors for boost modes.
 fn build_grid(budgets: &[usize], search_limits: &[usize]) -> Vec<GridPoint> {
-    build_grid_with_recency(&[], &[], budgets, search_limits, &[BridgeMode::Inject], &[0.3])
+    let bridge_modes = [BridgeMode::Off, BridgeMode::Inject, BridgeMode::Boost, BridgeMode::BoostInject];
+    let bridge_boost_factors = [0.15, 0.3, 0.5];
+    build_grid_with_recency(&[], &[], budgets, search_limits, &bridge_modes, &bridge_boost_factors)
 }
 
 /// Build grid with optional recency and bridge parameter sweep.
@@ -1334,8 +1336,9 @@ mod tests {
     #[test]
     fn test_build_grid_size() {
         let grid = build_grid(&[300], &[20]);
-        // 5 sw × 3 dd × 1 k × 1 b × 1 sl = 15
-        assert_eq!(grid.len(), 15);
+        // 5 sw × 3 dd × 1 k × 1 b × 1 sl × 6 bridge_combos = 90
+        // bridge: off(1) + inject(1) + boost(3) + boost_inject(3) = 8
+        assert_eq!(grid.len(), 15 * 8);
         // Core grid points should have no recency overrides
         assert!(grid[0].recency_half_life_days.is_none());
         assert!(grid[0].recency_weight.is_none());
@@ -1346,8 +1349,8 @@ mod tests {
     #[test]
     fn test_build_grid_sweep_budget_search_limit() {
         let grid = build_grid(&[150, 300, 500], &[10, 20, 30, 40]);
-        // 5 sw × 3 dd × 1 k × 3 b × 4 sl = 180
-        assert_eq!(grid.len(), 180);
+        // 5 sw × 3 dd × 1 k × 3 b × 4 sl × 8 bridge_combos = 1440
+        assert_eq!(grid.len(), 180 * 8);
     }
 
     #[test]
