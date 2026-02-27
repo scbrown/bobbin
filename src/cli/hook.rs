@@ -242,7 +242,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
             ],
             "PostToolUse": [
                 {
-                    "matcher": "Write|Edit",
+                    "matcher": "Write|Edit|Bash|Grep|Glob",
                     "hooks": [
                         {
                             "type": "command",
@@ -405,7 +405,7 @@ async fn run_install(args: InstallArgs, output: OutputConfig) -> Result<()> {
         println!("  Location: {}", settings_path.display().to_string().dimmed());
         println!("  UserPromptSubmit:    {}", "inject-context".cyan());
         println!("  SessionStart:        {}", "session-context (compact)".cyan());
-        println!("  PostToolUse:         {}", "post-tool-use (Write|Edit)".cyan());
+        println!("  PostToolUse:         {}", "post-tool-use (Write|Edit|Bash|Grep|Glob)".cyan());
         println!("  PostToolUseFailure:  {}", "post-tool-use-failure".cyan());
     }
 
@@ -1543,10 +1543,197 @@ async fn run_post_tool_use(_args: PostToolUseArgs, _output: OutputConfig) -> Res
     }
 }
 
-/// PostToolUse handler: When a file is written/edited, run hybrid search to
-/// surface related files (tests, snapshots, configs) that may need updating.
-/// Uses ContextAssembler with full config cascade (calibration + config.toml),
-/// plus coupling data. Fast because ensure_fts_index reuses persisted index.
+/// Extract a search query from a grep/rg/find bash command.
+/// Returns None if the command doesn't look like a search command.
+fn extract_search_query_from_bash(command: &str) -> Option<String> {
+    let cmd = command.trim();
+
+    // Match: grep [-flags] "pattern" or grep [-flags] pattern
+    // Also matches: rg, git grep
+    // Strategy: find the command, skip flags (start with -), take the next arg as pattern
+    let search_cmds = ["grep", "rg"];
+    for search_cmd in &search_cmds {
+        // Find the command (could be prefixed with env vars, pipes, etc.)
+        // Look for the command as a word boundary
+        if let Some(pos) = cmd.find(search_cmd) {
+            // Make sure it's a command start (beginning, after pipe, after &&, after ;, after space)
+            if pos > 0 {
+                let before = cmd[..pos].chars().last().unwrap_or(' ');
+                if !before.is_whitespace() && before != '|' && before != ';' && before != '&' {
+                    continue;
+                }
+            }
+            // Extract everything after the command name
+            let after_cmd = &cmd[pos + search_cmd.len()..];
+            if let Some(pattern) = extract_pattern_from_args(after_cmd) {
+                return Some(pattern);
+            }
+        }
+    }
+
+    // Match: find . -name "pattern" — extract the name pattern
+    if let Some(pos) = cmd.find("find") {
+        if pos == 0 || cmd[..pos].chars().last().map_or(true, |c| c.is_whitespace() || c == '|' || c == ';' || c == '&') {
+            let after_cmd = &cmd[pos + 4..];
+            if let Some(pattern) = extract_find_pattern(after_cmd) {
+                return Some(pattern);
+            }
+        }
+    }
+
+    None
+}
+
+/// Extract pattern from grep/rg argument list.
+/// Skips flags (starting with -), takes the first non-flag argument.
+fn extract_pattern_from_args(args: &str) -> Option<String> {
+    let args = args.trim();
+    // Use a simple state machine to handle quoted strings
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut escape_next = false;
+
+    for ch in args.chars() {
+        if escape_next {
+            current.push(ch);
+            escape_next = false;
+            continue;
+        }
+        match ch {
+            '\\' if !in_single_quote => escape_next = true,
+            '\'' if !in_double_quote => {
+                in_single_quote = !in_single_quote;
+            }
+            '"' if !in_single_quote => {
+                in_double_quote = !in_double_quote;
+            }
+            ' ' | '\t' if !in_single_quote && !in_double_quote => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+            }
+            _ => current.push(ch),
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    // Skip flags and flag arguments, handle -e/--regexp specially (pattern flag)
+    let mut i = 0;
+    let mut explicit_pattern: Option<String> = None;
+    // Flags that take a value argument (next token is NOT the pattern)
+    let flags_with_value = [
+        "-f", "--file", "-A", "-B", "-C", "--context",
+        "--color", "--colours", "-m", "--max-count", "--include", "--exclude",
+        "--type", "-t", "--type-add", "--glob", "-g", "--max-depth",
+        "--threads", "-j", "--after-context", "--before-context",
+    ];
+    while i < tokens.len() {
+        let tok = &tokens[i];
+        if tok == "--" {
+            // Everything after -- is positional
+            i += 1;
+            break;
+        }
+        if tok == "-e" || tok == "--regexp" {
+            // -e pattern — the next arg IS the pattern
+            if i + 1 < tokens.len() {
+                explicit_pattern = Some(tokens[i + 1].clone());
+            }
+            i += 2;
+        } else if tok.starts_with('-') {
+            // Check if this flag takes a value
+            if flags_with_value.iter().any(|f| tok == f) {
+                i += 2; // skip flag and its value
+            } else if tok.starts_with("--") && tok.contains('=') {
+                i += 1; // --flag=value
+            } else {
+                i += 1; // simple flag like -r, -i, -n
+            }
+        } else {
+            break; // first positional = pattern
+        }
+    }
+
+    // If -e was used, prefer that pattern
+    if let Some(p) = explicit_pattern {
+        let cleaned = clean_regex_for_search(&p);
+        if !cleaned.is_empty() && p.len() >= 2 && p.len() <= 200 {
+            return Some(cleaned);
+        }
+    }
+
+    if i < tokens.len() {
+        let pattern = &tokens[i];
+        // Skip very short patterns (likely noise) and very long ones (likely paths)
+        if pattern.len() >= 2 && pattern.len() <= 200 {
+            // Clean up regex-specific syntax for semantic search
+            let cleaned = clean_regex_for_search(pattern);
+            if !cleaned.is_empty() {
+                return Some(cleaned);
+            }
+        }
+    }
+
+    None
+}
+
+/// Extract search intent from find command arguments.
+/// Looks for -name/-iname/-path patterns.
+fn extract_find_pattern(args: &str) -> Option<String> {
+    let args = args.trim();
+    let parts: Vec<&str> = args.split_whitespace().collect();
+
+    for i in 0..parts.len().saturating_sub(1) {
+        if parts[i] == "-name" || parts[i] == "-iname" || parts[i] == "-path" || parts[i] == "-ipath" {
+            let pattern = parts[i + 1].trim_matches('"').trim_matches('\'');
+            // Strip glob wildcards for semantic search
+            let cleaned = pattern
+                .replace("*.", "")
+                .replace(".*", "")
+                .replace('*', " ")
+                .trim()
+                .to_string();
+            if cleaned.len() >= 2 {
+                return Some(cleaned);
+            }
+        }
+    }
+
+    None
+}
+
+/// Clean regex pattern for use as a semantic search query.
+/// Strips regex metacharacters and converts to readable text.
+fn clean_regex_for_search(pattern: &str) -> String {
+    pattern
+        .replace("\\s+", " ")
+        .replace("\\s*", " ")
+        .replace("\\b", "")
+        .replace("\\w+", "")
+        .replace("\\d+", "")
+        .replace(".*", " ")
+        .replace(".+", " ")
+        .replace("\\(", "(")
+        .replace("\\)", ")")
+        .replace("\\{", "{")
+        .replace("\\}", "}")
+        .replace("\\[", "[")
+        .replace("\\]", "]")
+        .replace(['(', ')', '[', ']', '{', '}', '^', '$', '|', '?', '+'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// PostToolUse handler: Smart dispatch based on tool type.
+/// - Edit/Write: hybrid search for related files (tests, snapshots, configs)
+/// - Bash(grep/rg/find): semantic search for the same query (competitive response)
+/// Uses ContextAssembler with full config cascade (calibration + config.toml).
+/// Fast because ensure_fts_index reuses persisted index.
 async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     use crate::index::Embedder;
     use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig};
@@ -1557,16 +1744,87 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     let input: PostToolUseInput = serde_json::from_reader(std::io::stdin().lock())
         .context("Failed to parse stdin JSON")?;
 
-    // 2. Extract file path from tool input
-    let file_path = input
-        .tool_input
-        .get("file_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-
-    if file_path.is_empty() {
-        return Ok(());
+    // 2. Dispatch based on tool type
+    enum DispatchMode {
+        EditRelated { file_path: String },
+        SearchQuery { query: String, original_cmd: String },
     }
+
+    let mode = match input.tool_name.as_str() {
+        "Edit" | "Write" => {
+            let file_path = input
+                .tool_input
+                .get("file_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if file_path.is_empty() {
+                return Ok(());
+            }
+            DispatchMode::EditRelated { file_path }
+        }
+        "Bash" => {
+            let command = input
+                .tool_input
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            match extract_search_query_from_bash(command) {
+                Some(query) => DispatchMode::SearchQuery {
+                    query,
+                    original_cmd: command.to_string(),
+                },
+                None => return Ok(()), // Not a search command
+            }
+        }
+        "Grep" => {
+            // Claude Code's built-in Grep tool
+            let pattern = input
+                .tool_input
+                .get("pattern")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if pattern.len() < 2 {
+                return Ok(());
+            }
+            let cleaned = clean_regex_for_search(pattern);
+            if cleaned.is_empty() {
+                return Ok(());
+            }
+            DispatchMode::SearchQuery {
+                query: cleaned,
+                original_cmd: format!("Grep: {}", pattern),
+            }
+        }
+        "Glob" => {
+            let pattern = input
+                .tool_input
+                .get("pattern")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if pattern.len() < 2 {
+                return Ok(());
+            }
+            // Strip glob wildcards for semantic search
+            let cleaned = pattern
+                .replace("**", " ")
+                .replace("*.", "")
+                .replace(".*", "")
+                .replace('*', " ")
+                .replace('/', " ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            if cleaned.len() < 2 {
+                return Ok(());
+            }
+            DispatchMode::SearchQuery {
+                query: cleaned,
+                original_cmd: format!("Glob: {}", pattern),
+            }
+        }
+        _ => return Ok(()), // Unknown tool, skip
+    };
 
     // 3. Resolve bobbin root and config
     let cwd = if input.cwd.is_empty() {
@@ -1588,17 +1846,26 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         if input.session_id.is_empty() { None } else { Some(&input.session_id) },
     );
 
-    // 4. Make file path relative to repo root
-    let abs_path = if Path::new(file_path).is_absolute() {
-        PathBuf::from(file_path)
-    } else {
-        cwd.join(file_path)
+    // 4. Determine query and context based on dispatch mode
+    let (query, rel_path, is_edit_mode) = match &mode {
+        DispatchMode::EditRelated { file_path } => {
+            let abs_path = if Path::new(file_path.as_str()).is_absolute() {
+                PathBuf::from(file_path)
+            } else {
+                cwd.join(file_path)
+            };
+            let rel = abs_path
+                .strip_prefix(&repo_root)
+                .unwrap_or(abs_path.as_path())
+                .to_string_lossy()
+                .to_string();
+            let q = format!("files related to {}", rel);
+            (q, Some(rel), true)
+        }
+        DispatchMode::SearchQuery { query, .. } => {
+            (query.clone(), None, false)
+        }
     };
-    let rel_path = abs_path
-        .strip_prefix(&repo_root)
-        .unwrap_or(abs_path.as_path())
-        .to_string_lossy()
-        .to_string();
 
     // 5. Open stores
     let db_path = Config::db_path(&repo_root);
@@ -1624,24 +1891,26 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         Err(_) => return Ok(()),
     };
 
-    // 6. Query coupled files (files that frequently change together)
-    let coupled_raw = metadata_store.get_coupling(&rel_path, 5).unwrap_or_default();
-    let coupled: Vec<(&str, f32)> = coupled_raw
-        .iter()
-        .filter(|c| c.score >= 0.1)
-        .map(|c| {
-            let other = if c.file_a == rel_path {
-                c.file_b.as_str()
-            } else {
-                c.file_a.as_str()
-            };
-            (other, c.score)
-        })
-        .collect();
+    // 6. Query coupled files (only for Edit mode — coupling is file-based)
+    let coupled: Vec<(String, f32)> = if let Some(ref rp) = rel_path {
+        let coupled_raw = metadata_store.get_coupling(rp, 5).unwrap_or_default();
+        coupled_raw
+            .iter()
+            .filter(|c| c.score >= 0.1)
+            .map(|c| {
+                let other = if c.file_a == *rp {
+                    c.file_b.clone()
+                } else {
+                    c.file_a.clone()
+                };
+                (other, c.score)
+            })
+            .collect()
+    } else {
+        vec![]
+    };
 
-    // 7. Hybrid search using file path as query — finds tests, snapshots,
-    //    related modules. Uses calibrated config for search quality.
-    let query = format!("files related to {}", rel_path);
+    // 7. Hybrid search — uses calibrated config for search quality.
     let calibration = crate::cli::calibrate::load_calibration(&repo_root);
     let cal_sw = calibration.as_ref().map(|c| c.best_config.semantic_weight);
     let cal_dd = calibration.as_ref().map(|c| c.best_config.doc_demotion);
@@ -1678,7 +1947,6 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             if coupled.is_empty() {
                 return Ok(());
             }
-            // Fall through with empty search results
             crate::search::context::ContextBundle {
                 query: query.clone(),
                 files: vec![],
@@ -1692,22 +1960,30 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         }
     };
 
-    // Filter out the edited file itself from search results
+    // Filter out the edited file itself from search results (for Edit mode)
     // ContextFile.path is absolute — strip repo_root for comparison
     let search_files: Vec<_> = bundle
         .files
         .iter()
         .filter(|f| {
-            let f_rel = Path::new(&f.path)
-                .strip_prefix(&repo_root)
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| f.path.clone());
-            f_rel != rel_path
+            if let Some(ref rp) = rel_path {
+                let f_rel = Path::new(&f.path)
+                    .strip_prefix(&repo_root)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| f.path.clone());
+                f_rel != *rp
+            } else {
+                true
+            }
         })
         .collect();
 
     // Skip if nothing useful to report
     if coupled.is_empty() && search_files.is_empty() {
+        let dispatch_label = match &mode {
+            DispatchMode::EditRelated { file_path } => file_path.clone(),
+            DispatchMode::SearchQuery { original_cmd, .. } => original_cmd.clone(),
+        };
         crate::metrics::emit(
             &repo_root,
             &crate::metrics::event(
@@ -1717,7 +1993,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 hook_start.elapsed().as_millis() as u64,
                 serde_json::json!({
                     "tool_name": input.tool_name,
-                    "file": rel_path,
+                    "dispatch": dispatch_label,
                     "coupled_count": 0,
                     "search_files": 0,
                     "skipped": true,
@@ -1727,31 +2003,46 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         return Ok(());
     }
 
-    // 8. Format output
+    // 8. Format output — different framing for Edit vs Search dispatch
     let mut context = String::new();
     use std::fmt::Write;
+    let mut lines_used: usize = 0;
 
-    let _ = writeln!(context, "## Related Files: {}", rel_path);
-    let _ = writeln!(context, "You just edited this file. Consider reviewing these related files:\n");
-    let mut lines_used = 3;
+    if is_edit_mode {
+        let rp = rel_path.as_deref().unwrap_or("unknown");
+        let _ = writeln!(context, "## Related Files: {}", rp);
+        let _ = writeln!(context, "You just edited this file. Consider reviewing these related files:\n");
+        lines_used += 3;
 
-    if !coupled.is_empty() {
-        let _ = writeln!(context, "**Co-changing files** (from git history):");
-        lines_used += 1;
-        for (coupled_file, score) in &coupled {
-            if lines_used >= budget {
-                break;
+        if !coupled.is_empty() {
+            let _ = writeln!(context, "**Co-changing files** (from git history):");
+            lines_used += 1;
+            for (coupled_file, score) in &coupled {
+                if lines_used >= budget {
+                    break;
+                }
+                let _ = writeln!(context, "- `{}` (coupling: {:.2})", coupled_file, score);
+                lines_used += 1;
             }
-            let _ = writeln!(context, "- `{}` (coupling: {:.2})", coupled_file, score);
+            let _ = writeln!(context);
             lines_used += 1;
         }
-        let _ = writeln!(context);
-        lines_used += 1;
+
+        if !search_files.is_empty() {
+            let _ = writeln!(context, "**Semantically related** (from bobbin search):");
+            lines_used += 1;
+        }
+    } else {
+        let original_cmd = match &mode {
+            DispatchMode::SearchQuery { original_cmd, .. } => original_cmd.as_str(),
+            _ => "search",
+        };
+        let _ = writeln!(context, "## Bobbin Semantic Matches");
+        let _ = writeln!(context, "Your search (`{}`) also matched these files semantically:\n", original_cmd);
+        lines_used += 3;
     }
 
     if !search_files.is_empty() {
-        let _ = writeln!(context, "**Semantically related** (from bobbin search):");
-        lines_used += 1;
         for f in &search_files {
             if lines_used >= budget {
                 break;
@@ -1775,6 +2066,10 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     println!("{}", serde_json::to_string(&response)?);
 
     // 10. Emit metric
+    let dispatch_label = match &mode {
+        DispatchMode::EditRelated { file_path } => file_path.clone(),
+        DispatchMode::SearchQuery { original_cmd, .. } => original_cmd.clone(),
+    };
     crate::metrics::emit(
         &repo_root,
         &crate::metrics::event(
@@ -1784,7 +2079,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             hook_start.elapsed().as_millis() as u64,
             serde_json::json!({
                 "tool_name": input.tool_name,
-                "file": rel_path,
+                "dispatch": dispatch_label,
                 "coupled_count": coupled.len(),
                 "search_files": search_files.len(),
             }),
@@ -3668,7 +3963,7 @@ mod tests {
         // PostToolUse
         let ptu = hooks["PostToolUse"].as_array().unwrap();
         assert_eq!(ptu.len(), 1);
-        assert_eq!(ptu[0]["matcher"].as_str().unwrap(), "Write|Edit");
+        assert_eq!(ptu[0]["matcher"].as_str().unwrap(), "Write|Edit|Bash|Grep|Glob");
         assert_eq!(
             ptu[0]["hooks"][0]["command"].as_str().unwrap(),
             "bobbin hook post-tool-use"
@@ -4237,5 +4532,79 @@ mod tests {
         let file_section = content.split("## Most Referenced Files").nth(1).unwrap();
         let row_count = file_section.lines().filter(|l| l.starts_with("| src/")).count();
         assert_eq!(row_count, 10);
+    }
+
+    #[test]
+    fn test_extract_grep_pattern() {
+        // Basic grep
+        assert_eq!(
+            extract_search_query_from_bash("grep -r \"Stmt::Import\" src/"),
+            Some("Stmt::Import".to_string())
+        );
+
+        // rg with type flag
+        assert_eq!(
+            extract_search_query_from_bash("rg \"fn main\" --type rust"),
+            Some("fn main".to_string())
+        );
+
+        // grep with -i flag
+        assert_eq!(
+            extract_search_query_from_bash("grep -ri \"error handling\" ."),
+            Some("error handling".to_string())
+        );
+
+        // rg with single quotes
+        assert_eq!(
+            extract_search_query_from_bash("rg 'impl Display' src/"),
+            Some("impl Display".to_string())
+        );
+
+        // git grep
+        assert_eq!(
+            extract_search_query_from_bash("git grep \"TODO\" -- '*.rs'"),
+            Some("TODO".to_string())
+        );
+
+        // Not a grep command
+        assert_eq!(
+            extract_search_query_from_bash("cargo build --release"),
+            None
+        );
+
+        // grep with -e flag (pattern follows -e)
+        assert_eq!(
+            extract_search_query_from_bash("grep -r -e \"pattern\" src/"),
+            Some("pattern".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_find_pattern() {
+        // find with -name
+        assert_eq!(
+            extract_search_query_from_bash("find . -name \"*.test.rs\""),
+            Some("test.rs".to_string())
+        );
+
+        // find with -iname
+        assert_eq!(
+            extract_search_query_from_bash("find src/ -iname \"*.py\""),
+            Some("py".to_string())
+        );
+
+        // find without -name
+        assert_eq!(
+            extract_search_query_from_bash("find . -type f"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_clean_regex_for_search() {
+        assert_eq!(clean_regex_for_search("fn\\s+main"), "fn main");
+        assert_eq!(clean_regex_for_search("impl.*Display"), "impl Display");
+        assert_eq!(clean_regex_for_search("^use\\b"), "use");
+        assert_eq!(clean_regex_for_search("Stmt::Import"), "Stmt::Import");
     }
 }
