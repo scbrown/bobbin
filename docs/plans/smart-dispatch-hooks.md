@@ -80,16 +80,23 @@ we diff the old/new content and find changed function/struct/impl names.
 
 ## Implementation
 
-### Phase 1: Fix PostToolUse in evals (P0)
+### Phase 1: Fix PostToolUse in evals (P0) — RESOLVED
 
-Investigate why `PostToolUse` hook fires 0 times in eval despite agents making
-Edit calls. Possible causes:
-- Claude Code `-p` mode doesn't fire PostToolUse hooks
-- Matcher format `"Write|Edit"` might need different syntax
-- Hook timeout causing silent failures
+**Investigation complete (2026-02-27)**. PostToolUse DOES fire in `-p` mode.
+Confirmed by direct testing: simple echo hooks fire for every tool call.
 
-**Test**: Run a manual Claude Code `-p` session with PostToolUse hook that
-writes to a file. Check if the file gets written.
+**Root cause of zero metrics**: The current `run_post_tool_use_inner` exits
+silently at line 1632 (`if coupled.is_empty() && symbols.is_empty()`) before
+emitting metrics. The eval files (deeply nested, newly created) have no coupling
+data and no matching symbols. The hook runs but has nothing to report.
+
+**Not a Claude Code bug — a bobbin design gap.** The fix is Phase 2: make the
+hook always do a semantic search (`bobbin related`) rather than relying solely on
+pre-existing coupling/symbol data.
+
+**Key debugging insight**: PostToolUse/PostToolUseFailure events do NOT appear
+in Claude Code's `--output-format stream-json` stream. Only bobbin's own
+`*_metrics.jsonl` shows whether hooks actually fired.
 
 ### Phase 2: Smart dispatch for Edit (P1)
 

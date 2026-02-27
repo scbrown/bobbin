@@ -1543,9 +1543,14 @@ async fn run_post_tool_use(_args: PostToolUseArgs, _output: OutputConfig) -> Res
     }
 }
 
-/// PostToolUse handler: When a file is written/edited, inject related files and
-/// coupling information so the agent understands ripple effects of their changes.
+/// PostToolUse handler: When a file is written/edited, run hybrid search to
+/// surface related files (tests, snapshots, configs) that may need updating.
+/// Uses ContextAssembler with full config cascade (calibration + config.toml),
+/// plus coupling data. Fast because ensure_fts_index reuses persisted index.
 async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
+    use crate::index::Embedder;
+    use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig};
+
     let hook_start = std::time::Instant::now();
 
     // 1. Read stdin JSON
@@ -1595,16 +1600,32 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         .to_string_lossy()
         .to_string();
 
-    // 5. Open metadata store for coupling queries
+    // 5. Open stores
     let db_path = Config::db_path(&repo_root);
+    let lance_path = Config::lance_path(&repo_root);
+    let model_dir = Config::model_cache_dir()?;
+
+    let vector_store = match VectorStore::open(&lance_path).await {
+        Ok(vs) => vs,
+        Err(_) => return Ok(()),
+    };
+
+    if vector_store.count().await.unwrap_or(0) == 0 {
+        return Ok(());
+    }
+
     let metadata_store = match MetadataStore::open(&db_path) {
         Ok(ms) => ms,
-        Err(_) => return Ok(()), // No metadata store yet
+        Err(_) => return Ok(()),
+    };
+
+    let embedder = match Embedder::from_config(&config.embedding, &model_dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(()),
     };
 
     // 6. Query coupled files (files that frequently change together)
-    let coupled_raw = metadata_store.get_coupling(&rel_path, 5)?;
-    // Extract the "other" file from each coupling pair and filter by threshold
+    let coupled_raw = metadata_store.get_coupling(&rel_path, 5).unwrap_or_default();
     let coupled: Vec<(&str, f32)> = coupled_raw
         .iter()
         .filter(|c| c.score >= 0.1)
@@ -1618,18 +1639,91 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         })
         .collect();
 
-    // 7. Query symbols in the edited file from vector store
-    let lance_path = Config::lance_path(&repo_root);
-    let symbols = if let Ok(vs) = VectorStore::open(&lance_path).await {
-        vs.get_chunks_for_file(&rel_path, None)
-            .await
-            .unwrap_or_default()
-    } else {
-        vec![]
+    // 7. Hybrid search using file path as query — finds tests, snapshots,
+    //    related modules. Uses calibrated config for search quality.
+    let query = format!("files related to {}", rel_path);
+    let calibration = crate::cli::calibrate::load_calibration(&repo_root);
+    let cal_sw = calibration.as_ref().map(|c| c.best_config.semantic_weight);
+    let cal_dd = calibration.as_ref().map(|c| c.best_config.doc_demotion);
+    let cal_rrf = calibration.as_ref().map(|c| c.best_config.rrf_k);
+    let cal_hl = calibration.as_ref().and_then(|c| c.best_config.recency_half_life_days);
+    let cal_rw = calibration.as_ref().and_then(|c| c.best_config.recency_weight);
+    let cal_sl = calibration.as_ref().and_then(|c| c.best_config.search_limit);
+
+    let context_config = ContextConfig {
+        budget_lines: budget,
+        depth: 0, // No recursive expansion for post-tool
+        max_coupled: 0, // We handle coupling separately above
+        coupling_threshold: 0.1,
+        semantic_weight: cal_sw.unwrap_or(config.search.semantic_weight),
+        content_mode: ContentMode::None, // File list only, no content
+        search_limit: cal_sl.unwrap_or(10), // Smaller default for speed
+        doc_demotion: cal_dd.unwrap_or(config.search.doc_demotion),
+        recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
+        recency_weight: cal_rw.unwrap_or(config.search.recency_weight),
+        rrf_k: cal_rrf.unwrap_or(config.search.rrf_k),
+        bridge_mode: BridgeMode::Off, // No bridging for post-tool
+        bridge_boost_factor: 0.0,
     };
 
+    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    if let Ok(git) = crate::index::git::GitAnalyzer::new(&repo_root) {
+        assembler = assembler.with_git_analyzer(git);
+    }
+
+    let bundle = match assembler.assemble(&query, None).await {
+        Ok(b) => b,
+        Err(_) => {
+            // Search failed — still report coupling if available
+            if coupled.is_empty() {
+                return Ok(());
+            }
+            // Fall through with empty search results
+            crate::search::context::ContextBundle {
+                query: query.clone(),
+                files: vec![],
+                budget: crate::search::context::BudgetInfo { max_lines: budget, used_lines: 0 },
+                summary: crate::search::context::ContextSummary {
+                    total_files: 0, total_chunks: 0, direct_hits: 0,
+                    coupled_additions: 0, bridged_additions: 0,
+                    source_files: 0, doc_files: 0, top_semantic_score: 0.0,
+                },
+            }
+        }
+    };
+
+    // Filter out the edited file itself from search results
+    // ContextFile.path is absolute — strip repo_root for comparison
+    let search_files: Vec<_> = bundle
+        .files
+        .iter()
+        .filter(|f| {
+            let f_rel = Path::new(&f.path)
+                .strip_prefix(&repo_root)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| f.path.clone());
+            f_rel != rel_path
+        })
+        .collect();
+
     // Skip if nothing useful to report
-    if coupled.is_empty() && symbols.is_empty() {
+    if coupled.is_empty() && search_files.is_empty() {
+        crate::metrics::emit(
+            &repo_root,
+            &crate::metrics::event(
+                &metrics_source,
+                "hook_post_tool_use",
+                "hook post-tool-use",
+                hook_start.elapsed().as_millis() as u64,
+                serde_json::json!({
+                    "tool_name": input.tool_name,
+                    "file": rel_path,
+                    "coupled_count": 0,
+                    "search_files": 0,
+                    "skipped": true,
+                }),
+            ),
+        );
         return Ok(());
     }
 
@@ -1637,12 +1731,13 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     let mut context = String::new();
     use std::fmt::Write;
 
-    let _ = writeln!(context, "## File Change Context: {}", rel_path);
+    let _ = writeln!(context, "## Related Files: {}", rel_path);
+    let _ = writeln!(context, "You just edited this file. Consider reviewing these related files:\n");
+    let mut lines_used = 3;
 
     if !coupled.is_empty() {
-        let _ = writeln!(context, "\n### Coupled Files (frequently change together)");
-        let _ = writeln!(context, "Consider reviewing or updating these related files:\n");
-        let mut lines_used = 4;
+        let _ = writeln!(context, "**Co-changing files** (from git history):");
+        lines_used += 1;
         for (coupled_file, score) in &coupled {
             if lines_used >= budget {
                 break;
@@ -1650,21 +1745,22 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             let _ = writeln!(context, "- `{}` (coupling: {:.2})", coupled_file, score);
             lines_used += 1;
         }
+        let _ = writeln!(context);
+        lines_used += 1;
     }
 
-    if !symbols.is_empty() {
-        let _ = writeln!(context, "\n### Symbols in Modified File");
-        let mut lines_used = context.lines().count();
-        for chunk in &symbols {
+    if !search_files.is_empty() {
+        let _ = writeln!(context, "**Semantically related** (from bobbin search):");
+        lines_used += 1;
+        for f in &search_files {
             if lines_used >= budget {
                 break;
             }
-            let name = chunk.name.as_deref().unwrap_or("<anonymous>");
-            let _ = writeln!(
-                context,
-                "- {} (lines {}-{})",
-                name, chunk.start_line, chunk.end_line
-            );
+            let f_rel = Path::new(&f.path)
+                .strip_prefix(&repo_root)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| f.path.clone());
+            let _ = writeln!(context, "- `{}`", f_rel);
             lines_used += 1;
         }
     }
@@ -1690,7 +1786,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 "tool_name": input.tool_name,
                 "file": rel_path,
                 "coupled_count": coupled.len(),
-                "symbol_count": symbols.len(),
+                "search_files": search_files.len(),
             }),
         ),
     );
