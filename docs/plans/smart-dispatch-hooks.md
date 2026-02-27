@@ -98,50 +98,22 @@ pre-existing coupling/symbol data.
 in Claude Code's `--output-format stream-json` stream. Only bobbin's own
 `*_metrics.jsonl` shows whether hooks actually fired.
 
-### Phase 2: Smart dispatch for Edit (P1)
+### Phase 2: Smart dispatch for Edit (P1) — SHIPPED (b4ddfe1)
 
-Modify `bobbin hook post-tool-use` to:
+**Shipped 2026-02-27.** PostToolUse now runs full hybrid search via
+ContextAssembler on every Edit/Write. Uses calibrated config cascade.
+FTS index reuse via `replace(false)` keeps latency <1s.
 
-1. Parse `tool_name` from stdin JSON
-2. If Edit/Write: extract file path from `tool_input`
-3. Run `bobbin related <file>` — format as context injection
-4. Apply dedup: hash the result set, skip if matches recent injection
-5. Emit to stdout as `<system-reminder>` block
+### Phase 3: Grep/Search competitor response (P1) — SHIPPED (bdd0ce9)
 
-```rust
-// In hook.rs post_tool_use handler
-match tool_name.as_str() {
-    "Edit" | "Write" => {
-        let file = extract_file_path(&tool_input);
-        let related = run_related(&file, &store, &config)?;
-        if !dedup_matches(&related, &state) {
-            emit_context("Related files", &related);
-        }
-    }
-    // ... other cases
-}
-```
+**Shipped 2026-02-27.** Extended PostToolUse dispatch to intercept:
+- `Bash(grep/rg/find)` — parses command string, extracts search pattern
+- `Grep` tool — extracts pattern directly
+- `Glob` tool — extracts glob intent, converts to semantic query
 
-### Phase 3: Grep competitor response (P1)
-
-Extend dispatch for Bash tool:
-
-1. Parse command string from `tool_input`
-2. Detect grep/rg/find patterns via regex
-3. Extract the search query/pattern
-4. Run `bobbin search <query>`
-5. Only emit if results differ from recent injections
-
-```rust
-"Bash" => {
-    if let Some(query) = extract_grep_pattern(&tool_input) {
-        let results = run_search(&query, &store, &config)?;
-        if !dedup_matches(&results, &state) {
-            emit_context("Semantic matches", &results);
-        }
-    }
-}
-```
+Matcher updated from `Write|Edit` to `Write|Edit|Bash|Grep|Glob`.
+Includes proper flag parsing, quoted string support, and regex cleanup.
+Output framed as "Bobbin Semantic Matches" with the original command shown.
 
 ### Phase 4: Refs integration (P2)
 
