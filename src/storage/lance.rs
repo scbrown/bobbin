@@ -9,7 +9,7 @@ use lance_index::scalar::FullTextSearchQuery;
 use lancedb::index::scalar::FtsIndexBuilder;
 use lancedb::index::Index;
 use lancedb::query::{ExecutableQuery, QueryBase};
-use lancedb::table::{CompactionOptions, OptimizeAction};
+use lancedb::table::{CompactionOptions, Duration, OptimizeAction};
 use lancedb::{connect, Connection, Table};
 use std::path::Path;
 use std::sync::Arc;
@@ -423,6 +423,26 @@ impl VectorStore {
             })
             .await
             .context("Failed to compact table")?;
+
+        Ok(())
+    }
+
+    /// Remove old dataset versions to reclaim disk space.
+    /// Removes versions older than 1 hour by default.
+    pub async fn prune(&self) -> Result<()> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        table
+            .optimize(OptimizeAction::Prune {
+                older_than: Some(Duration::try_hours(1).expect("valid delta")),
+                delete_unverified: Some(true),
+                error_if_tagged_old_versions: None,
+            })
+            .await
+            .context("Failed to prune old versions")?;
 
         Ok(())
     }
@@ -872,6 +892,22 @@ impl VectorStore {
             .delete(&filter)
             .await
             .context("Failed to delete chunks by file")?;
+
+        Ok(())
+    }
+
+    /// Delete all chunks belonging to a specific repo.
+    pub async fn delete_by_repo(&self, repo: &str) -> Result<()> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        let filter = format!("repo = '{}'", repo.replace('\'', "''"));
+        table
+            .delete(&filter)
+            .await
+            .context("Failed to delete chunks by repo")?;
 
         Ok(())
     }

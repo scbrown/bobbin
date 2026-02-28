@@ -184,6 +184,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         .context("Failed to load embedding model")?;
     let mut parser = Parser::new().context("Failed to initialize parser")?;
 
+    // When forcing, delete all existing chunks for this repo first to prevent
+    // unbounded LanceDB growth (each --force reindex was duplicating all data).
+    if args.force {
+        vector_store.delete_by_repo(repo_name).await?;
+    }
+
     // Get existing indexed files from LanceDB (filtered by repo)
     let existing_files: HashSet<String> = if args.force {
         HashSet::new()
@@ -888,6 +894,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let t_compact = Instant::now();
     if let Err(e) = vector_store.compact().await {
         eprintln!("warning: lance compaction failed: {e:#}");
+    }
+    // Prune old versions to prevent unbounded disk growth.
+    // Without pruning, LanceDB keeps all historical versions (manifests + data
+    // fragments), growing ~20-30GB/day under daily --force reindexing.
+    if let Err(e) = vector_store.prune().await {
+        eprintln!("warning: lance prune failed: {e:#}");
     }
     profile.compact_ms = t_compact.elapsed().as_millis();
 
