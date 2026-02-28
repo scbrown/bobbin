@@ -1,10 +1,11 @@
 use anyhow::Result;
 use clap::Parser;
 
+pub mod access;
 mod analysis;
 mod cli;
 mod commands;
-mod config;
+pub mod config;
 mod http;
 mod index;
 mod mcp;

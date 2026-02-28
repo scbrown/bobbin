@@ -14,6 +14,7 @@ pub struct Config {
     pub hooks: HooksConfig,
     pub beads: BeadsConfig,
     pub archive: ArchiveConfig,
+    pub access: AccessConfig,
 }
 
 /// Configuration for indexing behavior
@@ -383,6 +384,39 @@ impl Default for ArchiveConfig {
             webhook_secret: String::new(),
         }
     }
+}
+
+/// Configuration for role-based repository access filtering (§69)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AccessConfig {
+    /// When true, repos not listed in any rule are visible to all roles.
+    /// When false, repos must be explicitly granted.
+    pub default_allow: bool,
+    /// Role definitions with allow/deny lists
+    pub roles: Vec<RoleConfig>,
+}
+
+impl Default for AccessConfig {
+    fn default() -> Self {
+        Self {
+            default_allow: true,
+            roles: vec![],
+        }
+    }
+}
+
+/// A single role definition with repo allow/deny lists
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoleConfig {
+    /// Role name or pattern (e.g. "human", "aegis/*", "bobbin/polecats/*")
+    pub name: String,
+    /// Repos this role can see (glob patterns, e.g. ["*"], ["aegis", "bobbin"])
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// Repos this role cannot see (glob patterns, deny takes precedence over allow)
+    #[serde(default)]
+    pub deny: Vec<String>,
 }
 
 impl Config {
