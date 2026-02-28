@@ -40,7 +40,7 @@ Use bobbin commands instead of manual grep/find — they search by meaning, not 
 bobbin search "error handling in auth"    # semantic + keyword hybrid search
 bobbin context "fix PYI034 rule"          # focused context bundle for a task
 bobbin related src/rules/some_rule.rs     # files that change together
-bobbin refs SomeFunction                  # find definitions and usages
+bobbin refs find SomeFunction              # find definitions and usages
 bobbin grep "pattern"                     # regex search across all files
 ```
 
@@ -48,7 +48,7 @@ bobbin grep "pattern"                     # regex search across all files
 
 1. **Start with `bobbin search`** to find relevant code for your task
 2. **Use `bobbin related`** on key files to discover test files and dependencies
-3. **Use `bobbin refs`** to trace symbol usage across the codebase
+3. **Use `bobbin refs find`** to trace symbol usage across the codebase
 4. Read the files bobbin identifies, then make targeted changes
 
 Bobbin context is also injected automatically when you submit prompts and after
