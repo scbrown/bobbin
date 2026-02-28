@@ -115,14 +115,16 @@ Matcher updated from `Write|Edit` to `Write|Edit|Bash|Grep|Glob`.
 Includes proper flag parsing, quoted string support, and regex cleanup.
 Output framed as "Bobbin Semantic Matches" with the original command shown.
 
-### Phase 4: Refs integration (P2)
+### Phase 4: Refs integration (P2) — SHIPPED (b219f10)
 
-Add symbol-aware responses:
+**Shipped 2026-02-28.** Symbol-aware responses added:
 
-1. After Edit: diff old/new, extract changed symbol names
-2. After Read: parse file, identify top-level symbols
-3. Run `bobbin refs <symbol>` for each
-4. Always show (refs are always valuable), but limit to top 3 symbols
+1. After Edit/Write: lists top 3 symbols via `list_symbols`, finds usages
+   via `find_refs`, shows "Symbol references" section with usage files
+2. After Read: new `RefsOnly` dispatch mode — lists symbols and their usages
+3. Opens separate VectorStore for refs (avoids ownership conflict with assembler)
+4. Uses absolute paths for `get_chunks_for_file` (matching index format)
+5. Matcher updated to `Write|Edit|Bash|Grep|Glob|Read`
 
 ## Metrics
 
