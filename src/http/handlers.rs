@@ -1,6 +1,5 @@
 //! HTTP request handlers for the Bobbin REST API.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -484,14 +483,16 @@ fn browse_url_from_remote(remote: &str) -> Option<String> {
 }
 
 /// Auto-detect source URLs from git remotes for all indexed repos,
-/// merged with manual overrides from config.
-fn resolve_sources(state: &AppState) -> crate::config::SourcesConfig {
-    let mut sources = state.config.sources.clone();
-    let repos_dir = state.repo_root.join("repos");
+/// merged with manual overrides from config. Called once at startup.
+pub(super) fn resolve_sources(
+    repo_root: &std::path::Path,
+    config_sources: &crate::config::SourcesConfig,
+) -> crate::config::SourcesConfig {
+    let mut sources = config_sources.clone();
+    let repos_dir = repo_root.join("repos");
     if let Ok(entries) = std::fs::read_dir(&repos_dir) {
         for entry in entries.flatten() {
             let repo_name = entry.file_name().to_string_lossy().to_string();
-            // Skip repos that already have manual overrides
             if sources.repos.contains_key(&repo_name) {
                 continue;
             }
@@ -525,7 +526,7 @@ pub(super) async fn status(
     Ok(Json(StatusResponse {
         status: "ok".to_string(),
         index: stats,
-        sources: resolve_sources(&state),
+        sources: state.resolved_sources.clone(),
     }))
 }
 

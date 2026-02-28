@@ -12,12 +12,14 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 
-use crate::config::Config;
+use crate::config::{Config, SourcesConfig};
 
 /// Shared application state for HTTP handlers
 pub struct AppState {
     pub repo_root: PathBuf,
     pub config: Config,
+    /// Source URLs resolved once at startup (auto-detected + manual overrides).
+    pub resolved_sources: SourcesConfig,
 }
 
 /// Run the HTTP server on the given port
@@ -31,8 +33,13 @@ pub async fn run_server(repo_root: PathBuf, port: u16) -> Result<()> {
     }
 
     let config = Config::load(&config_path).context("Failed to load config")?;
+    let resolved_sources = handlers::resolve_sources(&repo_root, &config.sources);
 
-    let state = Arc::new(AppState { repo_root, config });
+    let state = Arc::new(AppState {
+        repo_root,
+        config,
+        resolved_sources,
+    });
 
     let app = handlers::router(state);
 
