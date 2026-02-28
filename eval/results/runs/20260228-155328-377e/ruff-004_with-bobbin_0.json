@@ -1,0 +1,337 @@
+{
+  "task_id": "ruff-004",
+  "approach": "with-bobbin",
+  "attempt": 0,
+  "status": "completed",
+  "timestamp": "2026-02-28T16:04:06.868705+00:00",
+  "task": {
+    "repo": "astral-sh/ruff",
+    "commit": "ceb876b82300bd237d11e3eb77c46fcf3d3afe85",
+    "test_command": "cargo test -p ruff_linter -- PYI034",
+    "language": "rust",
+    "difficulty": "easy"
+  },
+  "agent_config": {
+    "model": "claude-sonnet-4-5-20250929",
+    "budget_usd": 5.0,
+    "timeout_seconds": 600,
+    "index_timeout_seconds": 300
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 445.86,
+    "timed_out": false,
+    "cost_usd": 1.8039812499999999,
+    "input_tokens": 2289874,
+    "output_tokens": 12500,
+    "model_usage": {
+      "claude-sonnet-4-5-20250929": {
+        "inputTokens": 370,
+        "outputTokens": 12500,
+        "cacheReadInputTokens": 2229525,
+        "cacheCreationInputTokens": 59979,
+        "webSearchRequests": 0,
+        "costUSD": 1.8039812499999999,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    },
+    "num_turns": 43
+  },
+  "token_usage": {
+    "total_cost_usd": 1.8039812499999999,
+    "input_tokens": 370,
+    "output_tokens": 12500,
+    "cache_creation_tokens": 59979,
+    "cache_read_tokens": 2229525,
+    "num_turns": 43,
+    "model_usage": {
+      "claude-sonnet-4-5-20250929": {
+        "inputTokens": 370,
+        "outputTokens": 12500,
+        "cacheReadInputTokens": 2229525,
+        "cacheCreationInputTokens": 59979,
+        "webSearchRequests": 0,
+        "costUSD": 1.8039812499999999,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    }
+  },
+  "agent_output": {
+    "num_turns": 43,
+    "session_id": "47319ade-dc95-4169-b8d9-32b026ee0ec0",
+    "stop_reason": null
+  },
+  "agent_stderr": "",
+  "test_result": {
+    "passed": true,
+    "total": 0,
+    "failures": 0,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0
+    },
+    "output": "\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2630 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s\n\nall doctests ran in 0.72s; merged doctests compilation took 0.70s\n   Compiling ruff_linter v0.14.13 (/tmp/bobbin-eval-ruff-004-r751w3aj/astral-sh--ruff/crates/ruff_linter)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.12s\n     Running unittests src/lib.rs (target/debug/deps/ruff_linter-98eacd2c45aa9f28)\n   Doc-tests ruff_linter\n",
+    "exit_code": 0,
+    "timed_out": false
+  },
+  "diff_result": {
+    "file_precision": 0.6,
+    "file_recall": 1.0,
+    "f1": 0.75,
+    "files_touched": [
+      "crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py",
+      "crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.pyi",
+      "crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs",
+      "crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap",
+      "crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.pyi.snap"
+    ],
+    "ground_truth_files": [
+      "crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py",
+      "crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs",
+      "crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap"
+    ],
+    "exact_file_match": false
+  },
+  "agent_diff": "diff --git a/.claude/CLAUDE.md b/.claude/CLAUDE.md\nindex 4e3010a91f..51d8d81a44 100644\n--- a/.claude/CLAUDE.md\n+++ b/.claude/CLAUDE.md\n@@ -17,9 +17,9 @@ bobbin grep \"pattern\"                     # regex search across all files\n ## Workflow\n \n 1. **Start with `bobbin search`** to find relevant code for your task\n-2. **Use `bobbin related`** on key files to discover test files and dependencies\n-3. **Use `bobbin refs find`** to trace symbol usage across the codebase\n-4. Read the files bobbin identifies, then make targeted changes\n+1. **Use `bobbin related`** on key files to discover test files and dependencies\n+1. **Use `bobbin refs find`** to trace symbol usage across the codebase\n+1. Read the files bobbin identifies, then make targeted changes\n \n Bobbin context is also injected automatically when you submit prompts and after\n file edits \u2014 check the system messages for relevant code snippets.\ndiff --git a/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py b/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py\nindex b35efc3c21..28ac684699 100644\n--- a/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py\n+++ b/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py\n@@ -323,6 +323,17 @@ class UsesStringizedAnnotations:\n         return self\n \n \n+class ForwardReferenceBad:\n+    def __new__(cls) -> \"ForwardReferenceBad\":\n+        ...  # Y034 \"__new__\" methods usually return \"self\" at runtime. Consider using \"typing_extensions.Self\"\n+\n+    def __enter__(self) -> \"ForwardReferenceBad\":\n+        ...  # Y034 \"__enter__\" methods in classes like \"ForwardReferenceBad\" usually return \"self\" at runtime. Consider using \"typing_extensions.Self\"\n+\n+    async def __aenter__(self) -> \"ForwardReferenceBad\":\n+        ...  # Y034 \"__aenter__\" methods in classes like \"ForwardReferenceBad\" usually return \"self\" at runtime. Consider using \"typing_extensions.Self\"\n+\n+\n class NonGeneric1(tuple):\n     def __new__(cls: type[NonGeneric1], *args, **kwargs) -> NonGeneric1: ...\n     def __enter__(self: NonGeneric1) -> NonGeneric1: ...\ndiff --git a/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.pyi b/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.pyi\nindex b22f76798b..c674b6b53d 100644\n--- a/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.pyi\n+++ b/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.pyi\n@@ -277,3 +277,9 @@ class MetaclassInWhichSelfCannotBeUsed7(django.db.models.base.ModelBase):\n class MetaclassInWhichSelfCannotBeUsed8(django.db.models.base.ModelBase):\n     def __new__(cls, name: builtins.str, bases: tuple, attributes: dict, /, **kw) -> MetaclassInWhichSelfCannotBeUsed8:\n         ...\n+\n+\n+class ForwardReferenceBad:\n+    def __new__(cls) -> \"ForwardReferenceBad\": ...  # Y034\n+    def __enter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+    async def __aenter__(self) -> \"ForwardReferenceBad\": ...  # Y034\ndiff --git a/crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs b/crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs\nindex d3b2f75b2d..194057a2be 100644\n--- a/crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs\n+++ b/crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs\n@@ -182,7 +182,7 @@ pub(crate) fn non_self_return_type(\n \n     if is_async {\n         if name == \"__aenter__\"\n-            && is_name(returns, &class_def.name)\n+            && is_name_or_stringized_name(returns, &class_def.name, checker)\n             && !is_final(&class_def.decorator_list, semantic)\n         {\n             add_diagnostic(checker, stmt, returns, class_def, name);\n@@ -198,7 +198,7 @@ pub(crate) fn non_self_return_type(\n         return;\n     }\n \n-    if is_name(returns, &class_def.name) {\n+    if is_name_or_stringized_name(returns, &class_def.name, checker) {\n         if matches!(name, \"__enter__\" | \"__new__\") && !is_final(&class_def.decorator_list, semantic)\n         {\n             add_diagnostic(checker, stmt, returns, class_def, name);\n@@ -245,13 +245,11 @@ fn add_diagnostic(\n         stmt.identifier(),\n     );\n \n-    diagnostic.try_set_fix(|| {\n-        replace_with_self_fix(checker.semantic(), &importer, stmt, returns, class_def)\n-    });\n+    diagnostic.try_set_fix(|| replace_with_self_fix(checker, &importer, stmt, returns, class_def));\n }\n \n fn replace_with_self_fix(\n-    semantic: &SemanticModel,\n+    checker: &Checker,\n     importer: &TypingImporter,\n     stmt: &ast::Stmt,\n     returns: &ast::Expr,\n@@ -266,13 +264,14 @@ fn replace_with_self_fix(\n         let first = parameters.iter().next()?;\n         let annotation = first.annotation()?;\n \n-        is_class_reference(semantic, annotation, &class_def.name)\n+        is_class_reference(checker, annotation, &class_def.name)\n             .then(|| Edit::deletion(first.name().end(), annotation.end()))\n     };\n \n     others.extend(remove_first_argument_type_hint());\n     others.push(Edit::range_replacement(self_binding, returns.range()));\n \n+    let semantic = checker.semantic();\n     let applicability = if might_be_generic(class_def, semantic) {\n         Applicability::DisplayOnly\n     } else {\n@@ -282,21 +281,25 @@ fn replace_with_self_fix(\n     Ok(Fix::applicable_edits(self_import, others, applicability))\n }\n \n-/// Return true if `annotation` is either `ClassName` or `type[ClassName]`\n-fn is_class_reference(semantic: &SemanticModel, annotation: &ast::Expr, expected: &str) -> bool {\n-    if is_name(annotation, expected) {\n-        return true;\n-    }\n+/// Return true if `annotation` is either `ClassName` or `type[ClassName]` (including stringized annotations)\n+fn is_class_reference(checker: &Checker, annotation: &ast::Expr, expected: &str) -> bool {\n+    checker.match_maybe_stringized_annotation(annotation, |annotation| {\n+        if is_name(annotation, expected) {\n+            return true;\n+        }\n \n-    let ast::Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = annotation else {\n-        return false;\n-    };\n+        let ast::Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = annotation else {\n+            return false;\n+        };\n \n-    if !semantic.match_builtin_expr(value, \"type\") && !semantic.match_typing_expr(value, \"Type\") {\n-        return false;\n-    }\n+        let semantic = checker.semantic();\n+        if !semantic.match_builtin_expr(value, \"type\") && !semantic.match_typing_expr(value, \"Type\")\n+        {\n+            return false;\n+        }\n \n-    is_name(slice, expected)\n+        is_name(slice, expected)\n+    })\n }\n \n /// Returns `true` if the method is an in-place binary operator.\n@@ -334,6 +337,11 @@ fn is_self(expr: &ast::Expr, checker: &Checker) -> bool {\n     })\n }\n \n+/// Return `true` if the given expression resolves to the given name (including stringized annotations).\n+fn is_name_or_stringized_name(expr: &ast::Expr, name: &str, checker: &Checker) -> bool {\n+    checker.match_maybe_stringized_annotation(expr, |expr| is_name(expr, name))\n+}\n+\n /// Return `true` if the given class extends `collections.abc.Iterator`.\n fn subclasses_iterator(class_def: &ast::StmtClassDef, semantic: &SemanticModel) -> bool {\n     analyze::class::any_qualified_base_class(class_def, semantic, &|qualified_name| {\ndiff --git a/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap b/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap\nindex 8893a346e1..81b07dfc49 100644\n--- a/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap\n+++ b/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap\n@@ -217,258 +217,317 @@ help: Use `Self` as return type\n 206 | class AsyncIteratorReturningAsyncIterable:\n note: This is an unsafe fix and may change runtime behavior\n \n-PYI034 [*] `__new__` methods in classes like `NonGeneric1` usually return `self` at runtime\n+PYI034 [*] `__new__` methods in classes like `ForwardReferenceBad` usually return `self` at runtime\n    --> PYI034.py:327:9\n     |\n-326 | class NonGeneric1(tuple):\n-327 |     def __new__(cls: type[NonGeneric1], *args, **kwargs) -> NonGeneric1: ...\n+326 | class ForwardReferenceBad:\n+327 |     def __new__(cls) -> \"ForwardReferenceBad\":\n     |         ^^^^^^^\n-328 |     def __enter__(self: NonGeneric1) -> NonGeneric1: ...\n+328 |         ...  # Y034 \"__new__\" methods usually return \"self\" at runtime. Consider using \"typing_extensions.Self\"\n     |\n help: Use `Self` as return type\n 324 | \n 325 | \n-326 | class NonGeneric1(tuple):\n-    -     def __new__(cls: type[NonGeneric1], *args, **kwargs) -> NonGeneric1: ...\n-327 +     def __new__(cls, *args, **kwargs) -> typing.Self: ...\n-328 |     def __enter__(self: NonGeneric1) -> NonGeneric1: ...\n+326 | class ForwardReferenceBad:\n+    -     def __new__(cls) -> \"ForwardReferenceBad\":\n+327 +     def __new__(cls) -> typing.Self:\n+328 |         ...  # Y034 \"__new__\" methods usually return \"self\" at runtime. Consider using \"typing_extensions.Self\"\n 329 | \n-330 | class NonGeneric2(tuple):\n+330 |     def __enter__(self) -> \"ForwardReferenceBad\":\n+note: This is an unsafe fix and may change runtime behavior\n+\n+PYI034 [*] `__enter__` methods in classes like `ForwardReferenceBad` usually return `self` at runtime\n+   --> PYI034.py:330:9\n+    |\n+328 |         ...  # Y034 \"__new__\" methods usually return \"self\" at runtime. Consider using \"typing_extensions.Self\"\n+329 |\n+330 |     def __enter__(self) -> \"ForwardReferenceBad\":\n+    |         ^^^^^^^^^\n+331 |         ...  # Y034 \"__enter__\" methods in classes like \"ForwardReferenceBad\" usually return \"self\" at runtime. Consider using \"typin\u2026\n+    |\n+help: Use `Self` as return type\n+327 |     def __new__(cls) -> \"ForwardReferenceBad\":\n+328 |         ...  # Y034 \"__new__\" methods usually return \"self\" at runtime. Consider using \"typing_extensions.Self\"\n+329 | \n+    -     def __enter__(self) -> \"ForwardReferenceBad\":\n+330 +     def __enter__(self) -> typing.Self:\n+331 |         ...  # Y034 \"__enter__\" methods in classes like \"ForwardReferenceBad\" usually return \"self\" at runtime. Consider using \"typing_extensions.Self\"\n+332 | \n+333 |     async def __aenter__(self) -> \"ForwardReferenceBad\":\n+note: This is an unsafe fix and may change runtime behavior\n+\n+PYI034 [*] `__aenter__` methods in classes like `ForwardReferenceBad` usually return `self` at runtime\n+   --> PYI034.py:333:15\n+    |\n+331 |         ...  # Y034 \"__enter__\" methods in classes like \"ForwardReferenceBad\" usually return \"self\" at runtime. Consider using \"typin\u2026\n+332 |\n+333 |     async def __aenter__(self) -> \"ForwardReferenceBad\":\n+    |               ^^^^^^^^^^\n+334 |         ...  # Y034 \"__aenter__\" methods in classes like \"ForwardReferenceBad\" usually return \"self\" at runtime. Consider using \"typi\u2026\n+    |\n+help: Use `Self` as return type\n+330 |     def __enter__(self) -> \"ForwardReferenceBad\":\n+331 |         ...  # Y034 \"__enter__\" methods in classes like \"ForwardReferenceBad\" usually return \"self\" at runtime. Consider using \"typing_extensions.Self\"\n+332 | \n+    -     async def __aenter__(self) -> \"ForwardReferenceBad\":\n+333 +     async def __aenter__(self) -> typing.Self:\n+334 |         ...  # Y034 \"__aenter__\" methods in classes like \"ForwardReferenceBad\" usually return \"self\" at runtime. Consider using \"typing_extensions.Self\"\n+335 | \n+336 | \n+note: This is an unsafe fix and may change runtime behavior\n+\n+PYI034 [*] `__new__` methods in classes like `NonGeneric1` usually return `self` at runtime\n+   --> PYI034.py:338:9\n+    |\n+337 | class NonGeneric1(tuple):\n+338 |     def __new__(cls: type[NonGeneric1], *args, **kwargs) -> NonGeneric1: ...\n+    |         ^^^^^^^\n+339 |     def __enter__(self: NonGeneric1) -> NonGeneric1: ...\n+    |\n+help: Use `Self` as return type\n+335 | \n+336 | \n+337 | class NonGeneric1(tuple):\n+    -     def __new__(cls: type[NonGeneric1], *args, **kwargs) -> NonGeneric1: ...\n+338 +     def __new__(cls, *args, **kwargs) -> typing.Self: ...\n+339 |     def __enter__(self: NonGeneric1) -> NonGeneric1: ...\n+340 | \n+341 | class NonGeneric2(tuple):\n note: This is an unsafe fix and may change runtime behavior\n \n PYI034 [*] `__enter__` methods in classes like `NonGeneric1` usually return `self` at runtime\n-   --> PYI034.py:328:9\n+   --> PYI034.py:339:9\n     |\n-326 | class NonGeneric1(tuple):\n-327 |     def __new__(cls: type[NonGeneric1], *args, **kwargs) -> NonGeneric1: ...\n-328 |     def __enter__(self: NonGeneric1) -> NonGeneric1: ...\n+337 | class NonGeneric1(tuple):\n+338 |     def __new__(cls: type[NonGeneric1], *args, **kwargs) -> NonGeneric1: ...\n+339 |     def __enter__(self: NonGeneric1) -> NonGeneric1: ...\n     |         ^^^^^^^^^\n-329 |\n-330 | class NonGeneric2(tuple):\n+340 |\n+341 | class NonGeneric2(tuple):\n     |\n help: Use `Self` as return type\n-325 | \n-326 | class NonGeneric1(tuple):\n-327 |     def __new__(cls: type[NonGeneric1], *args, **kwargs) -> NonGeneric1: ...\n+336 | \n+337 | class NonGeneric1(tuple):\n+338 |     def __new__(cls: type[NonGeneric1], *args, **kwargs) -> NonGeneric1: ...\n     -     def __enter__(self: NonGeneric1) -> NonGeneric1: ...\n-328 +     def __enter__(self) -> typing.Self: ...\n-329 | \n-330 | class NonGeneric2(tuple):\n-331 |     def __new__(cls: Type[NonGeneric2]) -> NonGeneric2: ...\n+339 +     def __enter__(self) -> typing.Self: ...\n+340 | \n+341 | class NonGeneric2(tuple):\n+342 |     def __new__(cls: Type[NonGeneric2]) -> NonGeneric2: ...\n note: This is an unsafe fix and may change runtime behavior\n \n PYI034 [*] `__new__` methods in classes like `NonGeneric2` usually return `self` at runtime\n-   --> PYI034.py:331:9\n+   --> PYI034.py:342:9\n     |\n-330 | class NonGeneric2(tuple):\n-331 |     def __new__(cls: Type[NonGeneric2]) -> NonGeneric2: ...\n+341 | class NonGeneric2(tuple):\n+342 |     def __new__(cls: Type[NonGeneric2]) -> NonGeneric2: ...\n     |         ^^^^^^^\n-332 |\n-333 | class Generic1[T](list):\n+343 |\n+344 | class Generic1[T](list):\n     |\n help: Use `Self` as return type\n-328 |     def __enter__(self: NonGeneric1) -> NonGeneric1: ...\n-329 | \n-330 | class NonGeneric2(tuple):\n+339 |     def __enter__(self: NonGeneric1) -> NonGeneric1: ...\n+340 | \n+341 | class NonGeneric2(tuple):\n     -     def __new__(cls: Type[NonGeneric2]) -> NonGeneric2: ...\n-331 +     def __new__(cls) -> typing.Self: ...\n-332 | \n-333 | class Generic1[T](list):\n-334 |     def __new__(cls: type[Generic1]) -> Generic1: ...\n+342 +     def __new__(cls) -> typing.Self: ...\n+343 | \n+344 | class Generic1[T](list):\n+345 |     def __new__(cls: type[Generic1]) -> Generic1: ...\n note: This is an unsafe fix and may change runtime behavior\n \n PYI034 [*] `__new__` methods in classes like `Generic1` usually return `self` at runtime\n-   --> PYI034.py:334:9\n+   --> PYI034.py:345:9\n     |\n-333 | class Generic1[T](list):\n-334 |     def __new__(cls: type[Generic1]) -> Generic1: ...\n+344 | class Generic1[T](list):\n+345 |     def __new__(cls: type[Generic1]) -> Generic1: ...\n     |         ^^^^^^^\n-335 |     def __enter__(self: Generic1) -> Generic1: ...\n+346 |     def __enter__(self: Generic1) -> Generic1: ...\n     |\n help: Use `Self` as return type\n-331 |     def __new__(cls: Type[NonGeneric2]) -> NonGeneric2: ...\n-332 | \n-333 | class Generic1[T](list):\n+342 |     def __new__(cls: Type[NonGeneric2]) -> NonGeneric2: ...\n+343 | \n+344 | class Generic1[T](list):\n     -     def __new__(cls: type[Generic1]) -> Generic1: ...\n-334 +     def __new__(cls) -> typing.Self: ...\n-335 |     def __enter__(self: Generic1) -> Generic1: ...\n-336 | \n-337 | \n+345 +     def __new__(cls) -> typing.Self: ...\n+346 |     def __enter__(self: Generic1) -> Generic1: ...\n+347 | \n+348 | \n note: This is a display-only fix and is likely to be incorrect\n \n PYI034 [*] `__enter__` methods in classes like `Generic1` usually return `self` at runtime\n-   --> PYI034.py:335:9\n+   --> PYI034.py:346:9\n     |\n-333 | class Generic1[T](list):\n-334 |     def __new__(cls: type[Generic1]) -> Generic1: ...\n-335 |     def __enter__(self: Generic1) -> Generic1: ...\n+344 | class Generic1[T](list):\n+345 |     def __new__(cls: type[Generic1]) -> Generic1: ...\n+346 |     def __enter__(self: Generic1) -> Generic1: ...\n     |         ^^^^^^^^^\n     |\n help: Use `Self` as return type\n-332 | \n-333 | class Generic1[T](list):\n-334 |     def __new__(cls: type[Generic1]) -> Generic1: ...\n+343 | \n+344 | class Generic1[T](list):\n+345 |     def __new__(cls: type[Generic1]) -> Generic1: ...\n     -     def __enter__(self: Generic1) -> Generic1: ...\n-335 +     def __enter__(self) -> typing.Self: ...\n-336 | \n-337 | \n-338 | ### Correctness of typevar-likes are not verified.\n+346 +     def __enter__(self) -> typing.Self: ...\n+347 | \n+348 | \n+349 | ### Correctness of typevar-likes are not verified.\n note: This is a display-only fix and is likely to be incorrect\n \n PYI034 [*] `__new__` methods in classes like `Generic2` usually return `self` at runtime\n-   --> PYI034.py:345:9\n+   --> PYI034.py:356:9\n     |\n-344 | class Generic2(Generic[T]):\n-345 |     def __new__(cls: type[Generic2]) -> Generic2: ...\n+355 | class Generic2(Generic[T]):\n+356 |     def __new__(cls: type[Generic2]) -> Generic2: ...\n     |         ^^^^^^^\n-346 |     def __enter__(self: Generic2) -> Generic2: ...\n+357 |     def __enter__(self: Generic2) -> Generic2: ...\n     |\n help: Use `Self` as return type\n-342 | Ts = TypeVarTuple('foo')\n-343 | \n-344 | class Generic2(Generic[T]):\n+353 | Ts = TypeVarTuple('foo')\n+354 | \n+355 | class Generic2(Generic[T]):\n     -     def __new__(cls: type[Generic2]) -> Generic2: ...\n-345 +     def __new__(cls) -> typing.Self: ...\n-346 |     def __enter__(self: Generic2) -> Generic2: ...\n-347 | \n-348 | class Generic3(tuple[*Ts]):\n+356 +     def __new__(cls) -> typing.Self: ...\n+357 |     def __enter__(self: Generic2) -> Generic2: ...\n+358 | \n+359 | class Generic3(tuple[*Ts]):\n note: This is a display-only fix and is likely to be incorrect\n \n PYI034 [*] `__enter__` methods in classes like `Generic2` usually return `self` at runtime\n-   --> PYI034.py:346:9\n+   --> PYI034.py:357:9\n     |\n-344 | class Generic2(Generic[T]):\n-345 |     def __new__(cls: type[Generic2]) -> Generic2: ...\n-346 |     def __enter__(self: Generic2) -> Generic2: ...\n+355 | class Generic2(Generic[T]):\n+356 |     def __new__(cls: type[Generic2]) -> Generic2: ...\n+357 |     def __enter__(self: Generic2) -> Generic2: ...\n     |         ^^^^^^^^^\n-347 |\n-348 | class Generic3(tuple[*Ts]):\n+358 |\n+359 | class Generic3(tuple[*Ts]):\n     |\n help: Use `Self` as return type\n-343 | \n-344 | class Generic2(Generic[T]):\n-345 |     def __new__(cls: type[Generic2]) -> Generic2: ...\n+354 | \n+355 | class Generic2(Generic[T]):\n+356 |     def __new__(cls: type[Generic2]) -> Generic2: ...\n     -     def __enter__(self: Generic2) -> Generic2: ...\n-346 +     def __enter__(self) -> typing.Self: ...\n-347 | \n-348 | class Generic3(tuple[*Ts]):\n-349 |     def __new__(cls: type[Generic3]) -> Generic3: ...\n+357 +     def __enter__(self) -> typing.Self: ...\n+358 | \n+359 | class Generic3(tuple[*Ts]):\n+360 |     def __new__(cls: type[Generic3]) -> Generic3: ...\n note: This is a display-only fix and is likely to be incorrect\n \n PYI034 [*] `__new__` methods in classes like `Generic3` usually return `self` at runtime\n-   --> PYI034.py:349:9\n+   --> PYI034.py:360:9\n     |\n-348 | class Generic3(tuple[*Ts]):\n-349 |     def __new__(cls: type[Generic3]) -> Generic3: ...\n+359 | class Generic3(tuple[*Ts]):\n+360 |     def __new__(cls: type[Generic3]) -> Generic3: ...\n     |         ^^^^^^^\n-350 |     def __enter__(self: Generic3) -> Generic3: ...\n+361 |     def __enter__(self: Generic3) -> Generic3: ...\n     |\n help: Use `Self` as return type\n-346 |     def __enter__(self: Generic2) -> Generic2: ...\n-347 | \n-348 | class Generic3(tuple[*Ts]):\n+357 |     def __enter__(self: Generic2) -> Generic2: ...\n+358 | \n+359 | class Generic3(tuple[*Ts]):\n     -     def __new__(cls: type[Generic3]) -> Generic3: ...\n-349 +     def __new__(cls) -> typing.Self: ...\n-350 |     def __enter__(self: Generic3) -> Generic3: ...\n-351 | \n-352 | class Generic4(collections.abc.Callable[P, ...]):\n+360 +     def __new__(cls) -> typing.Self: ...\n+361 |     def __enter__(self: Generic3) -> Generic3: ...\n+362 | \n+363 | class Generic4(collections.abc.Callable[P, ...]):\n note: This is a display-only fix and is likely to be incorrect\n \n PYI034 [*] `__enter__` methods in classes like `Generic3` usually return `self` at runtime\n-   --> PYI034.py:350:9\n+   --> PYI034.py:361:9\n     |\n-348 | class Generic3(tuple[*Ts]):\n-349 |     def __new__(cls: type[Generic3]) -> Generic3: ...\n-350 |     def __enter__(self: Generic3) -> Generic3: ...\n+359 | class Generic3(tuple[*Ts]):\n+360 |     def __new__(cls: type[Generic3]) -> Generic3: ...\n+361 |     def __enter__(self: Generic3) -> Generic3: ...\n     |         ^^^^^^^^^\n-351 |\n-352 | class Generic4(collections.abc.Callable[P, ...]):\n+362 |\n+363 | class Generic4(collections.abc.Callable[P, ...]):\n     |\n help: Use `Self` as return type\n-347 | \n-348 | class Generic3(tuple[*Ts]):\n-349 |     def __new__(cls: type[Generic3]) -> Generic3: ...\n+358 | \n+359 | class Generic3(tuple[*Ts]):\n+360 |     def __new__(cls: type[Generic3]) -> Generic3: ...\n     -     def __enter__(self: Generic3) -> Generic3: ...\n-350 +     def __enter__(self) -> typing.Self: ...\n-351 | \n-352 | class Generic4(collections.abc.Callable[P, ...]):\n-353 |     def __new__(cls: type[Generic4]) -> Generic4: ...\n+361 +     def __enter__(self) -> typing.Self: ...\n+362 | \n+363 | class Generic4(collections.abc.Callable[P, ...]):\n+364 |     def __new__(cls: type[Generic4]) -> Generic4: ...\n note: This is a display-only fix and is likely to be incorrect\n \n PYI034 [*] `__new__` methods in classes like `Generic4` usually return `self` at runtime\n-   --> PYI034.py:353:9\n+   --> PYI034.py:364:9\n     |\n-352 | class Generic4(collections.abc.Callable[P, ...]):\n-353 |     def __new__(cls: type[Generic4]) -> Generic4: ...\n+363 | class Generic4(collections.abc.Callable[P, ...]):\n+364 |     def __new__(cls: type[Generic4]) -> Generic4: ...\n     |         ^^^^^^^\n-354 |     def __enter__(self: Generic4) -> Generic4: ...\n+365 |     def __enter__(self: Generic4) -> Generic4: ...\n     |\n help: Use `Self` as return type\n-350 |     def __enter__(self: Generic3) -> Generic3: ...\n-351 | \n-352 | class Generic4(collections.abc.Callable[P, ...]):\n+361 |     def __enter__(self: Generic3) -> Generic3: ...\n+362 | \n+363 | class Generic4(collections.abc.Callable[P, ...]):\n     -     def __new__(cls: type[Generic4]) -> Generic4: ...\n-353 +     def __new__(cls) -> typing.Self: ...\n-354 |     def __enter__(self: Generic4) -> Generic4: ...\n-355 | \n-356 | from some_module import PotentialTypeVar\n+364 +     def __new__(cls) -> typing.Self: ...\n+365 |     def __enter__(self: Generic4) -> Generic4: ...\n+366 | \n+367 | from some_module import PotentialTypeVar\n note: This is a display-only fix and is likely to be incorrect\n \n PYI034 [*] `__enter__` methods in classes like `Generic4` usually return `self` at runtime\n-   --> PYI034.py:354:9\n+   --> PYI034.py:365:9\n     |\n-352 | class Generic4(collections.abc.Callable[P, ...]):\n-353 |     def __new__(cls: type[Generic4]) -> Generic4: ...\n-354 |     def __enter__(self: Generic4) -> Generic4: ...\n+363 | class Generic4(collections.abc.Callable[P, ...]):\n+364 |     def __new__(cls: type[Generic4]) -> Generic4: ...\n+365 |     def __enter__(self: Generic4) -> Generic4: ...\n     |         ^^^^^^^^^\n-355 |\n-356 | from some_module import PotentialTypeVar\n+366 |\n+367 | from some_module import PotentialTypeVar\n     |\n help: Use `Self` as return type\n-351 | \n-352 | class Generic4(collections.abc.Callable[P, ...]):\n-353 |     def __new__(cls: type[Generic4]) -> Generic4: ...\n+362 | \n+363 | class Generic4(collections.abc.Callable[P, ...]):\n+364 |     def __new__(cls: type[Generic4]) -> Generic4: ...\n     -     def __enter__(self: Generic4) -> Generic4: ...\n-354 +     def __enter__(self) -> typing.Self: ...\n-355 | \n-356 | from some_module import PotentialTypeVar\n-357 | \n+365 +     def __enter__(self) -> typing.Self: ...\n+366 | \n+367 | from some_module import PotentialTypeVar\n+368 | \n note: This is a display-only fix and is likely to be incorrect\n \n PYI034 [*] `__new__` methods in classes like `Generic5` usually return `self` at runtime\n-   --> PYI034.py:359:9\n+   --> PYI034.py:370:9\n     |\n-358 | class Generic5(list[PotentialTypeVar]):\n-359 |     def __new__(cls: type[Generic5]) -> Generic5: ...\n+369 | class Generic5(list[PotentialTypeVar]):\n+370 |     def __new__(cls: type[Generic5]) -> Generic5: ...\n     |         ^^^^^^^\n-360 |     def __enter__(self: Generic5) -> Generic5: ...\n+371 |     def __enter__(self: Generic5) -> Generic5: ...\n     |\n help: Use `Self` as return type\n-356 | from some_module import PotentialTypeVar\n-357 | \n-358 | class Generic5(list[PotentialTypeVar]):\n+367 | from some_module import PotentialTypeVar\n+368 | \n+369 | class Generic5(list[PotentialTypeVar]):\n     -     def __new__(cls: type[Generic5]) -> Generic5: ...\n-359 +     def __new__(cls) -> typing.Self: ...\n-360 |     def __enter__(self: Generic5) -> Generic5: ...\n-361 | \n-362 | \n+370 +     def __new__(cls) -> typing.Self: ...\n+371 |     def __enter__(self: Generic5) -> Generic5: ...\n+372 | \n+373 | \n note: This is an unsafe fix and may change runtime behavior\n \n PYI034 [*] `__enter__` methods in classes like `Generic5` usually return `self` at runtime\n-   --> PYI034.py:360:9\n+   --> PYI034.py:371:9\n     |\n-358 | class Generic5(list[PotentialTypeVar]):\n-359 |     def __new__(cls: type[Generic5]) -> Generic5: ...\n-360 |     def __enter__(self: Generic5) -> Generic5: ...\n+369 | class Generic5(list[PotentialTypeVar]):\n+370 |     def __new__(cls: type[Generic5]) -> Generic5: ...\n+371 |     def __enter__(self: Generic5) -> Generic5: ...\n     |         ^^^^^^^^^\n     |\n help: Use `Self` as return type\n-357 | \n-358 | class Generic5(list[PotentialTypeVar]):\n-359 |     def __new__(cls: type[Generic5]) -> Generic5: ...\n+368 | \n+369 | class Generic5(list[PotentialTypeVar]):\n+370 |     def __new__(cls: type[Generic5]) -> Generic5: ...\n     -     def __enter__(self: Generic5) -> Generic5: ...\n-360 +     def __enter__(self) -> typing.Self: ...\n-361 | \n-362 | \n-363 | # Test cases based on issue #20781 - metaclasses that triggers IsMetaclass::Maybe\n+371 +     def __enter__(self) -> typing.Self: ...\n+372 | \n+373 | \n+374 | # Test cases based on issue #20781 - metaclasses that triggers IsMetaclass::Maybe\n note: This is an unsafe fix and may change runtime behavior\ndiff --git a/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.pyi.snap b/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.pyi.snap\nindex 29c91b9a77..bf66955afc 100644\n--- a/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.pyi.snap\n+++ b/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.pyi.snap\n@@ -453,3 +453,56 @@ help: Use `Self` as return type\n 256 | \n 257 | # Test case based on issue #20781 - metaclass that triggers IsMetaclass::Maybe\n note: This is a display-only fix and is likely to be incorrect\n+\n+PYI034 [*] `__new__` methods in classes like `ForwardReferenceBad` usually return `self` at runtime\n+   --> PYI034.pyi:283:9\n+    |\n+282 | class ForwardReferenceBad:\n+283 |     def __new__(cls) -> \"ForwardReferenceBad\": ...  # Y034\n+    |         ^^^^^^^\n+284 |     def __enter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+285 |     async def __aenter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+    |\n+help: Use `Self` as return type\n+280 | \n+281 | \n+282 | class ForwardReferenceBad:\n+    -     def __new__(cls) -> \"ForwardReferenceBad\": ...  # Y034\n+283 +     def __new__(cls) -> typing.Self: ...  # Y034\n+284 |     def __enter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+285 |     async def __aenter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+note: This is an unsafe fix and may change runtime behavior\n+\n+PYI034 [*] `__enter__` methods in classes like `ForwardReferenceBad` usually return `self` at runtime\n+   --> PYI034.pyi:284:9\n+    |\n+282 | class ForwardReferenceBad:\n+283 |     def __new__(cls) -> \"ForwardReferenceBad\": ...  # Y034\n+284 |     def __enter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+    |         ^^^^^^^^^\n+285 |     async def __aenter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+    |\n+help: Use `Self` as return type\n+281 | \n+282 | class ForwardReferenceBad:\n+283 |     def __new__(cls) -> \"ForwardReferenceBad\": ...  # Y034\n+    -     def __enter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+284 +     def __enter__(self) -> typing.Self: ...  # Y034\n+285 |     async def __aenter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+note: This is an unsafe fix and may change runtime behavior\n+\n+PYI034 [*] `__aenter__` methods in classes like `ForwardReferenceBad` usually return `self` at runtime\n+   --> PYI034.pyi:285:15\n+    |\n+283 |     def __new__(cls) -> \"ForwardReferenceBad\": ...  # Y034\n+284 |     def __enter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+285 |     async def __aenter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+    |               ^^^^^^^^^^\n+    |\n+help: Use `Self` as return type\n+282 | class ForwardReferenceBad:\n+283 |     def __new__(cls) -> \"ForwardReferenceBad\": ...  # Y034\n+284 |     def __enter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+    -     async def __aenter__(self) -> \"ForwardReferenceBad\": ...  # Y034\n+285 +     async def __aenter__(self) -> typing.Self: ...  # Y034\n+note: This is an unsafe fix and may change runtime behavior\n",
+  "ground_truth_diff": "diff --git a/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py b/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py\nindex b35efc3c21..37ad3d3706 100644\n--- a/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py\n+++ b/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py\n@@ -385,3 +385,10 @@ class MetaclassInWhichSelfCannotBeUsed7(django.db.models.base.ModelBase):\n class MetaclassInWhichSelfCannotBeUsed8(django.db.models.base.ModelBase):\n     def __new__(cls, name: builtins.str, bases: tuple, attributes: dict, /, **kw) -> MetaclassInWhichSelfCannotBeUsed8:\n         ...\n+\n+\n+class UsesStringizedForwardReferences:\n+    def __new__(cls) -> \"UsesStringizedForwardReferences\": ...       # PYI034\n+    def __enter__(self) -> \"UsesStringizedForwardReferences\": ...    # PYI034\n+    async def __aenter__(self) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+    def __iadd__(self, other) -> \"UsesStringizedForwardReferences\": ...  # PYI034\ndiff --git a/crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs b/crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs\nindex d3b2f75b2d..e74363a446 100644\n--- a/crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs\n+++ b/crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs\n@@ -182,7 +182,7 @@ pub(crate) fn non_self_return_type(\n \n     if is_async {\n         if name == \"__aenter__\"\n-            && is_name(returns, &class_def.name)\n+            && is_name_or_stringized_name(returns, &class_def.name, checker)\n             && !is_final(&class_def.decorator_list, semantic)\n         {\n             add_diagnostic(checker, stmt, returns, class_def, name);\n@@ -198,7 +198,7 @@ pub(crate) fn non_self_return_type(\n         return;\n     }\n \n-    if is_name(returns, &class_def.name) {\n+    if is_name_or_stringized_name(returns, &class_def.name, checker) {\n         if matches!(name, \"__enter__\" | \"__new__\") && !is_final(&class_def.decorator_list, semantic)\n         {\n             add_diagnostic(checker, stmt, returns, class_def, name);\n@@ -327,6 +327,11 @@ fn is_name(expr: &ast::Expr, name: &str) -> bool {\n     id.as_str() == name\n }\n \n+/// Return `true` if the given expression resolves to the given name,\n+fn is_name_or_stringized_name(expr: &ast::Expr, name: &str, checker: &Checker) -> bool {\n+    checker.match_maybe_stringized_annotation(expr, |expr| is_name(expr, name))\n+}\n+\n /// Return `true` if the given expression resolves to `typing.Self`.\n fn is_self(expr: &ast::Expr, checker: &Checker) -> bool {\n     checker.match_maybe_stringized_annotation(expr, |expr| {\ndiff --git a/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap b/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap\nindex 8893a346e1..c730e8a2b6 100644\n--- a/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap\n+++ b/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap\n@@ -472,3 +472,77 @@ help: Use `Self` as return type\n 362 | \n 363 | # Test cases based on issue #20781 - metaclasses that triggers IsMetaclass::Maybe\n note: This is an unsafe fix and may change runtime behavior\n+\n+PYI034 [*] `__new__` methods in classes like `UsesStringizedForwardReferences` usually return `self` at runtime\n+   --> PYI034.py:391:9\n+    |\n+390 | class UsesStringizedForwardReferences:\n+391 |     def __new__(cls) -> \"UsesStringizedForwardReferences\": ...       # PYI034\n+    |         ^^^^^^^\n+392 |     def __enter__(self) -> \"UsesStringizedForwardReferences\": ...    # PYI034\n+393 |     async def __aenter__(self) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+    |\n+help: Use `Self` as return type\n+388 | \n+389 | \n+390 | class UsesStringizedForwardReferences:\n+    -     def __new__(cls) -> \"UsesStringizedForwardReferences\": ...       # PYI034\n+391 +     def __new__(cls) -> typing.Self: ...       # PYI034\n+392 |     def __enter__(self) -> \"UsesStringizedForwardReferences\": ...    # PYI034\n+393 |     async def __aenter__(self) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+394 |     def __iadd__(self, other) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+note: This is an unsafe fix and may change runtime behavior\n+\n+PYI034 [*] `__enter__` methods in classes like `UsesStringizedForwardReferences` usually return `self` at runtime\n+   --> PYI034.py:392:9\n+    |\n+390 | class UsesStringizedForwardReferences:\n+391 |     def __new__(cls) -> \"UsesStringizedForwardReferences\": ...       # PYI034\n+392 |     def __enter__(self) -> \"UsesStringizedForwardReferences\": ...    # PYI034\n+    |         ^^^^^^^^^\n+393 |     async def __aenter__(self) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+394 |     def __iadd__(self, other) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+    |\n+help: Use `Self` as return type\n+389 | \n+390 | class UsesStringizedForwardReferences:\n+391 |     def __new__(cls) -> \"UsesStringizedForwardReferences\": ...       # PYI034\n+    -     def __enter__(self) -> \"UsesStringizedForwardReferences\": ...    # PYI034\n+392 +     def __enter__(self) -> typing.Self: ...    # PYI034\n+393 |     async def __aenter__(self) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+394 |     def __iadd__(self, other) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+note: This is an unsafe fix and may change runtime behavior\n+\n+PYI034 [*] `__aenter__` methods in classes like `UsesStringizedForwardReferences` usually return `self` at runtime\n+   --> PYI034.py:393:15\n+    |\n+391 |     def __new__(cls) -> \"UsesStringizedForwardReferences\": ...       # PYI034\n+392 |     def __enter__(self) -> \"UsesStringizedForwardReferences\": ...    # PYI034\n+393 |     async def __aenter__(self) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+    |               ^^^^^^^^^^\n+394 |     def __iadd__(self, other) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+    |\n+help: Use `Self` as return type\n+390 | class UsesStringizedForwardReferences:\n+391 |     def __new__(cls) -> \"UsesStringizedForwardReferences\": ...       # PYI034\n+392 |     def __enter__(self) -> \"UsesStringizedForwardReferences\": ...    # PYI034\n+    -     async def __aenter__(self) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+393 +     async def __aenter__(self) -> typing.Self: ...  # PYI034\n+394 |     def __iadd__(self, other) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+note: This is an unsafe fix and may change runtime behavior\n+\n+PYI034 [*] `__iadd__` methods in classes like `UsesStringizedForwardReferences` usually return `self` at runtime\n+   --> PYI034.py:394:9\n+    |\n+392 |     def __enter__(self) -> \"UsesStringizedForwardReferences\": ...    # PYI034\n+393 |     async def __aenter__(self) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+394 |     def __iadd__(self, other) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+    |         ^^^^^^^^\n+    |\n+help: Use `Self` as return type\n+391 |     def __new__(cls) -> \"UsesStringizedForwardReferences\": ...       # PYI034\n+392 |     def __enter__(self) -> \"UsesStringizedForwardReferences\": ...    # PYI034\n+393 |     async def __aenter__(self) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+    -     def __iadd__(self, other) -> \"UsesStringizedForwardReferences\": ...  # PYI034\n+394 +     def __iadd__(self, other) -> typing.Self: ...  # PYI034\n+note: This is an unsafe fix and may change runtime behavior\n",
+  "project_metadata": {
+    "CSS": {
+      "files": 3,
+      "lines": 377,
+      "code": 322,
+      "comments": 6,
+      "blanks": 49
+    },
+    "Dockerfile": {
+      "files": 1,
+      "lines": 38,
+      "code": 26,
+      "comments": 7,
+      "blanks": 5
+    },
+    "HTML": {
+      "files": 2,
+      "lines": 81,
+      "code": 81,
+      "comments": 0,
+      "blanks": 0
+    },
+    "JavaScript": {
+      "files": 2,
+      "lines": 97,
+      "code": 77,
+      "comments": 11,
+      "blanks": 9
+    },
+    "JSON": {
+      "files": 134,
+      "lines": 15716,
+      "code": 15706,
+      "comments": 0,
+      "blanks": 10
+    },
+    "Jupyter Notebooks": {
+      "files": 35,
+      "lines": 511,
+      "code": 289,
+      "comments": 154,
+      "blanks": 68
+    },
+    "Markdown": {
+      "files": 391,
+      "lines": 117506,
+      "code": 0,
+      "comments": 85634,
+      "blanks": 31872
+    },
+    "Python": {
+      "files": 3687,
+      "lines": 266549,
+      "code": 211732,
+      "comments": 12788,
+      "blanks": 42029
+    },
+    "Rust": {
+      "files": 1743,
+      "lines": 511275,
+      "code": 432571,
+      "comments": 25123,
+      "blanks": 53581
+    },
+    "Shell": {
+      "files": 15,
+      "lines": 489,
+      "code": 274,
+      "comments": 143,
+      "blanks": 72
+    },
+    "SVG": {
+      "files": 28,
+      "lines": 1445,
+      "code": 1308,
+      "comments": 71,
+      "blanks": 66
+    },
+    "Plain Text": {
+      "files": 43,
+      "lines": 188649,
+      "code": 0,
+      "comments": 188648,
+      "blanks": 1
+    },
+    "TOML": {
+      "files": 144,
+      "lines": 4323,
+      "code": 3625,
+      "comments": 219,
+      "blanks": 479
+    },
+    "TSX": {
+      "files": 30,
+      "lines": 5526,
+      "code": 4810,
+      "comments": 163,
+      "blanks": 553
+    },
+    "TypeScript": {
+      "files": 14,
+      "lines": 480,
+      "code": 363,
+      "comments": 61,
+      "blanks": 56
+    },
+    "YAML": {
+      "files": 24,
+      "lines": 3705,
+      "code": 3093,
+      "comments": 288,
+      "blanks": 324
+    },
+    "Total": {
+      "files": 0,
+      "lines": 1195029,
+      "code": 687056,
+      "comments": 364538,
+      "blanks": 143435
+    }
+  },
+  "bobbin_metadata": {
+    "index_duration_seconds": 141.81,
+    "profile": {
+      "file_i/o": 0,
+      "parse": 1208,
+      "context": 1,
+      "embed": 17224,
+      "tokenize": 3210,
+      "inference": 12828,
+      "pooling": 400,
+      "lance_delete": 0,
+      "lance_insert": 675,
+      "git_coupling": 707,
+      "git_commits": 78245,
+      "deps": 23,
+      "compact": 526,
+      "other/overhead": 18023,
+      "total_ms": 116632,
+      "embed_throughput_chunks_per_sec": 3272.1
+    },
+    "total_files": null,
+    "total_chunks": null,
+    "total_embeddings": null,
+    "languages": []
+  },
+  "bobbin_metrics": {
+    "injection_count": 0,
+    "gate_skip_count": 0,
+    "gate_skip_details": [],
+    "dedup_skip_count": 0,
+    "prime_context_fired": true,
+    "command_invocations": [
+      {
+        "command": "search",
+        "duration_ms": 1425
+      },
+      {
+        "command": "search",
+        "duration_ms": 1707
+      },
+      {
+        "command": "grep",
+        "duration_ms": 66
+      }
+    ],
+    "injected_files": [],
+    "total_events": 20
+  },
+  "injection_result": null,
+  "config_overrides": null,
+  "tool_use_summary": {
+    "by_tool": {
+      "Bash": 20,
+      "Read": 6,
+      "Glob": 1,
+      "TodoWrite": 7,
+      "Edit": 8
+    },
+    "tool_sequence": [
+      "Bash",
+      "Bash",
+      "Bash",
+      "Read",
+      "Glob",
+      "Read",
+      "Read",
+      "Read",
+      "Bash",
+      "TodoWrite",
+      "TodoWrite",
+      "Edit",
+      "TodoWrite",
+      "Edit",
+      "Edit",
+      "TodoWrite",
+      "Edit",
+      "Edit",
+      "Edit",
+      "TodoWrite",
+      "Edit",
+      "Read",
+      "Bash",
+      "Read",
+      "Edit",
+      "TodoWrite",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "TodoWrite",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash"
+    ],
+    "first_edit_turn": 24,
+    "bobbin_commands": [
+      "bobbin search \"PYI034 rule __new__ __enter__ __aenter__\"",
+      "bobbin search \"match_maybe_stringized_annotation\"",
+      "bobbin grep \"PYI034\" | head -20",
+      "find /tmp/bobbin-eval-ruff-004-r751w3aj/astral-sh--ruff -name \"*PYI034*.snap\" | head -5",
+      "wc -l /tmp/bobbin-eval-ruff-004-r751w3aj/astral-sh--ruff/crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.pyi",
+      "grep -A 20 \"ForwardReferenceBad\" /tmp/bobbin-eval-ruff-004-r751w3aj/astral-sh--ruff/crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap | head -40"
+    ]
+  },
+  "output_summary": "Excellent! All tests pass. Let me create a summary of the implementation:\n\n## Summary\n\nI've successfully fixed the inconsistent handling of forward references (stringized annotations) in the flake8-pyi PYI034 rule. Here's what was done:\n\n### Changes Made:\n\n1. **Added `is_name_or_stringized_name` helper function** (line 337-340 in `non_self_return_type.rs`):\n   - Uses `match_maybe_stringized_annotation` to resolve both plain and stringized annotations\n   - Checks if the annotation matches the expected class name\n\n2. **Updated `__aenter__` check** (line 185):\n   - Changed from `is_name(returns, &class_def.name)` to `is_name_or_stringized_name(returns, &class_def.name, checker)`\n\n3. **Updated `__enter__` and `__new__` check** (line 201):\n   - Changed from `is_name(returns, &class_def.name)` to `is_name_or_stringized_name(returns, &class_def.name, checker)`\n\n4. **Updated `is_class_reference` function** (line 286-305):\n   - Now accepts `Checker` instead of `SemanticModel`\n   - Wraps the logic in `match_maybe_stringized_annotation` to handle stringized annotations\n   - This ensures the fix also works correctly for removing type hints from the first parameter\n\n5. **Added test cases** in both `PYI034.py` and `PYI034.pyi`:\n   - New `ForwardReferenceBad` class with forward references for `__new__`, `__enter__`, and `__aenter__`\n\n### Verification:\n\n- \u2705 All PYI034 tests pass\n- \u2705 All project checks pass (`uvx prek run -a`)\n- \u2705 Test snapshots show the rule now correctly detects forward references like `def __new__(cls) -> \"MyClass\"`\n\nThe fix ensures that methods with stringized return type annotations (e.g., `-> \"ClassName\"`) are now correctly detected and flagged by the PYI034 rule, just like their non-stringized counterparts.",
+  "run_id": "20260228-155328-377e"
+}
