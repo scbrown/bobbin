@@ -391,12 +391,27 @@ impl ContextAssembler {
 
         let mut bridge_files: HashSet<String> = HashSet::new();
 
+        // Determine the repo root for resolving relative paths from git commands
+        // to absolute paths that match the vector store's storage format.
+        let repo_root = self.git_analyzer.as_ref().map(|g| g.repo_root().to_path_buf());
+
+        // Helper: resolve a relative path from git to match vector store paths.
+        // git diff-tree returns relative paths, but the index stores absolute paths.
+        let resolve_path = |rel_path: String| -> String {
+            if let Some(root) = &repo_root {
+                if !std::path::Path::new(&rel_path).is_absolute() {
+                    return root.join(&rel_path).to_string_lossy().to_string();
+                }
+            }
+            rel_path
+        };
+
         // --- Commit→source bridging: extract file lists from commit chunk content ---
         for chunk in commit_chunks {
             for file_path in parse_commit_files(&chunk.content) {
                 let category = classify_file(&file_path);
                 if category == FileCategory::Source || category == FileCategory::Test {
-                    bridge_files.insert(file_path);
+                    bridge_files.insert(resolve_path(file_path));
                 }
             }
         }
@@ -428,7 +443,7 @@ impl ContextAssembler {
                     for file_path in commit_files {
                         let file_category = classify_file(&file_path);
                         if file_category == FileCategory::Source || file_category == FileCategory::Test {
-                            bridge_files.insert(file_path);
+                            bridge_files.insert(resolve_path(file_path));
                         }
                     }
                 }
