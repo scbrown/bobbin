@@ -38,6 +38,17 @@
     ],
     "PostToolUseFailure": [
       {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "command": "dp record --source bobbin-eval",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit",
         "hooks": [
           {
             "command": "bobbin hook post-tool-use-failure",
