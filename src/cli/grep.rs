@@ -6,6 +6,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 
 use super::OutputConfig;
+use crate::access::RepoFilter;
 use crate::config::Config;
 use crate::storage::VectorStore;
 use crate::types::{ChunkType, SearchResult};
@@ -161,6 +162,13 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
         .search_fts(&fts_query, search_limit, args.repo.as_deref())
         .await
         .context("FTS search failed")?;
+
+    // Apply role-based access filtering
+    let config = Config::load(&config_path).unwrap_or_default();
+    let access_filter = RepoFilter::from_config(&config.access, &output.role);
+    let results = access_filter.filter_vec(results, |r| {
+        RepoFilter::repo_from_path(&r.chunk.file_path)
+    });
 
     // Apply filters
     let filtered_results: Vec<SearchResult> = results

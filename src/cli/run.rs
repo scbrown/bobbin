@@ -443,6 +443,7 @@ mod tests {
             quiet: false,
             verbose: false,
             server: None,
+            role: "default".to_string(),
         };
 
         // Should succeed with empty list
@@ -460,6 +461,7 @@ mod tests {
             quiet: true,
             verbose: false,
             server: None,
+            role: "default".to_string(),
         };
 
         // Save a command
@@ -490,6 +492,7 @@ mod tests {
             quiet: true,
             verbose: false,
             server: None,
+            role: "default".to_string(),
         };
 
         let extra = vec!["search".into(), "test".into()];
@@ -507,6 +510,7 @@ mod tests {
             quiet: true,
             verbose: false,
             server: None,
+            role: "default".to_string(),
         };
 
         let extra = vec!["run".into(), "other".into()];
@@ -524,6 +528,7 @@ mod tests {
             quiet: true,
             verbose: false,
             server: None,
+            role: "default".to_string(),
         };
 
         let extra = vec!["nonexistent".into(), "arg".into()];
@@ -541,6 +546,7 @@ mod tests {
             quiet: true,
             verbose: false,
             server: None,
+            role: "default".to_string(),
         };
 
         let result = remove_command(tmp.path(), "nonexistent", &output);
@@ -557,6 +563,7 @@ mod tests {
             quiet: true,
             verbose: false,
             server: None,
+            role: "default".to_string(),
         };
 
         // Save then remove

@@ -53,6 +53,10 @@ pub struct Cli {
     /// Metrics source identity (also reads BOBBIN_METRICS_SOURCE env var)
     #[arg(long, global = true, env = "BOBBIN_METRICS_SOURCE")]
     metrics_source: Option<String>,
+
+    /// Role for access filtering (also reads BOBBIN_ROLE, GT_ROLE, BD_ACTOR env vars)
+    #[arg(long, global = true, env = "BOBBIN_ROLE")]
+    role: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -163,11 +167,13 @@ impl Commands {
 
 impl Cli {
     pub async fn run(self) -> Result<()> {
+        let resolved_role = crate::access::RepoFilter::resolve_role(self.role.as_deref());
         let output = OutputConfig {
             json: self.json,
             quiet: self.quiet,
             verbose: self.verbose,
             server: self.server,
+            role: resolved_role,
         };
 
         let metrics_source = self.metrics_source.clone();
@@ -185,6 +191,7 @@ impl Cli {
                         quiet: resolved.quiet,
                         verbose: resolved.verbose,
                         server: resolved.server,
+                        role: crate::access::RepoFilter::resolve_role(resolved.role.as_deref()),
                     };
                     (resolved.command, resolved_output)
                 }
@@ -276,4 +283,6 @@ pub struct OutputConfig {
     pub verbose: bool,
     /// Remote server URL for thin-client mode
     pub server: Option<String>,
+    /// Resolved role for access filtering
+    pub role: String,
 }

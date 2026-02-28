@@ -5,6 +5,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 
 use super::OutputConfig;
+use crate::access::RepoFilter;
 use crate::analysis::impact::{ImpactAnalyzer, ImpactConfig, ImpactMode, ImpactSignal};
 use crate::config::Config;
 use crate::index::Embedder;
@@ -114,6 +115,13 @@ pub async fn run(args: ImpactArgs, output: OutputConfig) -> Result<()> {
     let results = analyzer
         .analyze(&args.target, &impact_config, args.depth, args.repo.as_deref())
         .await?;
+
+    // Apply role-based access filtering
+    let access_filter = RepoFilter::from_config(&config.access, &output.role);
+    let results: Vec<_> = results
+        .into_iter()
+        .filter(|r| access_filter.is_allowed(RepoFilter::repo_from_path(&r.path)))
+        .collect();
 
     if output.json {
         let entries: Vec<ImpactEntry> = results

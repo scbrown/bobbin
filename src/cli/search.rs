@@ -5,6 +5,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 
 use super::OutputConfig;
+use crate::access::RepoFilter;
 use crate::config::Config;
 use crate::index::Embedder;
 use crate::search::{HybridSearch, SemanticSearch};
@@ -193,6 +194,12 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
             }
         }
     };
+
+    // Apply role-based access filtering
+    let access_filter = RepoFilter::from_config(&config.access, &output.role);
+    let results = access_filter.filter_vec(results, |r| {
+        RepoFilter::repo_from_path(&r.chunk.file_path)
+    });
 
     let filtered_results: Vec<SearchResult> = if let Some(ref chunk_type) = type_filter {
         results

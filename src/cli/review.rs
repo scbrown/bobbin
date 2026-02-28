@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use super::context::CliContentMode;
 use super::OutputConfig;
+use crate::access::RepoFilter;
 use crate::config::Config;
 use crate::index::{Embedder, GitAnalyzer};
 use crate::index::git::DiffSpec;
@@ -159,10 +160,14 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
     let diff_description = describe_diff(&diff_spec, &args.branch);
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
-    let bundle = assembler
+    let mut bundle = assembler
         .assemble_from_seeds(&diff_description, seeds, args.repo.as_deref())
         .await
         .context("Context assembly failed")?;
+
+    // Apply role-based access filtering
+    let access_filter = RepoFilter::from_config(&config.access, &output.role);
+    bundle.files.retain(|f| access_filter.is_allowed(RepoFilter::repo_from_path(&f.path)));
 
     if output.json {
         print_json_output(&bundle, &diff_files)?;

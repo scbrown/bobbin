@@ -1321,6 +1321,12 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         return Ok(());
     }
 
+    // 7b. Role-based access filtering
+    let role = crate::access::RepoFilter::resolve_role(None);
+    let access_filter = crate::access::RepoFilter::from_config(&config.access, &role);
+    let mut bundle = bundle;
+    bundle.files.retain(|f| access_filter.is_allowed(crate::access::RepoFilter::repo_from_path(&f.path)));
+
     // 8. Session dedup: skip if results haven't changed
     let dedup_enabled = !args.no_dedup && hooks_cfg.dedup_enabled;
     let dedup_session_id = compute_session_id(&bundle, threshold);

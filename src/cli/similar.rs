@@ -5,6 +5,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 
 use super::OutputConfig;
+use crate::access::RepoFilter;
 use crate::analysis::similar::{DuplicateCluster, SimilarResult, SimilarTarget, SimilarityAnalyzer};
 use crate::config::Config;
 use crate::index::Embedder;
@@ -138,6 +139,17 @@ pub async fn run(args: SimilarArgs, output: OutputConfig) -> Result<()> {
             .await
             .context("Scan failed")?;
 
+        // Apply role-based access filtering to scan results
+        let access_filter = RepoFilter::from_config(&config.access, &output.role);
+        let clusters: Vec<DuplicateCluster> = clusters
+            .into_iter()
+            .map(|mut c| {
+                c.members.retain(|m| access_filter.is_allowed(RepoFilter::repo_from_path(&m.chunk.file_path)));
+                c
+            })
+            .filter(|c| c.members.len() >= 2)
+            .collect();
+
         if output.json {
             print_scan_json(&clusters, args.threshold)?;
         } else if !output.quiet {
@@ -151,6 +163,13 @@ pub async fn run(args: SimilarArgs, output: OutputConfig) -> Result<()> {
             .find_similar(&target, args.threshold, args.limit, repo_filter)
             .await
             .context("Similarity search failed")?;
+
+        // Apply role-based access filtering
+        let access_filter = RepoFilter::from_config(&config.access, &output.role);
+        let results: Vec<SimilarResult> = results
+            .into_iter()
+            .filter(|r| access_filter.is_allowed(RepoFilter::repo_from_path(&r.chunk.file_path)))
+            .collect();
 
         if output.json {
             print_similar_json(target_str, &results, args.threshold)?;

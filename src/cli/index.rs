@@ -1045,7 +1045,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             }
             let cal_args = CalibrateArgs::default_for_auto(source_root.clone());
             // Use quiet output — calibration is a background step, not the primary command
-            let cal_output = OutputConfig { json: false, quiet: true, verbose: false, server: None };
+            let cal_output = OutputConfig { json: false, quiet: true, verbose: false, server: None, role: "default".to_string() };
             if let Err(e) = super::calibrate::run(cal_args, cal_output).await {
                 if !output.quiet && !output.json {
                     eprintln!(
