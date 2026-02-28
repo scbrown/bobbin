@@ -1,3 +1,7 @@
+{"issue_id":"bo-05k","label":"desire-path"}
+{"issue_id":"bo-05k","label":"eval"}
+{"issue_id":"bo-1d1","label":"eval"}
+{"issue_id":"bo-1d1","label":"quality"}
 {"issue_id":"bo-945","label":"bug"}
 {"issue_id":"bo-bobbin-crew-goldblum","label":"gt:agent"}
 {"issue_id":"bo-bobbin-crew-seth","label":"gt:agent"}
@@ -6,6 +10,8 @@
 {"issue_id":"bo-bobbin-witness","label":"gt:agent"}
 {"issue_id":"bo-c7f","label":"desire-path"}
 {"issue_id":"bo-c7f","label":"ux"}
+{"issue_id":"bo-cv1","label":"eval"}
+{"issue_id":"bo-cv1","label":"observability"}
 {"issue_id":"bo-kkn","label":"eval"}
 {"issue_id":"bo-kkn","label":"quality"}
 {"issue_id":"bo-nlm","label":"desire-path"}
