@@ -11,20 +11,55 @@ and humans alike. Some repos are personal (cv, resume, personal-planning), some
 are rig-specific (aegis config), and most are shared infrastructure. There's no
 way to scope search results by who's asking.
 
+This applies equally to CLI usage (`bobbin search`, `bobbin context`, etc.) and
+HTTP API usage (`/search?q=...`, `/context?q=...`).
+
 ## Design
 
 ### Caller Identity
 
-Callers pass a `role` query parameter on search endpoints:
+Role is resolved in priority order:
+
+1. **CLI flag**: `--role aegis/crew/ian` (global flag on all commands)
+2. **Environment variable**: `BOBBIN_ROLE=aegis/crew/ian`
+3. **Gas Town env fallback**: `GT_ROLE` or `BD_ACTOR` (auto-detected from agent environment)
+4. **HTTP query param**: `?role=aegis/crew/ian` (API callers)
+5. **Default**: `default` role (if nothing else is set)
+
+This means agents in Gas Town get role-based filtering automatically — their
+`GT_ROLE` is already set by the environment. No flag needed. Humans running
+`bobbin search` locally get `default` unless they set `BOBBIN_ROLE=human`.
+
+### CLI Integration
+
+Global flag on the `Cli` struct, same pattern as `--server` and `--metrics-source`:
+
+```rust
+/// Role for access filtering (also reads BOBBIN_ROLE, GT_ROLE, BD_ACTOR)
+#[arg(long, global = true, env = "BOBBIN_ROLE")]
+role: Option<String>,
+```
+
+Role resolution in `Cli::run()`:
+```rust
+fn resolve_role(&self) -> String {
+    self.role.clone()
+        .or_else(|| std::env::var("BOBBIN_ROLE").ok())
+        .or_else(|| std::env::var("GT_ROLE").ok())
+        .or_else(|| std::env::var("BD_ACTOR").ok())
+        .unwrap_or_else(|| "default".to_string())
+}
+```
+
+### HTTP Integration
+
+API callers pass `role` as a query parameter. The HTTP handler resolves it the
+same way — explicit param wins, then env fallback, then `default`.
 
 ```
 /search?q=auth+flow&role=aegis/crew/ian
-/search?q=deployment&role=human
-/context?q=fix+login+bug&role=bobbin/polecats/alpha
+/context?q=fix+login+bug&role=human
 ```
-
-If no `role` is provided, the `default` role is used. This preserves backward
-compatibility — existing callers see everything they saw before.
 
 ### Config Format
 
@@ -47,7 +82,7 @@ allow = ["*"]
 
 [[access.roles]]
 name = "default"
-# Default role (no role param): exclude personal repos
+# Default role (no role param, no env): exclude personal repos
 deny = ["personal-planning", "cv", "resume"]
 
 [[access.roles]]
@@ -75,55 +110,70 @@ their allow/deny lists (deny wins on conflict).
 
 ### Filtering Point
 
-Filtering happens **post-search, pre-response**. The search engine runs against
-the full index (preserving relevance ranking), then results from denied repos
-are stripped before returning to the caller.
+Filtering happens **post-search, pre-response** in a shared `RepoFilter` that
+both CLI and HTTP handlers call. The search engine runs against the full index
+(preserving relevance ranking), then results from denied repos are stripped.
+
+```rust
+pub struct RepoFilter {
+    allowed: Option<HashSet<String>>,  // None = allow all
+    denied: HashSet<String>,
+}
+
+impl RepoFilter {
+    pub fn from_config(config: &AccessConfig, role: &str) -> Self { ... }
+    pub fn is_allowed(&self, repo_name: &str) -> bool { ... }
+    pub fn filter_results(&self, results: Vec<SearchResult>) -> Vec<SearchResult> { ... }
+}
+```
 
 This is simpler than partitioned indexes and means the index stays unified.
 The performance cost is negligible — filtering a few results from a response
 of 10-50 items is trivial.
 
-### Affected Endpoints
+### Affected Commands & Endpoints
 
-All endpoints that return repo-scoped results:
+**CLI commands that filter results:**
 
-| Endpoint | Filter on |
-|----------|-----------|
-| `/search` | `file_path` repo prefix |
-| `/grep` | `file_path` repo prefix |
-| `/context` | assembled file paths |
-| `/repos` | repo list |
-| `/repos/{name}/files` | repo name |
-| `/related` | file paths |
-| `/refs` | file paths |
-| `/similar` | file paths |
-| `/hotspots` | file paths |
-| `/impact` | file paths |
-| `/review` | file paths |
-| `/prime` | repo stats |
+| Command | Filter on |
+|---------|-----------|
+| `bobbin search` | result file paths |
+| `bobbin grep` | result file paths |
+| `bobbin context` | assembled file paths |
+| `bobbin related` | file paths |
+| `bobbin refs` | file paths |
+| `bobbin similar` | file paths |
+| `bobbin hotspots` | file paths |
+| `bobbin impact` | file paths |
+| `bobbin review` | file paths |
+| `bobbin prime` | repo stats |
+| `bobbin status` | repo stats (when `--role` set) |
+| `bobbin hook inject` | injected context |
 
-Endpoints NOT affected: `/healthz`, `/status`, `/metrics`, `/beads`,
-`/archive/*`, `/webhook/push`, `/commands`.
+**HTTP endpoints** — same set, mapped to their route equivalents.
+
+**Not filtered**: `bobbin index`, `bobbin init`, `bobbin watch`, `bobbin serve`,
+`bobbin benchmark`, `bobbin calibrate`, `/healthz`, `/metrics`, `/webhook/push`.
 
 ### Implementation Plan
 
-1. Add `AccessConfig` struct to `config.rs` with `default_allow`, `roles` vec
-2. Add `RoleResolver` that takes a role string, matches against config, returns allowed/denied repo set
-3. Add `role` query param to `SearchParams` and other param structs
-4. Add filtering middleware or helper that strips denied repos from results
-5. Update `/repos` endpoint to respect role filtering
-6. Tests: role matching, deny-over-allow, default behavior, no-config backward compat
+1. Add `AccessConfig` + `RoleConfig` structs to `config.rs`
+2. Add `RepoFilter` module with role resolution + filtering logic
+3. Add `--role` global flag to `Cli` struct with `BOBBIN_ROLE` env
+4. Wire `RepoFilter` into CLI commands that return repo-scoped results
+5. Add `role` query param to HTTP handler param structs
+6. Wire same `RepoFilter` into HTTP handlers
+7. Tests: role matching, deny-over-allow, env fallback chain, default behavior, no-config backward compat
 
 ### Migration
 
-- No breaking changes. Existing callers without `role` param get `default` role.
+- No breaking changes. Existing callers without `--role` or env get `default` role.
 - If no `[access]` section in config, everything is visible (current behavior).
-- Deploy config change separately from code change — code deploys first with
-  filtering disabled, then config enables it.
+- Deploy code first (filtering disabled without config), then add `[access]` to config.
+- Gas Town agents get filtering for free once `GT_ROLE`/`BD_ACTOR` is in their env.
 
 ### Future Extensions
 
 - Token-based auth instead of honor-system role param
 - Per-file filtering (not just per-repo)
 - Audit log of who searched what
-- Role inheritance (aegis/crew/ian inherits from aegis/*)
