@@ -1066,15 +1066,30 @@ def run_all(
 
 @cli.command()
 @click.argument("results_dir", default="results")
-def score(results_dir: str):
+@click.option("--task", "-t", multiple=True, help="Filter to specific task ID(s). Repeatable.")
+@click.option("--include-quarantined", is_flag=True, default=False,
+              help="Include results for quarantined tasks (excluded by default).")
+def score(results_dir: str, task: tuple[str, ...], include_quarantined: bool):
     """Display a summary of existing results.
 
     RESULTS_DIR is the directory containing result JSON files.
+
+    By default, results for quarantined tasks (those only in tasks/_quarantined/)
+    are excluded. Use --include-quarantined to show them.
     """
     rdir = Path(results_dir)
     if not rdir.is_dir():
         click.echo(f"Error: Results directory not found: {rdir}", err=True)
         sys.exit(1)
+
+    # Build set of quarantined task IDs (tasks in _quarantined/ but not in main dir).
+    quarantined_ids: set[str] = set()
+    if not include_quarantined:
+        tasks_path = _resolve_tasks_dir("tasks")
+        active_ids = {p.stem for p in tasks_path.glob("*.yaml")}
+        quarantine_dir = tasks_path / "_quarantined"
+        if quarantine_dir.is_dir():
+            quarantined_ids = {p.stem for p in quarantine_dir.glob("*.yaml")} - active_ids
 
     # Load from run-based and legacy layouts.
     results: list[dict] = []
@@ -1094,6 +1109,16 @@ def score(results_dir: str):
                 results.append(data)
         except (json.JSONDecodeError, OSError) as exc:
             click.echo(f"Warning: skipping {f.name}: {exc}", err=True)
+
+    # Apply filters.
+    if task:
+        results = [r for r in results if r.get("task_id") in task]
+    if quarantined_ids:
+        before = len(results)
+        results = [r for r in results if r.get("task_id") not in quarantined_ids]
+        skipped = before - len(results)
+        if skipped:
+            click.echo(f"(excluded {skipped} quarantined results; use --include-quarantined to show)", err=True)
 
     if not results:
         click.echo(f"No result files found in {rdir}", err=True)
@@ -1150,7 +1175,7 @@ def score(results_dir: str):
         inj_f1s = [
             r["injection_result"]["injection_f1"]
             for r in runs
-            if r.get("injection_result", {}).get("injection_f1") is not None
+            if (r.get("injection_result") or {}).get("injection_f1") is not None
         ]
         if inj_f1s:
             avg_inj_f1 = sum(inj_f1s) / len(inj_f1s)
