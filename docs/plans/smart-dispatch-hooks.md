@@ -151,5 +151,7 @@ greps with semantic searches, potentially halving time-to-edit.
 - **Latency**: each dispatch adds ~2s (search/related). Mitigate with async, caching.
 - **Noise**: too many injections overwhelm the agent. Mitigate with dedup + budget.
 - **Parsing fragility**: grep/find command extraction may miss edge cases. Start simple.
-- **PostToolUse may not work in -p mode**: if it's a Claude Code limitation, we need
-  an alternative approach (maybe a PreToolUse hook that injects before the next tool).
+- **PostToolUse may not work in -p mode**: ~~if it's a Claude Code limitation~~ RESOLVED.
+  PostToolUse works in -p mode. The remaining issue was Gas Town's `CLAUDE_CONFIG_DIR`
+  redirecting settings away from `~/.claude/settings.json`. Fixed 2026-02-28 by adding
+  hooks to all account-specific settings files under `~/.claude-accounts/`.
