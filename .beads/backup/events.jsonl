@@ -79,3 +79,684 @@
 {"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:07:22Z","event_type":"closed","id":79,"issue_id":"BOB-wisp-s616","new_value":"Closed","old_value":""}
 {"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:07:22Z","event_type":"closed","id":80,"issue_id":"BOB-wisp-tb1h","new_value":"Closed","old_value":""}
 {"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:07:25Z","event_type":"closed","id":81,"issue_id":"BOB-wisp-s5b5","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:14:14Z","event_type":"closed","id":82,"issue_id":"BOB-wisp-3bkf","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:14:14Z","event_type":"closed","id":83,"issue_id":"BOB-wisp-5gnb","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:14:15Z","event_type":"closed","id":84,"issue_id":"BOB-wisp-ltqk","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:14:15Z","event_type":"closed","id":85,"issue_id":"BOB-wisp-od7g","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:14:33Z","event_type":"claimed","id":86,"issue_id":"BOB-wisp-0eu8","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:14:43Z","event_type":"closed","id":87,"issue_id":"BOB-wisp-0eu8","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:14:51Z","event_type":"claimed","id":88,"issue_id":"BOB-wisp-pj25","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:15:25Z","event_type":"closed","id":89,"issue_id":"BOB-wisp-pj25","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:15:38Z","event_type":"closed","id":90,"issue_id":"BOB-wisp-a811","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:15:38Z","event_type":"closed","id":91,"issue_id":"BOB-wisp-mpsq","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:15:38Z","event_type":"closed","id":92,"issue_id":"BOB-wisp-afdn","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:15:38Z","event_type":"closed","id":93,"issue_id":"BOB-wisp-np05","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:15:38Z","event_type":"closed","id":94,"issue_id":"BOB-wisp-0j0a","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:15:52Z","event_type":"claimed","id":95,"issue_id":"BOB-wisp-ae9t","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:15:57Z","event_type":"closed","id":96,"issue_id":"BOB-wisp-ae9t","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:16:00Z","event_type":"claimed","id":97,"issue_id":"BOB-wisp-4odl","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:16:03Z","event_type":"closed","id":98,"issue_id":"BOB-wisp-4odl","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:16:11Z","event_type":"claimed","id":99,"issue_id":"BOB-wisp-iz18","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:16:20Z","event_type":"closed","id":100,"issue_id":"BOB-wisp-iz18","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:16:24Z","event_type":"claimed","id":101,"issue_id":"BOB-wisp-565z","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:16:33Z","event_type":"closed","id":102,"issue_id":"BOB-wisp-565z","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:16:37Z","event_type":"claimed","id":103,"issue_id":"BOB-wisp-irq3","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:16:59Z","event_type":"closed","id":104,"issue_id":"BOB-wisp-irq3","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:19Z","event_type":"claimed","id":105,"issue_id":"BOB-wisp-vs8e","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:23Z","event_type":"closed","id":106,"issue_id":"BOB-wisp-vs8e","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:25Z","event_type":"claimed","id":107,"issue_id":"BOB-wisp-0nkp","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:34Z","event_type":"closed","id":108,"issue_id":"BOB-wisp-0nkp","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:34Z","event_type":"closed","id":109,"issue_id":"BOB-wisp-bu8d","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:34Z","event_type":"closed","id":110,"issue_id":"BOB-wisp-q62x","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:34Z","event_type":"closed","id":111,"issue_id":"BOB-wisp-zmnk","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:34Z","event_type":"closed","id":112,"issue_id":"BOB-wisp-yt5j","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:34Z","event_type":"closed","id":113,"issue_id":"BOB-wisp-1dg9","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:34Z","event_type":"closed","id":114,"issue_id":"BOB-wisp-1kt4","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:34Z","event_type":"closed","id":115,"issue_id":"BOB-wisp-1hke","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:35Z","event_type":"closed","id":116,"issue_id":"BOB-wisp-p7xj","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:35Z","event_type":"closed","id":117,"issue_id":"BOB-wisp-9qw4","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:40Z","event_type":"claimed","id":118,"issue_id":"BOB-wisp-dlig","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:17:40Z","event_type":"closed","id":119,"issue_id":"BOB-wisp-dlig","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:33Z","event_type":"claimed","id":120,"issue_id":"BOB-wisp-c4m5","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:36Z","event_type":"closed","id":121,"issue_id":"BOB-wisp-c4m5","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:36Z","event_type":"claimed","id":122,"issue_id":"BOB-wisp-pbsn","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:47Z","event_type":"closed","id":123,"issue_id":"BOB-wisp-pbsn","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:47Z","event_type":"closed","id":124,"issue_id":"BOB-wisp-trz2","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:47Z","event_type":"closed","id":125,"issue_id":"BOB-wisp-g335","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:48Z","event_type":"closed","id":126,"issue_id":"BOB-wisp-ewa3","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:48Z","event_type":"closed","id":127,"issue_id":"BOB-wisp-ql7p","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:48Z","event_type":"closed","id":128,"issue_id":"BOB-wisp-202i","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:48Z","event_type":"closed","id":129,"issue_id":"BOB-wisp-m75l","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:48Z","event_type":"closed","id":130,"issue_id":"BOB-wisp-4zf0h","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:48Z","event_type":"closed","id":131,"issue_id":"BOB-wisp-m8i52","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:48Z","event_type":"closed","id":132,"issue_id":"BOB-wisp-084bw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:48Z","event_type":"closed","id":133,"issue_id":"BOB-wisp-8wu8e","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:57Z","event_type":"closed","id":134,"issue_id":"BOB-wisp-28a6","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:57Z","event_type":"closed","id":135,"issue_id":"BOB-wisp-dq8z","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:18:57Z","event_type":"closed","id":136,"issue_id":"BOB-wisp-ebd8","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:19:21Z","event_type":"claimed","id":137,"issue_id":"BOB-wisp-l5g8r","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:19:24Z","event_type":"closed","id":138,"issue_id":"BOB-wisp-l5g8r","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:19:30Z","event_type":"claimed","id":139,"issue_id":"BOB-wisp-pqjy9","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:19:45Z","event_type":"closed","id":140,"issue_id":"BOB-wisp-pqjy9","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:19:53Z","event_type":"closed","id":141,"issue_id":"BOB-wisp-lg7xu","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:19:54Z","event_type":"closed","id":142,"issue_id":"BOB-wisp-b03da","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:19:54Z","event_type":"closed","id":143,"issue_id":"BOB-wisp-q6mop","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:19:55Z","event_type":"closed","id":144,"issue_id":"BOB-wisp-0kh35","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:19:55Z","event_type":"closed","id":145,"issue_id":"BOB-wisp-xt5s7","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:20:03Z","event_type":"closed","id":146,"issue_id":"BOB-wisp-uszex","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:20:04Z","event_type":"closed","id":147,"issue_id":"BOB-wisp-xsd61","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:20:16Z","event_type":"closed","id":148,"issue_id":"BOB-wisp-cdbw3","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:20:26Z","event_type":"closed","id":149,"issue_id":"BOB-wisp-2rzux","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:20:33Z","event_type":"closed","id":150,"issue_id":"BOB-wisp-iifoq","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:21:30Z","event_type":"closed","id":151,"issue_id":"BOB-wisp-c8anz","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:21:48Z","event_type":"claimed","id":152,"issue_id":"BOB-wisp-qj4ff","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:21:55Z","event_type":"closed","id":153,"issue_id":"BOB-wisp-qj4ff","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:04Z","event_type":"claimed","id":154,"issue_id":"BOB-wisp-bgsta","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:10Z","event_type":"closed","id":155,"issue_id":"BOB-wisp-bgsta","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:15Z","event_type":"closed","id":156,"issue_id":"BOB-wisp-b4pub","new_value":"Queue empty, skipping","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:15Z","event_type":"closed","id":157,"issue_id":"BOB-wisp-xb2e0","new_value":"Queue empty, skipping","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:16Z","event_type":"closed","id":158,"issue_id":"BOB-wisp-02zcp","new_value":"Queue empty, skipping","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:16Z","event_type":"closed","id":159,"issue_id":"BOB-wisp-yu69c","new_value":"Queue empty, skipping","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:17Z","event_type":"closed","id":160,"issue_id":"BOB-wisp-9e2un","new_value":"Queue empty, skipping","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:26Z","event_type":"claimed","id":161,"issue_id":"BOB-wisp-q72ue","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:31Z","event_type":"closed","id":162,"issue_id":"BOB-wisp-q72ue","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:37Z","event_type":"claimed","id":163,"issue_id":"BOB-wisp-zrnb1","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:37Z","event_type":"closed","id":164,"issue_id":"BOB-wisp-zrnb1","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:42Z","event_type":"claimed","id":165,"issue_id":"BOB-wisp-55pbv","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:48Z","event_type":"closed","id":166,"issue_id":"BOB-wisp-55pbv","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:54Z","event_type":"claimed","id":167,"issue_id":"BOB-wisp-2tl6a","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:22:58Z","event_type":"closed","id":168,"issue_id":"BOB-wisp-2tl6a","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:04Z","event_type":"claimed","id":169,"issue_id":"BOB-wisp-j1pg8","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:18Z","event_type":"closed","id":170,"issue_id":"BOB-wisp-j1pg8","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:37Z","event_type":"claimed","id":171,"issue_id":"BOB-wisp-36eqo","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:41Z","event_type":"closed","id":172,"issue_id":"BOB-wisp-36eqo","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:45Z","event_type":"claimed","id":173,"issue_id":"BOB-wisp-yqsv9","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:51Z","event_type":"closed","id":174,"issue_id":"BOB-wisp-yqsv9","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:51Z","event_type":"closed","id":175,"issue_id":"BOB-wisp-luyto","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:51Z","event_type":"closed","id":176,"issue_id":"BOB-wisp-ftoeu","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:51Z","event_type":"closed","id":177,"issue_id":"BOB-wisp-srlq6","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:51Z","event_type":"closed","id":178,"issue_id":"BOB-wisp-qcuoe","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:52Z","event_type":"closed","id":179,"issue_id":"BOB-wisp-4ubj1","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:54Z","event_type":"claimed","id":180,"issue_id":"BOB-wisp-287f4","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:55Z","event_type":"closed","id":181,"issue_id":"BOB-wisp-287f4","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:58Z","event_type":"claimed","id":182,"issue_id":"BOB-wisp-wawmj","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:23:58Z","event_type":"closed","id":183,"issue_id":"BOB-wisp-wawmj","new_value":"Auto-land disabled","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:24:04Z","event_type":"claimed","id":184,"issue_id":"BOB-wisp-gl3n0","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:24:04Z","event_type":"closed","id":185,"issue_id":"BOB-wisp-gl3n0","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:24:05Z","event_type":"claimed","id":186,"issue_id":"BOB-wisp-rdj8o","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:24:05Z","event_type":"closed","id":187,"issue_id":"BOB-wisp-rdj8o","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:24:10Z","event_type":"claimed","id":188,"issue_id":"BOB-wisp-4vvzk","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:24:10Z","event_type":"closed","id":189,"issue_id":"BOB-wisp-4vvzk","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:24:20Z","event_type":"closed","id":190,"issue_id":"BOB-wisp-2fgrt","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:24:20Z","event_type":"closed","id":191,"issue_id":"BOB-wisp-wj6r6","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:24:38Z","event_type":"claimed","id":192,"issue_id":"BOB-wisp-fmjjq","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:24:47Z","event_type":"closed","id":193,"issue_id":"BOB-wisp-fmjjq","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:24:56Z","event_type":"claimed","id":194,"issue_id":"BOB-wisp-1ac3t","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:03Z","event_type":"closed","id":195,"issue_id":"BOB-wisp-1ac3t","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:09Z","event_type":"closed","id":196,"issue_id":"BOB-wisp-tpxcm","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:14Z","event_type":"closed","id":197,"issue_id":"BOB-wisp-74xl3","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:14Z","event_type":"closed","id":198,"issue_id":"BOB-wisp-wdjth","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:14Z","event_type":"closed","id":199,"issue_id":"BOB-wisp-yntxe","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:14Z","event_type":"closed","id":200,"issue_id":"BOB-wisp-pqm9j","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:15Z","event_type":"closed","id":201,"issue_id":"BOB-wisp-boml7","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:15Z","event_type":"closed","id":202,"issue_id":"BOB-wisp-nv2qf","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:20Z","event_type":"claimed","id":203,"issue_id":"BOB-wisp-vo5dl","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:25Z","event_type":"closed","id":204,"issue_id":"BOB-wisp-vo5dl","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:31Z","event_type":"claimed","id":205,"issue_id":"BOB-wisp-xlwpu","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:36Z","event_type":"closed","id":206,"issue_id":"BOB-wisp-xlwpu","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:25:42Z","event_type":"claimed","id":207,"issue_id":"BOB-wisp-4ssgp","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:21Z","event_type":"closed","id":208,"issue_id":"BOB-wisp-4ssgp","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:36Z","event_type":"claimed","id":209,"issue_id":"BOB-wisp-ticci","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:40Z","event_type":"closed","id":210,"issue_id":"BOB-wisp-ticci","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:43Z","event_type":"claimed","id":211,"issue_id":"BOB-wisp-9oa57","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:49Z","event_type":"closed","id":212,"issue_id":"BOB-wisp-9oa57","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:49Z","event_type":"closed","id":213,"issue_id":"BOB-wisp-dajil","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:49Z","event_type":"closed","id":214,"issue_id":"BOB-wisp-ys387","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:49Z","event_type":"closed","id":215,"issue_id":"BOB-wisp-k1iss","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:49Z","event_type":"closed","id":216,"issue_id":"BOB-wisp-4yjc0","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:49Z","event_type":"closed","id":217,"issue_id":"BOB-wisp-yyq8f","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:49Z","event_type":"closed","id":218,"issue_id":"BOB-wisp-3tgvl","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:49Z","event_type":"closed","id":219,"issue_id":"BOB-wisp-5k4dh","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:54Z","event_type":"claimed","id":220,"issue_id":"BOB-wisp-yf82t","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:26:57Z","event_type":"closed","id":221,"issue_id":"BOB-wisp-yf82t","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:27:01Z","event_type":"claimed","id":222,"issue_id":"BOB-wisp-qww5b","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:27:04Z","event_type":"closed","id":223,"issue_id":"BOB-wisp-qww5b","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:27:07Z","event_type":"claimed","id":224,"issue_id":"BOB-wisp-k6362","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:27:46Z","event_type":"closed","id":225,"issue_id":"BOB-wisp-k6362","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:27:53Z","event_type":"closed","id":226,"issue_id":"BOB-wisp-vm3ms","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:27:53Z","event_type":"closed","id":227,"issue_id":"BOB-wisp-zcc7f","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:28:22Z","event_type":"claimed","id":228,"issue_id":"BOB-wisp-lgg29","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:28:33Z","event_type":"closed","id":229,"issue_id":"BOB-wisp-lgg29","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:28:42Z","event_type":"claimed","id":230,"issue_id":"BOB-wisp-wr2d7","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:28:51Z","event_type":"closed","id":231,"issue_id":"BOB-wisp-wr2d7","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:28:58Z","event_type":"claimed","id":232,"issue_id":"BOB-wisp-brd75","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:28:58Z","event_type":"closed","id":233,"issue_id":"BOB-wisp-brd75","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:01Z","event_type":"claimed","id":234,"issue_id":"BOB-wisp-gdnnh","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:02Z","event_type":"closed","id":235,"issue_id":"BOB-wisp-gdnnh","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:03Z","event_type":"claimed","id":236,"issue_id":"BOB-wisp-41of6","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:03Z","event_type":"closed","id":237,"issue_id":"BOB-wisp-41of6","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:03Z","event_type":"claimed","id":238,"issue_id":"BOB-wisp-q6wyv","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:03Z","event_type":"closed","id":239,"issue_id":"BOB-wisp-q6wyv","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:04Z","event_type":"claimed","id":240,"issue_id":"BOB-wisp-933kb","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:04Z","event_type":"closed","id":241,"issue_id":"BOB-wisp-933kb","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:05Z","event_type":"claimed","id":242,"issue_id":"BOB-wisp-tdexc","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:05Z","event_type":"closed","id":243,"issue_id":"BOB-wisp-tdexc","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:11Z","event_type":"claimed","id":244,"issue_id":"BOB-wisp-2u5et","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:11Z","event_type":"closed","id":245,"issue_id":"BOB-wisp-2u5et","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:23Z","event_type":"claimed","id":246,"issue_id":"BOB-wisp-2aaxx","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:23Z","event_type":"closed","id":247,"issue_id":"BOB-wisp-2aaxx","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:33Z","event_type":"claimed","id":248,"issue_id":"BOB-wisp-r7i7a","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:33Z","event_type":"closed","id":249,"issue_id":"BOB-wisp-r7i7a","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:40Z","event_type":"claimed","id":250,"issue_id":"BOB-wisp-xwiix","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:29:52Z","event_type":"closed","id":251,"issue_id":"BOB-wisp-xwiix","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:10Z","event_type":"claimed","id":252,"issue_id":"BOB-wisp-gmqix","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:14Z","event_type":"closed","id":253,"issue_id":"BOB-wisp-gmqix","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:17Z","event_type":"claimed","id":254,"issue_id":"BOB-wisp-kxh51","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:26Z","event_type":"closed","id":255,"issue_id":"BOB-wisp-kxh51","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:26Z","event_type":"claimed","id":256,"issue_id":"BOB-wisp-q5d3s","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:26Z","event_type":"closed","id":257,"issue_id":"BOB-wisp-q5d3s","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:26Z","event_type":"claimed","id":258,"issue_id":"BOB-wisp-hn5uw","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:26Z","event_type":"closed","id":259,"issue_id":"BOB-wisp-hn5uw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:26Z","event_type":"claimed","id":260,"issue_id":"BOB-wisp-zxye0","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:26Z","event_type":"closed","id":261,"issue_id":"BOB-wisp-zxye0","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:26Z","event_type":"claimed","id":262,"issue_id":"BOB-wisp-5kvhp","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:26Z","event_type":"closed","id":263,"issue_id":"BOB-wisp-5kvhp","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:27Z","event_type":"claimed","id":264,"issue_id":"BOB-wisp-rw5w9","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:27Z","event_type":"closed","id":265,"issue_id":"BOB-wisp-rw5w9","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:27Z","event_type":"claimed","id":266,"issue_id":"BOB-wisp-212ww","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:27Z","event_type":"closed","id":267,"issue_id":"BOB-wisp-212ww","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:27Z","event_type":"claimed","id":268,"issue_id":"BOB-wisp-yjqyw","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:27Z","event_type":"closed","id":269,"issue_id":"BOB-wisp-yjqyw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:27Z","event_type":"claimed","id":270,"issue_id":"BOB-wisp-x1bin","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:27Z","event_type":"closed","id":271,"issue_id":"BOB-wisp-x1bin","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:27Z","event_type":"claimed","id":272,"issue_id":"BOB-wisp-e92rl","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:27Z","event_type":"closed","id":273,"issue_id":"BOB-wisp-e92rl","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:31Z","event_type":"claimed","id":274,"issue_id":"BOB-wisp-4yld7","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:30:52Z","event_type":"closed","id":275,"issue_id":"BOB-wisp-4yld7","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:31:14Z","event_type":"closed","id":276,"issue_id":"BOB-wisp-bl4i6","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:31:14Z","event_type":"closed","id":277,"issue_id":"BOB-wisp-kye16","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:31:36Z","event_type":"claimed","id":278,"issue_id":"BOB-wisp-mspp7","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:31:40Z","event_type":"closed","id":279,"issue_id":"BOB-wisp-mspp7","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:31:49Z","event_type":"claimed","id":280,"issue_id":"BOB-wisp-rr2gx","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:31:56Z","event_type":"closed","id":281,"issue_id":"BOB-wisp-rr2gx","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:05Z","event_type":"closed","id":282,"issue_id":"BOB-wisp-fxoci","new_value":"Queue empty, nothing to rebase","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:06Z","event_type":"closed","id":283,"issue_id":"BOB-wisp-6v5pd","new_value":"Queue empty, nothing to test","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:06Z","event_type":"closed","id":284,"issue_id":"BOB-wisp-khzt1","new_value":"Queue empty, no failures to handle","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:07Z","event_type":"closed","id":285,"issue_id":"BOB-wisp-w6sqe","new_value":"Queue empty, nothing to merge","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:07Z","event_type":"closed","id":286,"issue_id":"BOB-wisp-uukex","new_value":"Queue empty, no more work","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:16Z","event_type":"claimed","id":287,"issue_id":"BOB-wisp-fulds","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:20Z","event_type":"closed","id":288,"issue_id":"BOB-wisp-fulds","new_value":"Empty queue cycle — 0 branches merged, 0 conflicts, 0 issues filed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:34Z","event_type":"claimed","id":289,"issue_id":"BOB-wisp-6qxm8","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:37Z","event_type":"closed","id":290,"issue_id":"BOB-wisp-6qxm8","new_value":"Auto-land disabled, nothing to do","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:44Z","event_type":"claimed","id":291,"issue_id":"BOB-wisp-8qyo1","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:50Z","event_type":"closed","id":292,"issue_id":"BOB-wisp-8qyo1","new_value":"Session healthy — RSS 3MB, fresh session, low context, empty queue","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:32:55Z","event_type":"claimed","id":293,"issue_id":"BOB-wisp-k7q5n","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:33:09Z","event_type":"closed","id":294,"issue_id":"BOB-wisp-k7q5n","new_value":"Inbox empty, no orphaned MRs","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:33:13Z","event_type":"claimed","id":295,"issue_id":"BOB-wisp-0x6ep","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:33:54Z","event_type":"closed","id":296,"issue_id":"BOB-wisp-0x6ep","new_value":"Timeout, no activity. Looping.","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:16Z","event_type":"claimed","id":297,"issue_id":"BOB-wisp-y7m5w","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:21Z","event_type":"closed","id":298,"issue_id":"BOB-wisp-y7m5w","new_value":"No mail","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:27Z","event_type":"claimed","id":299,"issue_id":"BOB-wisp-5idtg","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:33Z","event_type":"closed","id":300,"issue_id":"BOB-wisp-5idtg","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:33Z","event_type":"closed","id":301,"issue_id":"BOB-wisp-pxfnz","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:33Z","event_type":"closed","id":302,"issue_id":"BOB-wisp-6a234","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:34Z","event_type":"closed","id":303,"issue_id":"BOB-wisp-j7kxq","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:34Z","event_type":"closed","id":304,"issue_id":"BOB-wisp-mwlrm","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:34Z","event_type":"closed","id":305,"issue_id":"BOB-wisp-qv3r6","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:34Z","event_type":"closed","id":306,"issue_id":"BOB-wisp-092mp","new_value":"Empty queue cycle","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:34Z","event_type":"closed","id":307,"issue_id":"BOB-wisp-wp4bd","new_value":"Auto-land disabled","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:41Z","event_type":"claimed","id":308,"issue_id":"BOB-wisp-2vpux","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:41Z","event_type":"closed","id":309,"issue_id":"BOB-wisp-2vpux","new_value":"Session healthy — RSS 3MB, fresh, low context, empty queue","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:44Z","event_type":"claimed","id":310,"issue_id":"BOB-wisp-apz1w","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:49Z","event_type":"closed","id":311,"issue_id":"BOB-wisp-apz1w","new_value":"Inbox clean","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:34:53Z","event_type":"claimed","id":312,"issue_id":"BOB-wisp-dnosc","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:25Z","event_type":"closed","id":313,"issue_id":"BOB-wisp-dnosc","new_value":"Signal received, looping","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:37Z","event_type":"claimed","id":314,"issue_id":"BOB-wisp-wqz7c","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:42Z","event_type":"closed","id":315,"issue_id":"BOB-wisp-wqz7c","new_value":"No mail","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:48Z","event_type":"claimed","id":316,"issue_id":"BOB-wisp-v3ut8","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:56Z","event_type":"closed","id":317,"issue_id":"BOB-wisp-v3ut8","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:56Z","event_type":"closed","id":318,"issue_id":"BOB-wisp-dmotl","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:56Z","event_type":"closed","id":319,"issue_id":"BOB-wisp-7vl2p","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:57Z","event_type":"closed","id":320,"issue_id":"BOB-wisp-j48cf","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:57Z","event_type":"closed","id":321,"issue_id":"BOB-wisp-slq0m","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:57Z","event_type":"closed","id":322,"issue_id":"BOB-wisp-o65yx","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:57Z","event_type":"closed","id":323,"issue_id":"BOB-wisp-m5sq9","new_value":"Empty queue cycle","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:57Z","event_type":"closed","id":324,"issue_id":"BOB-wisp-eqcnx","new_value":"Auto-land disabled","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:57Z","event_type":"closed","id":325,"issue_id":"BOB-wisp-3u4y7","new_value":"Session healthy — RSS 3MB, low context","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:35:57Z","event_type":"closed","id":326,"issue_id":"BOB-wisp-wganh","new_value":"Inbox clean","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:00Z","event_type":"claimed","id":327,"issue_id":"BOB-wisp-ukaue","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:15Z","event_type":"closed","id":328,"issue_id":"BOB-wisp-ukaue","new_value":"Signal received, looping","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:29Z","event_type":"claimed","id":329,"issue_id":"BOB-wisp-j2j53","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:30Z","event_type":"closed","id":330,"issue_id":"BOB-wisp-j2j53","new_value":"No mail","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:30Z","event_type":"closed","id":331,"issue_id":"BOB-wisp-w1bhk","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:30Z","event_type":"closed","id":332,"issue_id":"BOB-wisp-imwid","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:30Z","event_type":"closed","id":333,"issue_id":"BOB-wisp-5aiar","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:30Z","event_type":"closed","id":334,"issue_id":"BOB-wisp-2aqu5","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:30Z","event_type":"closed","id":335,"issue_id":"BOB-wisp-mdey8","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:30Z","event_type":"closed","id":336,"issue_id":"BOB-wisp-o5pnl","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:30Z","event_type":"closed","id":337,"issue_id":"BOB-wisp-0f4rf","new_value":"Empty queue","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:30Z","event_type":"closed","id":338,"issue_id":"BOB-wisp-5lruw","new_value":"Auto-land disabled","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:30Z","event_type":"closed","id":339,"issue_id":"BOB-wisp-hgk5c","new_value":"Healthy","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:31Z","event_type":"closed","id":340,"issue_id":"BOB-wisp-pp5tr","new_value":"Clean","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:36:42Z","event_type":"claimed","id":341,"issue_id":"BOB-wisp-7htvp","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:37:04Z","event_type":"closed","id":342,"issue_id":"BOB-wisp-7htvp","new_value":"Handing off — 4 empty cycles, accumulated context","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:37:16Z","event_type":"closed","id":343,"issue_id":"BOB-wisp-0r1xi","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:37:16Z","event_type":"closed","id":344,"issue_id":"BOB-wisp-bzmc5","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:37:16Z","event_type":"closed","id":345,"issue_id":"BOB-wisp-peoez","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:37:16Z","event_type":"closed","id":346,"issue_id":"BOB-wisp-qy8ty","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:37:44Z","event_type":"claimed","id":347,"issue_id":"BOB-wisp-1m5e7","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:37:50Z","event_type":"closed","id":348,"issue_id":"BOB-wisp-1m5e7","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:05Z","event_type":"claimed","id":349,"issue_id":"BOB-wisp-8hym3","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:12Z","event_type":"closed","id":350,"issue_id":"BOB-wisp-8hym3","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:22Z","event_type":"closed","id":351,"issue_id":"BOB-wisp-zn8y8","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:22Z","event_type":"closed","id":352,"issue_id":"BOB-wisp-1qvho","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:22Z","event_type":"closed","id":353,"issue_id":"BOB-wisp-6a3b6","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:22Z","event_type":"closed","id":354,"issue_id":"BOB-wisp-ldaq4","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:22Z","event_type":"closed","id":355,"issue_id":"BOB-wisp-jpw28","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:29Z","event_type":"claimed","id":356,"issue_id":"BOB-wisp-uvlu5","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:32Z","event_type":"closed","id":357,"issue_id":"BOB-wisp-uvlu5","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:37Z","event_type":"claimed","id":358,"issue_id":"BOB-wisp-opb6v","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:40Z","event_type":"closed","id":359,"issue_id":"BOB-wisp-opb6v","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:46Z","event_type":"claimed","id":360,"issue_id":"BOB-wisp-6fz6w","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:38:53Z","event_type":"closed","id":361,"issue_id":"BOB-wisp-6fz6w","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:39:02Z","event_type":"claimed","id":362,"issue_id":"BOB-wisp-epc0l","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:39:08Z","event_type":"closed","id":363,"issue_id":"BOB-wisp-epc0l","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:39:16Z","event_type":"claimed","id":364,"issue_id":"BOB-wisp-cga4r","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:39:56Z","event_type":"closed","id":365,"issue_id":"BOB-wisp-cga4r","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:17Z","event_type":"claimed","id":366,"issue_id":"BOB-wisp-ampdf","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:17Z","event_type":"closed","id":367,"issue_id":"BOB-wisp-ampdf","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:27Z","event_type":"claimed","id":368,"issue_id":"BOB-wisp-sk615","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:34Z","event_type":"closed","id":369,"issue_id":"BOB-wisp-sk615","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:34Z","event_type":"closed","id":370,"issue_id":"BOB-wisp-u9ili","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:35Z","event_type":"closed","id":371,"issue_id":"BOB-wisp-hlhz9","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:35Z","event_type":"closed","id":372,"issue_id":"BOB-wisp-zvwwh","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:35Z","event_type":"closed","id":373,"issue_id":"BOB-wisp-qut5r","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:35Z","event_type":"closed","id":374,"issue_id":"BOB-wisp-pzqag","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:40Z","event_type":"claimed","id":375,"issue_id":"BOB-wisp-zcou9","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:40Z","event_type":"closed","id":376,"issue_id":"BOB-wisp-zcou9","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:43Z","event_type":"claimed","id":377,"issue_id":"BOB-wisp-43cnv","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:43Z","event_type":"closed","id":378,"issue_id":"BOB-wisp-43cnv","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:46Z","event_type":"claimed","id":379,"issue_id":"BOB-wisp-v4nem","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:46Z","event_type":"closed","id":380,"issue_id":"BOB-wisp-v4nem","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:50Z","event_type":"claimed","id":381,"issue_id":"BOB-wisp-mh9bp","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:53Z","event_type":"closed","id":382,"issue_id":"BOB-wisp-mh9bp","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:40:56Z","event_type":"claimed","id":383,"issue_id":"BOB-wisp-c1q07","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:41:39Z","event_type":"closed","id":384,"issue_id":"BOB-wisp-c1q07","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:41:46Z","event_type":"closed","id":385,"issue_id":"BOB-wisp-nilxu","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:41:46Z","event_type":"closed","id":386,"issue_id":"BOB-wisp-wnred","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:05Z","event_type":"claimed","id":387,"issue_id":"BOB-wisp-vouji","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:17Z","event_type":"closed","id":388,"issue_id":"BOB-wisp-vouji","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:24Z","event_type":"claimed","id":389,"issue_id":"BOB-wisp-noe1g","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:31Z","event_type":"closed","id":390,"issue_id":"BOB-wisp-noe1g","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:40Z","event_type":"closed","id":391,"issue_id":"BOB-wisp-whhv4","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:40Z","event_type":"closed","id":392,"issue_id":"BOB-wisp-ru881","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:40Z","event_type":"closed","id":393,"issue_id":"BOB-wisp-mqc0d","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:41Z","event_type":"closed","id":394,"issue_id":"BOB-wisp-ivy54","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:41Z","event_type":"closed","id":395,"issue_id":"BOB-wisp-uwh4e","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:52Z","event_type":"claimed","id":396,"issue_id":"BOB-wisp-n66wv","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:56Z","event_type":"closed","id":397,"issue_id":"BOB-wisp-n66wv","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:42:59Z","event_type":"claimed","id":398,"issue_id":"BOB-wisp-codt7","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:43:01Z","event_type":"closed","id":399,"issue_id":"BOB-wisp-codt7","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:43:08Z","event_type":"claimed","id":400,"issue_id":"BOB-wisp-vaj69","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:43:13Z","event_type":"closed","id":401,"issue_id":"BOB-wisp-vaj69","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:43:17Z","event_type":"claimed","id":402,"issue_id":"BOB-wisp-zh15m","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:43:23Z","event_type":"closed","id":403,"issue_id":"BOB-wisp-zh15m","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:43:27Z","event_type":"claimed","id":404,"issue_id":"BOB-wisp-aho0h","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:43:32Z","event_type":"closed","id":405,"issue_id":"BOB-wisp-aho0h","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:29Z","event_type":"claimed","id":406,"issue_id":"BOB-wisp-67yd8","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:32Z","event_type":"closed","id":407,"issue_id":"BOB-wisp-67yd8","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:36Z","event_type":"claimed","id":408,"issue_id":"BOB-wisp-6xxkl","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:40Z","event_type":"closed","id":409,"issue_id":"BOB-wisp-6xxkl","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:40Z","event_type":"closed","id":410,"issue_id":"BOB-wisp-hsypc","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:40Z","event_type":"closed","id":411,"issue_id":"BOB-wisp-7wb09","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:40Z","event_type":"closed","id":412,"issue_id":"BOB-wisp-3hdop","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:40Z","event_type":"closed","id":413,"issue_id":"BOB-wisp-70sm8","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:40Z","event_type":"closed","id":414,"issue_id":"BOB-wisp-dihcv","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:40Z","event_type":"closed","id":415,"issue_id":"BOB-wisp-dbojd","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:40Z","event_type":"closed","id":416,"issue_id":"BOB-wisp-b9ss6","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:43Z","event_type":"claimed","id":417,"issue_id":"BOB-wisp-gwbtt","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:50Z","event_type":"closed","id":418,"issue_id":"BOB-wisp-gwbtt","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:50Z","event_type":"closed","id":419,"issue_id":"BOB-wisp-ae3pr","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:50Z","event_type":"closed","id":420,"issue_id":"BOB-wisp-sm7ln","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:58Z","event_type":"closed","id":421,"issue_id":"BOB-wisp-sybn9","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:44:58Z","event_type":"closed","id":422,"issue_id":"BOB-wisp-txqkt","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:45:19Z","event_type":"claimed","id":423,"issue_id":"BOB-wisp-scua1","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:45:23Z","event_type":"closed","id":424,"issue_id":"BOB-wisp-scua1","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:45:30Z","event_type":"claimed","id":425,"issue_id":"BOB-wisp-mvegp","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:45:37Z","event_type":"closed","id":426,"issue_id":"BOB-wisp-mvegp","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:45:47Z","event_type":"closed","id":427,"issue_id":"BOB-wisp-0nlx9","new_value":"No branches to rebase — queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:45:47Z","event_type":"closed","id":428,"issue_id":"BOB-wisp-1lsos","new_value":"No branches to test — queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:45:47Z","event_type":"closed","id":429,"issue_id":"BOB-wisp-fwfzb","new_value":"No tests run — queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:45:47Z","event_type":"closed","id":430,"issue_id":"BOB-wisp-rdzk6","new_value":"No branches to merge — queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:45:47Z","event_type":"closed","id":431,"issue_id":"BOB-wisp-alss5","new_value":"No branches in queue — queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:45:54Z","event_type":"claimed","id":432,"issue_id":"BOB-wisp-0fkwx","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:45:54Z","event_type":"closed","id":433,"issue_id":"BOB-wisp-0fkwx","new_value":"Auto-land disabled, nothing to do","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:46:04Z","event_type":"claimed","id":434,"issue_id":"BOB-wisp-r7330","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:46:04Z","event_type":"closed","id":435,"issue_id":"BOB-wisp-r7330","new_value":"Patrol cycle: 0 branches merged, empty queue, no conflicts, no escalations","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:46:12Z","event_type":"claimed","id":436,"issue_id":"BOB-wisp-t1yxr","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:46:12Z","event_type":"closed","id":437,"issue_id":"BOB-wisp-t1yxr","new_value":"RSS: 3MB, fresh session, low context — healthy","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:46:19Z","event_type":"claimed","id":438,"issue_id":"BOB-wisp-o8act","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:46:22Z","event_type":"closed","id":439,"issue_id":"BOB-wisp-o8act","new_value":"Inbox empty, no orphaned MRs","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:46:29Z","event_type":"claimed","id":440,"issue_id":"BOB-wisp-0pdoj","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:09Z","event_type":"closed","id":441,"issue_id":"BOB-wisp-0pdoj","new_value":"Await-signal timeout (30s), looping to next patrol","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:27Z","event_type":"claimed","id":442,"issue_id":"BOB-wisp-2epx2","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:27Z","event_type":"closed","id":443,"issue_id":"BOB-wisp-2epx2","new_value":"No mail","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:31Z","event_type":"claimed","id":444,"issue_id":"BOB-wisp-lhybf","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:37Z","event_type":"closed","id":445,"issue_id":"BOB-wisp-lhybf","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:37Z","event_type":"closed","id":446,"issue_id":"BOB-wisp-d8yik","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:37Z","event_type":"closed","id":447,"issue_id":"BOB-wisp-c14jw","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:37Z","event_type":"closed","id":448,"issue_id":"BOB-wisp-aijuv","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:37Z","event_type":"closed","id":449,"issue_id":"BOB-wisp-2b9ot","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:38Z","event_type":"closed","id":450,"issue_id":"BOB-wisp-gqpdk","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:38Z","event_type":"closed","id":451,"issue_id":"BOB-wisp-ky0vv","new_value":"Auto-land disabled","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:38Z","event_type":"closed","id":452,"issue_id":"BOB-wisp-cm73x","new_value":"Cycle 2: 0 branches, empty queue","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:39Z","event_type":"closed","id":453,"issue_id":"BOB-wisp-sevpm","new_value":"Inbox clean, no orphaned MRs","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:42Z","event_type":"claimed","id":454,"issue_id":"BOB-wisp-2vvsq","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:43Z","event_type":"closed","id":455,"issue_id":"BOB-wisp-2vvsq","new_value":"RSS: 3MB, healthy","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:47:46Z","event_type":"claimed","id":456,"issue_id":"BOB-wisp-5anjz","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:48:25Z","event_type":"closed","id":457,"issue_id":"BOB-wisp-5anjz","new_value":"Handing off — persistent empty queue","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:48:33Z","event_type":"closed","id":458,"issue_id":"BOB-wisp-j1vew","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:48:33Z","event_type":"closed","id":459,"issue_id":"BOB-wisp-ncnrk","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:48:53Z","event_type":"claimed","id":460,"issue_id":"BOB-wisp-0rgu8","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:04Z","event_type":"closed","id":461,"issue_id":"BOB-wisp-0rgu8","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:13Z","event_type":"claimed","id":462,"issue_id":"BOB-wisp-skwyp","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:18Z","event_type":"closed","id":463,"issue_id":"BOB-wisp-skwyp","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:18Z","event_type":"closed","id":464,"issue_id":"BOB-wisp-gb7we","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:18Z","event_type":"closed","id":465,"issue_id":"BOB-wisp-g2hy2","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:19Z","event_type":"closed","id":466,"issue_id":"BOB-wisp-uyhm0","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:19Z","event_type":"closed","id":467,"issue_id":"BOB-wisp-g0d10","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:19Z","event_type":"closed","id":468,"issue_id":"BOB-wisp-ud4jl","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:19Z","event_type":"closed","id":469,"issue_id":"BOB-wisp-k78wg","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:28Z","event_type":"claimed","id":470,"issue_id":"BOB-wisp-kv6e9","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:28Z","event_type":"closed","id":471,"issue_id":"BOB-wisp-kv6e9","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:37Z","event_type":"claimed","id":472,"issue_id":"BOB-wisp-yt9i4","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:44Z","event_type":"closed","id":473,"issue_id":"BOB-wisp-yt9i4","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:51Z","event_type":"claimed","id":474,"issue_id":"BOB-wisp-6cw1z","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:49:59Z","event_type":"closed","id":475,"issue_id":"BOB-wisp-6cw1z","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:50:07Z","event_type":"claimed","id":476,"issue_id":"BOB-wisp-gd0nu","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:50:39Z","event_type":"closed","id":477,"issue_id":"BOB-wisp-gd0nu","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:01Z","event_type":"claimed","id":478,"issue_id":"BOB-wisp-jcdf9","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:04Z","event_type":"closed","id":479,"issue_id":"BOB-wisp-jcdf9","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:08Z","event_type":"claimed","id":480,"issue_id":"BOB-wisp-u78k7","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:12Z","event_type":"closed","id":481,"issue_id":"BOB-wisp-u78k7","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:13Z","event_type":"closed","id":482,"issue_id":"BOB-wisp-2r6ru","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:13Z","event_type":"closed","id":483,"issue_id":"BOB-wisp-alvnt","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:13Z","event_type":"closed","id":484,"issue_id":"BOB-wisp-hy97k","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:13Z","event_type":"closed","id":485,"issue_id":"BOB-wisp-cilge","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:13Z","event_type":"closed","id":486,"issue_id":"BOB-wisp-lmc2v","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:13Z","event_type":"closed","id":487,"issue_id":"BOB-wisp-erpez","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:17Z","event_type":"claimed","id":488,"issue_id":"BOB-wisp-rzdh3","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:17Z","event_type":"closed","id":489,"issue_id":"BOB-wisp-rzdh3","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:20Z","event_type":"claimed","id":490,"issue_id":"BOB-wisp-ib6f5","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:25Z","event_type":"closed","id":491,"issue_id":"BOB-wisp-ib6f5","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:25Z","event_type":"claimed","id":492,"issue_id":"BOB-wisp-ko9hw","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:33Z","event_type":"closed","id":493,"issue_id":"BOB-wisp-ko9hw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:51:33Z","event_type":"claimed","id":494,"issue_id":"BOB-wisp-pdb5r","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:12Z","event_type":"closed","id":495,"issue_id":"BOB-wisp-pdb5r","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:22Z","event_type":"claimed","id":496,"issue_id":"BOB-wisp-zkkwl","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:25Z","event_type":"closed","id":497,"issue_id":"BOB-wisp-zkkwl","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:25Z","event_type":"claimed","id":498,"issue_id":"BOB-wisp-vp7aa","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:31Z","event_type":"closed","id":499,"issue_id":"BOB-wisp-vp7aa","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:31Z","event_type":"closed","id":500,"issue_id":"BOB-wisp-rffa3","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:31Z","event_type":"closed","id":501,"issue_id":"BOB-wisp-myp2h","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:32Z","event_type":"closed","id":502,"issue_id":"BOB-wisp-txqca","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:32Z","event_type":"closed","id":503,"issue_id":"BOB-wisp-j562q","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:32Z","event_type":"closed","id":504,"issue_id":"BOB-wisp-z580u","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:32Z","event_type":"closed","id":505,"issue_id":"BOB-wisp-kq4yo","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:32Z","event_type":"closed","id":506,"issue_id":"BOB-wisp-25517","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:32Z","event_type":"closed","id":507,"issue_id":"BOB-wisp-38pt8","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:32Z","event_type":"closed","id":508,"issue_id":"BOB-wisp-rnbwm","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:32Z","event_type":"closed","id":509,"issue_id":"BOB-wisp-nbc2l","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:43Z","event_type":"closed","id":510,"issue_id":"BOB-wisp-79fpn","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:43Z","event_type":"closed","id":511,"issue_id":"BOB-wisp-l0zq9","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:52:43Z","event_type":"closed","id":512,"issue_id":"BOB-wisp-rsial","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:03Z","event_type":"claimed","id":513,"issue_id":"BOB-wisp-crjxw","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:15Z","event_type":"closed","id":514,"issue_id":"BOB-wisp-crjxw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:24Z","event_type":"claimed","id":515,"issue_id":"BOB-wisp-3al6i","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:30Z","event_type":"closed","id":516,"issue_id":"BOB-wisp-3al6i","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:37Z","event_type":"claimed","id":517,"issue_id":"BOB-wisp-hy6g9","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:37Z","event_type":"closed","id":518,"issue_id":"BOB-wisp-hy6g9","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:44Z","event_type":"claimed","id":519,"issue_id":"BOB-wisp-bvjn3","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:44Z","event_type":"closed","id":520,"issue_id":"BOB-wisp-bvjn3","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:44Z","event_type":"claimed","id":521,"issue_id":"BOB-wisp-m0ivl","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:44Z","event_type":"closed","id":522,"issue_id":"BOB-wisp-m0ivl","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:44Z","event_type":"claimed","id":523,"issue_id":"BOB-wisp-hf7ec","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:44Z","event_type":"closed","id":524,"issue_id":"BOB-wisp-hf7ec","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:44Z","event_type":"claimed","id":525,"issue_id":"BOB-wisp-uo3lj","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:45Z","event_type":"closed","id":526,"issue_id":"BOB-wisp-uo3lj","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:45Z","event_type":"claimed","id":527,"issue_id":"BOB-wisp-2hxqt","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:45Z","event_type":"closed","id":528,"issue_id":"BOB-wisp-2hxqt","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:48Z","event_type":"claimed","id":529,"issue_id":"BOB-wisp-oxo46","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:49Z","event_type":"closed","id":530,"issue_id":"BOB-wisp-oxo46","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:53:54Z","event_type":"claimed","id":531,"issue_id":"BOB-wisp-ttm14","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:54:00Z","event_type":"closed","id":532,"issue_id":"BOB-wisp-ttm14","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:54:06Z","event_type":"claimed","id":533,"issue_id":"BOB-wisp-834io","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:54:10Z","event_type":"closed","id":534,"issue_id":"BOB-wisp-834io","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:54:17Z","event_type":"claimed","id":535,"issue_id":"BOB-wisp-9sil1","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:54:57Z","event_type":"closed","id":536,"issue_id":"BOB-wisp-9sil1","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:13Z","event_type":"claimed","id":537,"issue_id":"BOB-wisp-n0nxv","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:16Z","event_type":"closed","id":538,"issue_id":"BOB-wisp-n0nxv","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:20Z","event_type":"claimed","id":539,"issue_id":"BOB-wisp-x44iv","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:27Z","event_type":"closed","id":540,"issue_id":"BOB-wisp-x44iv","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:27Z","event_type":"claimed","id":541,"issue_id":"BOB-wisp-gppg6","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:27Z","event_type":"closed","id":542,"issue_id":"BOB-wisp-gppg6","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:28Z","event_type":"claimed","id":543,"issue_id":"BOB-wisp-ogtky","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:28Z","event_type":"closed","id":544,"issue_id":"BOB-wisp-ogtky","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:28Z","event_type":"claimed","id":545,"issue_id":"BOB-wisp-2vg77","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:28Z","event_type":"closed","id":546,"issue_id":"BOB-wisp-2vg77","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:28Z","event_type":"claimed","id":547,"issue_id":"BOB-wisp-6yqwr","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:28Z","event_type":"closed","id":548,"issue_id":"BOB-wisp-6yqwr","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:28Z","event_type":"claimed","id":549,"issue_id":"BOB-wisp-ws6ba","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:28Z","event_type":"closed","id":550,"issue_id":"BOB-wisp-ws6ba","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:28Z","event_type":"claimed","id":551,"issue_id":"BOB-wisp-akw6p","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:29Z","event_type":"closed","id":552,"issue_id":"BOB-wisp-akw6p","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:29Z","event_type":"claimed","id":553,"issue_id":"BOB-wisp-ov29u","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:29Z","event_type":"closed","id":554,"issue_id":"BOB-wisp-ov29u","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:29Z","event_type":"claimed","id":555,"issue_id":"BOB-wisp-s8ddh","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:29Z","event_type":"closed","id":556,"issue_id":"BOB-wisp-s8ddh","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:29Z","event_type":"claimed","id":557,"issue_id":"BOB-wisp-c1bxw","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:29Z","event_type":"closed","id":558,"issue_id":"BOB-wisp-c1bxw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:55:32Z","event_type":"claimed","id":559,"issue_id":"BOB-wisp-3bldi","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:56:12Z","event_type":"closed","id":560,"issue_id":"BOB-wisp-3bldi","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:56:22Z","event_type":"closed","id":561,"issue_id":"BOB-wisp-jvujq","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:56:22Z","event_type":"closed","id":562,"issue_id":"BOB-wisp-mfivi","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:56:51Z","event_type":"claimed","id":563,"issue_id":"BOB-wisp-s3lyq","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:56:54Z","event_type":"closed","id":564,"issue_id":"BOB-wisp-s3lyq","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:05Z","event_type":"claimed","id":565,"issue_id":"BOB-wisp-1ava2","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:11Z","event_type":"closed","id":566,"issue_id":"BOB-wisp-1ava2","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:18Z","event_type":"closed","id":567,"issue_id":"BOB-wisp-ab583","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:22Z","event_type":"closed","id":568,"issue_id":"BOB-wisp-7kzwx","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:22Z","event_type":"closed","id":569,"issue_id":"BOB-wisp-5b08h","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:22Z","event_type":"closed","id":570,"issue_id":"BOB-wisp-rnnq7","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:23Z","event_type":"closed","id":571,"issue_id":"BOB-wisp-98oqw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:23Z","event_type":"closed","id":572,"issue_id":"BOB-wisp-gbdxt","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:23Z","event_type":"closed","id":573,"issue_id":"BOB-wisp-k924c","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:35Z","event_type":"claimed","id":574,"issue_id":"BOB-wisp-bnssh","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:35Z","event_type":"closed","id":575,"issue_id":"BOB-wisp-bnssh","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:41Z","event_type":"claimed","id":576,"issue_id":"BOB-wisp-z9li9","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:45Z","event_type":"closed","id":577,"issue_id":"BOB-wisp-z9li9","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:57:53Z","event_type":"claimed","id":578,"issue_id":"BOB-wisp-9i8xs","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:58:36Z","event_type":"closed","id":579,"issue_id":"BOB-wisp-9i8xs","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:58:55Z","event_type":"claimed","id":580,"issue_id":"BOB-wisp-et4pw","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:58:55Z","event_type":"closed","id":581,"issue_id":"BOB-wisp-et4pw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:58:58Z","event_type":"claimed","id":582,"issue_id":"BOB-wisp-nbft0","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:04Z","event_type":"closed","id":583,"issue_id":"BOB-wisp-nbft0","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:04Z","event_type":"closed","id":584,"issue_id":"BOB-wisp-9ukz2","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:04Z","event_type":"closed","id":585,"issue_id":"BOB-wisp-trbmf","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:04Z","event_type":"closed","id":586,"issue_id":"BOB-wisp-duchb","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:04Z","event_type":"closed","id":587,"issue_id":"BOB-wisp-u9zu0","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:05Z","event_type":"closed","id":588,"issue_id":"BOB-wisp-vqidq","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:05Z","event_type":"closed","id":589,"issue_id":"BOB-wisp-8yl1u","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:05Z","event_type":"closed","id":590,"issue_id":"BOB-wisp-8u8dk","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:12Z","event_type":"claimed","id":591,"issue_id":"BOB-wisp-0z6ri","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:13Z","event_type":"closed","id":592,"issue_id":"BOB-wisp-0z6ri","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:16Z","event_type":"claimed","id":593,"issue_id":"BOB-wisp-gxc0f","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:16Z","event_type":"closed","id":594,"issue_id":"BOB-wisp-gxc0f","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:19Z","event_type":"claimed","id":595,"issue_id":"BOB-wisp-tdp2l","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T14:59:58Z","event_type":"closed","id":596,"issue_id":"BOB-wisp-tdp2l","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:00:06Z","event_type":"closed","id":597,"issue_id":"BOB-wisp-i74bq","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:00:06Z","event_type":"closed","id":598,"issue_id":"BOB-wisp-plnxz","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:00:49Z","event_type":"claimed","id":599,"issue_id":"BOB-wisp-c4ess","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:01Z","event_type":"closed","id":600,"issue_id":"BOB-wisp-c4ess","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:19Z","event_type":"claimed","id":601,"issue_id":"BOB-wisp-xqb3w","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:25Z","event_type":"closed","id":602,"issue_id":"BOB-wisp-xqb3w","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:30Z","event_type":"closed","id":603,"issue_id":"BOB-wisp-ynpt8","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:30Z","event_type":"closed","id":604,"issue_id":"BOB-wisp-m1trn","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:30Z","event_type":"closed","id":605,"issue_id":"BOB-wisp-mejkm","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:30Z","event_type":"closed","id":606,"issue_id":"BOB-wisp-19mc5","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:30Z","event_type":"closed","id":607,"issue_id":"BOB-wisp-buevw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:37Z","event_type":"claimed","id":608,"issue_id":"BOB-wisp-aqbzq","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:37Z","event_type":"closed","id":609,"issue_id":"BOB-wisp-aqbzq","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:44Z","event_type":"claimed","id":610,"issue_id":"BOB-wisp-hq232","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:44Z","event_type":"closed","id":611,"issue_id":"BOB-wisp-hq232","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:52Z","event_type":"claimed","id":612,"issue_id":"BOB-wisp-778uf","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:01:56Z","event_type":"closed","id":613,"issue_id":"BOB-wisp-778uf","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:02:09Z","event_type":"claimed","id":614,"issue_id":"BOB-wisp-suda7","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:02:16Z","event_type":"closed","id":615,"issue_id":"BOB-wisp-suda7","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:02:31Z","event_type":"claimed","id":616,"issue_id":"BOB-wisp-4u6b8","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:02:49Z","event_type":"closed","id":617,"issue_id":"BOB-wisp-4u6b8","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:13Z","event_type":"claimed","id":618,"issue_id":"BOB-wisp-0u2t7","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:18Z","event_type":"closed","id":619,"issue_id":"BOB-wisp-0u2t7","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:22Z","event_type":"claimed","id":620,"issue_id":"BOB-wisp-c012y","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:27Z","event_type":"closed","id":621,"issue_id":"BOB-wisp-c012y","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:27Z","event_type":"closed","id":622,"issue_id":"BOB-wisp-ctyd0","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:27Z","event_type":"closed","id":623,"issue_id":"BOB-wisp-phcbz","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:27Z","event_type":"closed","id":624,"issue_id":"BOB-wisp-5blez","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:27Z","event_type":"closed","id":625,"issue_id":"BOB-wisp-6lokz","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:27Z","event_type":"closed","id":626,"issue_id":"BOB-wisp-v6par","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:27Z","event_type":"closed","id":627,"issue_id":"BOB-wisp-isexc","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:27Z","event_type":"closed","id":628,"issue_id":"BOB-wisp-wypps","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:32Z","event_type":"claimed","id":629,"issue_id":"BOB-wisp-yklkx","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:36Z","event_type":"closed","id":630,"issue_id":"BOB-wisp-yklkx","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:36Z","event_type":"claimed","id":631,"issue_id":"BOB-wisp-8fukh","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:39Z","event_type":"closed","id":632,"issue_id":"BOB-wisp-8fukh","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:39Z","event_type":"claimed","id":633,"issue_id":"BOB-wisp-h9vkn","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:03:57Z","event_type":"closed","id":634,"issue_id":"BOB-wisp-h9vkn","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:11Z","event_type":"claimed","id":635,"issue_id":"BOB-wisp-ang0l","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:15Z","event_type":"closed","id":636,"issue_id":"BOB-wisp-ang0l","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:15Z","event_type":"claimed","id":637,"issue_id":"BOB-wisp-kn4zl","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:25Z","event_type":"closed","id":638,"issue_id":"BOB-wisp-kn4zl","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:25Z","event_type":"closed","id":639,"issue_id":"BOB-wisp-sqmrd","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:25Z","event_type":"closed","id":640,"issue_id":"BOB-wisp-7b0vr","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:25Z","event_type":"closed","id":641,"issue_id":"BOB-wisp-sop6w","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:25Z","event_type":"closed","id":642,"issue_id":"BOB-wisp-7i13t","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:25Z","event_type":"closed","id":643,"issue_id":"BOB-wisp-japbf","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:25Z","event_type":"closed","id":644,"issue_id":"BOB-wisp-c008a","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:25Z","event_type":"closed","id":645,"issue_id":"BOB-wisp-31f2y","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:25Z","event_type":"closed","id":646,"issue_id":"BOB-wisp-jwhub","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:26Z","event_type":"closed","id":647,"issue_id":"BOB-wisp-kvvim","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:26Z","event_type":"closed","id":648,"issue_id":"BOB-wisp-thxt4","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:34Z","event_type":"closed","id":649,"issue_id":"BOB-wisp-9mtys","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:35Z","event_type":"closed","id":650,"issue_id":"BOB-wisp-pq26g","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:04:35Z","event_type":"closed","id":651,"issue_id":"BOB-wisp-r0gsz","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:00Z","event_type":"claimed","id":652,"issue_id":"BOB-wisp-yrzuw","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:02Z","event_type":"closed","id":653,"issue_id":"BOB-wisp-yrzuw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:14Z","event_type":"claimed","id":654,"issue_id":"BOB-wisp-61nsi","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:18Z","event_type":"closed","id":655,"issue_id":"BOB-wisp-61nsi","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:28Z","event_type":"closed","id":656,"issue_id":"BOB-wisp-0b833","new_value":"Queue empty, no branches to rebase","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:29Z","event_type":"closed","id":657,"issue_id":"BOB-wisp-b59tr","new_value":"Queue empty, no tests to run","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:32Z","event_type":"closed","id":658,"issue_id":"BOB-wisp-oi4rz","new_value":"Queue empty, no failures to handle","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:32Z","event_type":"closed","id":659,"issue_id":"BOB-wisp-48rux","new_value":"Queue empty, no branches to merge","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:33Z","event_type":"closed","id":660,"issue_id":"BOB-wisp-xocdu","new_value":"Queue empty, no loop needed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:48Z","event_type":"claimed","id":661,"issue_id":"BOB-wisp-cz926","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:53Z","event_type":"closed","id":662,"issue_id":"BOB-wisp-cz926","new_value":"Patrol: empty queue, 0 branches merged, 0 conflicts, no escalations","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:58Z","event_type":"claimed","id":663,"issue_id":"BOB-wisp-52awz","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:05:58Z","event_type":"closed","id":664,"issue_id":"BOB-wisp-52awz","new_value":"Auto-land disabled, nothing to do.","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:06:09Z","event_type":"claimed","id":665,"issue_id":"BOB-wisp-e02ou","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:06:14Z","event_type":"closed","id":666,"issue_id":"BOB-wisp-e02ou","new_value":"Healthy: RSS 3MB, session 65m, context low. Continue.","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:06:25Z","event_type":"claimed","id":667,"issue_id":"BOB-wisp-xotr7","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:06:29Z","event_type":"closed","id":668,"issue_id":"BOB-wisp-xotr7","new_value":"Inbox empty, no orphaned MRs. Clean.","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:06:36Z","event_type":"claimed","id":669,"issue_id":"BOB-wisp-lnhld","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:16Z","event_type":"closed","id":670,"issue_id":"BOB-wisp-lnhld","new_value":"Timeout, no signal. Looping to next patrol cycle.","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:35Z","event_type":"claimed","id":671,"issue_id":"BOB-wisp-vyn72","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:35Z","event_type":"closed","id":672,"issue_id":"BOB-wisp-vyn72","new_value":"No messages","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:43Z","event_type":"claimed","id":673,"issue_id":"BOB-wisp-ev9js","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:47Z","event_type":"closed","id":674,"issue_id":"BOB-wisp-ev9js","new_value":"Queue empty","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:48Z","event_type":"closed","id":675,"issue_id":"BOB-wisp-p86iu","new_value":"Queue empty, skip","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:49Z","event_type":"closed","id":676,"issue_id":"BOB-wisp-o4rq3","new_value":"Queue empty, skip","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:49Z","event_type":"closed","id":677,"issue_id":"BOB-wisp-czjq9","new_value":"Queue empty, skip","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:52Z","event_type":"closed","id":678,"issue_id":"BOB-wisp-3j2cd","new_value":"Queue empty, skip","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:53Z","event_type":"closed","id":679,"issue_id":"BOB-wisp-unhdm","new_value":"Queue empty, skip","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:56Z","event_type":"closed","id":680,"issue_id":"BOB-wisp-yv94q","new_value":"Patrol: empty queue, 0 branches merged, no issues","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:07:56Z","event_type":"closed","id":681,"issue_id":"BOB-wisp-do5yg","new_value":"Auto-land disabled","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:08:01Z","event_type":"closed","id":682,"issue_id":"BOB-wisp-295l8","new_value":"Healthy: RSS 3MB, session light, context low","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:08:01Z","event_type":"closed","id":683,"issue_id":"BOB-wisp-jafwq","new_value":"Inbox empty, no orphaned MRs","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:08:44Z","event_type":"closed","id":684,"issue_id":"BOB-wisp-k21ca","new_value":"Timeout, no signal. Looping to cycle 3.","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:05Z","event_type":"closed","id":685,"issue_id":"BOB-wisp-1sd7w","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:05Z","event_type":"closed","id":686,"issue_id":"BOB-wisp-sr7dr","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:22Z","event_type":"claimed","id":687,"issue_id":"BOB-wisp-6cqi3","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:30Z","event_type":"closed","id":688,"issue_id":"BOB-wisp-6cqi3","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:39Z","event_type":"claimed","id":689,"issue_id":"BOB-wisp-7a2bv","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:45Z","event_type":"closed","id":690,"issue_id":"BOB-wisp-7a2bv","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:50Z","event_type":"closed","id":691,"issue_id":"BOB-wisp-9nvfw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:50Z","event_type":"closed","id":692,"issue_id":"BOB-wisp-ievfg","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:50Z","event_type":"closed","id":693,"issue_id":"BOB-wisp-h2wzk","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:50Z","event_type":"closed","id":694,"issue_id":"BOB-wisp-9645x","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:50Z","event_type":"closed","id":695,"issue_id":"BOB-wisp-mfe42","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:54Z","event_type":"claimed","id":696,"issue_id":"BOB-wisp-czjf1","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:09:54Z","event_type":"closed","id":697,"issue_id":"BOB-wisp-czjf1","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:10:01Z","event_type":"claimed","id":698,"issue_id":"BOB-wisp-toch2","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:10:01Z","event_type":"closed","id":699,"issue_id":"BOB-wisp-toch2","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:10:04Z","event_type":"claimed","id":700,"issue_id":"BOB-wisp-3xg4b","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:10:09Z","event_type":"closed","id":701,"issue_id":"BOB-wisp-3xg4b","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:10:14Z","event_type":"claimed","id":702,"issue_id":"BOB-wisp-rxg94","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:10:18Z","event_type":"closed","id":703,"issue_id":"BOB-wisp-rxg94","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:10:24Z","event_type":"claimed","id":704,"issue_id":"BOB-wisp-8scbg","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:10:52Z","event_type":"closed","id":705,"issue_id":"BOB-wisp-8scbg","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:12Z","event_type":"claimed","id":706,"issue_id":"BOB-wisp-2gdoz","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:16Z","event_type":"closed","id":707,"issue_id":"BOB-wisp-2gdoz","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:20Z","event_type":"claimed","id":708,"issue_id":"BOB-wisp-rye55","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:26Z","event_type":"closed","id":709,"issue_id":"BOB-wisp-rye55","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:26Z","event_type":"closed","id":710,"issue_id":"BOB-wisp-h2mxg","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:26Z","event_type":"closed","id":711,"issue_id":"BOB-wisp-8ni43","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:26Z","event_type":"closed","id":712,"issue_id":"BOB-wisp-o46mi","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:26Z","event_type":"closed","id":713,"issue_id":"BOB-wisp-r3g26","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:26Z","event_type":"closed","id":714,"issue_id":"BOB-wisp-tazcc","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:26Z","event_type":"closed","id":715,"issue_id":"BOB-wisp-0y9hv","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:30Z","event_type":"claimed","id":716,"issue_id":"BOB-wisp-6b7bb","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:30Z","event_type":"closed","id":717,"issue_id":"BOB-wisp-6b7bb","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:33Z","event_type":"claimed","id":718,"issue_id":"BOB-wisp-mxn31","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:33Z","event_type":"closed","id":719,"issue_id":"BOB-wisp-mxn31","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:34Z","event_type":"claimed","id":720,"issue_id":"BOB-wisp-glm9l","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:34Z","event_type":"closed","id":721,"issue_id":"BOB-wisp-glm9l","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:11:37Z","event_type":"claimed","id":722,"issue_id":"BOB-wisp-kb6e2","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:12Z","event_type":"closed","id":723,"issue_id":"BOB-wisp-kb6e2","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:24Z","event_type":"claimed","id":724,"issue_id":"BOB-wisp-v22kj","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:28Z","event_type":"closed","id":725,"issue_id":"BOB-wisp-v22kj","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:31Z","event_type":"claimed","id":726,"issue_id":"BOB-wisp-tqx45","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:37Z","event_type":"closed","id":727,"issue_id":"BOB-wisp-tqx45","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:38Z","event_type":"closed","id":728,"issue_id":"BOB-wisp-j929c","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:38Z","event_type":"closed","id":729,"issue_id":"BOB-wisp-bd4p5","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:38Z","event_type":"closed","id":730,"issue_id":"BOB-wisp-76gjw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:38Z","event_type":"closed","id":731,"issue_id":"BOB-wisp-fvuzz","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:38Z","event_type":"closed","id":732,"issue_id":"BOB-wisp-qwkyo","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:38Z","event_type":"closed","id":733,"issue_id":"BOB-wisp-lm73t","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:38Z","event_type":"closed","id":734,"issue_id":"BOB-wisp-c7vy3","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:38Z","event_type":"closed","id":735,"issue_id":"BOB-wisp-84uby","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:38Z","event_type":"closed","id":736,"issue_id":"BOB-wisp-sh11q","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:12:41Z","event_type":"claimed","id":737,"issue_id":"BOB-wisp-9pczw","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:21Z","event_type":"closed","id":738,"issue_id":"BOB-wisp-9pczw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:41Z","event_type":"claimed","id":739,"issue_id":"BOB-wisp-3ronw","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:45Z","event_type":"closed","id":740,"issue_id":"BOB-wisp-3ronw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:45Z","event_type":"claimed","id":741,"issue_id":"BOB-wisp-lq7l2","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:51Z","event_type":"closed","id":742,"issue_id":"BOB-wisp-lq7l2","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:51Z","event_type":"closed","id":743,"issue_id":"BOB-wisp-h69yx","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:51Z","event_type":"closed","id":744,"issue_id":"BOB-wisp-tgb9m","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:51Z","event_type":"closed","id":745,"issue_id":"BOB-wisp-qjgcu","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:51Z","event_type":"closed","id":746,"issue_id":"BOB-wisp-za07a","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:51Z","event_type":"closed","id":747,"issue_id":"BOB-wisp-f1gy5","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:51Z","event_type":"closed","id":748,"issue_id":"BOB-wisp-ni1dw","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:51Z","event_type":"closed","id":749,"issue_id":"BOB-wisp-qpoli","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:52Z","event_type":"closed","id":750,"issue_id":"BOB-wisp-gaews","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:52Z","event_type":"closed","id":751,"issue_id":"BOB-wisp-mlky9","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:13:52Z","event_type":"claimed","id":752,"issue_id":"BOB-wisp-7a16o","new_value":"","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:15:11Z","event_type":"closed","id":753,"issue_id":"BOB-wisp-7a16o","new_value":"Closed","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:15:19Z","event_type":"closed","id":754,"issue_id":"BOB-wisp-773mr","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:15:19Z","event_type":"closed","id":755,"issue_id":"BOB-wisp-8qeyp","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:15:19Z","event_type":"closed","id":756,"issue_id":"BOB-wisp-dxibx","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"bobbin/refinery","comment":"","created_at":"2026-02-27T15:15:19Z","event_type":"closed","id":757,"issue_id":"BOB-wisp-y5fy7","new_value":"stale patrol cleanup","old_value":""}
+{"actor":"aegis/crew/ian","comment":"","created_at":"2026-02-27T21:59:59Z","event_type":"created","id":758,"issue_id":"bo-bobbin-witness","new_value":"","old_value":""}
+{"actor":"aegis/crew/ian","comment":"","created_at":"2026-02-27T22:00:00Z","event_type":"created","id":759,"issue_id":"bo-bobbin-refinery","new_value":"","old_value":""}
+{"actor":"aegis/crew/ian","comment":"","created_at":"2026-02-27T22:00:00Z","event_type":"created","id":760,"issue_id":"bo-bobbin-crew-goldblum","new_value":"","old_value":""}
+{"actor":"aegis/crew/ian","comment":"","created_at":"2026-02-27T22:00:00Z","event_type":"created","id":761,"issue_id":"bo-bobbin-crew-seth","new_value":"","old_value":""}
+{"actor":"aegis/crew/ian","comment":"","created_at":"2026-02-27T22:00:00Z","event_type":"created","id":762,"issue_id":"bo-bobbin-crew-strider","new_value":"","old_value":""}
