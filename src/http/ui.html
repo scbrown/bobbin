@@ -212,6 +212,7 @@ td.mono{font-family:var(--mono)}
 
 <script>
 const API = '';  // same origin
+let _sources = null;  // populated from /status
 
 // Tab navigation
 document.querySelectorAll('.tab').forEach(tab => {
@@ -255,6 +256,7 @@ async function loadStatus() {
       fetch(API + '/status').then(r => r.json()),
       fetch(API + '/metrics').then(r => r.text())
     ]);
+    _sources = status.sources || null;
     const ix = status.index;
     document.getElementById('status-stats').innerHTML = `
       <div class="card"><div class="card-header">Files Indexed</div><div class="stat-value accent">${ix.total_files.toLocaleString()}</div></div>
@@ -285,16 +287,36 @@ function relPath(fp) {
   return fp.startsWith(INDEX_PREFIX) ? fp.slice(INDEX_PREFIX.length) : fp;
 }
 
-// Build a link to the file on git.svc
+// Build a link to the file source using configured URL templates
 function repoLink(fp, startLine) {
   const rel = relPath(fp);
   const slashIdx = rel.indexOf('/');
   if (slashIdx < 0) return null;
   const repo = rel.slice(0, slashIdx);
   const filePath = rel.slice(slashIdx + 1);
-  let url = `http://git.svc/stiwi/${repo}/src/branch/main/${filePath}`;
-  if (startLine) url += `#L${startLine}`;
+  const template = (_sources && _sources.repos && _sources.repos[repo])
+    || (_sources && _sources.default_url)
+    || 'http://git.svc/stiwi/{repo}/src/branch/main/{path}#L{line}';
+  let url = template.replace('{repo}', repo).replace('{path}', filePath);
+  if (startLine) {
+    url = url.replace('{line}', startLine);
+  } else {
+    // Strip #L{line} fragment if no line number
+    url = url.replace(/#L\{line\}/, '').replace(/\{line\}/, '');
+  }
   return url;
+}
+
+// Build a link to the repo root (for repo cards)
+function repoRootLink(repoName) {
+  const template = (_sources && _sources.repos && _sources.repos[repoName])
+    || (_sources && _sources.default_url)
+    || 'http://git.svc/stiwi/{repo}/src/branch/main/{path}#L{line}';
+  // Strip path/line from template to get repo root URL
+  return template
+    .replace(/\/\{path\}.*$/, '')
+    .replace(/\{path\}.*$/, '')
+    .replace('{repo}', repoName);
 }
 
 // Search
@@ -379,7 +401,7 @@ async function loadRepos() {
         return `
           <div class="card" style="cursor:pointer" onclick="loadRepoFiles('${esc(repo.name)}')">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
-              <a class="result-path" style="font-size:0.95rem;font-weight:600" href="http://git.svc/stiwi/${esc(repo.name)}" target="_blank" onclick="event.stopPropagation()">${esc(repo.name)}</a>
+              <a class="result-path" style="font-size:0.95rem;font-weight:600" href="${repoRootLink(repo.name)}" target="_blank" onclick="event.stopPropagation()">${esc(repo.name)}</a>
             </div>
             <div style="display:flex;gap:1.5rem;margin-bottom:0.5rem">
               <div><span class="stat-value accent" style="font-size:1.2rem">${repo.file_count}</span> <span style="color:var(--dim);font-size:0.8rem">files</span></div>

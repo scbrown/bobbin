@@ -15,6 +15,7 @@ pub struct Config {
     pub beads: BeadsConfig,
     pub archive: ArchiveConfig,
     pub access: AccessConfig,
+    pub sources: SourcesConfig,
 }
 
 /// Configuration for indexing behavior
@@ -417,6 +418,38 @@ pub struct RoleConfig {
     /// Repos this role cannot see (glob patterns, deny takes precedence over allow)
     #[serde(default)]
     pub deny: Vec<String>,
+}
+
+/// Maps indexed repo short names to their web browse URLs.
+///
+/// Example config:
+/// ```toml
+/// [sources]
+/// default_url = "http://git.svc/stiwi/{repo}/src/branch/main/{path}"
+///
+/// [sources.repos]
+/// beads = "https://github.com/scbrown/beads/blob/main/{path}"
+/// bobbin = "https://github.com/scbrown/bobbin/blob/main/{path}"
+/// ```
+///
+/// URL templates support `{repo}`, `{path}`, and `{line}` placeholders.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SourcesConfig {
+    /// Default URL template for repos not explicitly listed.
+    /// Placeholders: {repo}, {path}, {line}
+    pub default_url: String,
+    /// Per-repo URL overrides. Key = repo short name, value = URL template.
+    pub repos: std::collections::HashMap<String, String>,
+}
+
+impl Default for SourcesConfig {
+    fn default() -> Self {
+        Self {
+            default_url: "http://git.svc/stiwi/{repo}/src/branch/main/{path}#L{line}".to_string(),
+            repos: std::collections::HashMap::new(),
+        }
+    }
 }
 
 impl Config {

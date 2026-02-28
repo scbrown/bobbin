@@ -21,7 +21,15 @@ use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{MetadataStore, VectorStore};
 use crate::types::{ChunkType, MatchType, SearchResult};
 
+use crate::access::RepoFilter;
+
 use super::AppState;
+
+/// Build a RepoFilter from app state and an optional role query param.
+fn resolve_filter(state: &AppState, role: Option<&str>) -> RepoFilter {
+    let resolved = RepoFilter::resolve_role(role);
+    RepoFilter::from_config(&state.config.access, &resolved)
+}
 
 /// Build the axum router with all routes
 pub(super) fn router(state: Arc<AppState>) -> axum::Router {
@@ -98,6 +106,8 @@ struct SearchParams {
     limit: Option<usize>,
     /// Filter by repository name
     repo: Option<String>,
+    /// Role for access filtering
+    role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -208,6 +218,10 @@ pub(super) async fn search(
         }
     };
 
+    // Apply role-based access filtering
+    let access = resolve_filter(&state, params.role.as_deref());
+    let results = access.filter_vec(results, |r| RepoFilter::repo_from_path(&r.chunk.file_path));
+
     let filtered: Vec<_> = if let Some(ref chunk_type) = type_filter {
         results
             .into_iter()
@@ -277,6 +291,7 @@ pub(super) async fn get_chunk(
 struct StatusResponse {
     status: String,
     index: crate::types::IndexStats,
+    sources: crate::config::SourcesConfig,
 }
 
 // -- /healthz (lightweight liveness probe — does NOT query the index) --
@@ -448,6 +463,7 @@ pub(super) async fn status(
     Ok(Json(StatusResponse {
         status: "ok".to_string(),
         index: stats,
+        sources: state.config.sources.clone(),
     }))
 }
 
@@ -569,6 +585,8 @@ struct GrepParams {
     limit: Option<usize>,
     /// Filter by repository name
     repo: Option<String>,
+    /// Role for access filtering
+    role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -673,6 +691,10 @@ pub(super) async fn grep(
         .search_fts(&fts_query, search_limit, params.repo.as_deref())
         .await
         .map_err(|e| internal_error(e.into()))?;
+
+    // Apply role-based access filtering
+    let access = resolve_filter(&state, params.role.as_deref());
+    let results = access.filter_vec(results, |r| RepoFilter::repo_from_path(&r.chunk.file_path));
 
     let filtered: Vec<SearchResult> = results
         .into_iter()
