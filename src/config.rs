@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Config {
+    pub server: ServerConfig,
     pub index: IndexConfig,
     pub embedding: EmbeddingConfig,
     pub search: SearchConfig,
@@ -17,6 +18,22 @@ pub struct Config {
     pub access: AccessConfig,
     pub sources: SourcesConfig,
 }
+
+/// Configuration for remote server (thin-client mode)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ServerConfig {
+    /// Remote bobbin HTTP server URL (e.g. "http://search.svc")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+/// Global configuration loaded from ~/.config/bobbin/config.toml.
+///
+/// Uses the same Config struct — supports all config options.
+/// This provides defaults for all bobbin invocations on this machine.
+/// Per-repo config and CLI flags take precedence.
+pub type GlobalConfig = Config;
 
 /// Configuration for indexing behavior
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -499,6 +516,51 @@ impl Config {
             .context("Failed to determine user directories")?;
         Ok(project_dirs.cache_dir().join("models"))
     }
+
+    /// Get the global config directory (~/.config/bobbin/)
+    pub fn global_config_dir() -> Option<PathBuf> {
+        directories::ProjectDirs::from("dev", "bobbin", "bobbin")
+            .map(|dirs| dirs.config_dir().to_path_buf())
+    }
+
+    /// Get the global config file path (~/.config/bobbin/config.toml)
+    pub fn global_config_path() -> Option<PathBuf> {
+        Self::global_config_dir().map(|dir| dir.join("config.toml"))
+    }
+}
+
+// --- Global config helpers (on Config, used via GlobalConfig alias) ---
+
+impl Config {
+    /// Load global config from ~/.config/bobbin/config.toml.
+    /// Returns default (empty) config if file doesn't exist.
+    pub fn load_global() -> Config {
+        Self::global_config_path()
+            .and_then(|path| {
+                if path.exists() {
+                    std::fs::read_to_string(&path).ok()
+                } else {
+                    None
+                }
+            })
+            .and_then(|content| toml::from_str(&content).ok())
+            .unwrap_or_default()
+    }
+
+    /// Save this config as the global config at ~/.config/bobbin/config.toml.
+    pub fn save_global(&self) -> Result<()> {
+        let path = Self::global_config_path()
+            .context("Failed to determine global config path")?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create global config directory: {}", parent.display())
+            })?;
+        }
+        let content = toml::to_string_pretty(self).context("Failed to serialize global config")?;
+        std::fs::write(&path, content)
+            .with_context(|| format!("Failed to write global config: {}", path.display()))
+    }
+
 }
 
 #[cfg(test)]
@@ -785,5 +847,48 @@ budget = 300
         let deserialized: EmbeddingConfig = toml::from_str(&serialized).unwrap();
         assert_eq!(deserialized.backend, EmbeddingBackend::OpenaiApi);
         assert_eq!(deserialized.dimensions, Some(768));
+    }
+
+    #[test]
+    fn test_server_config_default_is_none() {
+        let config = Config::default();
+        assert!(config.server.url.is_none());
+    }
+
+    #[test]
+    fn test_server_config_parse() {
+        let toml_str = r#"
+[server]
+url = "http://search.svc"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.server.url.as_deref(), Some("http://search.svc"));
+    }
+
+    #[test]
+    fn test_legacy_config_without_server_section() {
+        // Old config without [server] should still parse fine
+        let toml_str = r#"
+[embedding]
+model = "all-MiniLM-L6-v2"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.server.url.is_none());
+    }
+
+    #[test]
+    fn test_global_config_roundtrip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("config.toml");
+
+        let mut config = Config::default();
+        config.server.url = Some("http://search.svc".to_string());
+
+        let content = toml::to_string_pretty(&config).unwrap();
+        std::fs::write(&config_path, &content).unwrap();
+
+        let loaded: Config =
+            toml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+        assert_eq!(loaded.server.url.as_deref(), Some("http://search.svc"));
     }
 }

@@ -47,7 +47,7 @@ pub struct Cli {
     verbose: bool,
 
     /// Use a remote bobbin HTTP server instead of local storage
-    #[arg(long, global = true, value_name = "URL")]
+    #[arg(long, global = true, value_name = "URL", env = "BOBBIN_SERVER")]
     server: Option<String>,
 
     /// Metrics source identity (also reads BOBBIN_METRICS_SOURCE env var)
@@ -168,11 +168,13 @@ impl Commands {
 impl Cli {
     pub async fn run(self) -> Result<()> {
         let resolved_role = crate::access::RepoFilter::resolve_role(self.role.as_deref());
+        // Resolve server URL: --server flag / BOBBIN_SERVER env > repo config > global config
+        let resolved_server = resolve_server_url(self.server);
         let output = OutputConfig {
             json: self.json,
             quiet: self.quiet,
             verbose: self.verbose,
-            server: self.server,
+            server: resolved_server,
             role: resolved_role,
         };
 
@@ -261,9 +263,35 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
     }
 }
 
+/// Resolve the effective server URL from multiple sources.
+///
+/// Priority: cli_server (--server flag / BOBBIN_SERVER env) > repo config > global config
+fn resolve_server_url(cli_server: Option<String>) -> Option<String> {
+    use crate::config::Config;
+
+    // 1. CLI flag or BOBBIN_SERVER env (already resolved by clap)
+    if cli_server.is_some() {
+        return cli_server;
+    }
+
+    // 2. Repo-level config [server].url
+    if let Some(repo_root) = find_bobbin_root() {
+        let config_path = Config::config_path(&repo_root);
+        if let Ok(config) = Config::load(&config_path) {
+            if config.server.url.is_some() {
+                return config.server.url;
+            }
+        }
+    }
+
+    // 3. Global config [server].url
+    let global = Config::load_global();
+    global.server.url
+}
+
 /// Walk up from cwd to find a directory containing `.bobbin/`.
 /// Returns None if not found (bobbin not initialized).
-fn find_bobbin_root() -> Option<std::path::PathBuf> {
+pub fn find_bobbin_root() -> Option<std::path::PathBuf> {
     let mut current = std::env::current_dir().ok()?;
     loop {
         if current.join(".bobbin").is_dir() {
