@@ -1,5 +1,6 @@
 //! HTTP request handlers for the Bobbin REST API.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -450,6 +451,67 @@ pub(super) async fn list_commands(
 
 // -- /status --
 
+/// Derive a browse URL template from a git remote URL.
+/// Returns None if the remote URL can't be parsed.
+fn browse_url_from_remote(remote: &str) -> Option<String> {
+    // GitHub: https://github.com/owner/repo.git or git@github.com:owner/repo.git
+    if remote.contains("github.com") {
+        let path = remote
+            .trim_end_matches(".git")
+            .rsplit("github.com")
+            .next()?;
+        let path = path.trim_start_matches('/').trim_start_matches(':');
+        return Some(format!(
+            "https://github.com/{path}/blob/main/{{path}}#L{{line}}"
+        ));
+    }
+    // Forgejo: http://git.lan:3000/owner/repo.git or http://git.svc/owner/repo.git
+    if remote.contains("git.lan") || remote.contains("git.svc") {
+        let path = remote
+            .trim_end_matches(".git")
+            .rsplit('/')
+            .take(2)
+            .collect::<Vec<_>>();
+        if path.len() == 2 {
+            let owner = path[1];
+            let repo = path[0];
+            return Some(format!(
+                "http://git.svc/{owner}/{repo}/src/branch/main/{{path}}#L{{line}}"
+            ));
+        }
+    }
+    None
+}
+
+/// Auto-detect source URLs from git remotes for all indexed repos,
+/// merged with manual overrides from config.
+fn resolve_sources(state: &AppState) -> crate::config::SourcesConfig {
+    let mut sources = state.config.sources.clone();
+    let repos_dir = state.repo_root.join("repos");
+    if let Ok(entries) = std::fs::read_dir(&repos_dir) {
+        for entry in entries.flatten() {
+            let repo_name = entry.file_name().to_string_lossy().to_string();
+            // Skip repos that already have manual overrides
+            if sources.repos.contains_key(&repo_name) {
+                continue;
+            }
+            let repo_path = entry.path();
+            if let Ok(output) = std::process::Command::new("git")
+                .args(["-C", &repo_path.to_string_lossy(), "remote", "get-url", "origin"])
+                .output()
+            {
+                if output.status.success() {
+                    let remote = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if let Some(url) = browse_url_from_remote(&remote) {
+                        sources.repos.insert(repo_name, url);
+                    }
+                }
+            }
+        }
+    }
+    sources
+}
+
 pub(super) async fn status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<StatusResponse>, (StatusCode, Json<ErrorBody>)> {
@@ -463,7 +525,7 @@ pub(super) async fn status(
     Ok(Json(StatusResponse {
         status: "ok".to_string(),
         index: stats,
-        sources: state.config.sources.clone(),
+        sources: resolve_sources(&state),
     }))
 }
 
