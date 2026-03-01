@@ -96,9 +96,16 @@ impl RepoFilter {
     /// Extract repo name from a file path like `/var/lib/bobbin/repos/aegis/src/main.rs`.
     /// Returns the segment after "repos/" or the first path component.
     pub fn repo_from_path(path: &str) -> &str {
-        // Look for "repos/<name>/" pattern
+        // Look for "/repos/<name>/" pattern (absolute paths)
         if let Some(idx) = path.find("/repos/") {
             let after = &path[idx + 7..]; // skip "/repos/"
+            if let Some(slash) = after.find('/') {
+                return &after[..slash];
+            }
+            return after;
+        }
+        // Handle "repos/<name>/..." (relative paths starting with repos/)
+        if let Some(after) = path.strip_prefix("repos/") {
             if let Some(slash) = after.find('/') {
                 return &after[..slash];
             }
@@ -322,6 +329,15 @@ mod tests {
             "homelab-mcp"
         );
         assert_eq!(RepoFilter::repo_from_path("bobbin/src/lib.rs"), "bobbin");
+        // Relative paths starting with "repos/"
+        assert_eq!(
+            RepoFilter::repo_from_path("repos/reckoning/packages/client/src/main.ts"),
+            "reckoning"
+        );
+        assert_eq!(
+            RepoFilter::repo_from_path("repos/cv/resume.md"),
+            "cv"
+        );
     }
 
     #[test]
