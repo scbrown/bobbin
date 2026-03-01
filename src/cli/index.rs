@@ -824,11 +824,13 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
-    // Index intent archive records if enabled
+    // Index archive records if enabled (HLA, Pensieve, custom sources)
     let mut archive_indexed: usize = 0;
-    if config.archive.enabled && !config.archive.archive_path.is_empty() {
+    let has_archive_sources = !config.archive.sources.is_empty()
+        || !config.archive.archive_path.is_empty();
+    if config.archive.enabled && has_archive_sources {
         if !output.quiet && !output.json {
-            println!("  Indexing intent archive...");
+            println!("  Indexing archives...");
         }
 
         match crate::index::archive::fetch_archive(&config.archive) {

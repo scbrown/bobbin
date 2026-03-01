@@ -382,25 +382,83 @@ impl Default for BeadsConfig {
     }
 }
 
-/// Configuration for the Human Intent Archive integration
+/// Configuration for archive indexing (human directives, agent memories, etc.)
+///
+/// Archives are directories of markdown files with YAML frontmatter.
+/// Each source is identified by a schema string in the frontmatter and
+/// tagged with a configurable label for filtering in search results.
+///
+/// Example config:
+/// ```toml
+/// [archive]
+/// enabled = true
+///
+/// [[archive.sources]]
+/// name = "hla"
+/// path = "/mnt/hla/records"
+/// schema = "human-intent"
+/// name_field = "channel"
+///
+/// [[archive.sources]]
+/// name = "pensieve"
+/// path = "/mnt/pensieve/records"
+/// schema = "agent-memory"
+/// name_field = "agent"
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ArchiveConfig {
-    /// Enable intent archive indexing
+    /// Enable archive indexing
     pub enabled: bool,
-    /// Path to archive records directory
+    /// Archive sources to index
+    pub sources: Vec<ArchiveSource>,
+    /// Legacy: single archive path (use sources[] instead).
+    /// If set and no sources[] defined, treated as a source with
+    /// name="hla", schema="human-intent", name_field="channel".
+    #[serde(default)]
     pub archive_path: String,
     /// Webhook secret for push notifications (empty = no auth)
     pub webhook_secret: String,
+}
+
+/// A single archive source definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveSource {
+    /// Label for this source (used as language tag in chunks, and as path prefix).
+    /// Also used as the `source` filter value in search queries.
+    pub name: String,
+    /// Filesystem path to the archive records directory.
+    pub path: String,
+    /// String to match in YAML frontmatter to identify records from this source.
+    /// E.g., "human-intent" matches `schema: human-intent/v2`.
+    pub schema: String,
+    /// Frontmatter field to use as the name prefix in chunk names.
+    /// E.g., "channel" → chunk name becomes "{channel_value}/{record_id}".
+    /// If empty, chunk name is just the record ID.
+    #[serde(default)]
+    pub name_field: String,
 }
 
 impl Default for ArchiveConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            sources: vec![],
             archive_path: String::new(),
             webhook_secret: String::new(),
         }
+    }
+}
+
+impl ArchiveConfig {
+    /// Get the effective list of archive sources, handling legacy config.
+    pub fn effective_sources(&self) -> Vec<&ArchiveSource> {
+        if !self.sources.is_empty() {
+            return self.sources.iter().collect();
+        }
+        // No sources — nothing to return even with legacy path
+        // (legacy handled in fetch_archive via LEGACY_HLA_SOURCE)
+        vec![]
     }
 }
 

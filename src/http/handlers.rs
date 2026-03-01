@@ -1903,7 +1903,11 @@ struct ArchiveSearchParams {
     limit: Option<usize>,
     after: Option<String>,
     before: Option<String>,
-    channel: Option<String>,
+    /// Filter by name_field value (e.g., channel name for HLA, agent name for Pensieve)
+    #[serde(rename = "filter")]
+    name_filter: Option<String>,
+    /// Filter by archive source name (e.g., "hla", "pensieve")
+    source: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1930,6 +1934,12 @@ pub(super) async fn archive_search(
 ) -> Result<Json<ArchiveSearchResponse>, (StatusCode, Json<ErrorBody>)> {
     let limit = params.limit.unwrap_or(10);
     let mode = params.mode.as_deref().unwrap_or("hybrid");
+
+    // Collect valid archive source names for filtering
+    let archive_languages: Vec<String> = archive_source_names(&state.config.archive);
+    if archive_languages.is_empty() {
+        return Err(bad_request("No archive sources configured".to_string()));
+    }
 
     let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
     let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
@@ -1959,13 +1969,25 @@ pub(super) async fn archive_search(
         }
     };
 
-    // Filter to transcript chunks only
+    // Filter to archive chunks only (language matches a configured source name)
     let mut filtered: Vec<SearchResult> = search_results
         .into_iter()
-        .filter(|r| r.chunk.language == "transcript")
+        .filter(|r| {
+            // Legacy compat: also accept "transcript" as HLA
+            archive_languages.contains(&r.chunk.language)
+                || r.chunk.language == "transcript"
+        })
         .collect();
 
-    // Apply date filters on file_path (archive:YYYY/MM/DD/...)
+    // Apply source filter (e.g., source=hla to only get HLA results)
+    if let Some(ref source) = params.source {
+        filtered.retain(|r| {
+            &r.chunk.language == source
+                || (source == "hla" && r.chunk.language == "transcript")
+        });
+    }
+
+    // Apply date filters on file_path ({source}:YYYY/MM/DD/...)
     if let Some(ref after) = params.after {
         filtered.retain(|r| {
             extract_date_from_archive_path(&r.chunk.file_path)
@@ -1979,13 +2001,13 @@ pub(super) async fn archive_search(
         });
     }
 
-    // Apply channel filter on chunk name (channel/id format)
-    if let Some(ref channel) = params.channel {
+    // Apply name_field filter on chunk name (e.g., "telegram/" or "aegis/crew/arnold/")
+    if let Some(ref name_filter) = params.name_filter {
         filtered.retain(|r| {
             r.chunk
                 .name
                 .as_ref()
-                .is_some_and(|n| n.starts_with(&format!("{}/", channel)))
+                .is_some_and(|n| n.starts_with(&format!("{}/", name_filter)))
         });
     }
 
@@ -1997,13 +2019,7 @@ pub(super) async fn archive_search(
         .map(|r| ArchiveResultItem {
             id: r.chunk.name.clone().unwrap_or_default(),
             content: r.chunk.content.clone(),
-            source: r
-                .chunk
-                .name
-                .as_ref()
-                .and_then(|n| n.split('/').next())
-                .unwrap_or("")
-                .to_string(),
+            source: r.chunk.language.clone(),
             timestamp: extract_date_from_archive_path(&r.chunk.file_path)
                 .unwrap_or_default(),
             score: r.score,
@@ -2033,40 +2049,35 @@ pub(super) async fn archive_entry(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ArchiveEntryResponse>, (StatusCode, Json<ErrorBody>)> {
-    if !state.config.archive.enabled || state.config.archive.archive_path.is_empty() {
-        return Err(bad_request("Intent archive not configured".to_string()));
+    if !state.config.archive.enabled {
+        return Err(bad_request("Archive not configured".to_string()));
     }
 
-    let archive_root = std::path::Path::new(&state.config.archive.archive_path);
+    // Search all configured source paths for the record
+    let paths = archive_source_paths(&state.config.archive);
+    if paths.is_empty() {
+        return Err(bad_request("No archive sources configured".to_string()));
+    }
 
-    // Walk the archive to find the record by ID in filename
-    let record = find_record_by_id(archive_root, &id);
-
-    match record {
-        Some((content, rel_path)) => {
-            let source = content
-                .lines()
-                .find(|l| l.trim().starts_with("channel:"))
-                .map(|l| l.trim().trim_start_matches("channel:").trim().to_string())
-                .unwrap_or_default();
-
-            // Extract body after frontmatter
+    for (source_name, source_path) in &paths {
+        let archive_root = std::path::Path::new(source_path);
+        if let Some((content, rel_path)) = find_record_by_id(archive_root, &id) {
             let body = extract_body(&content).unwrap_or_default();
-
-            Ok(Json(ArchiveEntryResponse {
+            return Ok(Json(ArchiveEntryResponse {
                 id,
                 content: body,
-                source,
-                file_path: format!("archive:{}", rel_path),
-            }))
+                source: source_name.clone(),
+                file_path: format!("{}:{}", source_name, rel_path),
+            }));
         }
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorBody {
-                error: format!("Record not found: {}", id),
-            }),
-        )),
     }
+
+    Err((
+        StatusCode::NOT_FOUND,
+        Json(ErrorBody {
+            error: format!("Record not found: {}", id),
+        }),
+    ))
 }
 
 // -- /archive/recent --
@@ -2075,6 +2086,8 @@ pub(super) async fn archive_entry(
 struct ArchiveRecentParams {
     after: String,
     limit: Option<usize>,
+    /// Filter by archive source name (e.g., "hla", "pensieve")
+    source: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -2087,41 +2100,54 @@ pub(super) async fn archive_recent(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ArchiveRecentParams>,
 ) -> Result<Json<ArchiveRecentResponse>, (StatusCode, Json<ErrorBody>)> {
-    if !state.config.archive.enabled || state.config.archive.archive_path.is_empty() {
-        return Err(bad_request("Intent archive not configured".to_string()));
+    if !state.config.archive.enabled {
+        return Err(bad_request("Archive not configured".to_string()));
     }
 
     let limit = params.limit.unwrap_or(50);
-    let archive_root = std::path::Path::new(&state.config.archive.archive_path);
+    let paths = archive_source_paths(&state.config.archive);
+    if paths.is_empty() {
+        return Err(bad_request("No archive sources configured".to_string()));
+    }
 
-    let mut records: Vec<(String, String, String)> = Vec::new(); // (id, content, rel_path)
-    collect_recent_records(archive_root, archive_root, &params.after, &mut records);
+    // (source_name, id, content, rel_path)
+    let mut records: Vec<(String, String, String, String)> = Vec::new();
 
-    // Sort by path (date-partitioned, so lexicographic = chronological)
-    records.sort_by(|a, b| a.2.cmp(&b.2));
+    for (source_name, source_path) in &paths {
+        // Apply source filter early
+        if let Some(ref filter) = params.source {
+            if source_name != filter {
+                continue;
+            }
+        }
+        let archive_root = std::path::Path::new(source_path);
+        let mut source_records: Vec<(String, String, String)> = Vec::new();
+        collect_recent_records(archive_root, archive_root, &params.after, &mut source_records);
+        for (id, content, rel_path) in source_records {
+            records.push((source_name.clone(), id, content, rel_path));
+        }
+    }
+
+    // Sort by source-prefixed path for consistent chronological ordering
+    records.sort_by(|a, b| a.3.cmp(&b.3));
     records.truncate(limit);
 
     let total = records.len();
     let results: Vec<ArchiveResultItem> = records
         .into_iter()
-        .map(|(id, content, rel_path)| {
-            let source = content
-                .lines()
-                .find(|l| l.trim().starts_with("channel:"))
-                .map(|l| l.trim().trim_start_matches("channel:").trim().to_string())
-                .unwrap_or_default();
+        .map(|(source_name, id, content, rel_path)| {
             let body = extract_body(&content).unwrap_or_default();
-            let timestamp =
-                extract_date_from_archive_path(&format!("archive:{}", rel_path))
-                    .unwrap_or_default();
+            let prefixed_path = format!("{}:{}", source_name, rel_path);
+            let timestamp = extract_date_from_archive_path(&prefixed_path)
+                .unwrap_or_default();
 
             ArchiveResultItem {
                 id,
                 content: body,
-                source,
+                source: source_name,
                 timestamp,
                 score: 1.0,
-                file_path: format!("archive:{}", rel_path),
+                file_path: prefixed_path,
             }
         })
         .collect();
@@ -2129,16 +2155,48 @@ pub(super) async fn archive_recent(
     Ok(Json(ArchiveRecentResponse { results, total }))
 }
 
-/// Extract a date string from an archive path like "archive:2026/02/17/hi-xxx.md"
+/// Extract a date string from an archive path like "{source}:YYYY/MM/DD/..."
+///
+/// Handles any source prefix (hla:, pensieve:, archive:, etc.)
 fn extract_date_from_archive_path(path: &str) -> Option<String> {
-    let after_prefix = path.strip_prefix("archive:")?;
+    // Strip the source prefix (everything before and including ':')
+    let after_prefix = path.split_once(':').map(|(_, rest)| rest)?;
     // Path format: YYYY/MM/DD/filename.md
     let parts: Vec<&str> = after_prefix.splitn(4, '/').collect();
-    if parts.len() >= 3 {
+    if parts.len() >= 3
+        && parts[0].len() == 4
+        && parts[1].len() == 2
+        && parts[2].len() == 2
+    {
         Some(format!("{}-{}-{}", parts[0], parts[1], parts[2]))
     } else {
         None
     }
+}
+
+/// Get the list of archive source names (language tags) from config.
+fn archive_source_names(config: &crate::config::ArchiveConfig) -> Vec<String> {
+    let mut names: Vec<String> = config.sources.iter().map(|s| s.name.clone()).collect();
+    // Legacy: if no sources but archive_path is set, add "hla"
+    if names.is_empty() && !config.archive_path.is_empty() {
+        names.push("hla".to_string());
+    }
+    names
+}
+
+/// Get (source_name, source_path) pairs from config.
+fn archive_source_paths(config: &crate::config::ArchiveConfig) -> Vec<(String, String)> {
+    let mut paths: Vec<(String, String)> = config
+        .sources
+        .iter()
+        .filter(|s| !s.path.is_empty())
+        .map(|s| (s.name.clone(), s.path.clone()))
+        .collect();
+    // Legacy fallback
+    if paths.is_empty() && !config.archive_path.is_empty() {
+        paths.push(("hla".to_string(), config.archive_path.clone()));
+    }
+    paths
 }
 
 /// Find a record file by ID (searches for filename containing the ID)
@@ -2170,7 +2228,10 @@ fn find_record_recursive(
     None
 }
 
-/// Collect archive records whose date path is >= the `after` date
+/// Collect archive records whose date is >= the `after` date.
+///
+/// Date is extracted from the path if it's date-partitioned (YYYY/MM/DD/...),
+/// otherwise falls back to parsing the `timestamp:` field from YAML frontmatter.
 fn collect_recent_records(
     root: &std::path::Path,
     dir: &std::path::Path,
@@ -2189,18 +2250,56 @@ fn collect_recent_records(
                 Ok(r) => r.to_string_lossy().to_string(),
                 Err(_) => continue,
             };
-            let date = extract_date_from_archive_path(&format!("archive:{}", rel));
-            if date.as_deref().is_some_and(|d| d >= after) {
+
+            // Try date from path first (cheap)
+            let date = extract_date_from_archive_path(&format!("_:{}", rel));
+
+            if let Some(ref d) = date {
+                // Path has a date — filter without reading file
+                if d.as_str() >= after {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        let id = path
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        results.push((id, content, rel));
+                    }
+                }
+            } else {
+                // No date in path — read file and check frontmatter timestamp
                 if let Ok(content) = std::fs::read_to_string(&path) {
-                    let id = path
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    results.push((id, content, rel));
+                    let fm_date = extract_timestamp_from_frontmatter(&content);
+                    if fm_date.as_deref().is_some_and(|d| d >= after) {
+                        let id = path
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        results.push((id, content, rel));
+                    }
                 }
             }
         }
     }
+}
+
+/// Extract a YYYY-MM-DD date from the `timestamp:` field in YAML frontmatter.
+fn extract_timestamp_from_frontmatter(content: &str) -> Option<String> {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return None;
+    }
+    let end = trimmed[3..].find("\n---")?;
+    let fm = &trimmed[3..3 + end];
+    for line in fm.lines() {
+        let line = line.trim();
+        if let Some(val) = line.strip_prefix("timestamp:") {
+            let ts = val.trim();
+            if ts.len() >= 10 {
+                return Some(ts[..10].to_string());
+            }
+        }
+    }
+    None
 }
 
 /// Extract body text after YAML frontmatter
