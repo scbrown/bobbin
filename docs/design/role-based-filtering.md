@@ -1,6 +1,6 @@
 # Bobbin Role-Based Repo Filtering (§69)
 
-**Status**: Design spec
+**Status**: Implemented (code complete, pending config deployment)
 **Directive**: §69 — certain repos should only show for certain roles, highly configurable per project/repo
 **Bead**: aegis-5w0
 
@@ -157,13 +157,14 @@ of 10-50 items is trivial.
 
 ### Implementation Plan
 
-1. Add `AccessConfig` + `RoleConfig` structs to `config.rs`
-2. Add `RepoFilter` module with role resolution + filtering logic
-3. Add `--role` global flag to `Cli` struct with `BOBBIN_ROLE` env
-4. Wire `RepoFilter` into CLI commands that return repo-scoped results
-5. Add `role` query param to HTTP handler param structs
-6. Wire same `RepoFilter` into HTTP handlers
-7. Tests: role matching, deny-over-allow, env fallback chain, default behavior, no-config backward compat
+1. ~~Add `AccessConfig` + `RoleConfig` structs to `config.rs`~~ DONE
+2. ~~Add `RepoFilter` module with role resolution + filtering logic~~ DONE (src/access.rs, 15 unit tests)
+3. ~~Add `--role` global flag to `Cli` struct with `BOBBIN_ROLE` env~~ DONE
+4. ~~Wire `RepoFilter` into CLI commands that return repo-scoped results~~ DONE (search, grep, context, similar, review, impact, hook inject)
+5. ~~Add `role` query param to HTTP handler param structs~~ DONE (all endpoints)
+6. ~~Wire same `RepoFilter` into HTTP handlers~~ DONE (search, grep, context, related, refs, hotspots, impact, review, similar, repos, repos/files)
+7. ~~Tests: role matching, deny-over-allow, env fallback chain, default behavior, no-config backward compat~~ DONE (15 unit tests in access.rs)
+8. TODO: Add `[access]` section to production config on kota
 
 ### Migration
 
