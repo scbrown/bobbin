@@ -302,6 +302,12 @@ pub(super) async fn healthz() -> Json<serde_json::Value> {
 
 // -- /repos --
 
+#[derive(Deserialize)]
+struct ReposParams {
+    /// Role for access filtering
+    role: Option<String>,
+}
+
 #[derive(Serialize)]
 struct ReposListResponse {
     count: usize,
@@ -318,6 +324,7 @@ struct RepoSummary {
 
 pub(super) async fn list_repos(
     State(state): State<Arc<AppState>>,
+    Query(params): Query<ReposParams>,
 ) -> Result<Json<ReposListResponse>, (StatusCode, Json<ErrorBody>)> {
     let store = open_vector_store(&state).await.map_err(internal_error)?;
 
@@ -340,6 +347,10 @@ pub(super) async fn list_repos(
         });
     }
 
+    // Apply role-based access filtering
+    let access = resolve_filter(&state, params.role.as_deref());
+    summaries.retain(|r| access.is_allowed(&r.name));
+
     // Sort by chunk count descending
     summaries.sort_by(|a, b| b.chunk_count.cmp(&a.chunk_count));
 
@@ -350,6 +361,12 @@ pub(super) async fn list_repos(
 }
 
 // -- /repos/{name}/files --
+
+#[derive(Deserialize)]
+struct RepoFilesParams {
+    /// Role for access filtering
+    role: Option<String>,
+}
 
 #[derive(Serialize)]
 struct RepoFilesResponse {
@@ -367,7 +384,14 @@ struct RepoFileItem {
 pub(super) async fn list_repo_files(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
+    Query(params): Query<RepoFilesParams>,
 ) -> Result<Json<RepoFilesResponse>, (StatusCode, Json<ErrorBody>)> {
+    // Check role-based access for this repo
+    let access = resolve_filter(&state, params.role.as_deref());
+    if !access.is_allowed(&name) {
+        return Err(bad_request(format!("Repo not accessible: {}", name)));
+    }
+
     let store = open_vector_store(&state).await.map_err(internal_error)?;
 
     let files = store
@@ -1012,6 +1036,8 @@ struct RelatedParams {
     limit: Option<usize>,
     /// Min coupling score threshold (default 0.0)
     threshold: Option<f32>,
+    /// Role for access filtering
+    role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1054,6 +1080,7 @@ pub(super) async fn related(
         .get_coupling(&params.file, limit)
         .map_err(internal_error)?;
 
+    let access = resolve_filter(&state, params.role.as_deref());
     let related: Vec<RelatedFile> = couplings
         .into_iter()
         .filter(|c| c.score >= threshold)
@@ -1069,6 +1096,7 @@ pub(super) async fn related(
                 co_changes: c.co_changes,
             }
         })
+        .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.path)))
         .collect();
 
     Ok(Json(RelatedResponse {
@@ -1089,6 +1117,8 @@ struct FindRefsParams {
     limit: Option<usize>,
     /// Filter by repository
     repo: Option<String>,
+    /// Role for access filtering
+    role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1135,26 +1165,40 @@ pub(super) async fn find_refs(
         .await
         .map_err(internal_error)?;
 
+    let access = resolve_filter(&state, params.role.as_deref());
+
+    // Filter definition if it's in a denied repo
+    let definition = refs.definition.and_then(|d| {
+        if access.is_allowed(RepoFilter::repo_from_path(&d.file_path)) {
+            Some(SymbolDefinitionOutput {
+                name: d.name,
+                chunk_type: d.chunk_type.to_string(),
+                file_path: d.file_path,
+                start_line: d.start_line,
+                end_line: d.end_line,
+                signature: d.signature,
+            })
+        } else {
+            None
+        }
+    });
+
+    let usages: Vec<SymbolUsageOutput> = refs
+        .usages
+        .iter()
+        .filter(|u| access.is_allowed(RepoFilter::repo_from_path(&u.file_path)))
+        .map(|u| SymbolUsageOutput {
+            file_path: u.file_path.clone(),
+            line: u.line,
+            context: u.context.clone(),
+        })
+        .collect();
+
     Ok(Json(FindRefsResponse {
         symbol: params.symbol,
-        definition: refs.definition.map(|d| SymbolDefinitionOutput {
-            name: d.name,
-            chunk_type: d.chunk_type.to_string(),
-            file_path: d.file_path,
-            start_line: d.start_line,
-            end_line: d.end_line,
-            signature: d.signature,
-        }),
-        usage_count: refs.usages.len(),
-        usages: refs
-            .usages
-            .iter()
-            .map(|u| SymbolUsageOutput {
-                file_path: u.file_path.clone(),
-                line: u.line,
-                context: u.context.clone(),
-            })
-            .collect(),
+        definition,
+        usage_count: usages.len(),
+        usages,
     }))
 }
 
@@ -1222,6 +1266,8 @@ struct HotspotsParams {
     limit: Option<usize>,
     /// Min score threshold (default 0.0)
     threshold: Option<f32>,
+    /// Role for access filtering
+    role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1297,6 +1343,8 @@ pub(super) async fn hotspots(
         }
     }
 
+    let access = resolve_filter(&state, params.role.as_deref());
+    hotspot_items.retain(|h| access.is_allowed(RepoFilter::repo_from_path(&h.file)));
     hotspot_items
         .sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     hotspot_items.truncate(limit);
@@ -1324,6 +1372,8 @@ struct ImpactParams {
     threshold: Option<f32>,
     /// Filter by repository
     repo: Option<String>,
+    /// Role for access filtering
+    role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1392,20 +1442,24 @@ pub(super) async fn impact(
         }
     };
 
+    let access = resolve_filter(&state, params.role.as_deref());
+    let filtered_results: Vec<ImpactResultItem> = results
+        .iter()
+        .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.path)))
+        .map(|r| ImpactResultItem {
+            file: r.path.clone(),
+            signal: signal_name(&r.signal).to_string(),
+            score: r.score,
+            reason: r.reason.clone(),
+        })
+        .collect();
+
     Ok(Json(ImpactResponse {
         target: params.target,
         mode: mode_str.to_string(),
         depth,
-        count: results.len(),
-        results: results
-            .iter()
-            .map(|r| ImpactResultItem {
-                file: r.path.clone(),
-                signal: signal_name(&r.signal).to_string(),
-                score: r.score,
-                reason: r.reason.clone(),
-            })
-            .collect(),
+        count: filtered_results.len(),
+        results: filtered_results,
     }))
 }
 
@@ -1421,6 +1475,8 @@ struct ReviewParams {
     depth: Option<u32>,
     /// Filter by repository
     repo: Option<String>,
+    /// Role for access filtering
+    role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1518,6 +1574,14 @@ pub(super) async fn review(
         .await
         .map_err(internal_error)?;
 
+    let access = resolve_filter(&state, params.role.as_deref());
+    let filtered_files: Vec<ContextFileOutput> = bundle
+        .files
+        .iter()
+        .filter(|f| access.is_allowed(RepoFilter::repo_from_path(&f.path)))
+        .map(to_context_file)
+        .collect();
+
     Ok(Json(ReviewResponse {
         diff_description,
         changed_files: diff_files
@@ -1533,7 +1597,7 @@ pub(super) async fn review(
             max_lines: bundle.budget.max_lines,
             used_lines: bundle.budget.used_lines,
         },
-        files: bundle.files.iter().map(to_context_file).collect(),
+        files: filtered_files,
         summary: to_context_summary(&bundle.summary),
     }))
 }
@@ -1554,6 +1618,8 @@ struct SimilarParams {
     repo: Option<String>,
     /// Cross-repo comparison in scan mode
     cross_repo: Option<bool>,
+    /// Role for access filtering
+    role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1630,6 +1696,7 @@ pub(super) async fn similar(
 
     let mut analyzer = SimilarityAnalyzer::new(embedder, vector_store);
     let repo_filter = params.repo.as_deref();
+    let access = resolve_filter(&state, params.role.as_deref());
 
     let response = if scan {
         let threshold = params.threshold.unwrap_or(0.90);
@@ -1708,6 +1775,27 @@ pub(super) async fn similar(
                 .collect(),
             clusters: vec![],
         }
+    };
+
+    // Apply role-based access filtering to response
+    let response = SimilarResponse {
+        results: response.results.into_iter()
+            .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.file_path)))
+            .collect(),
+        clusters: response.clusters.into_iter()
+            .filter(|c| access.is_allowed(RepoFilter::repo_from_path(&c.representative.file_path)))
+            .map(|mut c| {
+                c.members.retain(|m| access.is_allowed(RepoFilter::repo_from_path(&m.file_path)));
+                c.member_count = c.members.len();
+                c
+            })
+            .collect(),
+        count: 0, // recalculated below
+        ..response
+    };
+    let response = SimilarResponse {
+        count: if response.clusters.is_empty() { response.results.len() } else { response.clusters.len() },
+        ..response
     };
 
     Ok(Json(response))
