@@ -1210,6 +1210,8 @@ struct ListSymbolsParams {
     file: String,
     /// Filter by repository
     repo: Option<String>,
+    /// Role for access filtering
+    role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1232,6 +1234,14 @@ pub(super) async fn list_symbols(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListSymbolsParams>,
 ) -> Result<Json<ListSymbolsResponse>, (StatusCode, Json<ErrorBody>)> {
+    // Check role-based access for the file's repo
+    let access = resolve_filter(&state, params.role.as_deref());
+    let repo_name = params.repo.as_deref()
+        .unwrap_or_else(|| RepoFilter::repo_from_path(&params.file));
+    if !access.is_allowed(repo_name) {
+        return Err(bad_request(format!("Repo not accessible: {}", repo_name)));
+    }
+
     let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
     let analyzer = RefAnalyzer::new(&mut vector_store);
     let file_symbols = analyzer
