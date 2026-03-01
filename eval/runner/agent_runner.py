@@ -189,8 +189,10 @@ def run_agent(
 
     # Build a clean environment for the agent subprocess.  Remove CLAUDECODE
     # so the CLI doesn't refuse to start when eval is launched from inside an
-    # existing Claude Code session.
+    # existing Claude Code session.  Force BOBBIN_SERVER="" so evals use the
+    # local .bobbin/ index instead of the global config's remote server.
     agent_env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    agent_env["BOBBIN_SERVER"] = ""
 
     with _isolate_global_settings():
         try:
