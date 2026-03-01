@@ -11,6 +11,7 @@ mod impact;
 mod index;
 mod log;
 mod prime;
+mod purge;
 mod init;
 mod refs;
 mod related;
@@ -127,6 +128,9 @@ enum Commands {
     /// Interactive guided walkthrough of bobbin features
     Tour(tour::TourArgs),
 
+    /// Remove all indexed data for a named repository
+    Purge(purge::PurgeArgs),
+
     /// Show LLM-friendly project overview with live stats
     Prime(prime::PrimeArgs),
 
@@ -159,6 +163,7 @@ impl Commands {
             Commands::Completions(_) => "completions",
             Commands::Hook(_) => "hook",
             Commands::Tour(_) => "tour",
+            Commands::Purge(_) => "purge",
             Commands::Prime(_) => "prime",
             Commands::Run(_) => "run",
         }
@@ -257,6 +262,7 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
         }
         Commands::Hook(args) => hook::run(args, output).await,
         Commands::Tour(args) => tour::run(args, output).await,
+        Commands::Purge(args) => purge::run(args, output).await,
         Commands::Prime(args) => prime::run(args, output).await,
         // Run commands are resolved before dispatch, so this is unreachable
         Commands::Run(_) => anyhow::bail!("Nested run commands are not supported"),

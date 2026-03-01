@@ -64,7 +64,6 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
     }
 
     let config = Config::load(&config_path)?;
-    let repo_name = args.repo.as_deref().unwrap_or("default");
 
     let source_root = if let Some(ref source) = args.source {
         source
@@ -72,6 +71,16 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
             .with_context(|| format!("Invalid source path: {}", source.display()))?
     } else {
         repo_root.clone()
+    };
+
+    // Repo name: explicit --repo > auto-detect from source directory name
+    let repo_name = if let Some(ref name) = args.repo {
+        name.as_str()
+    } else {
+        source_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("default")
     };
 
     // Write PID file

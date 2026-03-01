@@ -25,7 +25,7 @@ pub struct IndexArgs {
     #[arg(long)]
     force: bool,
 
-    /// Repository name for multi-repo indexing (default: "default")
+    /// Repository name for multi-repo indexing (auto-detected from source dir name)
     #[arg(long)]
     repo: Option<String>,
 
@@ -119,8 +119,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     let config = Config::load(&config_path).with_context(|| "Failed to load configuration")?;
 
-    let repo_name = args.repo.as_deref().unwrap_or("default");
-
     // Source directory: --source overrides the default (which is the bobbin home path)
     let source_root = if let Some(ref source) = args.source {
         source
@@ -128,6 +126,16 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .with_context(|| format!("Invalid source path: {}", source.display()))?
     } else {
         repo_root.clone()
+    };
+
+    // Repo name: explicit --repo > auto-detect from source directory name
+    let repo_name = if let Some(ref name) = args.repo {
+        name.as_str()
+    } else {
+        source_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("default")
     };
 
     let db_path = Config::db_path(&repo_root);
