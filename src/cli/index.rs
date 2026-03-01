@@ -775,12 +775,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                             bead_chunks.iter().map(|c| c.id.clone()).collect();
                         vector_store.delete(&bead_ids).await.ok();
 
+                        // Use distinct repo name for beads issues so they don't collide
+                        // with source code repos that happen to be named "beads"
                         if let Err(e) = vector_store
                             .insert(
                                 &bead_chunks,
                                 &embeddings,
                                 &contexts,
-                                repo_name,
+                                "beads-issues",
                                 "beads",
                                 &now,
                             )

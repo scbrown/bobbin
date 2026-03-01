@@ -584,6 +584,11 @@ impl VectorStore {
                 .column_by_name("indexed_at")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
+            // repo is optional (present in all current indices)
+            let repos = batch
+                .column_by_name("repo")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             for i in 0..batch.num_rows() {
                 let chunk = Chunk {
                     id: ids.value(i).to_string(),
@@ -606,11 +611,14 @@ impl VectorStore {
                 let indexed_at = indexed_ats
                     .and_then(|arr| arr.value(i).parse::<i64>().ok());
 
+                let repo = repos.map(|r| r.value(i).to_string());
+
                 search_results.push(SearchResult {
                     chunk,
                     score,
                     match_type: Some(match_type),
                     indexed_at,
+                    repo,
                 });
             }
         }
@@ -689,6 +697,11 @@ impl VectorStore {
                 .column_by_name("indexed_at")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
+            // repo is optional (present in all current indices)
+            let repos = batch
+                .column_by_name("repo")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             for i in 0..batch.num_rows() {
                 let chunk = Chunk {
                     id: ids.value(i).to_string(),
@@ -710,11 +723,14 @@ impl VectorStore {
                 let indexed_at = indexed_ats
                     .and_then(|arr| arr.value(i).parse::<i64>().ok());
 
+                let repo = repos.map(|r| r.value(i).to_string());
+
                 search_results.push(SearchResult {
                     chunk,
                     score,
                     match_type: Some(MatchType::Keyword),
                     indexed_at,
+                    repo,
                 });
             }
         }

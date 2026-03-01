@@ -43,6 +43,11 @@ pub struct SearchResultItem {
     pub file_path: String,
     pub name: Option<String>,
     pub chunk_type: String,
+    /// Source kind: "code", "issue", or "commit" — helps distinguish beads issues from source code
+    pub source: String,
+    /// Repository name this result belongs to
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
     pub start_line: u32,
     pub end_line: u32,
     pub score: f32,
@@ -93,6 +98,10 @@ pub struct GrepResultItem {
     pub file_path: String,
     pub name: Option<String>,
     pub chunk_type: String,
+    /// Source kind: "code", "issue", or "commit"
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
     pub start_line: u32,
     pub end_line: u32,
     pub score: f32,

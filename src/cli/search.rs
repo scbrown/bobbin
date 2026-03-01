@@ -10,7 +10,7 @@ use crate::config::Config;
 use crate::index::Embedder;
 use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{MetadataStore, VectorStore};
-use crate::types::{ChunkType, MatchType, SearchResult};
+use crate::types::{source_kind, ChunkType, MatchType, SearchResult};
 
 #[derive(Args)]
 pub struct SearchArgs {
@@ -68,6 +68,10 @@ struct SearchResultOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
     chunk_type: String,
+    /// Source kind: "code", "issue", or "commit"
+    source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repo: Option<String>,
     start_line: u32,
     end_line: u32,
     score: f32,
@@ -256,6 +260,8 @@ async fn run_remote(args: SearchArgs, output: OutputConfig, server_url: &str) ->
                     file_path: r.file_path.clone(),
                     name: r.name.clone(),
                     chunk_type: r.chunk_type.clone(),
+                    source: r.source.clone().unwrap_or_else(|| "code".to_string()),
+                    repo: r.repo.clone(),
                     start_line: r.start_line,
                     end_line: r.end_line,
                     score: r.score,
@@ -308,8 +314,15 @@ async fn run_remote(args: SearchArgs, output: OutputConfig, server_url: &str) ->
                 .map(|mt| format!(" [{}]", mt).dimmed().to_string())
                 .unwrap_or_default();
 
+            let repo_tag = result
+                .repo
+                .as_ref()
+                .map(|r| format!("[{}] ", r).green().to_string())
+                .unwrap_or_default();
+
             println!(
-                "   {} {} · lines {}-{} · score {:.4}{}",
+                "   {}{} {} · lines {}-{} · score {:.4}{}",
+                repo_tag,
                 result.chunk_type.magenta(),
                 result.language.dimmed(),
                 result.start_line,
@@ -385,6 +398,8 @@ fn print_json_output(
                 file_path: r.chunk.file_path.clone(),
                 name: r.chunk.name.clone(),
                 chunk_type: r.chunk.chunk_type.to_string(),
+                source: source_kind(&r.chunk.chunk_type).to_string(),
+                repo: r.repo.clone(),
                 start_line: r.chunk.start_line,
                 end_line: r.chunk.end_line,
                 score: r.score,
@@ -434,6 +449,13 @@ fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], v
             _ => String::new(),
         };
 
+        // Show repo tag when available (distinguishes beads-issues from beads source code)
+        let repo_tag = result
+            .repo
+            .as_ref()
+            .map(|r| format!("[{}] ", r).green().to_string())
+            .unwrap_or_default();
+
         if chunk.chunk_type == ChunkType::Commit {
             // Commit-specific display
             let name_display = chunk
@@ -450,8 +472,31 @@ fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], v
             );
 
             println!(
-                "   {} · score {:.4}{}",
+                "   {}{} · score {:.4}{}",
+                repo_tag,
                 "commit".magenta(),
+                result.score,
+                match_info
+            );
+        } else if chunk.chunk_type == ChunkType::Issue {
+            // Issue-specific display (beads from Dolt)
+            let name_display = chunk
+                .name
+                .as_ref()
+                .map(|n| n.cyan().to_string())
+                .unwrap_or_default();
+
+            println!(
+                "{}. {} {}",
+                (i + 1).to_string().bold(),
+                chunk.file_path.blue(),
+                name_display,
+            );
+
+            println!(
+                "   {}{} · score {:.4}{}",
+                repo_tag,
+                "issue".magenta(),
                 result.score,
                 match_info
             );
@@ -472,7 +517,8 @@ fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], v
             );
 
             println!(
-                "   {} {} · lines {}-{} · score {:.4}{}",
+                "   {}{} {} · lines {}-{} · score {:.4}{}",
+                repo_tag,
                 chunk.chunk_type.to_string().magenta(),
                 chunk.language.dimmed(),
                 chunk.start_line,
@@ -588,6 +634,7 @@ mod tests {
             score: 0.95,
             match_type: Some(MatchType::Semantic),
             indexed_at: None,
+            repo: None,
         }];
 
         let output = SearchOutput {
@@ -602,6 +649,8 @@ mod tests {
                     file_path: r.chunk.file_path.clone(),
                     name: r.chunk.name.clone(),
                     chunk_type: r.chunk.chunk_type.to_string(),
+                    source: source_kind(&r.chunk.chunk_type).to_string(),
+                    repo: r.repo.clone(),
                     start_line: r.chunk.start_line,
                     end_line: r.chunk.end_line,
                     score: r.score,

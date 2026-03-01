@@ -78,6 +78,19 @@ pub struct SearchResult {
     /// Unix timestamp when this chunk was indexed (used for recency boosting)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub indexed_at: Option<i64>,
+    /// Repository name this result belongs to (from LanceDB repo column)
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub repo: Option<String>,
+}
+
+/// Derive the source kind from a chunk type for display purposes.
+/// Returns "issue" for beads issues, "commit" for git commits, "code" for everything else.
+pub fn source_kind(chunk_type: &ChunkType) -> &'static str {
+    match chunk_type {
+        ChunkType::Issue => "issue",
+        ChunkType::Commit => "commit",
+        _ => "code",
+    }
 }
 
 /// How a result was matched

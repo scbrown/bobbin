@@ -27,6 +27,8 @@ pub struct SearchResultItem {
     pub file_path: String,
     pub name: Option<String>,
     pub chunk_type: String,
+    pub source: Option<String>,
+    pub repo: Option<String>,
     pub start_line: u32,
     pub end_line: u32,
     pub score: f32,
