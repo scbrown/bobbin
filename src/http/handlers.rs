@@ -1980,19 +1980,12 @@ pub(super) async fn archive_search(
     // Filter to archive chunks only (language matches a configured source name)
     let mut filtered: Vec<SearchResult> = search_results
         .into_iter()
-        .filter(|r| {
-            // Legacy compat: also accept "transcript" as HLA
-            archive_languages.contains(&r.chunk.language)
-                || r.chunk.language == "transcript"
-        })
+        .filter(|r| archive_languages.contains(&r.chunk.language))
         .collect();
 
     // Apply source filter (e.g., source=hla to only get HLA results)
     if let Some(ref source) = params.source {
-        filtered.retain(|r| {
-            &r.chunk.language == source
-                || (source == "hla" && r.chunk.language == "transcript")
-        });
+        filtered.retain(|r| &r.chunk.language == source);
     }
 
     // Apply date filters on file_path ({source}:YYYY/MM/DD/...)
@@ -2184,27 +2177,17 @@ fn extract_date_from_archive_path(path: &str) -> Option<String> {
 
 /// Get the list of archive source names (language tags) from config.
 fn archive_source_names(config: &crate::config::ArchiveConfig) -> Vec<String> {
-    let mut names: Vec<String> = config.sources.iter().map(|s| s.name.clone()).collect();
-    // Legacy: if no sources but archive_path is set, add "hla"
-    if names.is_empty() && !config.archive_path.is_empty() {
-        names.push("hla".to_string());
-    }
-    names
+    config.sources.iter().map(|s| s.name.clone()).collect()
 }
 
 /// Get (source_name, source_path) pairs from config.
 fn archive_source_paths(config: &crate::config::ArchiveConfig) -> Vec<(String, String)> {
-    let mut paths: Vec<(String, String)> = config
+    config
         .sources
         .iter()
         .filter(|s| !s.path.is_empty())
         .map(|s| (s.name.clone(), s.path.clone()))
-        .collect();
-    // Legacy fallback
-    if paths.is_empty() && !config.archive_path.is_empty() {
-        paths.push(("hla".to_string(), config.archive_path.clone()));
-    }
-    paths
+        .collect()
 }
 
 /// Find a record file by ID (searches for filename containing the ID)

@@ -826,11 +826,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
-    // Index archive records if enabled (HLA, Pensieve, custom sources)
+    // Index archive records if enabled (configured sources)
     let mut archive_indexed: usize = 0;
-    let has_archive_sources = !config.archive.sources.is_empty()
-        || !config.archive.archive_path.is_empty();
-    if config.archive.enabled && has_archive_sources {
+    if config.archive.enabled && !config.archive.sources.is_empty() {
         if !output.quiet && !output.json {
             println!("  Indexing archives...");
         }

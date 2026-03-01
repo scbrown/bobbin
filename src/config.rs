@@ -412,11 +412,6 @@ pub struct ArchiveConfig {
     pub enabled: bool,
     /// Archive sources to index
     pub sources: Vec<ArchiveSource>,
-    /// Legacy: single archive path (use sources[] instead).
-    /// If set and no sources[] defined, treated as a source with
-    /// name="hla", schema="human-intent", name_field="channel".
-    #[serde(default)]
-    pub archive_path: String,
     /// Webhook secret for push notifications (empty = no auth)
     pub webhook_secret: String,
 }
@@ -444,21 +439,8 @@ impl Default for ArchiveConfig {
         Self {
             enabled: false,
             sources: vec![],
-            archive_path: String::new(),
             webhook_secret: String::new(),
         }
-    }
-}
-
-impl ArchiveConfig {
-    /// Get the effective list of archive sources, handling legacy config.
-    pub fn effective_sources(&self) -> Vec<&ArchiveSource> {
-        if !self.sources.is_empty() {
-            return self.sources.iter().collect();
-        }
-        // No sources — nothing to return even with legacy path
-        // (legacy handled in fetch_archive via LEGACY_HLA_SOURCE)
-        vec![]
     }
 }
 

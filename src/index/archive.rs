@@ -28,7 +28,6 @@ pub fn fetch_archive(config: &ArchiveConfig) -> Result<Vec<Chunk>> {
 
     let mut all_chunks = Vec::new();
 
-    // Process configured sources
     for source in &config.sources {
         if source.path.is_empty() {
             continue;
@@ -36,20 +35,6 @@ pub fn fetch_archive(config: &ArchiveConfig) -> Result<Vec<Chunk>> {
         let root = Path::new(&source.path);
         if root.exists() {
             collect_records(root, root, source, &mut all_chunks)?;
-        }
-    }
-
-    // Legacy: if no sources but archive_path is set, treat as HLA
-    if config.sources.is_empty() && !config.archive_path.is_empty() {
-        let legacy = ArchiveSource {
-            name: "hla".to_string(),
-            path: config.archive_path.clone(),
-            schema: "human-intent".to_string(),
-            name_field: "channel".to_string(),
-        };
-        let root = Path::new(&legacy.path);
-        if root.exists() {
-            collect_records(root, root, &legacy, &mut all_chunks)?;
         }
     }
 
@@ -276,25 +261,6 @@ pub fn matches_schema(content: &str, schema: &str) -> bool {
     }
 }
 
-/// Check if file content is a human-intent transcript (legacy helper).
-pub fn is_intent_record(content: &str) -> bool {
-    matches_schema(content, "human-intent")
-}
-
-/// Check if file content is any known archive record.
-pub fn is_archive_record(content: &str) -> bool {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("---") {
-        return false;
-    }
-    if let Some(end) = trimmed[3..].find("\n---") {
-        let fm = &trimmed[3..3 + end];
-        fm.contains("human-intent") || fm.contains("agent-memory")
-    } else {
-        false
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,20 +324,6 @@ The semantic_weight of 0.7 gives the best results for code search.
         assert!(!matches_schema("# Not a record", "human-intent"));
     }
 
-    #[test]
-    fn test_is_intent_record() {
-        assert!(is_intent_record(SAMPLE_HLA));
-        assert!(!is_intent_record(SAMPLE_PENSIEVE));
-        assert!(!is_intent_record("# Just markdown"));
-    }
-
-    #[test]
-    fn test_is_archive_record() {
-        assert!(is_archive_record(SAMPLE_HLA));
-        assert!(is_archive_record(SAMPLE_PENSIEVE));
-        assert!(!is_archive_record("# Not a record"));
-    }
-
     // -- Frontmatter parsing --
 
     #[test]
@@ -417,7 +369,6 @@ The semantic_weight of 0.7 gives the best results for code search.
 
         assert_eq!(chunk.language, "hla");
         assert_eq!(chunk.chunk_type, ChunkType::Section);
-        // Date-partitioned path used directly
         assert_eq!(chunk.file_path, "hla:2026/02/17/hi-01ARYZ6S41.md");
         assert!(chunk.name.as_deref().unwrap().contains("hi-01ARYZ6S41"));
         assert!(chunk.name.as_deref().unwrap().starts_with("telegram/"));
@@ -433,7 +384,6 @@ The semantic_weight of 0.7 gives the best results for code search.
 
         assert_eq!(chunk.language, "pensieve");
         assert_eq!(chunk.chunk_type, ChunkType::Section);
-        // Non-date path → date prefix from timestamp
         assert!(chunk.file_path.starts_with("pensieve:2026/02/27/"));
         assert!(chunk.file_path.contains("pm-01BXYZ7T52.md"));
         assert_eq!(
@@ -478,7 +428,6 @@ The semantic_weight of 0.7 gives the best results for code search.
 
     #[test]
     fn test_custom_source() {
-        // Demonstrate a completely custom archive source
         let custom_record = r#"---
 schema: field-notes/v1
 id: fn-001

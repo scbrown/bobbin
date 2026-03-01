@@ -38,8 +38,8 @@ impl Parser {
         };
 
         if lang == "markdown" {
-            // Check if this is a human-intent record (transcript)
-            if crate::index::archive::is_intent_record(content) {
+            // Check if this is an archive record (has schema: in frontmatter)
+            if has_schema_frontmatter(content) {
                 return Ok(self.chunk_transcript(path, content));
             }
             return Ok(self.chunk_markdown(path, content));
@@ -524,9 +524,9 @@ impl Parser {
         }
     }
 
-    /// Chunk a human-intent transcript record.
+    /// Chunk an archive record (any file with `schema:` in frontmatter).
     ///
-    /// One record = one chunk (preserving atomic human intent).
+    /// One record = one chunk (preserving atomic record content).
     /// If body exceeds 100 lines, split at paragraph breaks.
     fn chunk_transcript(&self, path: &Path, content: &str) -> Vec<Chunk> {
         let (fm, body, body_start_line) = extract_frontmatter(content);
@@ -558,7 +558,7 @@ impl Parser {
                 start_line: body_start_line as u32,
                 end_line: end_line as u32,
                 content: body.to_string(),
-                language: "transcript".to_string(),
+                language: "archive".to_string(),
             }];
         }
 
@@ -604,7 +604,7 @@ impl Parser {
                 start_line: sl as u32,
                 end_line: el as u32,
                 content: chunk_content,
-                language: "transcript".to_string(),
+                language: "archive".to_string(),
             });
 
             if chunk_end >= lines.len() {
@@ -1155,6 +1155,23 @@ fn generate_chunk_id(path: &Path, start_line: u32, end_line: u32) -> String {
     let input = format!("{}:{}:{}", path.display(), start_line, end_line);
     let hash = Sha256::digest(input.as_bytes());
     hex::encode(&hash[..8])
+}
+
+/// Check if a markdown file has a `schema:` field in its YAML frontmatter.
+///
+/// Any file with `schema:` in frontmatter is treated as an archive record
+/// and chunked as a whole transcript rather than by markdown headings.
+fn has_schema_frontmatter(content: &str) -> bool {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return false;
+    }
+    if let Some(end) = trimmed[3..].find("\n---") {
+        let fm = &trimmed[3..3 + end];
+        fm.lines().any(|l| l.trim().starts_with("schema:"))
+    } else {
+        false
+    }
 }
 
 
