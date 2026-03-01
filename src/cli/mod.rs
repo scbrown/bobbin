@@ -265,12 +265,17 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
 
 /// Resolve the effective server URL from multiple sources.
 ///
-/// Priority: cli_server (--server flag / BOBBIN_SERVER env) > repo config > global config
+/// Priority: cli_server (--server flag / BOBBIN_SERVER env) > repo config > global config.
+/// An empty string means "no server" (disables remote, useful for evals/local-only).
 fn resolve_server_url(cli_server: Option<String>) -> Option<String> {
     use crate::config::Config;
 
     // 1. CLI flag or BOBBIN_SERVER env (already resolved by clap)
-    if cli_server.is_some() {
+    if let Some(ref url) = cli_server {
+        // Empty string = explicit "no server" override
+        if url.is_empty() {
+            return None;
+        }
         return cli_server;
     }
 
@@ -278,7 +283,10 @@ fn resolve_server_url(cli_server: Option<String>) -> Option<String> {
     if let Some(repo_root) = find_bobbin_root() {
         let config_path = Config::config_path(&repo_root);
         if let Ok(config) = Config::load(&config_path) {
-            if config.server.url.is_some() {
+            if let Some(ref url) = config.server.url {
+                if url.is_empty() {
+                    return None;
+                }
                 return config.server.url;
             }
         }
@@ -286,7 +294,7 @@ fn resolve_server_url(cli_server: Option<String>) -> Option<String> {
 
     // 3. Global config [server].url
     let global = Config::load_global();
-    global.server.url
+    global.server.url.filter(|u| !u.is_empty())
 }
 
 /// Walk up from cwd to find a directory containing `.bobbin/`.
