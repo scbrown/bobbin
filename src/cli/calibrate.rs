@@ -607,6 +607,8 @@ async fn run_probes(
         bridge_mode: BridgeMode::Inject,
         bridge_boost_factor: 0.3,
         extra_filter: None,
+        tags_config: None,
+        role: None,
     };
     let mut assembler = ContextAssembler::new(embedder, vs, ms, initial_config);
 
@@ -634,6 +636,8 @@ async fn run_probes(
             bridge_mode: point.bridge_mode,
             bridge_boost_factor: point.bridge_boost_factor,
             extra_filter: None,
+            tags_config: None,
+            role: None,
         });
 
         let mut total_precision = 0.0_f32;

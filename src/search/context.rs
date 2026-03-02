@@ -79,6 +79,10 @@ pub struct ContextConfig {
     /// Additional SQL WHERE filter (e.g. tag include/exclude clauses).
     /// Combined with repo filter via AND.
     pub extra_filter: Option<String>,
+    /// Tags configuration for effect-based scoring (replaces doc_demotion when present).
+    pub tags_config: Option<crate::tags::TagsConfig>,
+    /// Role for resolving scoped tag effects (e.g. "aegis/crew/sentinel").
+    pub role: Option<String>,
 }
 
 /// How much content to include in output
@@ -217,6 +221,7 @@ struct SeedResult {
     match_type: Option<MatchType>,
     indexed_at: Option<i64>,
     repo: Option<String>,
+    tags: String,
 }
 
 /// Internal struct for coupled chunk information
@@ -347,6 +352,7 @@ impl ContextAssembler {
                     match_type,
                     indexed_at: None, // External seeds don't carry indexed_at
                     repo: s.repo,
+                    tags: s.chunk.tags,
                 }
             })
             .collect();
@@ -654,6 +660,7 @@ impl ContextAssembler {
                         match_type: result.match_type,
                         indexed_at: result.indexed_at,
                         repo: result.repo,
+                        tags: result.chunk.tags,
                     },
                     rrf_score,
                 ),
@@ -682,27 +689,35 @@ impl ContextAssembler {
                         match_type: result.match_type,
                         indexed_at: result.indexed_at,
                         repo: result.repo,
+                        tags: result.chunk.tags,
                     },
                     rrf_score,
                 ));
         }
 
-        // Apply category-based demotion and recency boost: doc/config files get
-        // demoted so source/test files rank higher when RRF scores are close.
-        // Recency boost favors recently-indexed content over stale results.
+        // Apply scoring adjustments: tag effects (if configured) subsume doc demotion,
+        // otherwise fall back to category-based demotion. Recency boost always applies.
         let doc_demotion = self.config.doc_demotion;
         let recency_hl = self.config.recency_half_life_days;
         let recency_w = self.config.recency_weight;
+        let tags_config = &self.config.tags_config;
+        let role = self.config.role.as_deref();
         let mut combined: Vec<_> = scores
             .into_values()
             .map(|(result, score)| {
-                let category = classify_file(&result.file_path);
-                let demoted = match category {
-                    FileCategory::Documentation | FileCategory::Config => score * doc_demotion,
-                    _ => score,
+                let adjusted_score = if let Some(ref tc) = tags_config {
+                    // Tag effects mode: compute product of (1+boost) for all tags
+                    apply_tag_effects(tc, &result.tags, role, score, doc_demotion, &result.file_path)
+                } else {
+                    // Legacy mode: category-based doc demotion
+                    let category = classify_file(&result.file_path);
+                    match category {
+                        FileCategory::Documentation | FileCategory::Config => score * doc_demotion,
+                        _ => score,
+                    }
                 };
-                let adjusted = apply_recency_boost(demoted, result.indexed_at, recency_hl, recency_w);
-                (result, adjusted)
+                let final_score = apply_recency_boost(adjusted_score, result.indexed_at, recency_hl, recency_w);
+                (result, final_score)
             })
             .collect();
         combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -1074,6 +1089,55 @@ fn assemble_bundle(
     })
 }
 
+/// Apply tag-based scoring effects. If a chunk has tags with configured effects,
+/// compute score *= product(1 + boost) clamped to [0.01, 10.0], replacing doc demotion.
+/// If no tag effects match, fall back to category-based doc demotion.
+fn apply_tag_effects(
+    tags_config: &crate::tags::TagsConfig,
+    tags_str: &str,
+    role: Option<&str>,
+    score: f32,
+    doc_demotion: f32,
+    file_path: &str,
+) -> f32 {
+    if tags_str.is_empty() {
+        // Untagged: fall back to category-based demotion
+        let category = classify_file(file_path);
+        return match category {
+            FileCategory::Documentation | FileCategory::Config => score * doc_demotion,
+            _ => score,
+        };
+    }
+
+    let tags: Vec<&str> = tags_str.split(',').collect();
+    let mut multiplier = 1.0_f32;
+    let mut had_effect = false;
+
+    for tag in &tags {
+        if let Some(effect) = tags_config.resolve_effect(tag, role) {
+            // Exclude effects are handled by pre-search WHERE clauses,
+            // not in the scoring pipeline. Skip them here.
+            if !effect.exclude {
+                multiplier *= 1.0 + effect.boost;
+                had_effect = true;
+            }
+        }
+    }
+
+    if had_effect {
+        // Clamp to prevent extreme scores
+        let clamped = multiplier.clamp(0.01, 10.0);
+        score * clamped
+    } else {
+        // Tags present but no effects configured: fall back to category demotion
+        let category = classify_file(file_path);
+        match category {
+            FileCategory::Documentation | FileCategory::Config => score * doc_demotion,
+            _ => score,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1122,6 +1186,8 @@ mod tests {
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
             extra_filter: None,
+            tags_config: None,
+            role: None,
         };
 
         let seeds = vec![
@@ -1153,6 +1219,8 @@ mod tests {
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
             extra_filter: None,
+            tags_config: None,
+            role: None,
         };
 
         let seeds = vec![
@@ -1181,6 +1249,8 @@ mod tests {
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
             extra_filter: None,
+            tags_config: None,
+            role: None,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1206,6 +1276,8 @@ mod tests {
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
             extra_filter: None,
+            tags_config: None,
+            role: None,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1235,6 +1307,8 @@ mod tests {
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
             extra_filter: None,
+            tags_config: None,
+            role: None,
         };
 
         let seeds = vec![
@@ -1265,6 +1339,8 @@ mod tests {
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
             extra_filter: None,
+            tags_config: None,
+            role: None,
         };
 
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)
@@ -1292,6 +1368,8 @@ mod tests {
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
             extra_filter: None,
+            tags_config: None,
+            role: None,
         };
 
         // Mix of commit and function seeds — commits should be excluded
@@ -1309,6 +1387,7 @@ mod tests {
                 score: 0.95,
                 match_type: Some(MatchType::Semantic),
                 repo: None,
+                tags: String::new(),
             },
             make_seed("c1", "a.rs", 1, 5, 0.9),
         ];
@@ -1335,6 +1414,7 @@ mod tests {
             score,
             match_type: Some(MatchType::Hybrid),
             repo: None,
+            tags: String::new(),
         }
     }
 

@@ -1101,6 +1101,8 @@ pub(super) async fn context(
         bridge_mode: BridgeMode::default(),
         bridge_boost_factor: 0.3,
         extra_filter,
+        tags_config: None,
+        role: None,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1737,6 +1739,8 @@ pub(super) async fn review(
         bridge_mode: BridgeMode::default(),
         bridge_boost_factor: 0.3,
         extra_filter: None,
+        tags_config: None,
+        role: None,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

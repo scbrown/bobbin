@@ -1309,6 +1309,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         bridge_mode: cal_bm.unwrap_or(BridgeMode::default()),
         bridge_boost_factor: cal_bbf.unwrap_or(0.3),
         extra_filter: None,
+        tags_config: None,
+        role: None,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1995,6 +1997,8 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             bridge_mode: BridgeMode::Off, // No bridging for post-tool
             bridge_boost_factor: 0.0,
             extra_filter: None,
+            tags_config: None,
+            role: None,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2374,6 +2378,8 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         bridge_mode: BridgeMode::Off, // No bridging for failure context (speed)
         bridge_boost_factor: 0.0,
         extra_filter: None,
+        tags_config: None,
+        role: None,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
