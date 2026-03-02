@@ -129,6 +129,9 @@ pub struct ContextFileOutput {
     #[serde(default)]
     pub coupled_to: Vec<String>,
     pub chunks: Vec<ContextChunkOutput>,
+    /// Repository name this file belongs to (from index metadata)
+    #[serde(default)]
+    pub repo: Option<String>,
 }
 
 #[derive(Deserialize)]

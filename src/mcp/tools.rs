@@ -175,6 +175,9 @@ pub struct ContextFileOutput {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub coupled_to: Vec<String>,
     pub chunks: Vec<ContextChunkOutput>,
+    /// Repository name this file belongs to (from index metadata)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
 }
 
 /// A chunk in the context response

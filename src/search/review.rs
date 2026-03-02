@@ -39,6 +39,7 @@ pub async fn map_diff_to_chunks(
                         added_lines: diff_file.added_lines.len(),
                         removed_lines: diff_file.removed_lines.len(),
                     },
+                    repo: None, // Diff seeds are local, no multi-repo context
                 });
             }
         }

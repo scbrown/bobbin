@@ -109,6 +109,9 @@ pub struct ContextFile {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub coupled_to: Vec<String>,
     pub chunks: Vec<ContextChunk>,
+    /// Repository name this file belongs to (from index metadata)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
 }
 
 /// A chunk within a context file
@@ -184,6 +187,8 @@ pub struct SeedChunk {
     pub chunk: Chunk,
     pub score: f32,
     pub source: SeedSource,
+    /// Repository name this chunk belongs to (from index metadata)
+    pub repo: Option<String>,
 }
 
 /// Assembles task-relevant context from search and git history
@@ -208,6 +213,7 @@ struct SeedResult {
     score: f32,
     match_type: Option<MatchType>,
     indexed_at: Option<i64>,
+    repo: Option<String>,
 }
 
 /// Internal struct for coupled chunk information
@@ -278,6 +284,7 @@ impl ContextAssembler {
                 source: SeedSource::Search {
                     match_type: r.match_type.unwrap_or(MatchType::Hybrid),
                 },
+                repo: r.repo,
             })
             .collect();
 
@@ -335,6 +342,7 @@ impl ContextAssembler {
                     score: s.score,
                     match_type,
                     indexed_at: None, // External seeds don't carry indexed_at
+                    repo: s.repo,
                 }
             })
             .collect();
@@ -641,6 +649,7 @@ impl ContextAssembler {
                         score: 0.0,
                         match_type: result.match_type,
                         indexed_at: result.indexed_at,
+                        repo: result.repo,
                     },
                     rrf_score,
                 ),
@@ -668,6 +677,7 @@ impl ContextAssembler {
                         score: 0.0,
                         match_type: result.match_type,
                         indexed_at: result.indexed_at,
+                        repo: result.repo,
                     },
                     rrf_score,
                 ));
@@ -808,6 +818,10 @@ fn assemble_bundle(
             .map(|r| r.language.clone())
             .unwrap_or_default();
 
+        let file_repo = results
+            .first()
+            .and_then(|r| r.repo.clone());
+
         let file_score = results
             .iter()
             .map(|r| r.score)
@@ -850,6 +864,7 @@ fn assemble_bundle(
                 score: file_score,
                 coupled_to: vec![],
                 chunks: file_chunks,
+                repo: file_repo,
             });
         }
     }
@@ -945,6 +960,7 @@ fn assemble_bundle(
                 score: file_score,
                 coupled_to,
                 chunks: file_chunks,
+                repo: None, // Coupled files don't carry repo from coupling source
             });
         }
     }
@@ -1024,6 +1040,7 @@ fn assemble_bundle(
                 score: file_score,
                 coupled_to,
                 chunks: file_chunks,
+                repo: None, // Bridged files don't carry repo from bridge source
             });
         }
     }
@@ -1280,6 +1297,7 @@ mod tests {
                 content: "fix: something\n\nAuthor: dev\nFiles: a.rs".to_string(),
                 score: 0.95,
                 match_type: Some(MatchType::Semantic),
+                repo: None,
             },
             make_seed("c1", "a.rs", 1, 5, 0.9),
         ];
@@ -1305,6 +1323,7 @@ mod tests {
             content: "fn test() {}".to_string(),
             score,
             match_type: Some(MatchType::Hybrid),
+            repo: None,
         }
     }
 

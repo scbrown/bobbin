@@ -624,6 +624,7 @@ impl BobbinMcpServer {
                     }),
                     content: c.content.clone(),
                 }).collect(),
+                repo: f.repo.clone(),
             }).collect(),
             summary: ContextSummaryOutput {
                 total_files: bundle.summary.total_files,
@@ -1092,6 +1093,7 @@ impl BobbinMcpServer {
                     }),
                     content: c.content.clone(),
                 }).collect(),
+                repo: f.repo.clone(),
             }).collect(),
             summary: ContextSummaryOutput {
                 total_files: bundle.summary.total_files,

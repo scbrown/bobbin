@@ -789,6 +789,14 @@ fn format_remote_file_chunks(
     use std::fmt::Write;
 
     for file in files {
+        // Build display path with repo prefix when available and not already present
+        let display_path = match &file.repo {
+            Some(repo) if !file.path.starts_with("repos/") && !file.path.starts_with("/") && !file.path.starts_with("beads:") => {
+                format!("repos/{}/{}", repo, file.path)
+            }
+            _ => file.path.clone(),
+        };
+
         // Show coupling info if present
         let relevance_info = if !file.coupled_to.is_empty() {
             format!(" [coupled via {}]", file.coupled_to.join(", "))
@@ -807,7 +815,7 @@ fn format_remote_file_chunks(
             let content_str = chunk.content.as_deref().unwrap_or("");
             let chunk_section = format!(
                 "\n--- {}:{}-{}{} ({}, score {:.2}){} ---\n{}{}",
-                file.path,
+                display_path,
                 chunk.start_line,
                 chunk.end_line,
                 name,
@@ -961,6 +969,14 @@ fn format_file_chunks(
     let mut current_lines = out.lines().count();
 
     for file in files {
+        // Build display path with repo prefix when available and not already present
+        let display_path = match &file.repo {
+            Some(repo) if !file.path.starts_with("repos/") && !file.path.starts_with("/") && !file.path.starts_with("beads:") => {
+                format!("repos/{}/{}", repo, file.path)
+            }
+            _ => file.path.clone(),
+        };
+
         for chunk in &file.chunks {
             if chunk.score < threshold {
                 continue;
@@ -973,7 +989,7 @@ fn format_file_chunks(
             let chunk_section = if let Some(ref content) = chunk.content {
                 format!(
                     "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n{}{}",
-                    file.path,
+                    display_path,
                     chunk.start_line,
                     chunk.end_line,
                     name,
@@ -985,7 +1001,7 @@ fn format_file_chunks(
             } else {
                 format!(
                     "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n",
-                    file.path, chunk.start_line, chunk.end_line, name, chunk.chunk_type, chunk.score,
+                    display_path, chunk.start_line, chunk.end_line, name, chunk.chunk_type, chunk.score,
                 )
             };
 
@@ -3117,6 +3133,7 @@ mod tests {
                 category: classify_file("src/auth.rs"),
                 score: 0.85,
                 coupled_to: vec![],
+                repo: None,
                 chunks: vec![ContextChunk {
                     name: Some("authenticate".to_string()),
                     chunk_type: ChunkType::Function,
@@ -3160,6 +3177,7 @@ mod tests {
                 category: classify_file("src/low.rs"),
                 score: 0.3,
                 coupled_to: vec![],
+                repo: None,
                 chunks: vec![ContextChunk {
                     name: Some("low_score_fn".to_string()),
                     chunk_type: ChunkType::Function,
@@ -3382,6 +3400,7 @@ mod tests {
                     category: classify_file("src/a.rs"),
                     score: 0.9,
                     coupled_to: vec![],
+                    repo: None,
                     chunks: vec![
                         ContextChunk {
                             name: Some("fn_a".to_string()),
@@ -3443,6 +3462,7 @@ mod tests {
                 category: classify_file("src/x.rs"),
                 score: 0.85,
                 coupled_to: vec![],
+                repo: None,
                 chunks: vec![ContextChunk {
                     name: Some("fn_x".to_string()),
                     chunk_type: ChunkType::Function,
@@ -3485,6 +3505,7 @@ mod tests {
                     category: classify_file("src/main.rs"),
                     score: 0.9,
                     coupled_to: vec![],
+                    repo: None,
                     chunks: vec![ContextChunk {
                         name: Some("main".to_string()),
                         chunk_type: ChunkType::Function,
@@ -3502,6 +3523,7 @@ mod tests {
                     category: classify_file("README.md"),
                     score: 0.8,
                     coupled_to: vec![],
+                    repo: None,
                     chunks: vec![ContextChunk {
                         name: None,
                         chunk_type: ChunkType::Module,
@@ -3554,6 +3576,7 @@ mod tests {
                 category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
+                repo: None,
                 chunks: vec![ContextChunk {
                     name: Some("fn_a".to_string()),
                     chunk_type: ChunkType::Function,
@@ -3596,6 +3619,7 @@ mod tests {
                 category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
+                repo: None,
                 chunks: vec![ContextChunk {
                     name: Some("fn_a".to_string()),
                     chunk_type: ChunkType::Function,
@@ -4278,6 +4302,7 @@ mod tests {
                 category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
+                repo: None,
                 chunks: vec![
                     ContextChunk {
                         name: Some("fn_a".to_string()),
@@ -4332,6 +4357,7 @@ mod tests {
                 category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
+                repo: None,
                 chunks: vec![ContextChunk {
                     name: None,
                     chunk_type: ChunkType::Function,
@@ -4374,6 +4400,7 @@ mod tests {
                 category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
+                repo: None,
                 chunks: vec![
                     ContextChunk {
                         name: None,
@@ -4467,6 +4494,7 @@ mod tests {
                 category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
+                repo: None,
                 chunks: chunks.clone(),
             }],
             budget: BudgetInfo {
@@ -4511,6 +4539,7 @@ mod tests {
                 category: classify_file("src/a.rs"),
                 score: 0.9,
                 coupled_to: vec![],
+                repo: None,
                 chunks: top_10_chunks,
             }],
             budget: BudgetInfo {

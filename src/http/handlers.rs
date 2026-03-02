@@ -895,6 +895,8 @@ struct ContextFileOutput {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     coupled_to: Vec<String>,
     chunks: Vec<ContextChunkOutput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repo: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -2775,6 +2777,7 @@ fn to_context_file(f: &crate::search::context::ContextFile) -> ContextFileOutput
                 content: c.content.clone(),
             })
             .collect(),
+        repo: f.repo.clone(),
     }
 }
 
