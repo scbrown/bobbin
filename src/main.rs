@@ -10,6 +10,7 @@ mod http;
 mod index;
 mod mcp;
 mod metrics;
+pub mod reactions;
 mod search;
 mod storage;
 pub mod tags;
