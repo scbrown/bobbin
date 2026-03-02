@@ -33,10 +33,6 @@ pub struct SearchArgs {
     #[arg(long, short = 'r')]
     repo: Option<String>,
 
-    /// Filter results to a named repo group (defined in config.toml)
-    #[arg(long, short = 'g')]
-    group: Option<String>,
-
     /// Directory to search in (defaults to current directory)
     #[arg(default_value = ".")]
     path: PathBuf,
@@ -147,22 +143,10 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
 
     let repo_filter = args.repo.as_deref();
 
-    // Resolve group filter to SQL clause
-    let group_sql = args.group.as_deref().map(|name| {
-        config.group_filter(name).ok_or_else(|| {
-            let available: Vec<&str> = config.groups.iter().map(|g| g.name.as_str()).collect();
-            if available.is_empty() {
-                anyhow::anyhow!("Unknown group '{}'. No groups configured.", name)
-            } else {
-                anyhow::anyhow!("Unknown group '{}'. Available: {}", name, available.join(", "))
-            }
-        })
-    }).transpose()?;
-
     let results = match args.mode {
         SearchMode::Keyword => {
             vector_store
-                .search_fts_filtered(&args.query, search_limit, repo_filter, group_sql.as_deref())
+                .search_fts(&args.query, search_limit, repo_filter)
                 .await
                 .context("Keyword search failed")?
         }
@@ -187,7 +171,7 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
                 SearchMode::Semantic => {
                     let mut search = SemanticSearch::new(embedder, vector_store);
                     search
-                        .search_filtered(&args.query, search_limit, repo_filter, group_sql.as_deref())
+                        .search(&args.query, search_limit, repo_filter)
                         .await
                         .context("Semantic search failed")?
                 }
@@ -206,7 +190,7 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
                     )
                     .with_rrf_k(rrf);
                     search
-                        .search_filtered(&args.query, search_limit, repo_filter, group_sql.as_deref())
+                        .search(&args.query, search_limit, repo_filter)
                         .await
                         .context("Hybrid search failed")?
                 }
