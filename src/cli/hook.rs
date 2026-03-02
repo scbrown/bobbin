@@ -1902,8 +1902,8 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         if input.session_id.is_empty() { None } else { Some(&input.session_id) },
     );
 
-    // 3b. Load reaction rules and compile them
-    let reaction_config = ReactionConfig::load_for_repo(&repo_root);
+    // 3b. Load reaction rules (builtins + user overrides) and compile them
+    let reaction_config = ReactionConfig::load_for_repo(&repo_root).with_builtins();
     let compiled_rules: Vec<CompiledRule> = reaction_config
         .reactions
         .into_iter()
@@ -2257,8 +2257,25 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         }
 
         reactions_fired = eval_result.reactions_fired;
-        rules_fired = eval_result.rules_fired;
+        rules_fired = eval_result.rules_fired.clone();
         rules_deduped = eval_result.rules_deduped;
+
+        // Emit per-rule metrics
+        for rule_name in &eval_result.rules_fired {
+            crate::metrics::emit(
+                &repo_root,
+                &crate::metrics::event(
+                    &metrics_source,
+                    "reaction_fired",
+                    rule_name,
+                    0,
+                    serde_json::json!({
+                        "tool_name": input.tool_name,
+                        "rule": rule_name,
+                    }),
+                ),
+            );
+        }
     }
 
     // Skip if nothing useful to report across all sections

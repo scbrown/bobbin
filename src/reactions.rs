@@ -566,6 +566,125 @@ pub struct PendingSearch {
 }
 
 // ---------------------------------------------------------------------------
+// Default built-in rules
+// ---------------------------------------------------------------------------
+
+/// Return built-in reaction rules.
+/// These are always loaded — user rules in reactions.toml extend (don't replace) them.
+/// Users can override a built-in by defining a rule with the same name.
+pub fn builtin_rules() -> Vec<ReactionRule> {
+    vec![
+        ReactionRule {
+            name: "iac-drift-check".into(),
+            tool: "mcp__homelab__batch_probe".into(),
+            match_conditions: HashMap::new(),
+            guidance: concat!(
+                "You just modified container {args.container} via batch_probe.\n",
+                "Ensure this change is reflected in goldblum IaC (Terraform/Ansible)\n",
+                "so it persists across reprovisioning.",
+            ).into(),
+            search_query: "terraform container {args.container}".into(),
+            search_group: "goldblum".into(),
+            search_tags: vec!["auto:config".into()],
+            max_context_lines: 50,
+            use_coupling: false,
+            coupling_threshold: 0.3,
+        },
+        ReactionRule {
+            name: "service-known-issues".into(),
+            tool: "mcp__homelab__service_restart".into(),
+            match_conditions: HashMap::new(),
+            guidance: concat!(
+                "Service {args.service} restarted on {args.container}.\n",
+                "Check for known issues or recent changes that could affect this service.",
+            ).into(),
+            search_query: "{args.service} {args.container} configuration".into(),
+            search_group: String::new(),
+            search_tags: vec!["auto:config".into()],
+            max_context_lines: 50,
+            use_coupling: false,
+            coupling_threshold: 0.3,
+        },
+        ReactionRule {
+            name: "package-iac-declaration".into(),
+            tool: "Bash".into(),
+            match_conditions: {
+                let mut m = HashMap::new();
+                m.insert("command".into(), r"apt install (?P<package>\S+)".into());
+                m
+            },
+            guidance: concat!(
+                "You installed package {matched.package} directly.\n",
+                "If this container is managed by Ansible/Terraform, add the package\n",
+                "to the relevant IaC declaration so it persists across reprovisioning.",
+            ).into(),
+            search_query: "ansible package {matched.package}".into(),
+            search_group: "goldblum".into(),
+            search_tags: vec![],
+            max_context_lines: 30,
+            use_coupling: false,
+            coupling_threshold: 0.3,
+        },
+        ReactionRule {
+            name: "terraform-plan-check".into(),
+            tool: "Edit".into(),
+            match_conditions: {
+                let mut m = HashMap::new();
+                m.insert("file_path".into(), r".*\.tf$".into());
+                m
+            },
+            guidance: concat!(
+                "Terraform file modified. Run `terraform plan` to verify\n",
+                "the change before applying. Check for dependent resources.",
+            ).into(),
+            search_query: "terraform {file_stem} resource".into(),
+            search_group: String::new(),
+            search_tags: vec![],
+            max_context_lines: 40,
+            use_coupling: false,
+            coupling_threshold: 0.3,
+        },
+        ReactionRule {
+            name: "coupled-files".into(),
+            tool: "Edit".into(),
+            match_conditions: HashMap::new(),
+            guidance: concat!(
+                "This file has historically changed alongside other files.\n",
+                "Review these coupled files for necessary updates.",
+            ).into(),
+            search_query: String::new(),
+            search_group: String::new(),
+            search_tags: vec![],
+            max_context_lines: 30,
+            use_coupling: true,
+            coupling_threshold: 0.3,
+        },
+    ]
+}
+
+impl ReactionConfig {
+    /// Merge built-in rules with user-defined rules.
+    /// User rules with the same name as a built-in override the built-in.
+    pub fn with_builtins(mut self) -> Self {
+        let user_names: std::collections::HashSet<String> = self
+            .reactions
+            .iter()
+            .map(|r| r.name.clone())
+            .collect();
+
+        let mut builtins: Vec<ReactionRule> = builtin_rules()
+            .into_iter()
+            .filter(|r| !user_names.contains(&r.name))
+            .collect();
+
+        // Builtins go first, user rules can override
+        builtins.append(&mut self.reactions);
+        self.reactions = builtins;
+        self
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Reaction output formatting
 // ---------------------------------------------------------------------------
 
@@ -1541,5 +1660,168 @@ guidance = "Review coupled files for {file_stem}"
         assert_eq!(searches[0].query, "related to main");
         assert_eq!(searches[0].group, Some("infra".into()));
         assert_eq!(searches[0].tags, vec!["auto:config"]);
+    }
+
+    // -- Built-in rules tests --
+
+    #[test]
+    fn test_builtin_rules_compile() {
+        let builtins = builtin_rules();
+        assert!(builtins.len() >= 5);
+        for rule in builtins {
+            assert!(
+                CompiledRule::compile(rule.clone()).is_ok(),
+                "Built-in rule '{}' failed to compile",
+                rule.name,
+            );
+        }
+    }
+
+    #[test]
+    fn test_builtin_iac_drift_matches_batch_probe() {
+        let builtins: Vec<CompiledRule> = builtin_rules()
+            .into_iter()
+            .map(|r| CompiledRule::compile(r).unwrap())
+            .collect();
+        let event = ToolEvent {
+            tool_name: "mcp__homelab__batch_probe".into(),
+            tool_input: json!({"container": "monitoring", "command": "uptime"}),
+        };
+        let matches = match_rules(&event, &builtins);
+        let names: Vec<&str> = matches.iter().map(|(_, m)| m.rule_name.as_str()).collect();
+        assert!(names.contains(&"iac-drift-check"));
+    }
+
+    #[test]
+    fn test_builtin_service_restart_matches() {
+        let builtins: Vec<CompiledRule> = builtin_rules()
+            .into_iter()
+            .map(|r| CompiledRule::compile(r).unwrap())
+            .collect();
+        let event = ToolEvent {
+            tool_name: "mcp__homelab__service_restart".into(),
+            tool_input: json!({"container": "automation", "service": "forgejo-runner"}),
+        };
+        let matches = match_rules(&event, &builtins);
+        let names: Vec<&str> = matches.iter().map(|(_, m)| m.rule_name.as_str()).collect();
+        assert!(names.contains(&"service-known-issues"));
+    }
+
+    #[test]
+    fn test_builtin_apt_install_matches() {
+        let builtins: Vec<CompiledRule> = builtin_rules()
+            .into_iter()
+            .map(|r| CompiledRule::compile(r).unwrap())
+            .collect();
+        let event = ToolEvent {
+            tool_name: "Bash".into(),
+            tool_input: json!({"command": "apt install nginx"}),
+        };
+        let matches = match_rules(&event, &builtins);
+        let names: Vec<&str> = matches.iter().map(|(_, m)| m.rule_name.as_str()).collect();
+        assert!(names.contains(&"package-iac-declaration"));
+        // Check captures
+        let apt_match = matches.iter().find(|(_, m)| m.rule_name == "package-iac-declaration").unwrap();
+        assert_eq!(apt_match.1.captures.get("matched.package").unwrap(), "nginx");
+    }
+
+    #[test]
+    fn test_builtin_terraform_edit_matches() {
+        let builtins: Vec<CompiledRule> = builtin_rules()
+            .into_iter()
+            .map(|r| CompiledRule::compile(r).unwrap())
+            .collect();
+        let event = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/home/user/goldblum/main.tf", "old_string": "x", "new_string": "y"}),
+        };
+        let matches = match_rules(&event, &builtins);
+        let names: Vec<&str> = matches.iter().map(|(_, m)| m.rule_name.as_str()).collect();
+        assert!(names.contains(&"terraform-plan-check"));
+        assert!(names.contains(&"coupled-files")); // Also matches generic coupling rule
+    }
+
+    #[test]
+    fn test_builtin_coupled_files_matches_any_edit() {
+        let builtins: Vec<CompiledRule> = builtin_rules()
+            .into_iter()
+            .map(|r| CompiledRule::compile(r).unwrap())
+            .collect();
+        let event = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/home/user/src/main.rs", "old_string": "x", "new_string": "y"}),
+        };
+        let matches = match_rules(&event, &builtins);
+        let names: Vec<&str> = matches.iter().map(|(_, m)| m.rule_name.as_str()).collect();
+        assert!(names.contains(&"coupled-files"));
+        // Should NOT match terraform rule (not a .tf file)
+        assert!(!names.contains(&"terraform-plan-check"));
+    }
+
+    #[test]
+    fn test_builtin_no_match_for_read() {
+        let builtins: Vec<CompiledRule> = builtin_rules()
+            .into_iter()
+            .map(|r| CompiledRule::compile(r).unwrap())
+            .collect();
+        let event = ToolEvent {
+            tool_name: "Read".into(),
+            tool_input: json!({"file_path": "/tmp/test.rs"}),
+        };
+        let matches = match_rules(&event, &builtins);
+        assert!(matches.is_empty()); // No built-in rules match Read
+    }
+
+    #[test]
+    fn test_with_builtins_merges() {
+        let config = ReactionConfig {
+            reactions: vec![ReactionRule {
+                name: "custom-rule".into(),
+                tool: "Write".into(),
+                match_conditions: HashMap::new(),
+                guidance: "Custom guidance".into(),
+                search_query: String::new(),
+                search_group: String::new(),
+                search_tags: vec![],
+                max_context_lines: 50,
+                use_coupling: false,
+                coupling_threshold: 0.3,
+            }],
+        };
+        let merged = config.with_builtins();
+        // Should have builtins + custom rule
+        assert!(merged.reactions.len() > 5);
+        let names: Vec<&str> = merged.reactions.iter().map(|r| r.name.as_str()).collect();
+        assert!(names.contains(&"iac-drift-check"));
+        assert!(names.contains(&"custom-rule"));
+    }
+
+    #[test]
+    fn test_with_builtins_user_overrides() {
+        // User rule with same name as builtin overrides it
+        let config = ReactionConfig {
+            reactions: vec![ReactionRule {
+                name: "coupled-files".into(), // Same as builtin
+                tool: "Write".into(), // Different tool (overrides builtin's "Edit")
+                match_conditions: HashMap::new(),
+                guidance: "User override".into(),
+                search_query: String::new(),
+                search_group: String::new(),
+                search_tags: vec![],
+                max_context_lines: 50,
+                use_coupling: false,
+                coupling_threshold: 0.3,
+            }],
+        };
+        let merged = config.with_builtins();
+        // Find the "coupled-files" rule — should be the user's version
+        let cf = merged.reactions.iter().find(|r| r.name == "coupled-files").unwrap();
+        assert_eq!(cf.tool, "Write"); // User's tool, not builtin's "Edit"
+        assert_eq!(cf.guidance, "User override");
+        // Should only appear once
+        assert_eq!(
+            merged.reactions.iter().filter(|r| r.name == "coupled-files").count(),
+            1
+        );
     }
 }
