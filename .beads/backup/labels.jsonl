@@ -41,6 +41,8 @@
 {"issue_id":"bo-drth","label":"relevance"}
 {"issue_id":"bo-fli6","label":"ci"}
 {"issue_id":"bo-fli6","label":"divergence"}
+{"issue_id":"bo-gx4r","label":"dx"}
+{"issue_id":"bo-gx4r","label":"injection"}
 {"issue_id":"bo-gzkq","label":"search-quality"}
 {"issue_id":"bo-i8yui","label":"eval"}
 {"issue_id":"bo-i8yui","label":"metrics"}
