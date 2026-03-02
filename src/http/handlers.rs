@@ -22,7 +22,6 @@ use crate::storage::{MetadataStore, VectorStore};
 use crate::types::{ChunkType, MatchType, SearchResult};
 
 use crate::access::RepoFilter;
-use crate::storage::feedback::{FeedbackInput, FeedbackQuery, InjectionRecord};
 use crate::tags::{build_tag_exclude_filter, build_tag_include_filter};
 
 use super::AppState;
@@ -85,10 +84,6 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/commands", get(list_commands))
         .route("/metrics", get(metrics))
         .route("/webhook/push", post(webhook_push))
-        .route("/injections", post(post_injection))
-        .route("/injections/{id}", get(get_injection))
-        .route("/feedback", get(list_feedback).post(post_feedback))
-        .route("/feedback/stats", get(feedback_stats))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -3256,117 +3251,4 @@ async fn run_incremental_index(
     }
 
     Ok(())
-}
-
-// ── Injection & Feedback endpoints ──────────────────────────────────────
-
-/// POST /injections — store an injection record
-async fn post_injection(
-    State(state): State<Arc<AppState>>,
-    Json(record): Json<InjectionRecord>,
-) -> impl IntoResponse {
-    if record.injection_id.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "injection_id is required"})),
-        );
-    }
-    match state.feedback_store.store_injection(&record) {
-        Ok(()) => (
-            StatusCode::CREATED,
-            Json(serde_json::json!({"ok": true, "injection_id": record.injection_id})),
-        ),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": format!("{:#}", e)})),
-        ),
-    }
-}
-
-/// GET /injections/{id} — retrieve an injection record
-async fn get_injection(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
-    match state.feedback_store.get_injection(&id) {
-        Ok(Some(record)) => (StatusCode::OK, Json(serde_json::json!(record))),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": "injection not found"})),
-        ),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": format!("{:#}", e)})),
-        ),
-    }
-}
-
-/// POST /feedback — store agent feedback on an injection
-async fn post_feedback(
-    State(state): State<Arc<AppState>>,
-    Json(input): Json<FeedbackInput>,
-) -> impl IntoResponse {
-    // Validate rating
-    match input.rating.as_str() {
-        "useful" | "noise" | "harmful" => {}
-        _ => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "rating must be one of: useful, noise, harmful"})),
-            );
-        }
-    }
-
-    if input.injection_id.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "injection_id is required"})),
-        );
-    }
-
-    match state.feedback_store.store_feedback(&input) {
-        Ok(id) => (
-            StatusCode::CREATED,
-            Json(serde_json::json!({"ok": true, "id": id})),
-        ),
-        Err(e) => {
-            let msg = format!("{:#}", e);
-            if msg.contains("FOREIGN KEY") {
-                (
-                    StatusCode::NOT_FOUND,
-                    Json(serde_json::json!({"error": "injection_id not found — store the injection first"})),
-                )
-            } else {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": msg})),
-                )
-            }
-        }
-    }
-}
-
-/// GET /feedback — list feedback records with optional filters
-async fn list_feedback(
-    State(state): State<Arc<AppState>>,
-    Query(params): Query<FeedbackQuery>,
-) -> impl IntoResponse {
-    match state.feedback_store.list_feedback(&params) {
-        Ok(records) => (StatusCode::OK, Json(serde_json::json!(records))),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": format!("{:#}", e)})),
-        ),
-    }
-}
-
-/// GET /feedback/stats — aggregate feedback statistics
-async fn feedback_stats(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match state.feedback_store.stats() {
-        Ok(stats) => (StatusCode::OK, Json(serde_json::json!(stats))),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": format!("{:#}", e)})),
-        ),
-    }
 }
