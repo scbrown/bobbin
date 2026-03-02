@@ -602,6 +602,7 @@ async fn inject_context_remote(
     //    Falls back to /search if /context returns 404 (e.g., Traefik proxy
     //    not forwarding the endpoint).
     let client = Client::new(server_url);
+    let role = crate::access::RepoFilter::resolve_role(None);
     let context_result = client
         .context(
             prompt,
@@ -611,6 +612,7 @@ async fn inject_context_remote(
             Some(20),   // search_limit: 20 initial results
             Some(0.1),  // coupling_threshold
             None,       // repo filter
+            Some(&role),
         )
         .await;
 

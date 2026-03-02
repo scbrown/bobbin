@@ -868,6 +868,8 @@ struct ContextParams {
     coupling_threshold: Option<f32>,
     /// Filter by repository
     repo: Option<String>,
+    /// Role for access filtering
+    role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -973,10 +975,14 @@ pub(super) async fn context(
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
-    let bundle = assembler
+    let mut bundle = assembler
         .assemble(&params.q, params.repo.as_deref())
         .await
         .map_err(internal_error)?;
+
+    // Apply role-based access filtering
+    let access = resolve_filter(&state, params.role.as_deref());
+    bundle.files.retain(|f| access.is_allowed(RepoFilter::repo_from_path(&f.path)));
 
     Ok(Json(ContextResponse {
         query: bundle.query,
