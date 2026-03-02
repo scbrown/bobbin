@@ -127,6 +127,7 @@ fn record_to_chunk(
         end_line,
         content: body.to_string(),
         language: source.name.clone(),
+        tags: String::new(),
     })
 }
 

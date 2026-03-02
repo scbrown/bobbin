@@ -119,6 +119,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     let config = Config::load(&config_path).with_context(|| "Failed to load configuration")?;
 
+    // Load tags config for tag resolution during indexing
+    let tags_config = crate::tags::TagsConfig::load_or_default(
+        &crate::tags::TagsConfig::tags_path(&repo_root),
+    );
+
+
     // Source directory: --source overrides the default (which is the bobbin home path)
     let source_root = if let Some(ref source) = args.source {
         source
@@ -367,7 +373,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
 
         let t_parse = Instant::now();
-        let chunks = match parser.parse_file(file_path, &content) {
+        let mut chunks = match parser.parse_file(file_path, &content) {
             Ok(c) => c,
             Err(e) => {
                 errors.push((rel_path.clone(), format!("Parse error: {}", e)));
@@ -397,6 +403,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
 
         let hash = compute_hash(&content);
+
+        // Resolve tags for this file (convention + pattern rules)
+        let tags_str = crate::tags::resolve_tags(&tags_config, &rel_path, Some(repo_name));
+        if !tags_str.is_empty() {
+            for chunk in &mut chunks {
+                chunk.tags = tags_str.clone();
+            }
+        }
 
         // Compute contextual embeddings for enabled languages
         let t_ctx = Instant::now();
@@ -662,6 +676,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                                     end_line: 0,
                                     content,
                                     language: "git".to_string(),
+                                    tags: String::new(),
                                 }
                             })
                             .collect();
@@ -1037,6 +1052,13 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             }
         }
 
+        // Tag metrics
+        if let Ok((tagged, untagged)) = vector_store.count_tagged_chunks().await {
+            if tagged > 0 {
+                println!("  Tags: {} tagged, {} untagged chunks", tagged, untagged);
+            }
+        }
+
         if output.verbose {
             let stats = vector_store.get_stats(Some(repo_name)).await?;
             println!("\nIndex statistics:");
@@ -1365,6 +1387,7 @@ mod tests {
             end_line: 6,
             content: "line4\nline5\nline6".to_string(),
             language: "markdown".to_string(),
+            tags: String::new(),
         }];
         let config = ContextualEmbeddingConfig {
             context_lines: 2,
@@ -1398,6 +1421,7 @@ mod tests {
             end_line: 4,
             content: "line2\nline3\nline4".to_string(),
             language: "rust".to_string(),
+            tags: String::new(),
         }];
         let config = ContextualEmbeddingConfig {
             context_lines: 2,
@@ -1421,6 +1445,7 @@ mod tests {
             end_line: 3,
             content: "line1\nline2\nline3".to_string(),
             language: "markdown".to_string(),
+            tags: String::new(),
         }];
         let config = ContextualEmbeddingConfig {
             context_lines: 5,
@@ -1444,6 +1469,7 @@ mod tests {
             end_line: 2,
             content: "line2".to_string(),
             language: "markdown".to_string(),
+            tags: String::new(),
         }];
         let config = ContextualEmbeddingConfig {
             context_lines: 0,

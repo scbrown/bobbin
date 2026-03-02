@@ -90,6 +90,7 @@ mod tests {
             end_line: end,
             content: "fn test() {}".to_string(),
             language: "rust".to_string(),
+            tags: String::new(),
         }
     }
 

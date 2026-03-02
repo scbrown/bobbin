@@ -257,6 +257,7 @@ mod tests {
                 end_line: 30,
                 content: "pub fn parse_config(path: &Path) -> Result<Config> {\n    let content = std::fs::read_to_string(path)?;\n    toml::from_str(&content)\n}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             // Another definition: Config struct
             Chunk {
@@ -268,6 +269,7 @@ mod tests {
                 end_line: 8,
                 content: "pub struct Config {\n    pub name: String,\n    pub version: String,\n}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             // Usage in main.rs
             Chunk {
@@ -279,6 +281,7 @@ mod tests {
                 end_line: 10,
                 content: "fn main() -> Result<()> {\n    let config = parse_config(Path::new(\"config.toml\"))?;\n    println!(\"{}\", config.name);\n    Ok(())\n}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             // Usage in tests
             Chunk {
@@ -290,6 +293,7 @@ mod tests {
                 end_line: 15,
                 content: "#[test]\nfn test_parse_config() {\n    let config = parse_config(Path::new(\"fixtures/test.toml\")).unwrap();\n    assert_eq!(config.name, \"test\");\n}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             // A chunk with no name (should be excluded from list_symbols)
             Chunk {
@@ -301,6 +305,7 @@ mod tests {
                 end_line: 40,
                 content: "// Some comments about configuration".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
         ];
 

@@ -11,6 +11,9 @@ pub struct Chunk {
     pub end_line: u32,
     pub content: String,
     pub language: String,
+    /// Comma-separated sorted tags (empty string = untagged)
+    #[serde(default)]
+    pub tags: String,
 }
 
 /// Types of semantic chunks that can be extracted

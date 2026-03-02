@@ -279,6 +279,7 @@ impl ContextAssembler {
                     start_line: r.start_line,
                     end_line: r.end_line,
                     content: r.content,
+                    tags: String::new(),
                 },
                 score: r.score,
                 source: SeedSource::Search {

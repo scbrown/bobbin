@@ -21,6 +21,7 @@ mod search;
 mod serve;
 mod similar;
 mod status;
+mod tag;
 mod tour;
 mod watch;
 
@@ -134,6 +135,9 @@ enum Commands {
     /// Show LLM-friendly project overview with live stats
     Prime(prime::PrimeArgs),
 
+    /// Manage chunk tags (list, add rules, remove rules)
+    Tag(tag::TagArgs),
+
     /// Execute or manage user-defined convenience commands
     Run(run::RunArgs),
 }
@@ -165,6 +169,7 @@ impl Commands {
             Commands::Tour(_) => "tour",
             Commands::Purge(_) => "purge",
             Commands::Prime(_) => "prime",
+            Commands::Tag(_) => "tag",
             Commands::Run(_) => "run",
         }
     }
@@ -264,6 +269,7 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
         Commands::Tour(args) => tour::run(args, output).await,
         Commands::Purge(args) => purge::run(args, output).await,
         Commands::Prime(args) => prime::run(args, output).await,
+        Commands::Tag(args) => tag::run(args, output).await,
         // Run commands are resolved before dispatch, so this is unreachable
         Commands::Run(_) => anyhow::bail!("Nested run commands are not supported"),
     }

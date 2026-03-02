@@ -146,6 +146,7 @@ impl VectorStore {
             Field::new("content", DataType::Utf8, false),
             Field::new("full_context", DataType::Utf8, true),
             Field::new("indexed_at", DataType::Utf8, false),
+            Field::new("tags", DataType::Utf8, false),
         ])
     }
 
@@ -194,6 +195,7 @@ impl VectorStore {
             .map(|c| c.as_deref())
             .collect();
         let indexed_ats: Vec<&str> = chunks.iter().map(|_| indexed_at).collect();
+        let tags: Vec<&str> = chunks.iter().map(|c| c.tags.as_str()).collect();
 
         // Flatten embeddings for FixedSizeList
         let flat_embeddings: Vec<f32> = embeddings.iter().flatten().copied().collect();
@@ -220,6 +222,7 @@ impl VectorStore {
             Arc::new(StringArray::from(contents)),
             Arc::new(StringArray::from(full_context_refs)),
             Arc::new(StringArray::from(indexed_ats)),
+            Arc::new(StringArray::from(tags)),
         ];
 
         RecordBatch::try_new(schema, columns).context("Failed to create record batch")
@@ -611,6 +614,11 @@ impl VectorStore {
                 .column_by_name("repo")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
+            // tags is optional (may not be present in older indices)
+            let tags_col = batch
+                .column_by_name("tags")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             for i in 0..batch.num_rows() {
                 let chunk = Chunk {
                     id: ids.value(i).to_string(),
@@ -625,6 +633,9 @@ impl VectorStore {
                     end_line: end_lines.value(i),
                     content: contents.value(i).to_string(),
                     language: languages.value(i).to_string(),
+                    tags: tags_col
+                        .map(|arr| arr.value(i).to_string())
+                        .unwrap_or_default(),
                 };
 
                 let distance = distances.value(i);
@@ -724,6 +735,11 @@ impl VectorStore {
                 .column_by_name("repo")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
+            // tags is optional (may not be present in older indices)
+            let tags_col = batch
+                .column_by_name("tags")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             for i in 0..batch.num_rows() {
                 let chunk = Chunk {
                     id: ids.value(i).to_string(),
@@ -738,6 +754,9 @@ impl VectorStore {
                     end_line: end_lines.value(i),
                     content: contents.value(i).to_string(),
                     language: languages.value(i).to_string(),
+                    tags: tags_col
+                        .map(|arr| arr.value(i).to_string())
+                        .unwrap_or_default(),
                 };
 
                 let score = scores.map(|s| s.value(i)).unwrap_or(1.0);
@@ -849,6 +868,8 @@ impl VectorStore {
                 .as_any().downcast_ref::<StringArray>().context("content column has wrong type")?;
             let languages = batch.column_by_name("language").context("Missing language column")?
                 .as_any().downcast_ref::<StringArray>().context("language column has wrong type")?;
+            let tags_col = batch.column_by_name("tags")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
             return Ok(Some(Chunk {
                 id: ids.value(0).to_string(),
@@ -863,6 +884,7 @@ impl VectorStore {
                 end_line: end_lines.value(0),
                 content: contents.value(0).to_string(),
                 language: languages.value(0).to_string(),
+                tags: tags_col.map(|arr| arr.value(0).to_string()).unwrap_or_default(),
             }));
         }
 
@@ -1165,6 +1187,8 @@ impl VectorStore {
                 .as_any().downcast_ref::<StringArray>().context("content column has wrong type")?;
             let languages = batch.column_by_name("language").context("Missing language column")?
                 .as_any().downcast_ref::<StringArray>().context("language column has wrong type")?;
+            let tags_col = batch.column_by_name("tags")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
             for i in 0..batch.num_rows() {
                 chunks.push(Chunk {
@@ -1180,6 +1204,7 @@ impl VectorStore {
                     end_line: end_lines.value(i),
                     content: contents.value(i).to_string(),
                     language: languages.value(i).to_string(),
+                    tags: tags_col.map(|arr| arr.value(i).to_string()).unwrap_or_default(),
                 });
             }
         }
@@ -1242,6 +1267,8 @@ impl VectorStore {
                 .as_any()
                 .downcast_ref::<FixedSizeListArray>()
                 .context("vector column has wrong type")?;
+            let tags_col = batch.column_by_name("tags")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
             for i in 0..batch.num_rows() {
                 let chunk = Chunk {
@@ -1257,6 +1284,7 @@ impl VectorStore {
                     end_line: end_lines.value(i),
                     content: contents.value(i).to_string(),
                     language: languages.value(i).to_string(),
+                    tags: tags_col.map(|arr| arr.value(i).to_string()).unwrap_or_default(),
                 };
 
                 let value_arr = vectors.value(i);
@@ -1321,6 +1349,8 @@ impl VectorStore {
                 .as_any().downcast_ref::<StringArray>().context("content column has wrong type")?;
             let languages = batch.column_by_name("language").context("Missing language column")?
                 .as_any().downcast_ref::<StringArray>().context("language column has wrong type")?;
+            let tags_col = batch.column_by_name("tags")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
             for i in 0..batch.num_rows() {
                 chunks.push(Chunk {
@@ -1336,6 +1366,7 @@ impl VectorStore {
                     end_line: end_lines.value(i),
                     content: contents.value(i).to_string(),
                     language: languages.value(i).to_string(),
+                    tags: tags_col.map(|arr| arr.value(i).to_string()).unwrap_or_default(),
                 });
             }
         }
@@ -1454,6 +1485,111 @@ impl VectorStore {
             last_indexed,
             index_size_bytes: 0, // LanceDB doesn't expose this easily
         })
+    }
+
+    // ── Tag query methods ─────────────────────────────────────────────
+
+    /// Get all unique tags in use with their chunk counts
+    pub async fn get_tag_counts(&self) -> Result<Vec<(String, usize)>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let results = table
+            .query()
+            .select(lancedb::query::Select::Columns(vec!["tags".to_string()]))
+            .limit(SCAN_ALL_LIMIT)
+            .execute()
+            .await
+            .context("Failed to query tags")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect tag data")?;
+
+        let mut counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+
+        for batch in &batches {
+            if let Some(tags_col) = batch
+                .column_by_name("tags")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+            {
+                for i in 0..batch.num_rows() {
+                    let tags_str = tags_col.value(i);
+                    if !tags_str.is_empty() {
+                        for tag in tags_str.split(',') {
+                            *counts.entry(tag.to_string()).or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut result: Vec<(String, usize)> = counts.into_iter().collect();
+        result.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        Ok(result)
+    }
+
+    /// Get file paths that have a specific tag
+    pub async fn get_files_by_tag(&self, tag: &str) -> Result<Vec<String>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        // Use LIKE filter for comma-separated tags column
+        let filter = format!(
+            "tags = '{}' OR tags LIKE '{},%' OR tags LIKE '%,{}' OR tags LIKE '%,{},%'",
+            tag.replace('\'', "''"),
+            tag.replace('\'', "''"),
+            tag.replace('\'', "''"),
+            tag.replace('\'', "''"),
+        );
+
+        let results = table
+            .query()
+            .select(lancedb::query::Select::Columns(vec![
+                "file_path".to_string(),
+            ]))
+            .only_if(filter)
+            .limit(SCAN_ALL_LIMIT)
+            .execute()
+            .await
+            .context("Failed to query files by tag")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect tag results")?;
+
+        let mut files: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for batch in &batches {
+            let file_paths = string_column(batch, "file_path")?;
+            for i in 0..batch.num_rows() {
+                files.insert(file_paths.value(i).to_string());
+            }
+        }
+
+        Ok(files.into_iter().collect())
+    }
+
+    /// Count tagged vs untagged chunks
+    pub async fn count_tagged_chunks(&self) -> Result<(u64, u64)> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok((0, 0)),
+        };
+
+        let total = table.count_rows(None).await.unwrap_or(0) as u64;
+        let untagged = table
+            .count_rows(Some("tags = ''".to_string()))
+            .await
+            .unwrap_or(0) as u64;
+
+        Ok((total - untagged, untagged))
     }
 
     // ── Dependency graph methods ──────────────────────────────────────
@@ -1717,6 +1853,7 @@ mod tests {
             end_line: 10,
             content: format!("fn {}() {{ }}", name),
             language: "rust".to_string(),
+            tags: String::new(),
         }
     }
 
@@ -1825,6 +1962,7 @@ mod tests {
                 end_line: 5,
                 content: "fn func_a() {}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             Chunk {
                 id: "chunk2".to_string(),
@@ -1835,6 +1973,7 @@ mod tests {
                 end_line: 5,
                 content: "fn func_b() {}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
         ];
         let embeddings = vec![sample_embedding(), sample_embedding()];
@@ -1964,6 +2103,7 @@ mod tests {
                 end_line: 10,
                 content: "fn main() {}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             Chunk {
                 id: "chunk2".to_string(),
@@ -1974,6 +2114,7 @@ mod tests {
                 end_line: 20,
                 content: "fn helper() {}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             Chunk {
                 id: "chunk3".to_string(),
@@ -1984,6 +2125,7 @@ mod tests {
                 end_line: 5,
                 content: "def run(): pass".to_string(),
                 language: "python".to_string(),
+                tags: String::new(),
             },
         ];
         let embeddings = vec![sample_embedding(), sample_embedding(), sample_embedding()];
@@ -2036,6 +2178,7 @@ mod tests {
                 end_line: 10,
                 content: format!("content of chunk {i}"),
                 language: lang.to_string(),
+                tags: String::new(),
             };
 
             store
@@ -2074,6 +2217,7 @@ mod tests {
                 end_line: 10,
                 content: format!("updated content of chunk {i}"),
                 language: lang.to_string(),
+                tags: String::new(),
             };
 
             store
@@ -2142,6 +2286,7 @@ mod tests {
                 end_line: 10,
                 content: format!("content of chunk {i}"),
                 language: lang.to_string(),
+                tags: String::new(),
             };
 
             store
@@ -2218,6 +2363,7 @@ mod tests {
             end_line: 10,
             content: "fn main_a() {}".to_string(),
             language: "rust".to_string(),
+            tags: String::new(),
         };
         let chunk_b = Chunk {
             id: "repo_b_chunk1".to_string(),
@@ -2228,6 +2374,7 @@ mod tests {
             end_line: 10,
             content: "fn main_b() {}".to_string(),
             language: "rust".to_string(),
+            tags: String::new(),
         };
 
         store
@@ -2287,6 +2434,7 @@ mod tests {
                 end_line: 30,
                 content: "fn func_b() {}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             Chunk {
                 id: "chunk2".to_string(),
@@ -2297,6 +2445,7 @@ mod tests {
                 end_line: 10,
                 content: "fn func_a() {}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             Chunk {
                 id: "chunk3".to_string(),
@@ -2307,6 +2456,7 @@ mod tests {
                 end_line: 5,
                 content: "fn other() {}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
         ];
         let embeddings = vec![sample_embedding(), sample_embedding(), sample_embedding()];

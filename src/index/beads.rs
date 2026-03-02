@@ -193,6 +193,7 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
                 end_line: 0,
                 content,
                 language: "beads".to_string(),
+                tags: String::new(),
             }
         })
         .collect();

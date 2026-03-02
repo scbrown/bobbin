@@ -648,6 +648,7 @@ mod tests {
                 end_line: 10,
                 content: "fn test_fn() {}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             score: 0.95,
             match_type: Some(MatchType::Semantic),

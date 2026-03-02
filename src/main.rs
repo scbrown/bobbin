@@ -12,6 +12,7 @@ mod mcp;
 mod metrics;
 mod search;
 mod storage;
+pub mod tags;
 mod types;
 
 use cli::Cli;

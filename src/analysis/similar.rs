@@ -382,6 +382,7 @@ mod tests {
             end_line: 10,
             content: format!("fn {}() {{ }}", name),
             language: "rust".to_string(),
+            tags: String::new(),
         }
     }
 
@@ -437,6 +438,7 @@ mod tests {
                 end_line: 20,
                 content: "fn verify_token() {}".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             score: 0.9,
             match_type: Some(crate::types::MatchType::Semantic),
@@ -460,6 +462,7 @@ mod tests {
                 end_line: 20,
                 content: "some section".to_string(),
                 language: "rust".to_string(),
+                tags: String::new(),
             },
             score: 0.9,
             match_type: Some(crate::types::MatchType::Semantic),

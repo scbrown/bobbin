@@ -367,6 +367,7 @@ mod tests {
                 end_line: 0,
                 content: content.to_string(),
                 language: "git".to_string(),
+                tags: String::new(),
             },
             score,
             match_type: Some(MatchType::Semantic),

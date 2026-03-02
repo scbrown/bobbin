@@ -167,6 +167,7 @@ impl Parser {
                 end_line: fm_end_line as u32,
                 content: fm,
                 language: "markdown".to_string(),
+                tags: String::new(),
             });
         }
 
@@ -303,6 +304,7 @@ impl Parser {
                     end_line,
                     content: body.to_string(),
                     language: "markdown".to_string(),
+                    tags: String::new(),
                 });
             }
         } else {
@@ -321,6 +323,7 @@ impl Parser {
                         end_line,
                         content: pre.to_string(),
                         language: "markdown".to_string(),
+                        tags: String::new(),
                     });
                 }
             }
@@ -348,6 +351,7 @@ impl Parser {
                     end_line,
                     content: section_content.to_string(),
                     language: "markdown".to_string(),
+                    tags: String::new(),
                 });
             }
         }
@@ -379,6 +383,7 @@ impl Parser {
                 end_line,
                 content: block_content.to_string(),
                 language: "markdown".to_string(),
+                tags: String::new(),
             });
         }
 
@@ -415,6 +420,7 @@ impl Parser {
                 end_line,
                 content: node_content.to_string(),
                 language: language.to_string(),
+                tags: String::new(),
             });
         }
 
@@ -559,6 +565,7 @@ impl Parser {
                 end_line: end_line as u32,
                 content: body.to_string(),
                 language: "archive".to_string(),
+                tags: String::new(),
             }];
         }
 
@@ -605,6 +612,7 @@ impl Parser {
                 end_line: el as u32,
                 content: chunk_content,
                 language: "archive".to_string(),
+                tags: String::new(),
             });
 
             if chunk_end >= lines.len() {
@@ -638,6 +646,7 @@ impl Parser {
                 end_line: end as u32,
                 content: chunk_content,
                 language: detect_language(path).unwrap_or_else(|| "unknown".to_string()),
+                tags: String::new(),
             });
 
             if end >= lines.len() {
