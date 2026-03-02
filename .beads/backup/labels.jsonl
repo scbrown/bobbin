@@ -37,6 +37,8 @@
 {"issue_id":"bo-d3yy.2","label":"phase-4"}
 {"issue_id":"bo-d7s3","label":"search-quality"}
 {"issue_id":"bo-dmbzm","label":"eval metrics"}
+{"issue_id":"bo-drth","label":"dx"}
+{"issue_id":"bo-drth","label":"relevance"}
 {"issue_id":"bo-fli6","label":"ci"}
 {"issue_id":"bo-fli6","label":"divergence"}
 {"issue_id":"bo-gzkq","label":"search-quality"}
@@ -52,6 +54,7 @@
 {"issue_id":"bo-lb6av","label":"eval"}
 {"issue_id":"bo-lb6av","label":"metrics"}
 {"issue_id":"bo-lcww","label":"docs"}
+{"issue_id":"bo-ljpm","label":"security"}
 {"issue_id":"bo-lvd97","label":"agent-guidance"}
 {"issue_id":"bo-lvd97","label":"eval"}
 {"issue_id":"bo-m7yf","label":"phase-4"}
@@ -72,6 +75,7 @@
 {"issue_id":"bo-rd42.8","label":"docs"}
 {"issue_id":"bo-rd42.9","label":"docs"}
 {"issue_id":"bo-rig-bobbin","label":"gt:rig"}
+{"issue_id":"bo-rkjk","label":"deploy"}
 {"issue_id":"bo-tkp2","label":"search-quality"}
 {"issue_id":"bo-ujyd","label":"search-quality"}
 {"issue_id":"bo-wbv","label":"bobbin"}
