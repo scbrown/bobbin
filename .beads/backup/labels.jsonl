@@ -13,6 +13,7 @@
 {"issue_id":"bo-5on35","label":"metrics"}
 {"issue_id":"bo-72f","label":"bobbin"}
 {"issue_id":"bo-72f","label":"tooling"}
+{"issue_id":"bo-94bk","label":"feature"}
 {"issue_id":"bo-9tas","label":"bug"}
 {"issue_id":"bo-9tas","label":"ui"}
 {"issue_id":"bo-bobbin-crew-goldblum","label":"gt:agent"}
@@ -36,11 +37,14 @@
 {"issue_id":"bo-d3yy.2","label":"phase-4"}
 {"issue_id":"bo-d7s3","label":"search-quality"}
 {"issue_id":"bo-dmbzm","label":"eval metrics"}
+{"issue_id":"bo-fli6","label":"ci"}
+{"issue_id":"bo-fli6","label":"divergence"}
 {"issue_id":"bo-gzkq","label":"search-quality"}
 {"issue_id":"bo-i8yui","label":"eval"}
 {"issue_id":"bo-i8yui","label":"metrics"}
 {"issue_id":"bo-j8ec2","label":"eval"}
 {"issue_id":"bo-j8ec2","label":"metrics"}
+{"issue_id":"bo-jebh","label":"feature"}
 {"issue_id":"bo-k8hu9","label":"metrics"}
 {"issue_id":"bo-kluv3","label":"metrics"}
 {"issue_id":"bo-kwmeh","label":"eval"}
@@ -53,6 +57,7 @@
 {"issue_id":"bo-m7yf","label":"phase-4"}
 {"issue_id":"bo-nltau","label":"eval"}
 {"issue_id":"bo-nltau","label":"metrics"}
+{"issue_id":"bo-qxt6","label":"feature"}
 {"issue_id":"bo-rd42","label":"P1"}
 {"issue_id":"bo-rd42.1","label":"docs"}
 {"issue_id":"bo-rd42.10","label":"docs"}
