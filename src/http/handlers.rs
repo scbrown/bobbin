@@ -22,6 +22,7 @@ use crate::storage::{MetadataStore, VectorStore};
 use crate::types::{ChunkType, MatchType, SearchResult};
 
 use crate::access::RepoFilter;
+use crate::tags::{build_tag_exclude_filter, build_tag_include_filter};
 
 use super::AppState;
 
@@ -78,6 +79,7 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/healthz", get(healthz))
         .route("/repos", get(list_repos))
         .route("/groups", get(list_groups))
+        .route("/tags", get(tags))
         .route("/repos/{name}/files", get(list_repo_files))
         .route("/commands", get(list_commands))
         .route("/metrics", get(metrics))
@@ -129,6 +131,10 @@ struct SearchParams {
     group: Option<String>,
     /// Role for access filtering
     role: Option<String>,
+    /// Include only chunks with these tags (comma-separated)
+    tag: Option<String>,
+    /// Exclude chunks with these tags (comma-separated)
+    exclude_tag: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -201,9 +207,32 @@ pub(super) async fn search(
     let group_sql = resolve_group_filter(&state, params.group.as_deref())
         .map_err(|e| bad_request(e))?;
 
+    // Build combined filter from group + tag include/exclude
+    let mut extra_filters: Vec<String> = Vec::new();
+    if let Some(ref g) = group_sql {
+        extra_filters.push(g.clone());
+    }
+    if let Some(ref tags) = params.tag {
+        let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        if !tag_list.is_empty() {
+            extra_filters.push(build_tag_include_filter(&tag_list));
+        }
+    }
+    if let Some(ref tags) = params.exclude_tag {
+        let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        if !tag_list.is_empty() {
+            extra_filters.push(build_tag_exclude_filter(&tag_list));
+        }
+    }
+    let combined_filter = if extra_filters.is_empty() {
+        None
+    } else {
+        Some(extra_filters.join(" AND "))
+    };
+
     let results = match mode {
         "keyword" => vector_store
-            .search_fts_filtered(&params.q, search_limit, repo_filter, group_sql.as_deref())
+            .search_fts_filtered(&params.q, search_limit, repo_filter, combined_filter.as_deref())
             .await
             .map_err(|e| internal_error(e.into()))?,
 
@@ -215,7 +244,7 @@ pub(super) async fn search(
             if mode == "semantic" {
                 let mut search = SemanticSearch::new(embedder, vector_store);
                 search
-                    .search_filtered(&params.q, search_limit, repo_filter, group_sql.as_deref())
+                    .search_filtered(&params.q, search_limit, repo_filter, combined_filter.as_deref())
                     .await
                     .map_err(|e| internal_error(e.into()))?
             } else {
@@ -225,7 +254,7 @@ pub(super) async fn search(
                     state.config.search.semantic_weight,
                 );
                 search
-                    .search_filtered(&params.q, search_limit, repo_filter, group_sql.as_deref())
+                    .search_filtered(&params.q, search_limit, repo_filter, combined_filter.as_deref())
                     .await
                     .map_err(|e| internal_error(e.into()))?
             }
@@ -943,6 +972,10 @@ struct ContextParams {
     group: Option<String>,
     /// Role for access filtering
     role: Option<String>,
+    /// Include only chunks with these tags (comma-separated)
+    tag: Option<String>,
+    /// Exclude chunks with these tags (comma-separated)
+    exclude_tag: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1033,6 +1066,26 @@ pub(super) async fn context(
     let embedder =
         Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
 
+    // Build tag filter for context pipeline
+    let mut tag_filters: Vec<String> = Vec::new();
+    if let Some(ref tags) = params.tag {
+        let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        if !tag_list.is_empty() {
+            tag_filters.push(build_tag_include_filter(&tag_list));
+        }
+    }
+    if let Some(ref tags) = params.exclude_tag {
+        let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        if !tag_list.is_empty() {
+            tag_filters.push(build_tag_exclude_filter(&tag_list));
+        }
+    }
+    let extra_filter = if tag_filters.is_empty() {
+        None
+    } else {
+        Some(tag_filters.join(" AND "))
+    };
+
     let context_config = ContextConfig {
         budget_lines: params.budget.unwrap_or(500),
         depth: params.depth.unwrap_or(1),
@@ -1047,7 +1100,7 @@ pub(super) async fn context(
         rrf_k: state.config.search.rrf_k,
         bridge_mode: BridgeMode::default(),
         bridge_boost_factor: 0.3,
-        extra_filter: None,
+        extra_filter,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2685,6 +2738,86 @@ pub(super) async fn search_beads(
         query: params.q,
         count: results.len(),
         results,
+    }))
+}
+
+// -- /tags --
+
+#[derive(Deserialize)]
+struct TagsParams {
+    /// Filter: show files for a specific tag
+    tag: Option<String>,
+    /// Filter: show tags for a specific file
+    file: Option<String>,
+}
+
+#[derive(Serialize)]
+struct TagsResponse {
+    /// Tag name → chunk count (when listing all or filtering by file)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tags: Option<Vec<TagCount>>,
+    /// File paths (when filtering by tag)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    files: Option<Vec<String>>,
+    /// Total tagged / untagged chunks
+    tagged_chunks: u64,
+    untagged_chunks: u64,
+}
+
+#[derive(Serialize)]
+struct TagCount {
+    tag: String,
+    count: usize,
+}
+
+pub(super) async fn tags(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<TagsParams>,
+) -> Result<Json<TagsResponse>, (StatusCode, Json<ErrorBody>)> {
+    let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+
+    let (tagged, untagged) = vector_store
+        .count_tagged_chunks()
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+
+    if let Some(ref tag) = params.tag {
+        // Return files that have this tag
+        let files = vector_store
+            .get_files_by_tag(tag)
+            .await
+            .map_err(|e| internal_error(e.into()))?;
+
+        return Ok(Json(TagsResponse {
+            tags: None,
+            files: Some(files),
+            tagged_chunks: tagged,
+            untagged_chunks: untagged,
+        }));
+    }
+
+    // Default: return all tag counts
+    let counts = vector_store
+        .get_tag_counts()
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+
+    let tag_counts: Vec<TagCount> = counts
+        .into_iter()
+        .map(|(tag, count)| TagCount { tag, count })
+        .collect();
+
+    // If ?file= filter, narrow to tags on that file's chunks
+    if let Some(ref _file) = params.file {
+        // get_tag_counts doesn't support file filter yet — return all for now
+        // TODO: add file-scoped tag query to VectorStore
+    }
+
+    Ok(Json(TagsResponse {
+        tags: Some(tag_counts),
+        files: None,
+        tagged_chunks: tagged,
+        untagged_chunks: untagged,
     }))
 }
 
