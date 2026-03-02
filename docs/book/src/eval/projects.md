@@ -1,6 +1,6 @@
 # Project Catalog
 
-Projects used in bobbin evaluations, with codebase statistics. When adding a new project, run `tokei` on the cloned repo at the pinned commit and add a section below following the same format.
+Projects used in bobbin evaluations, with codebase statistics.
 
 ## astral-sh/ruff
 
@@ -24,26 +24,6 @@ Projects used in bobbin evaluations, with codebase statistics. When adding a new
 
 - **Index duration**: 82.64s
 
-## pola-rs/polars
-
-### Lines of Code
-
-| Language | Files | Code | Comments | Blanks | Total |
-|----------|------:|-----:|---------:|-------:|------:|
-| Rust | 2,007 | 361,653 | 13,194 | 46,755 | 421,602 |
-| Python | 725 | 228,573 | 5,832 | 32,197 | 266,602 |
-| Markdown | 168 | 0 | 9,114 | 3,753 | 12,867 |
-| ReStructuredText | 102 | 6,592 | 0 | 1,469 | 8,061 |
-| TOML | 50 | 4,217 | 141 | 352 | 4,710 |
-| YAML | 2 | 743 | 10 | 11 | 764 |
-| Nix | 1 | 409 | 52 | 41 | 502 |
-| JSON | 8 | 409 | 0 | 0 | 409 |
-| **Total** | **3,089** | **606,482** | | | **738,864** |
-
-### Bobbin Index Stats
-
-- **Index duration**: Pending (maturin dev build + index, estimated ~5 min setup + ~60-90s index)
-
 ## pallets/flask
 
 ### Lines of Code
@@ -65,3 +45,43 @@ Projects used in bobbin evaluations, with codebase statistics. When adding a new
 ### Bobbin Index Stats
 
 - **Index duration**: 1.66s
+
+## pola-rs/polars
+
+### Lines of Code
+
+| Language | Files | Code | Comments | Blanks | Total |
+|----------|------:|-----:|---------:|-------:|------:|
+| Rust | 2,008 | 361,685 | 13,199 | 46,759 | 421,643 |
+| Python | 725 | 228,936 | 5,839 | 32,248 | 267,023 |
+| ReStructuredText | 102 | 6,593 | 0 | 1,469 | 8,062 |
+| TOML | 50 | 4,217 | 141 | 352 | 4,710 |
+| YAML | 2 | 743 | 10 | 11 | 764 |
+| Makefile | 7 | 460 | 18 | 97 | 575 |
+| Nix | 1 | 409 | 52 | 41 | 502 |
+| JSON | 8 | 408 | 0 | 0 | 408 |
+| SVG | 3 | 271 | 0 | 0 | 271 |
+| HTML | 4 | 253 | 0 | 1 | 254 |
+| **Total** | **2,913** | **606,877** | | | **739,330** |
+
+## rust-lang/cargo
+
+### Lines of Code
+
+| Language | Files | Code | Comments | Blanks | Total |
+|----------|------:|-----:|---------:|-------:|------:|
+| Rust | 1,277 | 263,828 | 10,721 | 22,803 | 297,352 |
+| SVG | 362 | 14,485 | 0 | 1,061 | 15,546 |
+| TOML | 647 | 5,834 | 338 | 1,209 | 7,381 |
+| JSON | 17 | 3,430 | 0 | 0 | 3,430 |
+| JavaScript | 1 | 509 | 66 | 68 | 643 |
+| Shell | 6 | 319 | 40 | 44 | 403 |
+| Python | 2 | 88 | 16 | 18 | 122 |
+| Dockerfile | 2 | 44 | 2 | 9 | 55 |
+| XML | 1 | 21 | 7 | 0 | 28 |
+| CSS | 1 | 6 | 3 | 1 | 10 |
+| **Total** | **2,317** | **291,133** | | | **371,758** |
+
+### Bobbin Index Stats
+
+- **Index duration**: 28.29s

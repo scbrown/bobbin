@@ -1,0 +1,355 @@
+{
+  "task_id": "ruff-001",
+  "approach": "with-bobbin+gate_threshold=1.0",
+  "attempt": 2,
+  "status": "completed",
+  "timestamp": "2026-03-02T19:03:31.201527+00:00",
+  "task": {
+    "repo": "astral-sh/ruff",
+    "commit": "f14fd5d88507553830d78cf3cfae625a17297ebd",
+    "test_command": "cargo test -p ruff_python_formatter -- except_handler",
+    "language": "rust",
+    "difficulty": "medium"
+  },
+  "agent_config": {
+    "model": "claude-sonnet-4-5-20250929",
+    "budget_usd": 5.0,
+    "timeout_seconds": 600,
+    "index_timeout_seconds": 300
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 343.03,
+    "timed_out": false,
+    "cost_usd": 1.3560882499999996,
+    "input_tokens": 1655154,
+    "output_tokens": 9151,
+    "model_usage": {
+      "claude-sonnet-4-5-20250929": {
+        "inputTokens": 308,
+        "outputTokens": 9151,
+        "cacheReadInputTokens": 1602959,
+        "cacheCreationInputTokens": 51887,
+        "webSearchRequests": 0,
+        "costUSD": 1.3560882499999996,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    },
+    "num_turns": 44
+  },
+  "token_usage": {
+    "total_cost_usd": 1.3560882499999996,
+    "input_tokens": 308,
+    "output_tokens": 9151,
+    "cache_creation_tokens": 51887,
+    "cache_read_tokens": 1602959,
+    "num_turns": 44,
+    "model_usage": {
+      "claude-sonnet-4-5-20250929": {
+        "inputTokens": 308,
+        "outputTokens": 9151,
+        "cacheReadInputTokens": 1602959,
+        "cacheCreationInputTokens": 51887,
+        "webSearchRequests": 0,
+        "costUSD": 1.3560882499999996,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    }
+  },
+  "agent_output": {
+    "num_turns": 44,
+    "session_id": "54a8cad0-c244-430e-a698-46c408bea0a0",
+    "stop_reason": null
+  },
+  "agent_stderr": "",
+  "test_result": {
+    "passed": true,
+    "total": 0,
+    "failures": 0,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0
+    },
+    "output": "\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 53 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 369 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s\n     Running unittests src/lib.rs (target/debug/deps/ruff_python_formatter-f966566da38507ce)\n     Running unittests src/main.rs (target/debug/deps/ruff_python_formatter-33cd08198cc3e05e)\n     Running tests/fixtures.rs (target/debug/deps/fixtures-06cb27713c7db4bf)\n     Running tests/normalizer.rs (target/debug/deps/normalizer-7d786d341ce9020b)\n",
+    "exit_code": 0,
+    "timed_out": false
+  },
+  "diff_result": {
+    "file_precision": 1.0,
+    "file_recall": 1.0,
+    "f1": 1.0,
+    "files_touched": [
+      "crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py",
+      "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs",
+      "crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap"
+    ],
+    "ground_truth_files": [
+      "crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py",
+      "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs",
+      "crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap"
+    ],
+    "exact_file_match": true
+  },
+  "agent_diff": "diff --git a/.claude/CLAUDE.md b/.claude/CLAUDE.md\nindex 4e3010a91f..51d8d81a44 100644\n--- a/.claude/CLAUDE.md\n+++ b/.claude/CLAUDE.md\n@@ -17,9 +17,9 @@ bobbin grep \"pattern\"                     # regex search across all files\n ## Workflow\n \n 1. **Start with `bobbin search`** to find relevant code for your task\n-2. **Use `bobbin related`** on key files to discover test files and dependencies\n-3. **Use `bobbin refs find`** to trace symbol usage across the codebase\n-4. Read the files bobbin identifies, then make targeted changes\n+1. **Use `bobbin related`** on key files to discover test files and dependencies\n+1. **Use `bobbin refs find`** to trace symbol usage across the codebase\n+1. Read the files bobbin identifies, then make targeted changes\n \n Bobbin context is also injected automatically when you submit prompts and after\n file edits \u2014 check the system messages for relevant code snippets.\ndiff --git a/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py b/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py\nindex 2e4a7634ef..d593152229 100644\n--- a/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py\n+++ b/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py\n@@ -203,3 +203,25 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+# Parentheses must be preserved when tuple contains starred expressions\n+# to avoid confusion with except* (exception group syntax)\n+try:\n+    pass\n+except (*errors,):\n+    pass\n+\n+try:\n+    pass\n+except (ValueError, *other_errors):\n+    pass\n+\n+try:\n+    pass\n+except (*errors, KeyError):\n+    pass\n+\n+try:\n+    pass\n+except* (*errors,):\n+    pass\ndiff --git a/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs b/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\nindex cfe5f9151e..f5e00d879e 100644\n--- a/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\n+++ b/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\n@@ -78,9 +78,15 @@ impl FormatNodeRule<ExceptHandlerExceptHandler> for FormatExceptHandlerExceptHan\n                         // except BaseException, Exception:  # Ok\n                         //     ...\n                         // ```\n+                        //\n+                        // However, parentheses must be preserved if any element is a starred\n+                        // expression, to avoid confusion with except* (exception group syntax).\n+                        // For example, `except (*errors,):` is different from `except *errors,`\n+                        // which would be parsed as `except*`.\n                         Some(Expr::Tuple(tuple))\n                             if f.options().target_version() >= PythonVersion::PY314\n-                                && name.is_none() =>\n+                                && name.is_none()\n+                                && !tuple.elts.iter().any(|elt| elt.is_starred_expr()) =>\n                         {\n                             write!(\n                                 f,\ndiff --git a/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap b/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap\nindex 71d1e4665b..54dd8f144e 100644\n--- a/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap\n+++ b/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap\n@@ -208,6 +208,28 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+# Parentheses must be preserved when tuple contains starred expressions\n+# to avoid confusion with except* (exception group syntax)\n+try:\n+    pass\n+except (*errors,):\n+    pass\n+\n+try:\n+    pass\n+except (ValueError, *other_errors):\n+    pass\n+\n+try:\n+    pass\n+except (*errors, KeyError):\n+    pass\n+\n+try:\n+    pass\n+except* (*errors,):\n+    pass\n ```\n \n ## Outputs\n@@ -454,6 +476,28 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+# Parentheses must be preserved when tuple contains starred expressions\n+# to avoid confusion with except* (exception group syntax)\n+try:\n+    pass\n+except (*errors,):\n+    pass\n+\n+try:\n+    pass\n+except (ValueError, *other_errors):\n+    pass\n+\n+try:\n+    pass\n+except (*errors, KeyError):\n+    pass\n+\n+try:\n+    pass\n+except* (*errors,):\n+    pass\n ```\n \n \n@@ -727,6 +771,28 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+# Parentheses must be preserved when tuple contains starred expressions\n+# to avoid confusion with except* (exception group syntax)\n+try:\n+    pass\n+except (*errors,):\n+    pass\n+\n+try:\n+    pass\n+except (ValueError, *other_errors):\n+    pass\n+\n+try:\n+    pass\n+except (*errors, KeyError):\n+    pass\n+\n+try:\n+    pass\n+except* (*errors,):\n+    pass\n ```\n \n \n",
+  "ground_truth_diff": "diff --git a/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py b/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py\nindex 2e4a7634ef..7ce45a226b 100644\n--- a/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py\n+++ b/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py\n@@ -203,3 +203,16 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+\n+# Regression tests for https://github.com/astral-sh/ruff/issues/23125\n+# Parentheses cannot be removed if any of the tuple elements is starred\n+try:\n+    pass\n+except (Exception, *exceptions):\n+    pass\n+\n+try:\n+    pass\n+except (*exceptions, Exception):\n+    pass\ndiff --git a/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs b/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\nindex cfe5f9151e..bcb9720329 100644\n--- a/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\n+++ b/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\n@@ -78,9 +78,30 @@ impl FormatNodeRule<ExceptHandlerExceptHandler> for FormatExceptHandlerExceptHan\n                         // except BaseException, Exception:  # Ok\n                         //     ...\n                         // ```\n+                        //\n+                        // Unless any component of the tuple is starred. This case is actually valid\n+                        // syntax on its own but is parsed as `except*`, not a tuple with a starred\n+                        // element:\n+                        //\n+                        // ```py\n+                        // try:\n+                        //     ...\n+                        // except *exceptions, BaseException:\n+                        //     ...\n+                        // ```\n+                        //\n+                        // And this case is an outright `SyntaxError`:\n+                        //\n+                        // ```py\n+                        // try:\n+                        //     ...\n+                        // except BaseException, *exceptions:  # SyntaxError\n+                        //     ...\n+                        // ```\n                         Some(Expr::Tuple(tuple))\n                             if f.options().target_version() >= PythonVersion::PY314\n-                                && name.is_none() =>\n+                                && name.is_none()\n+                                && !tuple.iter().any(Expr::is_starred_expr) =>\n                         {\n                             write!(\n                                 f,\ndiff --git a/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap b/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap\nindex 71d1e4665b..ff0e50a051 100644\n--- a/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap\n+++ b/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap\n@@ -208,6 +208,19 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+\n+# Regression tests for https://github.com/astral-sh/ruff/issues/23125\n+# Parentheses cannot be removed if any of the tuple elements is starred\n+try:\n+    pass\n+except (Exception, *exceptions):\n+    pass\n+\n+try:\n+    pass\n+except (*exceptions, Exception):\n+    pass\n ```\n \n ## Outputs\n@@ -454,6 +467,19 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+\n+# Regression tests for https://github.com/astral-sh/ruff/issues/23125\n+# Parentheses cannot be removed if any of the tuple elements is starred\n+try:\n+    pass\n+except (Exception, *exceptions):\n+    pass\n+\n+try:\n+    pass\n+except (*exceptions, Exception):\n+    pass\n ```\n \n \n@@ -727,6 +753,19 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+\n+# Regression tests for https://github.com/astral-sh/ruff/issues/23125\n+# Parentheses cannot be removed if any of the tuple elements is starred\n+try:\n+    pass\n+except (Exception, *exceptions):\n+    pass\n+\n+try:\n+    pass\n+except (*exceptions, Exception):\n+    pass\n ```\n \n \n",
+  "project_metadata": {
+    "CSS": {
+      "files": 3,
+      "lines": 377,
+      "code": 322,
+      "comments": 6,
+      "blanks": 49
+    },
+    "Dockerfile": {
+      "files": 1,
+      "lines": 38,
+      "code": 26,
+      "comments": 7,
+      "blanks": 5
+    },
+    "HTML": {
+      "files": 2,
+      "lines": 81,
+      "code": 81,
+      "comments": 0,
+      "blanks": 0
+    },
+    "JavaScript": {
+      "files": 2,
+      "lines": 97,
+      "code": 77,
+      "comments": 11,
+      "blanks": 9
+    },
+    "JSON": {
+      "files": 134,
+      "lines": 15811,
+      "code": 15801,
+      "comments": 0,
+      "blanks": 10
+    },
+    "Jupyter Notebooks": {
+      "files": 35,
+      "lines": 511,
+      "code": 289,
+      "comments": 154,
+      "blanks": 68
+    },
+    "Markdown": {
+      "files": 400,
+      "lines": 123496,
+      "code": 0,
+      "comments": 89959,
+      "blanks": 33537
+    },
+    "Python": {
+      "files": 3690,
+      "lines": 267275,
+      "code": 212248,
+      "comments": 12844,
+      "blanks": 42183
+    },
+    "Rust": {
+      "files": 1750,
+      "lines": 520776,
+      "code": 440633,
+      "comments": 25755,
+      "blanks": 54388
+    },
+    "Shell": {
+      "files": 15,
+      "lines": 489,
+      "code": 274,
+      "comments": 143,
+      "blanks": 72
+    },
+    "SVG": {
+      "files": 28,
+      "lines": 1445,
+      "code": 1308,
+      "comments": 71,
+      "blanks": 66
+    },
+    "Plain Text": {
+      "files": 43,
+      "lines": 188649,
+      "code": 0,
+      "comments": 188648,
+      "blanks": 1
+    },
+    "TOML": {
+      "files": 145,
+      "lines": 4358,
+      "code": 3654,
+      "comments": 220,
+      "blanks": 484
+    },
+    "TSX": {
+      "files": 30,
+      "lines": 5526,
+      "code": 4810,
+      "comments": 163,
+      "blanks": 553
+    },
+    "TypeScript": {
+      "files": 14,
+      "lines": 480,
+      "code": 363,
+      "comments": 61,
+      "blanks": 56
+    },
+    "YAML": {
+      "files": 25,
+      "lines": 3825,
+      "code": 3194,
+      "comments": 292,
+      "blanks": 339
+    },
+    "Total": {
+      "files": 0,
+      "lines": 1212699,
+      "code": 696104,
+      "comments": 370303,
+      "blanks": 146292
+    }
+  },
+  "bobbin_metadata": {
+    "index_duration_seconds": 51.06,
+    "profile": {
+      "file_i/o": 0,
+      "parse": 966,
+      "context": 3,
+      "embed": 14645,
+      "tokenize": 2883,
+      "inference": 10575,
+      "pooling": 426,
+      "lance_delete": 0,
+      "lance_insert": 498,
+      "git_coupling": 426,
+      "git_commits": 22814,
+      "deps": 22,
+      "compact": 256,
+      "other/overhead": 8941,
+      "total_ms": 48571,
+      "embed_throughput_chunks_per_sec": 3910.8
+    },
+    "total_files": null,
+    "total_chunks": null,
+    "total_embeddings": null,
+    "languages": []
+  },
+  "bobbin_metrics": {
+    "injection_count": 0,
+    "gate_skip_count": 1,
+    "gate_skip_details": [
+      {
+        "query": "You are working on the astral-sh/ruff project.\n\nFix the Python formatter to preserve parentheses around exception handler\ntuples when any element is a starred expression (Python 3.14+). Without\nparentheses, a starred element in an except clause is parsed as `except*`\n(exception group syntax) rather than a tuple containing a starred element,\nchanging semantics. Add a check for starred expressions in the tuple before\nremoving parentheses.\n\nImplement the fix. Run the test suite with `cargo test -p ruff_python_formatter -- except_handler` to verify.\n\nThis project has bobbin installed (a semantic code search engine). Before exploring manually, use bobbin to find relevant code:\n- `bobbin search \"<key terms from the task>\"` \u2014 semantic + keyword search\n- `bobbin related <file>` \u2014 find test files and co-changing dependencies\n- `bobbin refs <SymbolName>` \u2014 trace definitions and usages\nStart with bobbin search to orient yourself, then read the files it identifies.",
+        "top_score": 0.6088343858718872,
+        "gate_threshold": 1.0
+      }
+    ],
+    "dedup_skip_count": 0,
+    "prime_context_fired": false,
+    "command_invocations": [
+      {
+        "command": "search",
+        "duration_ms": 1700
+      },
+      {
+        "command": "search",
+        "duration_ms": 1715
+      },
+      {
+        "command": "related",
+        "duration_ms": 10
+      },
+      {
+        "command": "search",
+        "duration_ms": 1823
+      }
+    ],
+    "injected_files": [],
+    "total_events": 9
+  },
+  "injection_result": null,
+  "config_overrides": {
+    "gate_threshold": "1.0"
+  },
+  "tool_use_summary": {
+    "by_tool": {
+      "Bash": 28,
+      "Read": 5,
+      "Grep": 3,
+      "TodoWrite": 4,
+      "Edit": 2,
+      "Write": 1
+    },
+    "tool_sequence": [
+      "Bash",
+      "Bash",
+      "Read",
+      "Bash",
+      "Read",
+      "Bash",
+      "Bash",
+      "Read",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Read",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Grep",
+      "Grep",
+      "Grep",
+      "TodoWrite",
+      "Read",
+      "Edit",
+      "TodoWrite",
+      "Edit",
+      "TodoWrite",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "TodoWrite",
+      "Write",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash"
+    ],
+    "first_edit_turn": 46,
+    "bobbin_commands": [
+      "bobbin search \"except handler formatter parentheses starred\"",
+      "bobbin search \"exception handler tuple formatting\"",
+      "bobbin related /tmp/bobbin-eval-ruff-001-yzqgq76j/astral-sh--ruff/crates/ruff_python_formatter/src/statement/stmt_try.rs",
+      "find /tmp/bobbin-eval-ruff-001-yzqgq76j/astral-sh--ruff/crates/ruff_python_formatter -name \"*except*\" -type f | grep -E \"\\.(py|rs)$\" | head -20",
+      "bobbin grep \"starred.*except\" --output_mode content -A 5",
+      "find /tmp/bobbin-eval-ruff-001-yzqgq76j/astral-sh--ruff/crates/ruff_python_formatter/resources/test/fixtures -name \"*.py\" -exec grep -l \"except.*\\*\" {} \\; | head -10",
+      "grep -r \"(\\*\" /tmp/bobbin-eval-ruff-001-yzqgq76j/astral-sh--ruff/crates/ruff_python_formatter/resources/test/fixtures/black/cases/*.py 2>/dev/null | grep \"except\" | head -20",
+      "grep -A 10 -B 2 \"(\\*\" /tmp/bobbin-eval-ruff-001-yzqgq76j/astral-sh--ruff/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py | head -50",
+      "tail -100 /tmp/bobbin-eval-ruff-001-yzqgq76j/astral-sh--ruff/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py",
+      "grep -n \"starred\\|Starred\\|\\*errors\\|\\*exceptions\" /tmp/bobbin-eval-ruff-001-yzqgq76j/astral-sh--ruff/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py",
+      "bobbin search \"Expr::Starred starred expression\"",
+      "grep -A 20 \"Parentheses must be preserved when tuple contains starred\" /tmp/bobbin-eval-ruff-001-yzqgq76j/astral-sh--ruff/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap"
+    ]
+  },
+  "output_summary": "## Summary\n\nI've successfully fixed the Python formatter to preserve parentheses around exception handler tuples containing starred expressions. Here's what was done:\n\n### Changes Made\n\n**1. Core Fix** (`crates/ruff_python_formatter/src/other/except_handler_except_handler.rs`):\n- Added a check `!tuple.elts.iter().any(|elt| elt.is_starred_expr())` to the condition that determines when parentheses can be removed\n- This prevents the formatter from removing parentheses when any element in the tuple is a starred expression\n- Added explanatory comments about why this is necessary\n\n**2. Test Cases** (`crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py`):\n- Added test cases for various scenarios with starred expressions:\n  - `except (*errors,):` - starred expression at the beginning\n  - `except (ValueError, *other_errors):` - starred expression at the end\n  - `except (*errors, KeyError):` - starred expression in the middle\n  - `except* (*errors,):` - starred expression with exception groups\n\n### Why This Fix is Necessary\n\nWithout parentheses, a starred element in an except clause would be parsed as `except*` (exception group syntax) rather than a tuple containing a starred element:\n- \u2705 `except (*errors,):` - tuple with starred expression\n- \u274c `except *errors,` - would be parsed as `except*` followed by `errors,`\n\n### Verification\n\n\u2705 All formatter tests pass (369 passed)  \n\u2705 Pre-commit checks pass  \n\u2705 Manual testing confirms correct behavior:\n- Parentheses are **preserved** for tuples with starred expressions\n- Parentheses are **removed** for normal tuples (Python 3.14+ behavior)\n\nThe fix is complete and ready for use!",
+  "run_id": "20260302-170130-6caa"
+}

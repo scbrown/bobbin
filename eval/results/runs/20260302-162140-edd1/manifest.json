@@ -1,0 +1,21 @@
+{
+  "run_id": "20260302-162140-edd1",
+  "started_at": "2026-03-02T16:21:40.122483+00:00",
+  "completed_at": "2026-03-02T16:36:33.612391+00:00",
+  "agent_config": {
+    "model": "claude-sonnet-4-5-20250929",
+    "budget_usd": 5.0,
+    "timeout_seconds": 600,
+    "index_timeout_seconds": 300
+  },
+  "attempts_per_approach": 1,
+  "approaches": [
+    "with-bobbin",
+    "with-bobbin+semantic_weight=0.0"
+  ],
+  "tasks": [
+    "ruff-001"
+  ],
+  "total_results": 2,
+  "completed_results": 2
+}

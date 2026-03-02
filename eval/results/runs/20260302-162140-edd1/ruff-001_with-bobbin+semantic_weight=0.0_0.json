@@ -1,0 +1,441 @@
+{
+  "task_id": "ruff-001",
+  "approach": "with-bobbin+semantic_weight=0.0",
+  "attempt": 0,
+  "status": "completed",
+  "timestamp": "2026-03-02T16:36:32.591874+00:00",
+  "task": {
+    "repo": "astral-sh/ruff",
+    "commit": "f14fd5d88507553830d78cf3cfae625a17297ebd",
+    "test_command": "cargo test -p ruff_python_formatter -- except_handler",
+    "language": "rust",
+    "difficulty": "medium"
+  },
+  "agent_config": {
+    "model": "claude-sonnet-4-5-20250929",
+    "budget_usd": 5.0,
+    "timeout_seconds": 600,
+    "index_timeout_seconds": 300
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "duration_seconds": 266.69,
+    "timed_out": false,
+    "cost_usd": 1.586002,
+    "input_tokens": 1986910,
+    "output_tokens": 9822,
+    "model_usage": {
+      "claude-sonnet-4-5-20250929": {
+        "inputTokens": 316,
+        "outputTokens": 9822,
+        "cacheReadInputTokens": 1926494,
+        "cacheCreationInputTokens": 60100,
+        "webSearchRequests": 0,
+        "costUSD": 1.586002,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    },
+    "num_turns": 42
+  },
+  "token_usage": {
+    "total_cost_usd": 1.586002,
+    "input_tokens": 316,
+    "output_tokens": 9822,
+    "cache_creation_tokens": 60100,
+    "cache_read_tokens": 1926494,
+    "num_turns": 42,
+    "model_usage": {
+      "claude-sonnet-4-5-20250929": {
+        "inputTokens": 316,
+        "outputTokens": 9822,
+        "cacheReadInputTokens": 1926494,
+        "cacheCreationInputTokens": 60100,
+        "webSearchRequests": 0,
+        "costUSD": 1.586002,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    }
+  },
+  "agent_output": {
+    "num_turns": 42,
+    "session_id": "88c18c01-e9da-4d2e-8505-28a88ceaf1fc",
+    "stop_reason": null
+  },
+  "agent_stderr": "",
+  "test_result": {
+    "passed": true,
+    "total": 0,
+    "failures": 0,
+    "parsed": {
+      "framework": "pytest",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0
+    },
+    "output": "\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 53 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 369 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s\n     Running unittests src/lib.rs (target/debug/deps/ruff_python_formatter-f966566da38507ce)\n     Running unittests src/main.rs (target/debug/deps/ruff_python_formatter-33cd08198cc3e05e)\n     Running tests/fixtures.rs (target/debug/deps/fixtures-06cb27713c7db4bf)\n     Running tests/normalizer.rs (target/debug/deps/normalizer-7d786d341ce9020b)\n",
+    "exit_code": 0,
+    "timed_out": false
+  },
+  "diff_result": {
+    "file_precision": 0.0294,
+    "file_recall": 0.3333,
+    "f1": 0.0541,
+    "files_touched": [
+      "crates/ruff_python_formatter/resources/test/fixtures/black/cases/remove_except_types_parens.py",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__debug__tests__debug.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__base_test.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_trailing_end_of_line_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__dangling_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__empty_file.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_else_comments.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_if_else_comments.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__leading_most_outer.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__match_cases.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__nested_binary_expression.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_slash_on_same_line.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_with_defaults.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__only_comments.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_expression.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_trailing_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment_without_following_node.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_leading_comma_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_after_comma.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_comment_after_single_statement_body.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_function_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer_nested.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except_finally_else.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_indented_comment_between_branches.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_very_indented_comment_between_branches.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_else_end_of_line_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_end_of_line_comment.snap.new",
+      "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs",
+      "crates/ruff_python_formatter/src/snapshots/ruff_python_formatter__tests__string_processing.snap.new",
+      "crates/ruff_python_formatter/tests/snapshots/black_compatibility@cases__remove_except_types_parens.py.snap"
+    ],
+    "ground_truth_files": [
+      "crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py",
+      "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs",
+      "crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap"
+    ],
+    "exact_file_match": false
+  },
+  "agent_diff": "diff --git a/crates/ruff_python_formatter/resources/test/fixtures/black/cases/remove_except_types_parens.py b/crates/ruff_python_formatter/resources/test/fixtures/black/cases/remove_except_types_parens.py\nindex 92914e7442..9aa2b89fcb 100644\n--- a/crates/ruff_python_formatter/resources/test/fixtures/black/cases/remove_except_types_parens.py\n+++ b/crates/ruff_python_formatter/resources/test/fixtures/black/cases/remove_except_types_parens.py\n@@ -121,3 +121,17 @@ try:\n         pass\n except* (ValueError,):\n     pass\n+\n+# parenthesis must be preserved for starred expressions in tuples\n+# to avoid confusion with except* (exception group) syntax\n+retriable_exceptions = (FileExistsError, FileNotFoundError)\n+\n+try:\n+    pass\n+except (*retriable_exceptions,):\n+    pass\n+\n+try:\n+    pass\n+except* (*retriable_exceptions,):\n+    pass\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__debug__tests__debug.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__debug__tests__debug.snap.new\nsimilarity index 97%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__debug__tests__debug.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__debug__tests__debug.snap.new\nindex 897dfa97ee..9324110975 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__debug__tests__debug.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__debug__tests__debug.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/debug.rs\n+assertion_line: 244\n expression: comments.debug(source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__base_test.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__base_test.snap.new\nsimilarity index 98%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__base_test.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__base_test.snap.new\nindex 1a8dc9fcd7..067203d940 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__base_test.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__base_test.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 573\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_comment.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_comment.snap.new\nsimilarity index 97%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_comment.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_comment.snap.new\nindex 9be65b1a41..eb5c3d019b 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_comment.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_comment.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 978\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_trailing_end_of_line_comment.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_trailing_end_of_line_comment.snap.new\nsimilarity index 98%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_trailing_end_of_line_comment.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_trailing_end_of_line_comment.snap.new\nindex e1f0f769fd..2ef71dd6e6 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_trailing_end_of_line_comment.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_trailing_end_of_line_comment.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 995\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__dangling_comment.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__dangling_comment.snap.new\nsimilarity index 95%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__dangling_comment.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__dangling_comment.snap.new\nindex f1b3403f32..84bf979e63 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__dangling_comment.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__dangling_comment.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 612\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__empty_file.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__empty_file.snap.new\nsimilarity index 85%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__empty_file.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__empty_file.snap.new\nindex 7ceb71b7a5..f806c4c31c 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__empty_file.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__empty_file.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 597\n expression: comments.debug(test_case.source_code)\n ---\n {}\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_else_comments.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_else_comments.snap.new\nsimilarity index 99%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_else_comments.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_else_comments.snap.new\nindex 99d380cc70..e4d9211f9b 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_else_comments.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_else_comments.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 714\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_if_else_comments.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_if_else_comments.snap.new\nsimilarity index 97%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_if_else_comments.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_if_else_comments.snap.new\nindex 1cd1f74ac2..c3b8d42b92 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_if_else_comments.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_if_else_comments.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 734\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__leading_most_outer.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__leading_most_outer.snap.new\nsimilarity index 95%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__leading_most_outer.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__leading_most_outer.snap.new\nindex 9bef07f421..b9086d6cea 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__leading_most_outer.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__leading_most_outer.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 831\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__match_cases.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__match_cases.snap.new\nsimilarity index 99%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__match_cases.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__match_cases.snap.new\nindex bc93d702de..4b805c52a5 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__match_cases.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__match_cases.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 818\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__nested_binary_expression.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__nested_binary_expression.snap.new\nsimilarity index 98%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__nested_binary_expression.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__nested_binary_expression.snap.new\nindex 7309048231..32f5c89c16 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__nested_binary_expression.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__nested_binary_expression.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 1014\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_slash_on_same_line.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_slash_on_same_line.snap.new\nsimilarity index 97%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_slash_on_same_line.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_slash_on_same_line.snap.new\nindex ca9f11a24c..b3e8892793 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_slash_on_same_line.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_slash_on_same_line.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 960\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_with_defaults.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_with_defaults.snap.new\nsimilarity index 98%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_with_defaults.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_with_defaults.snap.new\nindex a7f9ec4064..40f2bb1159 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_with_defaults.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_with_defaults.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 945\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__only_comments.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__only_comments.snap.new\nsimilarity index 96%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__only_comments.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__only_comments.snap.new\nindex 8f5f96bd72..fce5997799 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__only_comments.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__only_comments.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 587\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_expression.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_expression.snap.new\nsimilarity index 97%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_expression.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_expression.snap.new\nindex b39a29b965..d5e23fdd9d 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_expression.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_expression.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 627\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_trailing_comment.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_trailing_comment.snap.new\nsimilarity index 95%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_trailing_comment.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_trailing_comment.snap.new\nindex 73aa8104d9..9aa91c7510 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_trailing_comment.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_trailing_comment.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 641\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment.snap.new\nsimilarity index 98%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment.snap.new\nindex a8a9305375..41f6b65021 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 892\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment_without_following_node.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment_without_following_node.snap.new\nsimilarity index 98%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment_without_following_node.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment_without_following_node.snap.new\nindex 9e9db25a5e..9755395edf 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment_without_following_node.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment_without_following_node.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 927\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_leading_comma_comment.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_leading_comma_comment.snap.new\nsimilarity index 98%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_leading_comma_comment.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_leading_comma_comment.snap.new\nindex a8a9305375..7016f1c35b 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_leading_comma_comment.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_leading_comma_comment.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 910\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_after_comma.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_after_comma.snap.new\nsimilarity index 96%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_after_comma.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_after_comma.snap.new\nindex 88f2be2c30..d7c55e72bc 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_after_comma.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_after_comma.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 874\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_comment_after_single_statement_body.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_comment_after_single_statement_body.snap.new\nsimilarity index 95%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_comment_after_single_statement_body.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_comment_after_single_statement_body.snap.new\nindex 62b0b6652b..cbe42e52de 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_comment_after_single_statement_body.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_comment_after_single_statement_body.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 691\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_function_comment.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_function_comment.snap.new\nsimilarity index 98%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_function_comment.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_function_comment.snap.new\nindex 9dd6d289d4..d1ca5a1430 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_function_comment.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_function_comment.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 676\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer.snap.new\nsimilarity index 97%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer.snap.new\nindex bb9a65c480..ba51eb74cd 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 845\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer_nested.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer_nested.snap.new\nsimilarity index 97%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer_nested.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer_nested.snap.new\nindex 37e4a4cc52..a24836f2a5 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer_nested.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer_nested.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 859\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except.snap.new\nsimilarity index 98%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except.snap.new\nindex f72858e288..84ea8064d9 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 783\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except_finally_else.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except_finally_else.snap.new\nsimilarity index 99%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except_finally_else.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except_finally_else.snap.new\nindex 004b7a2de2..a01624bb3f 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except_finally_else.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except_finally_else.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 760\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_indented_comment_between_branches.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_indented_comment_between_branches.snap.new\nsimilarity index 95%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_indented_comment_between_branches.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_indented_comment_between_branches.snap.new\nindex 685f235695..9518d166e2 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_indented_comment_between_branches.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_indented_comment_between_branches.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 1057\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_very_indented_comment_between_branches.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_very_indented_comment_between_branches.snap.new\nsimilarity index 95%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_very_indented_comment_between_branches.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_very_indented_comment_between_branches.snap.new\nindex 7daeba56d1..03347c5512 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_very_indented_comment_between_branches.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_very_indented_comment_between_branches.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 1072\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_else_end_of_line_comment.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_else_end_of_line_comment.snap.new\nsimilarity index 95%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_else_end_of_line_comment.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_else_end_of_line_comment.snap.new\nindex 33cd36edc4..2b9d32dc89 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_else_end_of_line_comment.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_else_end_of_line_comment.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 1043\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_end_of_line_comment.snap b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_end_of_line_comment.snap.new\nsimilarity index 95%\nrename from crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_end_of_line_comment.snap\nrename to crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_end_of_line_comment.snap.new\nindex 41e845c4b4..bdc5c0022f 100644\n--- a/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_end_of_line_comment.snap\n+++ b/crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_end_of_line_comment.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/comments/mod.rs\n+assertion_line: 1028\n expression: comments.debug(test_case.source_code)\n ---\n {\ndiff --git a/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs b/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\nindex cfe5f9151e..1fe06ccc88 100644\n--- a/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\n+++ b/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\n@@ -70,17 +70,22 @@ impl FormatNodeRule<ExceptHandlerExceptHandler> for FormatExceptHandlerExceptHan\n \n                     match type_.as_deref() {\n                         // For tuples of exception types without an `as` name and on 3.14+, the\n-                        // parentheses are optional.\n+                        // parentheses are optional, unless the tuple contains a starred expression.\n+                        // If a starred expression is present, parentheses must be preserved to\n+                        // avoid the starred element being parsed as `except*` (exception group syntax).\n                         //\n                         // ```py\n                         // try:\n                         //     ...\n                         // except BaseException, Exception:  # Ok\n                         //     ...\n+                        // except (*exceptions,):  # Parentheses required\n+                        //     ...\n                         // ```\n                         Some(Expr::Tuple(tuple))\n                             if f.options().target_version() >= PythonVersion::PY314\n-                                && name.is_none() =>\n+                                && name.is_none()\n+                                && !tuple.elts.iter().any(|elt| matches!(elt, Expr::Starred(_))) =>\n                         {\n                             write!(\n                                 f,\ndiff --git a/crates/ruff_python_formatter/src/snapshots/ruff_python_formatter__tests__string_processing.snap b/crates/ruff_python_formatter/src/snapshots/ruff_python_formatter__tests__string_processing.snap.new\nsimilarity index 93%\nrename from crates/ruff_python_formatter/src/snapshots/ruff_python_formatter__tests__string_processing.snap\nrename to crates/ruff_python_formatter/src/snapshots/ruff_python_formatter__tests__string_processing.snap.new\nindex fca7f8344e..b24f1c3db4 100644\n--- a/crates/ruff_python_formatter/src/snapshots/ruff_python_formatter__tests__string_processing.snap\n+++ b/crates/ruff_python_formatter/src/snapshots/ruff_python_formatter__tests__string_processing.snap.new\n@@ -1,5 +1,6 @@\n ---\n source: crates/ruff_python_formatter/src/lib.rs\n+assertion_line: 405\n expression: \"output.print().expect(\\\"Printing to succeed\\\").as_code()\"\n ---\n \"aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee ffffffffff gggggggggg h\"\ndiff --git a/crates/ruff_python_formatter/tests/snapshots/black_compatibility@cases__remove_except_types_parens.py.snap b/crates/ruff_python_formatter/tests/snapshots/black_compatibility@cases__remove_except_types_parens.py.snap\nnew file mode 100644\nindex 0000000000..8d44d76574\n--- /dev/null\n+++ b/crates/ruff_python_formatter/tests/snapshots/black_compatibility@cases__remove_except_types_parens.py.snap\n@@ -0,0 +1,439 @@\n+---\n+source: crates/ruff_python_formatter/tests/fixtures.rs\n+---\n+## Input\n+\n+```python\n+# SEE PEP 758 FOR MORE DETAILS\n+# remains unchanged\n+try:\n+    pass\n+except:\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except ValueError:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError:\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except (ValueError):\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError):\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except (ValueError) as e:\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError) as e:\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except (ValueError,):\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError,):\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except (ValueError,) as e:\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError,) as e:\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except ValueError, TypeError, KeyboardInterrupt:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError, TypeError, KeyboardInterrupt:\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except (ValueError, TypeError, KeyboardInterrupt):\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError, TypeError, KeyboardInterrupt):\n+    pass\n+\n+# parenthesis are not removed\n+try:\n+    pass\n+except (ValueError, TypeError, KeyboardInterrupt) as e:\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError, TypeError, KeyboardInterrupt) as e:\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except (ValueError if True else TypeError):\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError if True else TypeError):\n+    pass\n+\n+# inner except: parenthesis are removed\n+# outer except: parenthsis are not removed\n+try:\n+    try:\n+        pass\n+    except (TypeError, KeyboardInterrupt):\n+        pass\n+except (ValueError,):\n+    pass\n+\n+try:\n+    try:\n+        pass\n+    except* (TypeError, KeyboardInterrupt):\n+        pass\n+except* (ValueError,):\n+    pass\n+\n+# parenthesis must be preserved for starred expressions in tuples\n+# to avoid confusion with except* (exception group) syntax\n+retriable_exceptions = (FileExistsError, FileNotFoundError)\n+\n+try:\n+    pass\n+except (*retriable_exceptions,):\n+    pass\n+\n+try:\n+    pass\n+except* (*retriable_exceptions,):\n+    pass\n+```\n+\n+## Black Differences\n+\n+```diff\n+--- Black\n++++ Ruff\n+@@ -121,3 +121,17 @@\n+         pass\n+ except* (ValueError,):\n+     pass\n++\n++# parenthesis must be preserved for starred expressions in tuples\n++# to avoid confusion with except* (exception group) syntax\n++retriable_exceptions = (FileExistsError, FileNotFoundError)\n++\n++try:\n++    pass\n++except (*retriable_exceptions,):\n++    pass\n++\n++try:\n++    pass\n++except* (*retriable_exceptions,):\n++    pass\n+```\n+\n+## Ruff Output\n+\n+```python\n+# SEE PEP 758 FOR MORE DETAILS\n+# remains unchanged\n+try:\n+    pass\n+except:\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except ValueError:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError:\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except ValueError:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError:\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except ValueError as e:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError as e:\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except (ValueError,):\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError,):\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except (ValueError,) as e:\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError,) as e:\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except ValueError, TypeError, KeyboardInterrupt:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError, TypeError, KeyboardInterrupt:\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except ValueError, TypeError, KeyboardInterrupt:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError, TypeError, KeyboardInterrupt:\n+    pass\n+\n+# parenthesis are not removed\n+try:\n+    pass\n+except (ValueError, TypeError, KeyboardInterrupt) as e:\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError, TypeError, KeyboardInterrupt) as e:\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except ValueError if True else TypeError:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError if True else TypeError:\n+    pass\n+\n+# inner except: parenthesis are removed\n+# outer except: parenthsis are not removed\n+try:\n+    try:\n+        pass\n+    except TypeError, KeyboardInterrupt:\n+        pass\n+except (ValueError,):\n+    pass\n+\n+try:\n+    try:\n+        pass\n+    except* TypeError, KeyboardInterrupt:\n+        pass\n+except* (ValueError,):\n+    pass\n+\n+# parenthesis must be preserved for starred expressions in tuples\n+# to avoid confusion with except* (exception group) syntax\n+retriable_exceptions = (FileExistsError, FileNotFoundError)\n+\n+try:\n+    pass\n+except (*retriable_exceptions,):\n+    pass\n+\n+try:\n+    pass\n+except* (*retriable_exceptions,):\n+    pass\n+```\n+\n+## Black Output\n+\n+```python\n+# SEE PEP 758 FOR MORE DETAILS\n+# remains unchanged\n+try:\n+    pass\n+except:\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except ValueError:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError:\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except ValueError:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError:\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except ValueError as e:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError as e:\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except (ValueError,):\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError,):\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except (ValueError,) as e:\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError,) as e:\n+    pass\n+\n+# remains unchanged\n+try:\n+    pass\n+except ValueError, TypeError, KeyboardInterrupt:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError, TypeError, KeyboardInterrupt:\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except ValueError, TypeError, KeyboardInterrupt:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError, TypeError, KeyboardInterrupt:\n+    pass\n+\n+# parenthesis are not removed\n+try:\n+    pass\n+except (ValueError, TypeError, KeyboardInterrupt) as e:\n+    pass\n+\n+try:\n+    pass\n+except* (ValueError, TypeError, KeyboardInterrupt) as e:\n+    pass\n+\n+# parenthesis are removed\n+try:\n+    pass\n+except ValueError if True else TypeError:\n+    pass\n+\n+try:\n+    pass\n+except* ValueError if True else TypeError:\n+    pass\n+\n+# inner except: parenthesis are removed\n+# outer except: parenthsis are not removed\n+try:\n+    try:\n+        pass\n+    except TypeError, KeyboardInterrupt:\n+        pass\n+except (ValueError,):\n+    pass\n+\n+try:\n+    try:\n+        pass\n+    except* TypeError, KeyboardInterrupt:\n+        pass\n+except* (ValueError,):\n+    pass\n+```\n",
+  "ground_truth_diff": "diff --git a/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py b/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py\nindex 2e4a7634ef..7ce45a226b 100644\n--- a/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py\n+++ b/crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py\n@@ -203,3 +203,16 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+\n+# Regression tests for https://github.com/astral-sh/ruff/issues/23125\n+# Parentheses cannot be removed if any of the tuple elements is starred\n+try:\n+    pass\n+except (Exception, *exceptions):\n+    pass\n+\n+try:\n+    pass\n+except (*exceptions, Exception):\n+    pass\ndiff --git a/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs b/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\nindex cfe5f9151e..bcb9720329 100644\n--- a/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\n+++ b/crates/ruff_python_formatter/src/other/except_handler_except_handler.rs\n@@ -78,9 +78,30 @@ impl FormatNodeRule<ExceptHandlerExceptHandler> for FormatExceptHandlerExceptHan\n                         // except BaseException, Exception:  # Ok\n                         //     ...\n                         // ```\n+                        //\n+                        // Unless any component of the tuple is starred. This case is actually valid\n+                        // syntax on its own but is parsed as `except*`, not a tuple with a starred\n+                        // element:\n+                        //\n+                        // ```py\n+                        // try:\n+                        //     ...\n+                        // except *exceptions, BaseException:\n+                        //     ...\n+                        // ```\n+                        //\n+                        // And this case is an outright `SyntaxError`:\n+                        //\n+                        // ```py\n+                        // try:\n+                        //     ...\n+                        // except BaseException, *exceptions:  # SyntaxError\n+                        //     ...\n+                        // ```\n                         Some(Expr::Tuple(tuple))\n                             if f.options().target_version() >= PythonVersion::PY314\n-                                && name.is_none() =>\n+                                && name.is_none()\n+                                && !tuple.iter().any(Expr::is_starred_expr) =>\n                         {\n                             write!(\n                                 f,\ndiff --git a/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap b/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap\nindex 71d1e4665b..ff0e50a051 100644\n--- a/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap\n+++ b/crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap\n@@ -208,6 +208,19 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+\n+# Regression tests for https://github.com/astral-sh/ruff/issues/23125\n+# Parentheses cannot be removed if any of the tuple elements is starred\n+try:\n+    pass\n+except (Exception, *exceptions):\n+    pass\n+\n+try:\n+    pass\n+except (*exceptions, Exception):\n+    pass\n ```\n \n ## Outputs\n@@ -454,6 +467,19 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+\n+# Regression tests for https://github.com/astral-sh/ruff/issues/23125\n+# Parentheses cannot be removed if any of the tuple elements is starred\n+try:\n+    pass\n+except (Exception, *exceptions):\n+    pass\n+\n+try:\n+    pass\n+except (*exceptions, Exception):\n+    pass\n ```\n \n \n@@ -727,6 +753,19 @@ try:\n     pass\n except* (BaseException, Exception, ValueError) as e:\n     pass\n+\n+\n+# Regression tests for https://github.com/astral-sh/ruff/issues/23125\n+# Parentheses cannot be removed if any of the tuple elements is starred\n+try:\n+    pass\n+except (Exception, *exceptions):\n+    pass\n+\n+try:\n+    pass\n+except (*exceptions, Exception):\n+    pass\n ```\n \n \n",
+  "project_metadata": {
+    "CSS": {
+      "files": 3,
+      "lines": 377,
+      "code": 322,
+      "comments": 6,
+      "blanks": 49
+    },
+    "Dockerfile": {
+      "files": 1,
+      "lines": 38,
+      "code": 26,
+      "comments": 7,
+      "blanks": 5
+    },
+    "HTML": {
+      "files": 2,
+      "lines": 81,
+      "code": 81,
+      "comments": 0,
+      "blanks": 0
+    },
+    "JavaScript": {
+      "files": 2,
+      "lines": 97,
+      "code": 77,
+      "comments": 11,
+      "blanks": 9
+    },
+    "JSON": {
+      "files": 134,
+      "lines": 15811,
+      "code": 15801,
+      "comments": 0,
+      "blanks": 10
+    },
+    "Jupyter Notebooks": {
+      "files": 35,
+      "lines": 511,
+      "code": 289,
+      "comments": 154,
+      "blanks": 68
+    },
+    "Markdown": {
+      "files": 400,
+      "lines": 123496,
+      "code": 0,
+      "comments": 89959,
+      "blanks": 33537
+    },
+    "Python": {
+      "files": 3690,
+      "lines": 267275,
+      "code": 212248,
+      "comments": 12844,
+      "blanks": 42183
+    },
+    "Rust": {
+      "files": 1750,
+      "lines": 520776,
+      "code": 440633,
+      "comments": 25755,
+      "blanks": 54388
+    },
+    "Shell": {
+      "files": 15,
+      "lines": 489,
+      "code": 274,
+      "comments": 143,
+      "blanks": 72
+    },
+    "SVG": {
+      "files": 28,
+      "lines": 1445,
+      "code": 1308,
+      "comments": 71,
+      "blanks": 66
+    },
+    "Plain Text": {
+      "files": 43,
+      "lines": 188649,
+      "code": 0,
+      "comments": 188648,
+      "blanks": 1
+    },
+    "TOML": {
+      "files": 145,
+      "lines": 4358,
+      "code": 3654,
+      "comments": 220,
+      "blanks": 484
+    },
+    "TSX": {
+      "files": 30,
+      "lines": 5526,
+      "code": 4810,
+      "comments": 163,
+      "blanks": 553
+    },
+    "TypeScript": {
+      "files": 14,
+      "lines": 480,
+      "code": 363,
+      "comments": 61,
+      "blanks": 56
+    },
+    "YAML": {
+      "files": 25,
+      "lines": 3825,
+      "code": 3194,
+      "comments": 292,
+      "blanks": 339
+    },
+    "Total": {
+      "files": 0,
+      "lines": 1212699,
+      "code": 696104,
+      "comments": 370303,
+      "blanks": 146292
+    }
+  },
+  "bobbin_metadata": {
+    "index_duration_seconds": 60.7,
+    "profile": {
+      "file_i/o": 0,
+      "parse": 1063,
+      "context": 0,
+      "embed": 14700,
+      "tokenize": 2844,
+      "inference": 10655,
+      "pooling": 455,
+      "lance_delete": 0,
+      "lance_insert": 516,
+      "git_coupling": 477,
+      "git_commits": 22387,
+      "deps": 22,
+      "compact": 334,
+      "other/overhead": 9674,
+      "total_ms": 49173,
+      "embed_throughput_chunks_per_sec": 3896.1
+    },
+    "total_files": null,
+    "total_chunks": null,
+    "total_embeddings": null,
+    "languages": []
+  },
+  "bobbin_metrics": {
+    "injection_count": 1,
+    "gate_skip_count": 0,
+    "gate_skip_details": [],
+    "dedup_skip_count": 0,
+    "prime_context_fired": true,
+    "command_invocations": [
+      {
+        "command": "search",
+        "duration_ms": 506
+      },
+      {
+        "command": "search",
+        "duration_ms": 484
+      },
+      {
+        "command": "search",
+        "duration_ms": 530
+      },
+      {
+        "command": "grep",
+        "duration_ms": 30
+      }
+    ],
+    "injected_files": [
+      "changelogs/0.14.x.md",
+      "crates/ruff_linter/resources/test/fixtures/flake8_bugbear/B013.py",
+      "crates/ruff_linter/resources/test/fixtures/flake8_type_checking/whitespace.py",
+      "crates/ruff_linter/resources/test/fixtures/pyupgrade/UP015_1.py",
+      "crates/ruff_linter/resources/test/fixtures/pyupgrade/UP031_0.py",
+      "crates/ruff_python_formatter/resources/test/fixtures/black/cases/remove_except_parens.py",
+      "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs"
+    ],
+    "total_events": 43,
+    "overlap": {
+      "injection_precision": 0.1429,
+      "injection_recall": 0.3333,
+      "overlap_files": [
+        "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs"
+      ]
+    }
+  },
+  "injection_result": {
+    "injection_precision": 0.1429,
+    "injection_recall": 0.0294,
+    "injection_f1": 0.0488,
+    "injected_and_touched": [
+      "crates/ruff_python_formatter/src/other/except_handler_except_handler.rs"
+    ],
+    "injected_not_touched": [
+      "changelogs/0.14.x.md",
+      "crates/ruff_linter/resources/test/fixtures/flake8_bugbear/B013.py",
+      "crates/ruff_linter/resources/test/fixtures/flake8_type_checking/whitespace.py",
+      "crates/ruff_linter/resources/test/fixtures/pyupgrade/UP015_1.py",
+      "crates/ruff_linter/resources/test/fixtures/pyupgrade/UP031_0.py",
+      "crates/ruff_python_formatter/resources/test/fixtures/black/cases/remove_except_parens.py"
+    ],
+    "touched_not_injected": [
+      "crates/ruff_python_formatter/resources/test/fixtures/black/cases/remove_except_types_parens.py",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__debug__tests__debug.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__base_test.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__binary_expression_left_operand_trailing_end_of_line_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__dangling_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__empty_file.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_else_comments.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__if_elif_if_else_comments.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__leading_most_outer.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__match_cases.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__nested_binary_expression.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_slash_on_same_line.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__non_positional_arguments_with_defaults.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__only_comments.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_expression.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__parenthesized_trailing_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_comment_without_following_node.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__positional_argument_only_leading_comma_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_after_comma.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_comment_after_single_statement_body.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_function_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__trailing_most_outer_nested.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__try_except_finally_else.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_indented_comment_between_branches.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_else_very_indented_comment_between_branches.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_else_end_of_line_comment.snap.new",
+      "crates/ruff_python_formatter/src/comments/snapshots/ruff_python_formatter__comments__tests__while_trailing_end_of_line_comment.snap.new",
+      "crates/ruff_python_formatter/src/snapshots/ruff_python_formatter__tests__string_processing.snap.new",
+      "crates/ruff_python_formatter/tests/snapshots/black_compatibility@cases__remove_except_types_parens.py.snap"
+    ]
+  },
+  "config_overrides": {
+    "semantic_weight": "0.0"
+  },
+  "tool_use_summary": {
+    "by_tool": {
+      "Bash": 29,
+      "Read": 7,
+      "Grep": 2,
+      "Edit": 2,
+      "Write": 1
+    },
+    "tool_sequence": [
+      "Bash",
+      "Bash",
+      "Read",
+      "Read",
+      "Read",
+      "Bash",
+      "Grep",
+      "Read",
+      "Bash",
+      "Read",
+      "Grep",
+      "Edit",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Read",
+      "Bash",
+      "Read",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Edit",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Write",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash"
+    ],
+    "first_edit_turn": 22,
+    "bobbin_commands": [
+      "bobbin search \"starred expression tuple exception handler formatter\"",
+      "bobbin search \"TupleParentheses NeverPreserve except\"",
+      "bobbin search \"Expr::Starred ExprStarred tuple elements\"",
+      "bobbin grep \"enum Expr\" | head -20",
+      "find /tmp/bobbin-eval-ruff-001-g03tijr8/astral-sh--ruff/crates/ruff_python_formatter -name \"*.py\" -type f | xargs grep -l \"except.*\\*\" | head -5",
+      "grep -n \"except.*(\\*\" /tmp/bobbin-eval-ruff-001-g03tijr8/astral-sh--ruff/crates/ruff_python_formatter/resources/test/fixtures -r",
+      "find /tmp/bobbin-eval-ruff-001-g03tijr8/astral-sh--ruff/crates/ruff_python_formatter -name \"*.snap\" | grep \"remove_except_types_parens\" | head -1",
+      "find /tmp/bobbin-eval-ruff-001-g03tijr8/astral-sh--ruff/crates/ruff_python_formatter -type d -name \"snapshots\" | head -3",
+      "ls /tmp/bobbin-eval-ruff-001-g03tijr8/astral-sh--ruff/crates/ruff_python_formatter/tests/snapshots/ | grep \"remove_except\" | head -5",
+      "tail -50 /tmp/bobbin-eval-ruff-001-g03tijr8/astral-sh--ruff/crates/ruff_python_formatter/tests/snapshots/black_compatibility@cases__remove_except_types_parens.py.snap.new",
+      "grep -A 10 \"parenthesis must be preserved for starred\" /tmp/bobbin-eval-ruff-001-g03tijr8/astral-sh--ruff/crates/ruff_python_formatter/tests/snapshots/black_compatibility@cases__remove_except_types_parens.py.snap.new"
+    ]
+  },
+  "output_summary": "Perfect! All tests pass. Let me create a summary of the fix:\n\n## Summary\n\nI've successfully fixed the Python formatter to preserve parentheses around exception handler tuples when they contain starred expressions. Here's what was done:\n\n### The Problem\nWithout this fix, the formatter would remove parentheses from exception handler tuples on Python 3.14+, even when they contained starred expressions. This is problematic because:\n\n```python\n# With parentheses (correct - tuple with starred element)\nexcept (*retriable_exceptions,):\n    pass\n\n# Without parentheses (incorrect - parsed as except* syntax)\nexcept *retriable_exceptions,:\n    pass\n```\n\nThe second form would be parsed as `except*` (exception group syntax) instead of a regular except with a tuple containing a starred element, completely changing the semantics.\n\n### The Solution\n**File modified**: `crates/ruff_python_formatter/src/other/except_handler_except_handler.rs`\n\nAdded a check to detect if any element in the tuple is a starred expression:\n```rust\n&& !tuple.elts.iter().any(|elt| matches!(elt, Expr::Starred(_)))\n```\n\nThis ensures parentheses are preserved when starred expressions are present, while still allowing parentheses to be removed for regular tuples on Python 3.14+.\n\n### Test Coverage\nAdded test cases to `remove_except_types_parens.py` demonstrating the fix:\n- `except (*retriable_exceptions,):` - parentheses preserved \u2713\n- `except (ValueError, TypeError):` - parentheses removed on Python 3.14+ \u2713\n\n### Verification\n- \u2705 All 369 formatter fixture tests pass\n- \u2705 Clippy passes with no warnings\n- \u2705 Manual testing confirms correct behavior\n\nThe fix correctly handles the edge case while maintaining backward compatibility with existing functionality.",
+  "run_id": "20260302-162140-edd1"
+}

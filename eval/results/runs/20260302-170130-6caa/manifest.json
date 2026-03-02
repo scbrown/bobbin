@@ -1,0 +1,26 @@
+{
+  "run_id": "20260302-170130-6caa",
+  "started_at": "2026-03-02T17:01:30.691755+00:00",
+  "completed_at": "2026-03-02T19:22:33.763473+00:00",
+  "agent_config": {
+    "model": "claude-sonnet-4-5-20250929",
+    "budget_usd": 5.0,
+    "timeout_seconds": 600,
+    "index_timeout_seconds": 300
+  },
+  "attempts_per_approach": 3,
+  "approaches": [
+    "with-bobbin",
+    "with-bobbin+semantic_weight=0.0",
+    "with-bobbin+coupling_depth=0",
+    "with-bobbin+recency_weight=0.0",
+    "with-bobbin+doc_demotion=0.0",
+    "with-bobbin+gate_threshold=1.0",
+    "with-bobbin+blame_bridging=false"
+  ],
+  "tasks": [
+    "ruff-001"
+  ],
+  "total_results": 21,
+  "completed_results": 21
+}

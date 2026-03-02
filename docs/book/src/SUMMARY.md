@@ -74,7 +74,7 @@
 - [Results Summary](eval/summary.md)
 - [Historical Trends](eval/trends.md)
 - [Project Catalog](eval/projects.md)
-- [Flask (Python)](eval/flask.md)
+- [Cargo (Rust)](eval/cargo.md)
 - [Polars (Rust)](eval/polars.md)
 - [Ruff (Rust)](eval/ruff.md)
 

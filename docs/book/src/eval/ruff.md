@@ -16,10 +16,16 @@ removing parentheses.
 
 </details>
 
-| Approach | Tests Pass | Precision | Recall | F1 | Duration |
-|----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 100.0% | 33.3% | 33.3% | 33.3% | 4.0m |
-| with-bobbin | 100.0% | 66.7% | 66.7% | 66.7% | 4.1m |
+| Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
+|----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
+| no-bobbin | 100.0% | 31.7% | 33.3% | 32.4% | 4.3m $1.23 |
+| with-bobbin | 100.0% | 70.2% | 61.9% | 63.6% | 4.4m $1.52 |
+| with-bobbin+blame_bridging=false | 100.0% | 33.3% | 33.3% | 33.3% | 4.6m $1.25 |
+| with-bobbin+coupling_depth=0 | 100.0% | 55.6% | 33.3% | 38.9% | 4.7m $1.45 |
+| with-bobbin+doc_demotion=0.0 | 100.0% | 55.6% | 55.6% | 55.6% | 5.0m $1.48 |
+| with-bobbin+gate_threshold=1.0 | 100.0% | 77.8% | 55.6% | 61.1% | 5.4m $1.39 |
+| with-bobbin+recency_weight=0.0 | 100.0% | 77.8% | 55.6% | 61.1% | 4.9m $1.43 |
+| with-bobbin+semantic_weight=0.0 | 100.0% | 23.6% | 33.3% | 25.2% | 4.7m $1.45 |
 
 <div class="eval-chart">
 
@@ -37,6 +43,12 @@ removing parentheses.
 
 **Files touched (no-bobbin)**: `crates/ruff_python_formatter/resources/test/fixtures/black/cases/remove_except_types_parens.py`, `crates/ruff_python_formatter/src/other/except_handler_except_handler.rs`, `crates/ruff_python_formatter/tests/snapshots/black_compatibility@cases__remove_except_types_parens.py.snap`
 **Files touched (with-bobbin)**: `crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py`, `crates/ruff_python_formatter/src/other/except_handler_except_handler.rs`, `crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap`
+**Files touched (with-bobbin+blame_bridging=false)**: `crates/ruff_python_formatter/resources/test/fixtures/ruff/except_handler_starred.py`, `crates/ruff_python_formatter/src/other/except_handler_except_handler.rs`, `crates/ruff_python_formatter/tests/snapshots/format@except_handler_starred.py.snap`
+**Files touched (with-bobbin+coupling_depth=0)**: `crates/ruff_python_formatter/src/other/except_handler_except_handler.rs`
+**Files touched (with-bobbin+doc_demotion=0.0)**: `crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py`, `crates/ruff_python_formatter/src/other/except_handler_except_handler.rs`, `crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap`
+**Files touched (with-bobbin+gate_threshold=1.0)**: `crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py`, `crates/ruff_python_formatter/src/other/except_handler_except_handler.rs`, `crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap`
+**Files touched (with-bobbin+recency_weight=0.0)**: `crates/ruff_python_formatter/resources/test/fixtures/ruff/statement/try.py`, `crates/ruff_python_formatter/src/other/except_handler_except_handler.rs`, `crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap`
+**Files touched (with-bobbin+semantic_weight=0.0)**: `crates/ruff_python_formatter/resources/test/fixtures/black/cases/remove_except_types_parens.py`, `crates/ruff_python_formatter/resources/test/fixtures/black/cases/remove_except_types_parens.py.expect`, `crates/ruff_python_formatter/src/other/except_handler_except_handler.rs`
 
 ---
 
@@ -57,10 +69,10 @@ existing `allow\_boolean\_trap` logic.
 
 </details>
 
-| Approach | Tests Pass | Precision | Recall | F1 | Duration |
-|----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 100.0% | 100.0% | 40.0% | 57.1% | 4.8m |
-| with-bobbin | 100.0% | 100.0% | 40.0% | 57.1% | 4.2m |
+| Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
+|----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
+| no-bobbin | 100.0% | 100.0% | 40.0% | 57.1% | 4.8m $0.00 |
+| with-bobbin | 100.0% | 100.0% | 40.0% | 57.1% | 4.3m $1.38 |
 
 <div class="eval-chart">
 
@@ -98,10 +110,16 @@ name ranges for imported members.
 
 </details>
 
-| Approach | Tests Pass | Precision | Recall | F1 | Duration |
-|----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 100.0% | 100.0% | 66.7% | 80.0% | 9.7m |
-| with-bobbin | 100.0% | 100.0% | 66.7% | 80.0% | 6.7m |
+| Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
+|----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
+| no-bobbin | 100.0% | 100.0% | 83.3% | 90.0% | 9.2m $0.00 |
+| with-bobbin | 100.0% | 100.0% | 77.8% | 86.7% | 6.3m $1.92 |
+
+<div class="eval-chart">
+
+![ruff-003_f1_boxplot.svg](./charts/ruff-003_f1_boxplot.svg)
+
+</div>
 
 <div class="eval-chart">
 
@@ -111,8 +129,8 @@ name ranges for imported members.
 
 **Ground truth files**: `crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py`, `crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs`, `crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap`
 
-**Files touched (no-bobbin)**: `crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs`, `crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap`
-**Files touched (with-bobbin)**: `crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs`, `crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap`
+**Files touched (no-bobbin)**: `crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py`, `crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs`, `crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap`
+**Files touched (with-bobbin)**: `crates/ruff_linter/resources/test/fixtures/pylint/import_private_name/submodule/__main__.py`, `crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs`, `crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLC2701_import_private_name__submodule____main__.py.snap`
 
 ---
 
@@ -133,10 +151,16 @@ annotations, and use it for the return type checks.
 
 </details>
 
-| Approach | Tests Pass | Precision | Recall | F1 | Duration |
-|----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 100.0% | 33.3% | 33.3% | 33.3% | 4.1m |
-| with-bobbin | 100.0% | 33.3% | 33.3% | 33.3% | 3.8m |
+| Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
+|----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
+| no-bobbin | 100.0% | 46.7% | 66.7% | 54.2% | 3.9m $0.00 |
+| with-bobbin | 100.0% | 63.3% | 83.3% | 70.8% | 4.5m $1.67 |
+
+<div class="eval-chart">
+
+![ruff-004_f1_boxplot.svg](./charts/ruff-004_f1_boxplot.svg)
+
+</div>
 
 <div class="eval-chart">
 
@@ -146,8 +170,8 @@ annotations, and use it for the return type checks.
 
 **Ground truth files**: `crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py`, `crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs`, `crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap`
 
-**Files touched (no-bobbin)**: `crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.pyi`, `crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs`, `crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.pyi.snap`
-**Files touched (with-bobbin)**: `crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.pyi`, `crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs`, `crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.pyi.snap`
+**Files touched (no-bobbin)**: `crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py`, `crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.pyi`, `crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs`, `crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap`, `crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.pyi.snap`
+**Files touched (with-bobbin)**: `crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py`, `crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs`, `crates/ruff_linter/src/rules/flake8_pyi/snapshots/ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap`
 
 ---
 
@@ -167,10 +191,16 @@ for both `--silent` and `--quiet` modes to verify correct output behavior.
 
 </details>
 
-| Approach | Tests Pass | Precision | Recall | F1 | Duration |
-|----------|:----------:|:---------:|:------:|:--:|:--------:|
-| no-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 3.7m |
-| with-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 4.0m |
+| Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
+|----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
+| no-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 3.6m $0.00 |
+| with-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 2.8m $0.63 |
+
+<div class="eval-chart">
+
+![ruff-005_f1_boxplot.svg](./charts/ruff-005_f1_boxplot.svg)
+
+</div>
 
 <div class="eval-chart">
 

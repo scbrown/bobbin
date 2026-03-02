@@ -1,0 +1,20 @@
+{
+  "run_id": "20260302-162133-ce01",
+  "started_at": "2026-03-02T16:21:33.680495+00:00",
+  "completed_at": "2026-03-02T16:27:28.348938+00:00",
+  "agent_config": {
+    "model": "claude-sonnet-4-5-20250929",
+    "budget_usd": 5.0,
+    "timeout_seconds": 600,
+    "index_timeout_seconds": 300
+  },
+  "attempts_per_approach": 1,
+  "approaches": [
+    "no-bobbin"
+  ],
+  "tasks": [
+    "cargo-001"
+  ],
+  "total_results": 1,
+  "completed_results": 1
+}
