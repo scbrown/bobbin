@@ -305,6 +305,267 @@ pub fn query_coupling(
 }
 
 // ---------------------------------------------------------------------------
+// Session-scoped dedup
+// ---------------------------------------------------------------------------
+
+/// Dedup key: (rule_name, key_args_hash).
+/// Two firings with the same rule name and same key args are duplicates.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct DedupKey {
+    pub rule_name: String,
+    pub args_hash: String,
+}
+
+/// Session dedup tracker. Stores fired (rule, args) combinations in a
+/// JSONL file at `.bobbin/session/<session_id>/reactions.jsonl`.
+pub struct DedupTracker {
+    fired: std::collections::HashSet<DedupKey>,
+    path: Option<std::path::PathBuf>,
+}
+
+impl DedupTracker {
+    /// Load dedup state for a session. Creates the file if needed.
+    pub fn load(repo_root: &Path, session_id: &str) -> Self {
+        if session_id.is_empty() {
+            return Self { fired: std::collections::HashSet::new(), path: None };
+        }
+        let dir = repo_root.join(".bobbin").join("session").join(session_id);
+        let path = dir.join("reactions.jsonl");
+
+        let mut fired = std::collections::HashSet::new();
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                for line in content.lines() {
+                    if let Ok(key) = serde_json::from_str::<DedupKey>(line) {
+                        fired.insert(key);
+                    }
+                }
+            }
+        }
+
+        Self { fired, path: Some(path) }
+    }
+
+    /// Check if a rule+args combination has already fired.
+    pub fn has_fired(&self, key: &DedupKey) -> bool {
+        self.fired.contains(key)
+    }
+
+    /// Record that a rule+args combination has fired.
+    pub fn record(&mut self, key: DedupKey) {
+        if self.fired.insert(key.clone()) {
+            // Append to file
+            if let Some(ref path) = self.path {
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if let Ok(line) = serde_json::to_string(&key) {
+                    use std::io::Write;
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(path)
+                    {
+                        let _ = writeln!(f, "{}", line);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Compute a dedup key for a rule match.
+    /// Uses the tool_input values that the rule's match conditions target,
+    /// or the full tool_name for rules without match conditions.
+    pub fn make_key(rule: &ReactionRule, event: &ToolEvent) -> DedupKey {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(event.tool_name.as_bytes());
+        if rule.match_conditions.is_empty() {
+            // For rules without match conditions, hash key tool args
+            // Use file_path for Edit/Write, command for Bash, etc.
+            for key in &["file_path", "command", "container", "service", "pattern"] {
+                if let Some(val) = event.arg(key) {
+                    hasher.update(key.as_bytes());
+                    hasher.update(val.as_bytes());
+                }
+            }
+        } else {
+            for param in rule.match_conditions.keys() {
+                if let Some(val) = event.arg(param) {
+                    hasher.update(param.as_bytes());
+                    hasher.update(val.as_bytes());
+                }
+            }
+        }
+        let hash = hex::encode(hasher.finalize());
+        DedupKey {
+            rule_name: rule.name.clone(),
+            args_hash: hash[..16].to_string(), // Truncate for readability
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Reaction evaluation engine
+// ---------------------------------------------------------------------------
+
+/// Result of evaluating all reactions for a tool event.
+pub struct EvaluationResult {
+    /// Formatted reaction output to inject.
+    pub output: String,
+    /// Number of reactions that fired.
+    pub reactions_fired: usize,
+    /// Rule names that fired.
+    pub rules_fired: Vec<String>,
+    /// Rules that matched but were deduped.
+    pub rules_deduped: usize,
+}
+
+/// Evaluate reaction rules for a tool event.
+/// Handles matching, dedup, coupling, and output formatting.
+/// Does NOT handle ContextAssembler searches — returns pending search
+/// queries for the caller to execute (since ContextAssembler is async and
+/// requires Embedder/VectorStore that live in hook.rs).
+pub fn evaluate_reactions(
+    event: &ToolEvent,
+    rules: &[CompiledRule],
+    dedup: &mut DedupTracker,
+    metadata_store: Option<&MetadataStore>,
+    global_budget: usize,
+) -> EvaluationResult {
+    let matches = match_rules(event, rules);
+    let mut output = String::new();
+    let mut lines_used = 0usize;
+    let mut reactions_fired = 0;
+    let mut rules_fired = Vec::new();
+    let mut rules_deduped = 0;
+
+    for (compiled, match_result) in &matches {
+        // Budget check
+        if lines_used >= global_budget {
+            break;
+        }
+
+        // Dedup check
+        let dedup_key = DedupTracker::make_key(&compiled.rule, event);
+        if dedup.has_fired(&dedup_key) {
+            rules_deduped += 1;
+            continue;
+        }
+
+        // Render guidance
+        let guidance = render_template(&compiled.rule.guidance, event, &match_result.captures);
+
+        // Handle coupling-based reactions
+        let coupled_files = if compiled.rule.use_coupling {
+            if let Some(store) = metadata_store {
+                let file_path = event.arg("file_path").unwrap_or("");
+                match query_coupling(store, file_path, compiled.rule.coupling_threshold, 10) {
+                    Ok(result) if !result.coupled_files.is_empty() => {
+                        Some(result.coupled_files)
+                    }
+                    Ok(_) => Some(vec![]), // Empty coupling — still fire with guidance
+                    Err(_) => Some(vec![]), // Error querying — still fire with guidance
+                }
+            } else {
+                Some(vec![]) // No store available
+            }
+        } else {
+            None // Not a coupling rule
+        };
+
+        // Format the reaction output
+        let reaction_text = format_reaction(
+            &compiled.rule,
+            &guidance,
+            coupled_files.as_deref(),
+        );
+
+        // Count lines and enforce per-reaction budget
+        let reaction_lines: Vec<&str> = reaction_text.lines().collect();
+        let max_lines = compiled.rule.max_context_lines.min(global_budget - lines_used);
+        let lines_to_add = reaction_lines.len().min(max_lines);
+
+        if !output.is_empty() {
+            output.push('\n');
+            lines_used += 1;
+        }
+
+        for line in &reaction_lines[..lines_to_add] {
+            output.push_str(line);
+            output.push('\n');
+        }
+        lines_used += lines_to_add;
+
+        // If we truncated, add an indicator
+        if lines_to_add < reaction_lines.len() {
+            output.push_str("... (truncated by budget)\n");
+            lines_used += 1;
+        }
+
+        // Record dedup and stats
+        dedup.record(dedup_key);
+        reactions_fired += 1;
+        rules_fired.push(compiled.rule.name.clone());
+    }
+
+    EvaluationResult {
+        output,
+        reactions_fired,
+        rules_fired,
+        rules_deduped,
+    }
+}
+
+/// Return pending search queries from matching rules (for search-based reactions).
+/// The caller executes these via ContextAssembler and formats the results.
+pub fn pending_searches(
+    event: &ToolEvent,
+    rules: &[CompiledRule],
+    dedup: &DedupTracker,
+) -> Vec<PendingSearch> {
+    let matches = match_rules(event, rules);
+    let mut searches = Vec::new();
+
+    for (compiled, match_result) in &matches {
+        if compiled.rule.use_coupling || compiled.rule.search_query.is_empty() {
+            continue;
+        }
+        let dedup_key = DedupTracker::make_key(&compiled.rule, event);
+        if dedup.has_fired(&dedup_key) {
+            continue;
+        }
+        let query = render_template(&compiled.rule.search_query, event, &match_result.captures);
+        if query.trim().is_empty() {
+            continue;
+        }
+        searches.push(PendingSearch {
+            rule_name: compiled.rule.name.clone(),
+            query,
+            group: if compiled.rule.search_group.is_empty() {
+                None
+            } else {
+                Some(compiled.rule.search_group.clone())
+            },
+            tags: compiled.rule.search_tags.clone(),
+            max_lines: compiled.rule.max_context_lines,
+        });
+    }
+
+    searches
+}
+
+/// A search that needs to be executed by the caller via ContextAssembler.
+#[derive(Debug, Clone)]
+pub struct PendingSearch {
+    pub rule_name: String,
+    pub query: String,
+    pub group: Option<String>,
+    pub tags: Vec<String>,
+    pub max_lines: usize,
+}
+
+// ---------------------------------------------------------------------------
 // Reaction output formatting
 // ---------------------------------------------------------------------------
 
@@ -1005,5 +1266,280 @@ guidance = "Review coupled files for {file_stem}"
         assert_eq!(deserialized.reactions.len(), 1);
         assert_eq!(deserialized.reactions[0].name, "test");
         assert_eq!(deserialized.reactions[0].max_context_lines, 30);
+    }
+
+    // -- Dedup tests --
+
+    #[test]
+    fn test_dedup_key_same_rule_same_args() {
+        let rule = ReactionRule {
+            name: "test".into(),
+            tool: "Edit".into(),
+            match_conditions: HashMap::new(),
+            guidance: String::new(),
+            search_query: String::new(),
+            search_group: String::new(),
+            search_tags: vec![],
+            max_context_lines: 50,
+            use_coupling: false,
+            coupling_threshold: 0.3,
+        };
+        let event1 = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/a.rs"}),
+        };
+        let event2 = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/a.rs"}),
+        };
+        let key1 = DedupTracker::make_key(&rule, &event1);
+        let key2 = DedupTracker::make_key(&rule, &event2);
+        assert_eq!(key1, key2);
+    }
+
+    #[test]
+    fn test_dedup_key_same_rule_different_args() {
+        let rule = ReactionRule {
+            name: "test".into(),
+            tool: "Edit".into(),
+            match_conditions: HashMap::new(),
+            guidance: String::new(),
+            search_query: String::new(),
+            search_group: String::new(),
+            search_tags: vec![],
+            max_context_lines: 50,
+            use_coupling: false,
+            coupling_threshold: 0.3,
+        };
+        let event1 = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/a.rs"}),
+        };
+        let event2 = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/b.rs"}),
+        };
+        let key1 = DedupTracker::make_key(&rule, &event1);
+        let key2 = DedupTracker::make_key(&rule, &event2);
+        assert_ne!(key1, key2); // Different files = different keys
+    }
+
+    #[test]
+    fn test_dedup_tracker_in_memory() {
+        let mut tracker = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+        let key = DedupKey {
+            rule_name: "test".into(),
+            args_hash: "abc123".into(),
+        };
+        assert!(!tracker.has_fired(&key));
+        tracker.record(key.clone());
+        assert!(tracker.has_fired(&key));
+    }
+
+    #[test]
+    fn test_dedup_tracker_persistence() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session_dir = tmp.path().join(".bobbin").join("session").join("test-session");
+        std::fs::create_dir_all(&session_dir).unwrap();
+
+        // Create tracker, record a key
+        {
+            let mut tracker = DedupTracker::load(tmp.path(), "test-session");
+            let key = DedupKey {
+                rule_name: "rule1".into(),
+                args_hash: "hash1".into(),
+            };
+            assert!(!tracker.has_fired(&key));
+            tracker.record(key);
+        }
+
+        // Reload tracker — key should persist
+        {
+            let tracker = DedupTracker::load(tmp.path(), "test-session");
+            let key = DedupKey {
+                rule_name: "rule1".into(),
+                args_hash: "hash1".into(),
+            };
+            assert!(tracker.has_fired(&key));
+
+            // Different key should not be fired
+            let key2 = DedupKey {
+                rule_name: "rule2".into(),
+                args_hash: "hash2".into(),
+            };
+            assert!(!tracker.has_fired(&key2));
+        }
+    }
+
+    // -- Evaluation tests --
+
+    #[test]
+    fn test_evaluate_reactions_basic() {
+        let rules = vec![make_rule("r1", "Edit", HashMap::new())];
+        let event = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/test.rs"}),
+        };
+        let mut dedup = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 100);
+        assert_eq!(result.reactions_fired, 1);
+        assert_eq!(result.rules_fired, vec!["r1"]);
+        assert!(result.output.contains("=== Reaction: r1 ==="));
+        assert!(result.output.contains("Guidance for r1"));
+    }
+
+    #[test]
+    fn test_evaluate_reactions_dedup() {
+        let rules = vec![make_rule("r1", "Edit", HashMap::new())];
+        let event = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/test.rs"}),
+        };
+        let mut dedup = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+
+        // First evaluation fires
+        let result1 = evaluate_reactions(&event, &rules, &mut dedup, None, 100);
+        assert_eq!(result1.reactions_fired, 1);
+
+        // Second evaluation with same args is deduped
+        let result2 = evaluate_reactions(&event, &rules, &mut dedup, None, 100);
+        assert_eq!(result2.reactions_fired, 0);
+        assert_eq!(result2.rules_deduped, 1);
+        assert!(result2.output.is_empty());
+    }
+
+    #[test]
+    fn test_evaluate_reactions_dedup_different_args() {
+        let rules = vec![make_rule("r1", "Edit", HashMap::new())];
+        let mut dedup = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+
+        let event1 = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/a.rs"}),
+        };
+        let result1 = evaluate_reactions(&event1, &rules, &mut dedup, None, 100);
+        assert_eq!(result1.reactions_fired, 1);
+
+        // Different file = different args = fires again
+        let event2 = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/b.rs"}),
+        };
+        let result2 = evaluate_reactions(&event2, &rules, &mut dedup, None, 100);
+        assert_eq!(result2.reactions_fired, 1);
+    }
+
+    #[test]
+    fn test_evaluate_reactions_budget_limit() {
+        // Create rules with large guidance that exceeds budget
+        let rules: Vec<CompiledRule> = (0..5)
+            .map(|i| {
+                CompiledRule::compile(ReactionRule {
+                    name: format!("rule{}", i),
+                    tool: "Edit".into(),
+                    match_conditions: HashMap::new(),
+                    guidance: "Line1\nLine2\nLine3\nLine4\nLine5".into(),
+                    search_query: String::new(),
+                    search_group: String::new(),
+                    search_tags: vec![],
+                    max_context_lines: 50,
+                    use_coupling: false,
+                    coupling_threshold: 0.3,
+                })
+                .unwrap()
+            })
+            .collect();
+
+        let event = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/test.rs"}),
+        };
+        let mut dedup = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+
+        // Budget of 20 lines — not all 5 rules will fit
+        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 20);
+        assert!(result.reactions_fired > 0);
+        assert!(result.reactions_fired < 5);
+    }
+
+    #[test]
+    fn test_evaluate_no_match() {
+        let rules = vec![make_rule("r1", "Edit", HashMap::new())];
+        let event = ToolEvent {
+            tool_name: "Bash".into(),
+            tool_input: json!({"command": "ls"}),
+        };
+        let mut dedup = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 100);
+        assert_eq!(result.reactions_fired, 0);
+        assert!(result.output.is_empty());
+    }
+
+    // -- Pending searches tests --
+
+    #[test]
+    fn test_pending_searches() {
+        let rules: Vec<CompiledRule> = vec![
+            CompiledRule::compile(ReactionRule {
+                name: "search-rule".into(),
+                tool: "Edit".into(),
+                match_conditions: HashMap::new(),
+                guidance: "Check related".into(),
+                search_query: "related to {file_stem}".into(),
+                search_group: "infra".into(),
+                search_tags: vec!["auto:config".into()],
+                max_context_lines: 50,
+                use_coupling: false,
+                coupling_threshold: 0.3,
+            })
+            .unwrap(),
+            CompiledRule::compile(ReactionRule {
+                name: "coupling-rule".into(),
+                tool: "Edit".into(),
+                match_conditions: HashMap::new(),
+                guidance: "Coupling check".into(),
+                search_query: String::new(),
+                search_group: String::new(),
+                search_tags: vec![],
+                max_context_lines: 50,
+                use_coupling: true,
+                coupling_threshold: 0.3,
+            })
+            .unwrap(),
+        ];
+
+        let event = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/home/user/main.tf"}),
+        };
+        let dedup = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+
+        let searches = pending_searches(&event, &rules, &dedup);
+        assert_eq!(searches.len(), 1); // Only search-rule, not coupling-rule
+        assert_eq!(searches[0].rule_name, "search-rule");
+        assert_eq!(searches[0].query, "related to main");
+        assert_eq!(searches[0].group, Some("infra".into()));
+        assert_eq!(searches[0].tags, vec!["auto:config"]);
     }
 }
