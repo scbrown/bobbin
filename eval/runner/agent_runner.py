@@ -15,6 +15,18 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def _recover_global_settings() -> None:
+    """Restore settings.json if a previous eval run was killed mid-flight."""
+    global_settings = Path.home() / ".claude" / "settings.json"
+    backup = global_settings.with_suffix(".json.eval-bak")
+    if not global_settings.exists() and backup.exists():
+        logger.warning(
+            "Recovering global settings from previous interrupted run: %s → %s",
+            backup, global_settings,
+        )
+        backup.rename(global_settings)
+
+
 @contextlib.contextmanager
 def _isolate_global_settings():
     """Temporarily move ~/.claude/settings.json aside during eval runs.
@@ -27,6 +39,8 @@ def _isolate_global_settings():
     This context manager renames the global settings to a .bak file
     before the agent runs and restores it afterward.
     """
+    _recover_global_settings()
+
     global_settings = Path.home() / ".claude" / "settings.json"
     backup = global_settings.with_suffix(".json.eval-bak")
 
