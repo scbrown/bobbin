@@ -28,6 +28,7 @@ use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::impact::{ImpactAnalyzer, ImpactConfig, ImpactMode, ImpactSignal};
 use crate::analysis::refs::RefAnalyzer;
 use crate::analysis::similar::{SimilarTarget, SimilarityAnalyzer};
+use crate::tags::{build_tag_exclude_filter, build_tag_include_filter};
 use crate::index::GitAnalyzer;
 use crate::types::{ChunkType, MatchType, SearchResult};
 
@@ -94,6 +95,28 @@ impl BobbinMcpServer {
             "issue" | "bead" => Ok(ChunkType::Issue),
             "other" => Ok(ChunkType::Other),
             _ => anyhow::bail!("Unknown chunk type '{}'", s),
+        }
+    }
+
+    /// Build a combined SQL filter from comma-separated tag/exclude_tag params.
+    fn build_tag_filter(tag: Option<&str>, exclude_tag: Option<&str>) -> Option<String> {
+        let mut filters: Vec<String> = Vec::new();
+        if let Some(tags) = tag {
+            let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+            if !tag_list.is_empty() {
+                filters.push(build_tag_include_filter(&tag_list));
+            }
+        }
+        if let Some(tags) = exclude_tag {
+            let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+            if !tag_list.is_empty() {
+                filters.push(build_tag_exclude_filter(&tag_list));
+            }
+        }
+        if filters.is_empty() {
+            None
+        } else {
+            Some(filters.join(" AND "))
         }
     }
 
@@ -350,9 +373,12 @@ impl BobbinMcpServer {
 
         let repo_filter = req.repo.as_deref();
 
+        // Build tag filter
+        let tag_filter = Self::build_tag_filter(req.tag.as_deref(), req.exclude_tag.as_deref());
+
         let results: Vec<SearchResult> = match mode {
             "keyword" => vector_store
-                .search_fts(&req.query, search_limit, repo_filter)
+                .search_fts_filtered(&req.query, search_limit, repo_filter, tag_filter.as_deref())
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?,
 
@@ -366,7 +392,7 @@ impl BobbinMcpServer {
                 if mode == "semantic" {
                     let mut search = SemanticSearch::new(embedder, vector_store);
                     search
-                        .search(&req.query, search_limit, repo_filter)
+                        .search_filtered(&req.query, search_limit, repo_filter, tag_filter.as_deref())
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?
                 } else {
@@ -376,7 +402,7 @@ impl BobbinMcpServer {
                         config.search.semantic_weight,
                     );
                     search
-                        .search(&req.query, search_limit, repo_filter)
+                        .search_filtered(&req.query, search_limit, repo_filter, tag_filter.as_deref())
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?
                 }
@@ -573,6 +599,8 @@ impl BobbinMcpServer {
         let embedder = Embedder::from_config(&config.embedding, &model_dir)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
+        let extra_filter = Self::build_tag_filter(req.tag.as_deref(), req.exclude_tag.as_deref());
+
         let context_config = ContextConfig {
             budget_lines: req.budget.unwrap_or(500),
             depth: req.depth.unwrap_or(1),
@@ -587,7 +615,7 @@ impl BobbinMcpServer {
             rrf_k: config.search.rrf_k,
             bridge_mode: BridgeMode::default(),
             bridge_boost_factor: 0.3,
-            extra_filter: None,
+            extra_filter,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

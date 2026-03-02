@@ -26,6 +26,14 @@ pub struct SearchRequest {
     /// Filter to a specific repository (searches all repos if omitted)
     #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
     pub repo: Option<String>,
+
+    /// Include only chunks with these tags (comma-separated)
+    #[schemars(description = "Include only chunks tagged with these tags (comma-separated, e.g. 'core,api')")]
+    pub tag: Option<String>,
+
+    /// Exclude chunks with these tags (comma-separated)
+    #[schemars(description = "Exclude chunks tagged with these tags (comma-separated, e.g. 'test,generated')")]
+    pub exclude_tag: Option<String>,
 }
 
 /// Response for semantic search
@@ -147,6 +155,14 @@ pub struct ContextRequest {
     /// Filter to specific repository
     #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
     pub repo: Option<String>,
+
+    /// Include only chunks with these tags (comma-separated)
+    #[schemars(description = "Include only chunks tagged with these tags (comma-separated, e.g. 'core,api')")]
+    pub tag: Option<String>,
+
+    /// Exclude chunks with these tags (comma-separated)
+    #[schemars(description = "Exclude chunks tagged with these tags (comma-separated, e.g. 'test,generated')")]
+    pub exclude_tag: Option<String>,
 }
 
 /// Response for context assembly
