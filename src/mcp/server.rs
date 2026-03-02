@@ -23,7 +23,7 @@ use crate::config::Config;
 use crate::index::Embedder;
 use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig, FileRelevance};
 use crate::search::{HybridSearch, SemanticSearch};
-use crate::storage::{MetadataStore, VectorStore};
+use crate::storage::{FeedbackStore, MetadataStore, VectorStore};
 use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::impact::{ImpactAnalyzer, ImpactConfig, ImpactMode, ImpactSignal};
 use crate::analysis::refs::RefAnalyzer;
@@ -59,6 +59,12 @@ impl BobbinMcpServer {
     fn open_metadata_store(&self) -> Result<MetadataStore> {
         let db_path = Config::db_path(&self.repo_root);
         MetadataStore::open(&db_path).context("Failed to open metadata store")
+    }
+
+    /// Open the feedback store
+    fn open_feedback_store(&self) -> Result<FeedbackStore> {
+        let db_path = Config::feedback_db_path(&self.repo_root);
+        FeedbackStore::open(&db_path).context("Failed to open feedback store")
     }
 
     /// Open the vector store
@@ -1859,6 +1865,144 @@ impl BobbinMcpServer {
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Submit feedback on a bobbin context injection
+    #[tool(description = "Submit feedback on a bobbin context injection. Rate injections as 'useful' (helped with task), 'noise' (irrelevant to current work), or 'harmful' (actively misleading). Reference the injection_id shown in [injection_id: inj-xxx] from the context injection output. Supports both standard (inj-xxx) and reaction (inj-react-xxx) injection IDs.")]
+    async fn feedback_submit(
+        &self,
+        Parameters(req): Parameters<FeedbackSubmitRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let injection_id = req.injection_id.trim().to_string();
+        if injection_id.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "Error: injection_id required (from [injection_id: inj-xxx] in context injection output)",
+            )]));
+        }
+
+        let valid_ratings = ["useful", "noise", "harmful"];
+        if !valid_ratings.contains(&req.rating.as_str()) {
+            return Ok(CallToolResult::success(vec![Content::text(format!(
+                "Error: rating must be one of: {}",
+                valid_ratings.join(", ")
+            ))]));
+        }
+
+        let agent = req.agent.unwrap_or_else(|| {
+            std::env::var("GT_ROLE")
+                .or_else(|_| std::env::var("BD_ACTOR"))
+                .unwrap_or_else(|_| "unknown".to_string())
+        });
+
+        let reason = req.reason.unwrap_or_default();
+        if reason.len() > 1000 {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "Error: reason too long (max 1000 chars)",
+            )]));
+        }
+
+        let input = crate::storage::feedback::FeedbackInput {
+            injection_id: injection_id.clone(),
+            agent,
+            rating: req.rating.clone(),
+            reason,
+        };
+
+        let store = self
+            .open_feedback_store()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        store
+            .store_feedback(&input)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Feedback recorded: {} for {}",
+            req.rating, injection_id
+        ))]))
+    }
+
+    /// List recent bobbin feedback records
+    #[tool(description = "List recent bobbin injection feedback records. Filter by rating (useful/noise/harmful) and/or agent name. Use to review feedback trends and identify problematic injections.")]
+    async fn feedback_list(
+        &self,
+        Parameters(req): Parameters<FeedbackListRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self
+            .open_feedback_store()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let query = crate::storage::feedback::FeedbackQuery {
+            injection_id: None,
+            rating: req.rating,
+            agent: req.agent,
+            limit: req.limit,
+        };
+
+        let records = store
+            .list_feedback(&query)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        if records.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "No feedback records found.",
+            )]));
+        }
+
+        let mut lines = vec![format!("Feedback records ({}):", records.len())];
+        for r in &records {
+            let ts = if r.timestamp.len() > 19 {
+                &r.timestamp[..19]
+            } else {
+                &r.timestamp
+            };
+            let mut line = format!("[{}] {} | {} | {}", r.injection_id, ts, r.rating, r.agent);
+            if !r.reason.is_empty() {
+                let truncated: String = r.reason.chars().take(100).collect();
+                line.push_str(&format!(" | {}", truncated));
+            }
+            lines.push(line);
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(
+            lines.join("\n"),
+        )]))
+    }
+
+    /// Get bobbin feedback statistics
+    #[tool(description = "Get aggregated bobbin injection feedback statistics — total injections, feedback count, coverage rate, and rating breakdown (useful/noise/harmful).")]
+    async fn feedback_stats(
+        &self,
+        Parameters(_req): Parameters<FeedbackStatsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self
+            .open_feedback_store()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let stats = store
+            .stats()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let rate = if stats.total_injections > 0 {
+            format!(
+                "{:.0}%",
+                stats.total_feedback as f64 / stats.total_injections as f64 * 100.0
+            )
+        } else {
+            "N/A".to_string()
+        };
+
+        let text = format!(
+            "Injections: {}\nFeedback: {} ({} coverage)\n  useful: {}\n  noise: {}\n  harmful: {}",
+            stats.total_injections,
+            stats.total_feedback,
+            rate,
+            stats.useful,
+            stats.noise,
+            stats.harmful
+        );
+
+        Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 }
 

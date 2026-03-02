@@ -18,7 +18,7 @@ use crate::config::Config;
 use crate::index::{Embedder, GitAnalyzer};
 use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig, FileRelevance};
 use crate::search::{HybridSearch, SemanticSearch};
-use crate::storage::{MetadataStore, VectorStore};
+use crate::storage::{FeedbackStore, MetadataStore, VectorStore};
 use crate::types::{ChunkType, MatchType, SearchResult};
 
 use crate::access::RepoFilter;
@@ -84,6 +84,9 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/commands", get(list_commands))
         .route("/metrics", get(metrics))
         .route("/webhook/push", post(webhook_push))
+        .route("/feedback", post(feedback_submit))
+        .route("/feedback", get(feedback_list))
+        .route("/feedback/stats", get(feedback_stats))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -2823,6 +2826,65 @@ pub(super) async fn tags(
         tagged_chunks: tagged,
         untagged_chunks: untagged,
     }))
+}
+
+// -- Feedback endpoints --
+
+fn open_feedback_store(state: &AppState) -> anyhow::Result<FeedbackStore> {
+    let path = Config::feedback_db_path(&state.repo_root);
+    FeedbackStore::open(&path)
+}
+
+/// POST /feedback — submit feedback on an injection
+pub(super) async fn feedback_submit(
+    State(state): State<Arc<AppState>>,
+    Json(input): Json<crate::storage::feedback::FeedbackInput>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let store = open_feedback_store(&state).map_err(internal_error)?;
+    store.store_feedback(&input).map_err(|e| {
+        if e.to_string().contains("Invalid rating") || e.to_string().contains("required") {
+            bad_request(e.to_string())
+        } else {
+            internal_error(e)
+        }
+    })?;
+    Ok(Json(serde_json::json!({
+        "status": "ok",
+        "message": format!("Feedback recorded: {} for {}", input.rating, input.injection_id)
+    })))
+}
+
+#[derive(Deserialize)]
+pub(super) struct FeedbackListParams {
+    injection_id: Option<String>,
+    rating: Option<String>,
+    agent: Option<String>,
+    limit: Option<usize>,
+}
+
+/// GET /feedback — list feedback records with optional filters
+pub(super) async fn feedback_list(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<FeedbackListParams>,
+) -> Result<Json<Vec<crate::storage::feedback::FeedbackRecord>>, (StatusCode, Json<ErrorBody>)> {
+    let store = open_feedback_store(&state).map_err(internal_error)?;
+    let query = crate::storage::feedback::FeedbackQuery {
+        injection_id: params.injection_id,
+        rating: params.rating,
+        agent: params.agent,
+        limit: params.limit,
+    };
+    let records = store.list_feedback(&query).map_err(internal_error)?;
+    Ok(Json(records))
+}
+
+/// GET /feedback/stats — aggregated feedback statistics
+pub(super) async fn feedback_stats(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<crate::storage::feedback::FeedbackStats>, (StatusCode, Json<ErrorBody>)> {
+    let store = open_feedback_store(&state).map_err(internal_error)?;
+    let stats = store.stats().map_err(internal_error)?;
+    Ok(Json(stats))
 }
 
 // -- Helpers --

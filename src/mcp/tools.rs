@@ -841,3 +841,46 @@ pub struct CommitResultItem {
     pub files: Vec<String>,
     pub score: f32,
 }
+
+// -- Feedback tool types --
+
+/// Request for submitting feedback on a bobbin context injection
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct FeedbackSubmitRequest {
+    /// Injection ID from [injection_id: inj-xxx] in context output. Supports both standard (inj-xxx) and reaction (inj-react-xxx) IDs.
+    #[schemars(description = "Injection ID from [injection_id: inj-xxx] in context injection output")]
+    pub injection_id: String,
+
+    /// Rating: useful, noise, or harmful
+    #[schemars(description = "Rating for the injection quality: 'useful' (helped with task), 'noise' (irrelevant), or 'harmful' (actively misleading)")]
+    pub rating: String,
+
+    /// Agent identity (auto-detected from GT_ROLE or BD_ACTOR env vars if empty)
+    #[schemars(description = "Agent identity (auto-detected from environment if omitted)")]
+    pub agent: Option<String>,
+
+    /// Optional explanation (max 1000 chars)
+    #[schemars(description = "Optional explanation of why this rating was given (max 1000 chars)")]
+    pub reason: Option<String>,
+}
+
+/// Request for listing feedback records
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct FeedbackListRequest {
+    /// Filter by rating: useful, noise, or harmful
+    #[schemars(description = "Filter by rating: 'useful', 'noise', or 'harmful'")]
+    pub rating: Option<String>,
+
+    /// Filter by agent name
+    #[schemars(description = "Filter by agent name")]
+    pub agent: Option<String>,
+
+    /// Max results (default: 20, max: 50)
+    #[schemars(description = "Maximum number of results to return (default: 20, max: 50)")]
+    pub limit: Option<usize>,
+}
+
+/// Request for feedback statistics (no parameters needed)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct FeedbackStatsRequest {}
+
