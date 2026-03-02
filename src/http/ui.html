@@ -129,6 +129,7 @@ td.mono{font-family:var(--mono)}
     <div class="tab" data-page="repos">Repos</div>
     <div class="tab" data-page="beads">Beads</div>
     <div class="tab" data-page="hotspots">Hotspots</div>
+    <div class="tab" data-page="feedback">Feedback</div>
   </div>
   <div class="pulse" id="pulse" title="Connected"></div>
 </nav>
@@ -202,6 +203,25 @@ td.mono{font-family:var(--mono)}
     <div id="beads-results"></div>
   </div>
 
+  <!-- FEEDBACK PAGE -->
+  <div class="page" id="page-feedback">
+    <h2>Injection Feedback</h2>
+    <div class="grid grid-4" id="feedback-stats"></div>
+    <div style="margin-top:1.5rem">
+      <div class="search-box">
+        <select id="feedback-rating" onchange="loadFeedbackList()">
+          <option value="">All ratings</option>
+          <option value="useful">Useful</option>
+          <option value="noise">Noise</option>
+          <option value="harmful">Harmful</option>
+        </select>
+        <input type="text" id="feedback-agent" placeholder="Filter by agent..." onchange="loadFeedbackList()">
+        <button onclick="loadFeedbackList()">Refresh</button>
+      </div>
+      <div id="feedback-list"></div>
+    </div>
+  </div>
+
   <!-- HOTSPOTS PAGE -->
   <div class="page" id="page-hotspots">
     <h2>Code Hotspots</h2>
@@ -223,6 +243,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.getElementById('page-' + tab.dataset.page).classList.add('active');
     if (tab.dataset.page === 'repos' && !window._reposLoaded) loadRepos();
     if (tab.dataset.page === 'hotspots' && !window._hotspotsLoaded) loadHotspots();
+    if (tab.dataset.page === 'feedback' && !window._feedbackLoaded) loadFeedback();
   });
 });
 
@@ -525,6 +546,66 @@ async function loadHotspots() {
         <td><div style="width:60px;height:4px;background:var(--surface2);border-radius:2px"><div style="width:${(h.score/maxScore*100).toFixed(0)}%;height:100%;background:${h.score/maxScore > 0.7 ? 'var(--red)' : h.score/maxScore > 0.4 ? 'var(--amber)' : 'var(--green)'};border-radius:2px"></div></div></td>
       </tr>`).join('')}</tbody>
     </table>`;
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+// Feedback
+async function loadFeedback() {
+  window._feedbackLoaded = true;
+  await Promise.all([loadFeedbackStats(), loadFeedbackList()]);
+}
+
+async function loadFeedbackStats() {
+  const el = document.getElementById('feedback-stats');
+  try {
+    const data = await fetch(API + '/feedback/stats').then(r => r.json());
+    const total = data.total_feedback || 0;
+    const inj = data.total_injections || 0;
+    const rate = inj > 0 ? Math.round(total / inj * 100) + '%' : 'N/A';
+    el.innerHTML = `
+      <div class="card"><div class="card-header">Injections</div><div class="stat-value accent">${inj}</div></div>
+      <div class="card"><div class="card-header">Feedback</div><div class="stat-value green">${total}</div><div style="color:var(--dim);font-size:0.8rem">${rate} coverage</div></div>
+      <div class="card"><div class="card-header">Useful</div><div class="stat-value" style="color:var(--green)">${data.useful || 0}</div></div>
+      <div class="card"><div class="card-header">Noise / Harmful</div><div class="stat-value" style="color:var(--amber)">${data.noise || 0}</div> <span style="color:var(--red);font-family:var(--mono);font-size:1rem">${data.harmful || 0}</span></div>
+    `;
+  } catch(e) {
+    el.innerHTML = `<div class="card"><div class="stat-value" style="color:var(--red)">Error</div><div style="color:var(--dim)">${e.message}</div></div>`;
+  }
+}
+
+async function loadFeedbackList() {
+  const el = document.getElementById('feedback-list');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Loading feedback...</div>';
+  const rating = document.getElementById('feedback-rating').value;
+  const agent = document.getElementById('feedback-agent').value.trim();
+  let url = API + '/feedback?limit=50';
+  if (rating) url += '&rating=' + encodeURIComponent(rating);
+  if (agent) url += '&agent=' + encodeURIComponent(agent);
+  try {
+    const data = await fetch(url).then(r => r.json());
+    if (!data || data.length === 0) {
+      el.innerHTML = '<div class="empty">No feedback records yet</div>';
+      return;
+    }
+    const ratingColors = {useful:'var(--green)',noise:'var(--amber)',harmful:'var(--red)'};
+    el.innerHTML = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${data.length} records</div>` +
+      data.map(f => {
+        const ts = f.timestamp ? f.timestamp.slice(0, 19).replace('T', ' ') : '?';
+        const color = ratingColors[f.rating] || 'var(--dim)';
+        return `
+          <div class="result" style="border-left:3px solid ${color}">
+            <div class="result-header">
+              <span class="result-path" style="font-size:0.8rem">${esc(f.injection_id)}</span>
+              <span class="result-type" style="background:${color}20;color:${color}">${f.rating}</span>
+              <span style="font-size:0.8rem;color:var(--dim)">${esc(f.agent)}</span>
+              <span class="result-score">${ts}</span>
+            </div>
+            ${f.reason ? `<div style="font-size:0.85rem;color:var(--dim);margin-top:0.25rem">${esc(f.reason)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
   } catch(e) {
     el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
   }
