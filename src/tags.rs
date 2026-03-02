@@ -15,8 +15,10 @@ const TAG_MAX_LEN: usize = 32;
 pub struct TagsConfig {
     /// Pattern-based tag rules
     pub rules: Vec<TagRule>,
-    /// Tag effects on scoring (parsed now, applied in Phase 2)
+    /// Global tag effects on scoring (`[effects.<tag>]`)
     pub effects: std::collections::HashMap<String, TagEffect>,
+    /// Role-scoped tag effects (`[[effects_scoped]]`)
+    pub effects_scoped: Vec<ScopedEffect>,
 }
 
 /// A single pattern → tags rule
@@ -31,12 +33,39 @@ pub struct TagRule {
     pub repo: Option<String>,
 }
 
-/// Effect applied when a tag is present on a chunk (Phase 2)
+/// Effect applied when a tag is present on a chunk.
+/// Global effects live in `[effects.<tag>]` in tags.toml.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TagEffect {
     /// Score multiplier: positive = boost, negative = demote
     #[serde(default)]
     pub boost: f32,
+    /// When true, chunks with this tag are excluded from results entirely
+    #[serde(default)]
+    pub exclude: bool,
+}
+
+/// Role-scoped tag effect from `[[effects_scoped]]` in tags.toml.
+/// Overrides the global effect for matching roles.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScopedEffect {
+    /// Tag this effect applies to
+    pub tag: String,
+    /// Role glob pattern (e.g. "aegis/*", "aegis/crew/sentinel")
+    pub role: String,
+    /// Score multiplier (optional — omitted means no boost change)
+    #[serde(default)]
+    pub boost: f32,
+    /// When true, chunks with this tag are excluded for matching roles
+    #[serde(default)]
+    pub exclude: bool,
+}
+
+/// The resolved effect for a specific tag + role combination.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedEffect {
+    pub boost: f32,
+    pub exclude: bool,
 }
 
 impl TagsConfig {
@@ -72,6 +101,141 @@ impl TagsConfig {
     pub fn tags_path(repo_root: &Path) -> std::path::PathBuf {
         repo_root.join(".bobbin").join("tags.toml")
     }
+
+    /// Resolve the effective tag effect for a given tag and role.
+    ///
+    /// Resolution order:
+    /// 1. Check `effects_scoped` for entries matching this tag AND role glob.
+    ///    Most specific role glob wins (counted by non-wildcard path segments).
+    /// 2. Fall back to global `effects[tag]`.
+    /// 3. Return None if neither exists.
+    pub fn resolve_effect(&self, tag: &str, role: Option<&str>) -> Option<ResolvedEffect> {
+        if let Some(role) = role {
+            let mut best: Option<(&ScopedEffect, usize)> = None;
+            for scoped in &self.effects_scoped {
+                if scoped.tag != tag {
+                    continue;
+                }
+                if let Ok(pat) = Pattern::new(&scoped.role) {
+                    if pat.matches(role) {
+                        let specificity = role_specificity(&scoped.role);
+                        if best.map_or(true, |(_, s)| specificity > s) {
+                            best = Some((scoped, specificity));
+                        }
+                    }
+                }
+            }
+            if let Some((scoped, _)) = best {
+                return Some(ResolvedEffect {
+                    boost: scoped.boost,
+                    exclude: scoped.exclude,
+                });
+            }
+        }
+        // Fall back to global effect
+        self.effects.get(tag).map(|e| ResolvedEffect {
+            boost: e.boost,
+            exclude: e.exclude,
+        })
+    }
+}
+
+/// Count specificity of a role pattern: number of path segments that don't contain wildcards.
+/// More literal segments = more specific.
+fn role_specificity(pattern: &str) -> usize {
+    pattern
+        .split('/')
+        .filter(|seg| !seg.contains('*') && !seg.contains('?'))
+        .count()
+}
+
+/// Build a SQL filter clause that includes only chunks having at least one of the given tags.
+/// Returns a WHERE-compatible expression using LIKE on the comma-separated tags column.
+pub fn build_tag_include_filter(tags: &[String]) -> String {
+    let clauses: Vec<String> = tags.iter().map(|t| tag_match_clause(t)).collect();
+    if clauses.len() == 1 {
+        clauses.into_iter().next().unwrap()
+    } else {
+        format!("({})", clauses.join(" OR "))
+    }
+}
+
+/// Build a SQL filter clause that excludes chunks having any of the given tags.
+/// Returns a WHERE-compatible expression that rejects any match.
+pub fn build_tag_exclude_filter(tags: &[String]) -> String {
+    let clauses: Vec<String> = tags
+        .iter()
+        .map(|t| format!("NOT ({})", tag_match_clause(t)))
+        .collect();
+    if clauses.len() == 1 {
+        clauses.into_iter().next().unwrap()
+    } else {
+        format!("({})", clauses.join(" AND "))
+    }
+}
+
+/// Build a SQL filter clause that excludes chunks whose tags have an exclude effect
+/// for the given role. Checks both global effects (exclude=true) and scoped effects.
+/// Returns None if no excludes are active.
+pub fn build_effect_exclude_filter(config: &TagsConfig, role: Option<&str>) -> Option<String> {
+    let mut excluded_tags: Vec<String> = Vec::new();
+
+    // Collect globally excluded tags
+    for (tag, effect) in &config.effects {
+        if effect.exclude {
+            // Check if a scoped override for this role un-excludes it
+            if let Some(r) = role {
+                let scoped_override = config
+                    .effects_scoped
+                    .iter()
+                    .filter(|s| s.tag == *tag)
+                    .filter(|s| {
+                        Pattern::new(&s.role)
+                            .map(|p| p.matches(r))
+                            .unwrap_or(false)
+                    })
+                    .max_by_key(|s| role_specificity(&s.role));
+                if let Some(s) = scoped_override {
+                    if !s.exclude {
+                        continue; // scoped override says don't exclude
+                    }
+                }
+            }
+            excluded_tags.push(tag.clone());
+        }
+    }
+
+    // Collect role-scoped excludes (tags excluded for this role but not globally)
+    if let Some(role) = role {
+        for scoped in &config.effects_scoped {
+            if !scoped.exclude {
+                continue;
+            }
+            if excluded_tags.contains(&scoped.tag) {
+                continue; // already excluded globally
+            }
+            if let Ok(pat) = Pattern::new(&scoped.role) {
+                if pat.matches(role) {
+                    excluded_tags.push(scoped.tag.clone());
+                }
+            }
+        }
+    }
+
+    if excluded_tags.is_empty() {
+        None
+    } else {
+        Some(build_tag_exclude_filter(&excluded_tags))
+    }
+}
+
+/// Build a SQL LIKE clause matching a single tag in the comma-separated tags column.
+fn tag_match_clause(tag: &str) -> String {
+    let escaped = tag.replace('\'', "''");
+    format!(
+        "(tags = '{e}' OR tags LIKE '{e},%' OR tags LIKE '%,{e}' OR tags LIKE '%,{e},%')",
+        e = escaped
+    )
 }
 
 /// Validate a tag name: lowercase alphanumeric, hyphens, colons; max 32 chars.
@@ -206,7 +370,7 @@ mod tests {
                     repo: None,
                 },
             ],
-            effects: Default::default(),
+            ..Default::default()
         };
 
         // Convention + pattern tags merge
@@ -230,7 +394,7 @@ mod tests {
                 tags: vec!["ops-docs".to_string()],
                 repo: Some("aegis".to_string()),
             }],
-            effects: Default::default(),
+            ..Default::default()
         };
 
         // Matches repo
@@ -259,10 +423,26 @@ mod tests {
                 let mut m = std::collections::HashMap::new();
                 m.insert(
                     "deprecated".to_string(),
-                    TagEffect { boost: -0.8 },
+                    TagEffect {
+                        boost: -0.8,
+                        exclude: false,
+                    },
+                );
+                m.insert(
+                    "noise".to_string(),
+                    TagEffect {
+                        boost: 0.0,
+                        exclude: true,
+                    },
                 );
                 m
             },
+            effects_scoped: vec![ScopedEffect {
+                tag: "internal".to_string(),
+                role: "external/*".to_string(),
+                boost: 0.0,
+                exclude: true,
+            }],
         };
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
@@ -270,5 +450,304 @@ mod tests {
         assert_eq!(parsed.rules.len(), 1);
         assert_eq!(parsed.rules[0].pattern, "**/*_test.go");
         assert!((parsed.effects["deprecated"].boost - (-0.8)).abs() < f32::EPSILON);
+        assert!(!parsed.effects["deprecated"].exclude);
+        assert!(parsed.effects["noise"].exclude);
+        assert_eq!(parsed.effects_scoped.len(), 1);
+        assert_eq!(parsed.effects_scoped[0].tag, "internal");
+        assert_eq!(parsed.effects_scoped[0].role, "external/*");
+        assert!(parsed.effects_scoped[0].exclude);
+    }
+
+    #[test]
+    fn test_tags_config_backward_compat() {
+        // Old-style config without exclude or effects_scoped should parse fine
+        let toml_str = r#"
+[[rules]]
+pattern = "*.md"
+tags = ["docs"]
+
+[effects.deprecated]
+boost = -0.8
+"#;
+        let config: TagsConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.rules.len(), 1);
+        assert!(!config.effects["deprecated"].exclude); // default false
+        assert!(config.effects_scoped.is_empty()); // default empty
+    }
+
+    #[test]
+    fn test_resolve_effect_global_only() {
+        let config = TagsConfig {
+            effects: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "deprecated".to_string(),
+                    TagEffect {
+                        boost: -0.8,
+                        exclude: false,
+                    },
+                );
+                m
+            },
+            ..Default::default()
+        };
+
+        let resolved = config.resolve_effect("deprecated", None);
+        assert_eq!(
+            resolved,
+            Some(ResolvedEffect {
+                boost: -0.8,
+                exclude: false
+            })
+        );
+
+        // No effect for unknown tag
+        assert_eq!(config.resolve_effect("unknown", None), None);
+    }
+
+    #[test]
+    fn test_resolve_effect_scoped_overrides_global() {
+        let config = TagsConfig {
+            effects: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "internal".to_string(),
+                    TagEffect {
+                        boost: 0.0,
+                        exclude: false,
+                    },
+                );
+                m
+            },
+            effects_scoped: vec![ScopedEffect {
+                tag: "internal".to_string(),
+                role: "external/*".to_string(),
+                boost: 0.0,
+                exclude: true,
+            }],
+            ..Default::default()
+        };
+
+        // External role: scoped effect wins (exclude)
+        let resolved = config.resolve_effect("internal", Some("external/user1"));
+        assert_eq!(
+            resolved,
+            Some(ResolvedEffect {
+                boost: 0.0,
+                exclude: true
+            })
+        );
+
+        // Aegis role: falls back to global (no exclude)
+        let resolved = config.resolve_effect("internal", Some("aegis/crew/ellie"));
+        assert_eq!(
+            resolved,
+            Some(ResolvedEffect {
+                boost: 0.0,
+                exclude: false
+            })
+        );
+    }
+
+    #[test]
+    fn test_resolve_effect_most_specific_role_wins() {
+        let config = TagsConfig {
+            effects_scoped: vec![
+                ScopedEffect {
+                    tag: "test".to_string(),
+                    role: "aegis/*".to_string(),
+                    boost: -0.3,
+                    exclude: false,
+                },
+                ScopedEffect {
+                    tag: "test".to_string(),
+                    role: "aegis/crew/sentinel".to_string(),
+                    boost: 0.3,
+                    exclude: false,
+                },
+            ],
+            ..Default::default()
+        };
+
+        // sentinel gets the specific override (boost +0.3)
+        let resolved = config.resolve_effect("test", Some("aegis/crew/sentinel"));
+        assert_eq!(
+            resolved,
+            Some(ResolvedEffect {
+                boost: 0.3,
+                exclude: false
+            })
+        );
+
+        // other aegis crew gets the broad match (boost -0.3)
+        let resolved = config.resolve_effect("test", Some("aegis/crew/ellie"));
+        assert_eq!(
+            resolved,
+            Some(ResolvedEffect {
+                boost: -0.3,
+                exclude: false
+            })
+        );
+    }
+
+    #[test]
+    fn test_build_tag_include_filter_single() {
+        let filter = build_tag_include_filter(&["user:canonical".to_string()]);
+        assert!(filter.contains("tags = 'user:canonical'"));
+        assert!(filter.contains("tags LIKE 'user:canonical,%'"));
+        assert!(filter.contains("tags LIKE '%,user:canonical'"));
+        assert!(filter.contains("tags LIKE '%,user:canonical,%'"));
+    }
+
+    #[test]
+    fn test_build_tag_include_filter_multiple() {
+        let filter = build_tag_include_filter(&[
+            "user:canonical".to_string(),
+            "user:architecture".to_string(),
+        ]);
+        // Multiple tags are OR'd
+        assert!(filter.starts_with('('));
+        assert!(filter.contains(" OR "));
+    }
+
+    #[test]
+    fn test_build_tag_exclude_filter_single() {
+        let filter = build_tag_exclude_filter(&["auto:test".to_string()]);
+        assert!(filter.starts_with("NOT ("));
+    }
+
+    #[test]
+    fn test_build_tag_exclude_filter_multiple() {
+        let filter = build_tag_exclude_filter(&[
+            "auto:test".to_string(),
+            "user:deprecated".to_string(),
+        ]);
+        // Multiple excludes are AND'd
+        assert!(filter.starts_with('('));
+        assert!(filter.contains(" AND "));
+    }
+
+    #[test]
+    fn test_build_effect_exclude_filter_global_only() {
+        let config = TagsConfig {
+            effects: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "noise".to_string(),
+                    TagEffect {
+                        boost: 0.0,
+                        exclude: true,
+                    },
+                );
+                m.insert(
+                    "deprecated".to_string(),
+                    TagEffect {
+                        boost: -0.8,
+                        exclude: false,
+                    },
+                );
+                m
+            },
+            ..Default::default()
+        };
+
+        let filter = build_effect_exclude_filter(&config, None);
+        assert!(filter.is_some());
+        let f = filter.unwrap();
+        assert!(f.contains("noise"));
+        assert!(!f.contains("deprecated")); // not excluded, only demoted
+    }
+
+    #[test]
+    fn test_build_effect_exclude_filter_scoped_adds_exclude() {
+        let config = TagsConfig {
+            effects_scoped: vec![ScopedEffect {
+                tag: "internal".to_string(),
+                role: "external/*".to_string(),
+                boost: 0.0,
+                exclude: true,
+            }],
+            ..Default::default()
+        };
+
+        // External role: internal tag is excluded
+        let filter = build_effect_exclude_filter(&config, Some("external/user1"));
+        assert!(filter.is_some());
+        assert!(filter.unwrap().contains("internal"));
+
+        // Aegis role: no excludes
+        let filter = build_effect_exclude_filter(&config, Some("aegis/crew/ellie"));
+        assert!(filter.is_none());
+    }
+
+    #[test]
+    fn test_build_effect_exclude_filter_scoped_overrides_global() {
+        let config = TagsConfig {
+            effects: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "internal".to_string(),
+                    TagEffect {
+                        boost: 0.0,
+                        exclude: true, // globally excluded
+                    },
+                );
+                m
+            },
+            effects_scoped: vec![ScopedEffect {
+                tag: "internal".to_string(),
+                role: "aegis/*".to_string(),
+                boost: 0.0,
+                exclude: false, // but NOT excluded for aegis
+            }],
+            ..Default::default()
+        };
+
+        // Aegis role: scoped override un-excludes
+        let filter = build_effect_exclude_filter(&config, Some("aegis/crew/ellie"));
+        assert!(filter.is_none());
+
+        // External role: global exclude applies
+        let filter = build_effect_exclude_filter(&config, Some("external/user1"));
+        assert!(filter.is_some());
+        assert!(filter.unwrap().contains("internal"));
+    }
+
+    #[test]
+    fn test_build_effect_exclude_filter_none_when_empty() {
+        let config = TagsConfig::default();
+        assert!(build_effect_exclude_filter(&config, None).is_none());
+    }
+
+    #[test]
+    fn test_role_specificity() {
+        assert_eq!(role_specificity("*"), 0);
+        assert_eq!(role_specificity("aegis/*"), 1);
+        assert_eq!(role_specificity("aegis/crew/*"), 2);
+        assert_eq!(role_specificity("aegis/crew/sentinel"), 3);
+    }
+
+    #[test]
+    fn test_toml_with_effects_scoped() {
+        let toml_str = r#"
+[effects.noise]
+exclude = true
+
+[[effects_scoped]]
+tag = "canonical"
+role = "aegis/*"
+boost = 0.5
+
+[[effects_scoped]]
+tag = "internal"
+role = "external/*"
+exclude = true
+"#;
+        let config: TagsConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.effects["noise"].exclude);
+        assert_eq!(config.effects_scoped.len(), 2);
+        assert_eq!(config.effects_scoped[0].tag, "canonical");
+        assert!((config.effects_scoped[0].boost - 0.5).abs() < f32::EPSILON);
+        assert!(config.effects_scoped[1].exclude);
     }
 }
