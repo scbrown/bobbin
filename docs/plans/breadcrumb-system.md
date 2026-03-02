@@ -70,6 +70,13 @@ An agent creates a named shortcut that maps to a specific bobbin query + optiona
 3. **Discoverable** — breadcrumb names injected at session start so agents know they exist
 4. **One command** — create with triggers inline, not as a separate step
 5. **Description required** — future agents need to understand what a breadcrumb captures
+6. **Aliasable commands** — all subcommands support aliases via `bobbin run` / `commands.toml`. If an agent keeps typing `bobbin mark` instead of `bobbin bc create`, that's a desire path — alias it.
+7. **Desire-path integration (`dp`)** — `dp` (desire_path rig) is a Go CLI that captures failed tool calls and surfaces patterns. Bobbin should integrate as a first-class `dp` consumer:
+   - Unrecognized bobbin subcommands/flags pipe to `dp record --source bobbin` (not a custom metrics file)
+   - `dp paths --source bobbin` shows what agents keep trying that doesn't exist
+   - `dp alias` maps agent-attempted commands to real bobbin subcommands
+   - This means bobbin's CLI error handler should call `dp record` before printing "unknown command". The breadcrumb CLI ships with this from day one.
+   - Ship default aliases (`mark` → `bc create`, `recall` → `bc recall`) based on what we expect agents to try, then let `dp` validate whether those were the right guesses.
 
 ### Storage
 
@@ -118,6 +125,22 @@ bobbin bc prune [--days <n>]
 ```
 
 `bobbin bc` is the primary interface (not `bobbin breadcrumb` — too long).
+
+**Built-in aliases** (registered in `commands.toml` on install):
+```toml
+[mark]
+description = "Alias for bc create"
+command = "bc"
+args = ["create"]
+
+[recall]
+description = "Alias for bc recall"
+command = "bc"
+args = ["recall"]
+```
+
+So agents can use `bobbin mark`, `bobbin recall`, or `bobbin bc create` — whichever
+sticks. Desire-path metrics will show which forms agents actually reach for.
 
 **Create is one command with everything inline:**
 ```bash
@@ -214,7 +237,9 @@ bobbin bc recall auth-refresh
 2. `cli/breadcrumb.rs` — create (positional args), recall, list, delete, prune
 3. Wire `Bc` subcommand into `cli/mod.rs`
 4. Recall: run stored query via ContextAssembler, merge pinned files into output
-5. Tests for storage roundtrip, recall output, name validation
+5. Register `mark` and `recall` aliases in `commands.toml` (via `bobbin bc install-aliases` or during `bobbin init`)
+6. Desire-path integration: unrecognized subcommands call `dp record --source bobbin` before printing error. Requires `dp` binary on PATH (graceful no-op if absent).
+7. Tests for storage roundtrip, recall output, name validation
 
 ### Phase 3: Keyword Triggers + Discovery
 1. Keyword matching in `breadcrumb.rs` (case-insensitive substring)
