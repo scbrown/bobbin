@@ -31,6 +31,24 @@ fn resolve_filter(state: &AppState, role: Option<&str>) -> RepoFilter {
     RepoFilter::from_config(&state.config.access, &resolved)
 }
 
+/// Resolve a group name to a SQL filter clause, or None if no group specified.
+/// Returns Err with a user-facing message if the group name is unknown.
+fn resolve_group_filter(state: &AppState, group: Option<&str>) -> Result<Option<String>, String> {
+    match group {
+        None => Ok(None),
+        Some(name) => {
+            state.config.group_filter(name).map(Some).ok_or_else(|| {
+                let available: Vec<&str> = state.config.groups.iter().map(|g| g.name.as_str()).collect();
+                if available.is_empty() {
+                    format!("Unknown group '{}'. No groups configured.", name)
+                } else {
+                    format!("Unknown group '{}'. Available: {}", name, available.join(", "))
+                }
+            })
+        }
+    }
+}
+
 /// Build the axum router with all routes
 pub(super) fn router(state: Arc<AppState>) -> axum::Router {
     use axum::routing::{get, post};
@@ -59,6 +77,7 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/status", get(status))
         .route("/healthz", get(healthz))
         .route("/repos", get(list_repos))
+        .route("/groups", get(list_groups))
         .route("/repos/{name}/files", get(list_repo_files))
         .route("/commands", get(list_commands))
         .route("/metrics", get(metrics))
@@ -106,6 +125,8 @@ struct SearchParams {
     limit: Option<usize>,
     /// Filter by repository name
     repo: Option<String>,
+    /// Filter by named repo group (composable with role filtering)
+    group: Option<String>,
     /// Role for access filtering
     role: Option<String>,
 }
@@ -177,10 +198,12 @@ pub(super) async fn search(
     };
 
     let repo_filter = params.repo.as_deref();
+    let group_sql = resolve_group_filter(&state, params.group.as_deref())
+        .map_err(|e| bad_request(e))?;
 
     let results = match mode {
         "keyword" => vector_store
-            .search_fts(&params.q, search_limit, repo_filter)
+            .search_fts_filtered(&params.q, search_limit, repo_filter, group_sql.as_deref())
             .await
             .map_err(|e| internal_error(e.into()))?,
 
@@ -192,7 +215,7 @@ pub(super) async fn search(
             if mode == "semantic" {
                 let mut search = SemanticSearch::new(embedder, vector_store);
                 search
-                    .search(&params.q, search_limit, repo_filter)
+                    .search_filtered(&params.q, search_limit, repo_filter, group_sql.as_deref())
                     .await
                     .map_err(|e| internal_error(e.into()))?
             } else {
@@ -202,7 +225,7 @@ pub(super) async fn search(
                     state.config.search.semantic_weight,
                 );
                 search
-                    .search(&params.q, search_limit, repo_filter)
+                    .search_filtered(&params.q, search_limit, repo_filter, group_sql.as_deref())
                     .await
                     .map_err(|e| internal_error(e.into()))?
             }
@@ -307,6 +330,8 @@ pub(super) async fn healthz() -> Json<serde_json::Value> {
 
 #[derive(Deserialize)]
 struct ReposParams {
+    /// Filter by named repo group
+    group: Option<String>,
     /// Role for access filtering
     role: Option<String>,
 }
@@ -354,6 +379,15 @@ pub(super) async fn list_repos(
     let access = resolve_filter(&state, params.role.as_deref());
     summaries.retain(|r| access.is_allowed(&r.name));
 
+    // Apply group filtering
+    if let Some(ref group_name) = params.group {
+        if let Some(group_repos) = state.config.resolve_group(group_name) {
+            summaries.retain(|r| group_repos.iter().any(|g| g == &r.name));
+        } else {
+            return Err(bad_request(format!("Unknown group '{}'", group_name)));
+        }
+    }
+
     // Sort by chunk count descending
     summaries.sort_by(|a, b| b.chunk_count.cmp(&a.chunk_count));
 
@@ -361,6 +395,39 @@ pub(super) async fn list_repos(
         count: summaries.len(),
         repos: summaries,
     }))
+}
+
+// -- /groups --
+
+#[derive(Serialize)]
+struct GroupsResponse {
+    count: usize,
+    groups: Vec<GroupItem>,
+}
+
+#[derive(Serialize)]
+struct GroupItem {
+    name: String,
+    repos: Vec<String>,
+}
+
+pub(super) async fn list_groups(
+    State(state): State<Arc<AppState>>,
+) -> Json<GroupsResponse> {
+    let groups: Vec<GroupItem> = state
+        .config
+        .groups
+        .iter()
+        .map(|g| GroupItem {
+            name: g.name.clone(),
+            repos: g.repos.clone(),
+        })
+        .collect();
+
+    Json(GroupsResponse {
+        count: groups.len(),
+        groups,
+    })
 }
 
 // -- /repos/{name}/files --
@@ -675,6 +742,8 @@ struct GrepParams {
     limit: Option<usize>,
     /// Filter by repository name
     repo: Option<String>,
+    /// Filter by named repo group
+    group: Option<String>,
     /// Role for access filtering
     role: Option<String>,
 }
@@ -780,8 +849,10 @@ pub(super) async fn grep(
         limit
     };
 
+    let group_sql = resolve_group_filter(&state, params.group.as_deref())
+        .map_err(|e| bad_request(e))?;
     let results = vector_store
-        .search_fts(&fts_query, search_limit, params.repo.as_deref())
+        .search_fts_filtered(&fts_query, search_limit, params.repo.as_deref(), group_sql.as_deref())
         .await
         .map_err(|e| internal_error(e.into()))?;
 
@@ -868,6 +939,8 @@ struct ContextParams {
     coupling_threshold: Option<f32>,
     /// Filter by repository
     repo: Option<String>,
+    /// Filter by named repo group
+    group: Option<String>,
     /// Role for access filtering
     role: Option<String>,
 }
@@ -983,6 +1056,23 @@ pub(super) async fn context(
     // Apply role-based access filtering
     let access = resolve_filter(&state, params.role.as_deref());
     bundle.files.retain(|f| access.is_allowed(RepoFilter::repo_from_path(&f.path)));
+
+    // Apply group filtering (narrow to repos in the named group)
+    if let Some(ref group_name) = params.group {
+        let group_repos = state.config.resolve_group(group_name)
+            .ok_or_else(|| {
+                let available: Vec<&str> = state.config.groups.iter().map(|g| g.name.as_str()).collect();
+                if available.is_empty() {
+                    bad_request(format!("Unknown group '{}'. No groups configured.", group_name))
+                } else {
+                    bad_request(format!("Unknown group '{}'. Available: {}", group_name, available.join(", ")))
+                }
+            })?;
+        bundle.files.retain(|f| {
+            let repo = RepoFilter::repo_from_path(&f.path);
+            group_repos.iter().any(|g| g == repo)
+        });
+    }
 
     Ok(Json(ContextResponse {
         query: bundle.query,

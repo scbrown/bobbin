@@ -17,6 +17,7 @@ pub struct Config {
     pub archive: ArchiveConfig,
     pub access: AccessConfig,
     pub sources: SourcesConfig,
+    pub groups: Vec<GroupConfig>,
 }
 
 /// Configuration for remote server (thin-client mode)
@@ -509,6 +510,31 @@ impl Default for SourcesConfig {
     }
 }
 
+/// Named repo group for scoped search.
+///
+/// Groups define named sets of repositories that can be used to narrow
+/// search scope via `--group` (CLI) or `?group=` (HTTP). Groups compose
+/// with role-based access filtering — a group can only include repos the
+/// caller is allowed to see.
+///
+/// Example config:
+/// ```toml
+/// [[groups]]
+/// name = "infra"
+/// repos = ["goldblum", "homelab-mcp", "aegis"]
+///
+/// [[groups]]
+/// name = "apps"
+/// repos = ["reckoning", "tapestry", "shanty"]
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupConfig {
+    /// Group name (used in --group flag and ?group= param)
+    pub name: String,
+    /// Repository names in this group
+    pub repos: Vec<String>,
+}
+
 impl Config {
     /// Load configuration from a TOML file
     pub fn load(path: &Path) -> Result<Self> {
@@ -516,6 +542,29 @@ impl Config {
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
         toml::from_str(&content)
             .with_context(|| format!("Failed to parse config file: {}", path.display()))
+    }
+
+    /// Look up a group by name. Returns the repo list, or None if not found.
+    pub fn resolve_group(&self, name: &str) -> Option<&[String]> {
+        self.groups
+            .iter()
+            .find(|g| g.name == name)
+            .map(|g| g.repos.as_slice())
+    }
+
+    /// Build a SQL filter clause for a group's repos: `repo IN ('a', 'b', 'c')`.
+    /// Returns None if group not found or empty.
+    pub fn group_filter(&self, name: &str) -> Option<String> {
+        self.resolve_group(name).and_then(|repos| {
+            if repos.is_empty() {
+                return None;
+            }
+            let escaped: Vec<String> = repos
+                .iter()
+                .map(|r| format!("'{}'", r.replace('\'', "''")))
+                .collect();
+            Some(format!("repo IN ({})", escaped.join(", ")))
+        })
     }
 
     /// Save configuration to a TOML file
@@ -930,5 +979,78 @@ model = "all-MiniLM-L6-v2"
         let loaded: Config =
             toml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
         assert_eq!(loaded.server.url.as_deref(), Some("http://search.svc"));
+    }
+
+    #[test]
+    fn test_groups_config_parse() {
+        let toml_str = r#"
+[[groups]]
+name = "infra"
+repos = ["goldblum", "homelab-mcp", "aegis"]
+
+[[groups]]
+name = "apps"
+repos = ["reckoning", "tapestry"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.groups.len(), 2);
+        assert_eq!(config.groups[0].name, "infra");
+        assert_eq!(config.groups[0].repos, vec!["goldblum", "homelab-mcp", "aegis"]);
+        assert_eq!(config.groups[1].name, "apps");
+        assert_eq!(config.groups[1].repos, vec!["reckoning", "tapestry"]);
+    }
+
+    #[test]
+    fn test_groups_default_empty() {
+        let config = Config::default();
+        assert!(config.groups.is_empty());
+    }
+
+    #[test]
+    fn test_legacy_config_without_groups() {
+        let toml_str = r#"
+[embedding]
+model = "all-MiniLM-L6-v2"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.groups.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_group() {
+        let toml_str = r#"
+[[groups]]
+name = "infra"
+repos = ["goldblum", "aegis"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.resolve_group("infra"), Some(&["goldblum".to_string(), "aegis".to_string()][..]));
+        assert_eq!(config.resolve_group("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_group_filter_sql() {
+        let toml_str = r#"
+[[groups]]
+name = "infra"
+repos = ["goldblum", "homelab-mcp"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(
+            config.group_filter("infra"),
+            Some("repo IN ('goldblum', 'homelab-mcp')".to_string())
+        );
+        assert_eq!(config.group_filter("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_group_filter_empty_repos() {
+        let toml_str = r#"
+[[groups]]
+name = "empty"
+repos = []
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.group_filter("empty"), None);
     }
 }
