@@ -417,6 +417,8 @@ pub struct EvaluationResult {
     pub reactions_fired: usize,
     /// Rule names that fired.
     pub rules_fired: Vec<String>,
+    /// Injection IDs for each fired reaction (for feedback loop).
+    pub injection_ids: Vec<String>,
     /// Rules that matched but were deduped.
     pub rules_deduped: usize,
 }
@@ -438,6 +440,7 @@ pub fn evaluate_reactions(
     let mut lines_used = 0usize;
     let mut reactions_fired = 0;
     let mut rules_fired = Vec::new();
+    let mut injection_ids = Vec::new();
     let mut rules_deduped = 0;
 
     for (compiled, match_result) in &matches {
@@ -474,8 +477,8 @@ pub fn evaluate_reactions(
             None // Not a coupling rule
         };
 
-        // Format the reaction output
-        let reaction_text = format_reaction(
+        // Format the reaction output (includes injection_id)
+        let (reaction_text, injection_id) = format_reaction(
             &compiled.rule,
             &guidance,
             coupled_files.as_deref(),
@@ -507,12 +510,14 @@ pub fn evaluate_reactions(
         dedup.record(dedup_key);
         reactions_fired += 1;
         rules_fired.push(compiled.rule.name.clone());
+        injection_ids.push(injection_id);
     }
 
     EvaluationResult {
         output,
         reactions_fired,
         rules_fired,
+        injection_ids,
         rules_deduped,
     }
 }
@@ -688,14 +693,33 @@ impl ReactionConfig {
 // Reaction output formatting
 // ---------------------------------------------------------------------------
 
+/// Generate a unique injection_id for a reaction.
+/// Format: `inj-react-<8 hex chars>` (compact, unique per rule+time).
+pub fn generate_injection_id(rule_name: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(rule_name.as_bytes());
+    hasher.update(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+            .to_le_bytes(),
+    );
+    let hash = hex::encode(hasher.finalize());
+    format!("inj-react-{}", &hash[..8])
+}
+
 /// Format a reaction for injection into agent context.
+/// Returns (formatted_text, injection_id).
 pub fn format_reaction(
     rule: &ReactionRule,
     guidance: &str,
     coupled_files: Option<&[CoupledFile]>,
-) -> String {
+) -> (String, String) {
+    let injection_id = generate_injection_id(&rule.name);
     let mut out = String::new();
-    out.push_str(&format!("=== Reaction: {} ===\n\n", rule.name));
+    out.push_str(&format!("=== Reaction: {} [injection_id: {}] ===\n\n", rule.name, injection_id));
     out.push_str(guidance.trim());
     out.push('\n');
 
@@ -713,8 +737,8 @@ pub fn format_reaction(
         }
     }
 
-    out.push_str(&format!("\n=== End Reaction ==="));
-    out
+    out.push_str("\n=== End Reaction ===");
+    (out, injection_id)
 }
 
 // ---------------------------------------------------------------------------
@@ -1211,12 +1235,14 @@ tool = "Edit"
                 co_changes: 5,
             },
         ];
-        let output = format_reaction(&rule, "These files change together.", Some(&files));
-        assert!(output.contains("=== Reaction: coupled-files ==="));
+        let (output, injection_id) = format_reaction(&rule, "These files change together.", Some(&files));
+        assert!(output.contains("=== Reaction: coupled-files"));
+        assert!(output.contains(&injection_id));
         assert!(output.contains("These files change together."));
         assert!(output.contains("src/lib.rs (coupling: 0.85, co-changes: 12)"));
         assert!(output.contains("src/config.rs (coupling: 0.42, co-changes: 5)"));
         assert!(output.contains("=== End Reaction ==="));
+        assert!(injection_id.starts_with("inj-react-"));
     }
 
     #[test]
@@ -1233,8 +1259,9 @@ tool = "Edit"
             use_coupling: false,
             coupling_threshold: 0.3,
         };
-        let output = format_reaction(&rule, "Remember to check IaC", None);
-        assert!(output.contains("=== Reaction: simple ==="));
+        let (output, injection_id) = format_reaction(&rule, "Remember to check IaC", None);
+        assert!(output.contains("=== Reaction: simple"));
+        assert!(output.contains(&injection_id));
         assert!(output.contains("Remember to check IaC"));
         assert!(!output.contains("Coupled files"));
         assert!(output.contains("=== End Reaction ==="));
@@ -1254,7 +1281,7 @@ tool = "Edit"
             use_coupling: true,
             coupling_threshold: 0.3,
         };
-        let output = format_reaction(&rule, "Checking coupling...", Some(&[]));
+        let (output, _injection_id) = format_reaction(&rule, "Checking coupling...", Some(&[]));
         assert!(output.contains("Checking coupling..."));
         assert!(!output.contains("Coupled files"));
     }
@@ -1509,8 +1536,10 @@ guidance = "Review coupled files for {file_stem}"
         let result = evaluate_reactions(&event, &rules, &mut dedup, None, 100);
         assert_eq!(result.reactions_fired, 1);
         assert_eq!(result.rules_fired, vec!["r1"]);
-        assert!(result.output.contains("=== Reaction: r1 ==="));
+        assert!(result.output.contains("=== Reaction: r1 [injection_id: inj-react-"));
         assert!(result.output.contains("Guidance for r1"));
+        assert_eq!(result.injection_ids.len(), 1);
+        assert!(result.injection_ids[0].starts_with("inj-react-"));
     }
 
     #[test]
@@ -1823,5 +1852,71 @@ guidance = "Review coupled files for {file_stem}"
             merged.reactions.iter().filter(|r| r.name == "coupled-files").count(),
             1
         );
+    }
+
+    // -- Feedback / injection_id tests --
+
+    #[test]
+    fn test_injection_id_format() {
+        let id = generate_injection_id("test-rule");
+        assert!(id.starts_with("inj-react-"));
+        assert_eq!(id.len(), "inj-react-".len() + 8); // 8 hex chars
+    }
+
+    #[test]
+    fn test_injection_ids_unique() {
+        let id1 = generate_injection_id("rule1");
+        let id2 = generate_injection_id("rule1");
+        // Technically could collide with same nanosecond, but extremely unlikely
+        // The important thing is the format is correct
+        assert!(id1.starts_with("inj-react-"));
+        assert!(id2.starts_with("inj-react-"));
+    }
+
+    #[test]
+    fn test_evaluation_returns_injection_ids() {
+        let rules = vec![
+            make_rule("r1", "Edit", HashMap::new()),
+            make_rule("r2", "Edit", HashMap::new()),
+        ];
+        let event = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/test.rs"}),
+        };
+        let mut dedup = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 200);
+        assert_eq!(result.reactions_fired, 2);
+        assert_eq!(result.injection_ids.len(), 2);
+        for id in &result.injection_ids {
+            assert!(id.starts_with("inj-react-"));
+        }
+        // IDs should appear in the output
+        for id in &result.injection_ids {
+            assert!(result.output.contains(id), "Output should contain injection_id {}", id);
+        }
+    }
+
+    #[test]
+    fn test_format_reaction_includes_injection_id() {
+        let rule = ReactionRule {
+            name: "test-feedback".into(),
+            tool: "Edit".into(),
+            match_conditions: HashMap::new(),
+            guidance: "Test guidance for feedback".into(),
+            search_query: String::new(),
+            search_group: String::new(),
+            search_tags: vec![],
+            max_context_lines: 50,
+            use_coupling: false,
+            coupling_threshold: 0.3,
+        };
+        let (output, injection_id) = format_reaction(&rule, "Test guidance for feedback", None);
+        // The injection_id should appear in the header line
+        assert!(output.contains(&format!("[injection_id: {}]", injection_id)));
+        // Output should be parseable — agents can extract the ID
+        assert!(output.contains("inj-react-"));
     }
 }

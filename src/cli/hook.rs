@@ -2260,8 +2260,8 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         rules_fired = eval_result.rules_fired.clone();
         rules_deduped = eval_result.rules_deduped;
 
-        // Emit per-rule metrics
-        for rule_name in &eval_result.rules_fired {
+        // Emit per-rule metrics with injection_ids
+        for (rule_name, inj_id) in eval_result.rules_fired.iter().zip(&eval_result.injection_ids) {
             crate::metrics::emit(
                 &repo_root,
                 &crate::metrics::event(
@@ -2272,6 +2272,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                     serde_json::json!({
                         "tool_name": input.tool_name,
                         "rule": rule_name,
+                        "injection_id": inj_id,
                     }),
                 ),
             );
