@@ -594,6 +594,11 @@ impl Config {
         Self::data_dir(repo_root).join("index.db")
     }
 
+    /// Get the feedback database path
+    pub fn feedback_db_path(repo_root: &Path) -> PathBuf {
+        Self::data_dir(repo_root).join("feedback.db")
+    }
+
     /// Get the LanceDB directory path
     pub fn lance_path(repo_root: &Path) -> PathBuf {
         Self::data_dir(repo_root).join("vectors")

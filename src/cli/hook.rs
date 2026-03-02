@@ -637,9 +637,35 @@ async fn inject_context_remote(
                 return Ok(());
             }
 
-            // Format structured context output
-            let out = format_context_response(&resp, budget, hooks_cfg.show_docs);
+            // Generate injection ID and format structured context output
+            let injection_id = format!("inj-{}", ulid::Ulid::new().to_string().to_lowercase());
+            let out = format_context_response(&resp, budget, hooks_cfg.show_docs, Some(&injection_id));
             print!("{}", out);
+
+            // Store injection record (best-effort via HTTP)
+            let agent = std::env::var("BD_ACTOR")
+                .or_else(|_| std::env::var("GT_ROLE"))
+                .unwrap_or_default();
+            let injected_files: Vec<String> = resp.files.iter().map(|f| f.path.clone()).collect();
+            let record = crate::storage::feedback::InjectionRecord {
+                injection_id: injection_id.clone(),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                session_id: input.session_id.clone(),
+                agent,
+                query: prompt.to_string(),
+                files_returned: injected_files,
+                chunk_ids: vec![],
+                total_chunks: resp.summary.total_chunks as u32,
+                budget_lines: budget as u32,
+            };
+            // POST to server non-blocking
+            let url = format!("{}/injections", server_url);
+            let _ = reqwest::Client::new()
+                .post(&url)
+                .json(&record)
+                .timeout(std::time::Duration::from_secs(2))
+                .send()
+                .await;
             Ok(())
         }
         Err(_) => {
@@ -654,6 +680,7 @@ fn format_context_response(
     resp: &crate::http::client::ContextResponse,
     budget: usize,
     show_docs: bool,
+    injection_id: Option<&str>,
 ) -> String {
     use std::fmt::Write;
     let mut out = String::new();
@@ -669,6 +696,9 @@ fn format_context_response(
         resp.summary.total_chunks,
         budget,
     );
+    if let Some(id) = injection_id {
+        let _ = writeln!(out, "[injection_id: {}]", id);
+    }
 
     // Partition files by type
     let is_doc = |path: &str| -> bool {
@@ -909,6 +939,7 @@ fn format_context_for_injection(
     bundle: &crate::search::context::ContextBundle,
     threshold: f32,
     show_docs: bool,
+    injection_id: Option<&str>,
 ) -> String {
     use crate::types::FileCategory;
     use std::fmt::Write;
@@ -925,6 +956,9 @@ fn format_context_for_injection(
         bundle.budget.max_lines,
     );
     out.push_str(&header);
+    if let Some(id) = injection_id {
+        let _ = write!(out, "\n[injection_id: {}]", id);
+    }
     out.push('\n');
 
     // Partition files: source/test first, then docs/config
@@ -1376,8 +1410,31 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     }
 
     let show_docs = args.show_docs.unwrap_or(hooks_cfg.show_docs);
-    let context_text = format_context_for_injection(&bundle, threshold, show_docs);
+    let injection_id = format!("inj-{}", ulid::Ulid::new().to_string().to_lowercase());
+    let context_text = format_context_for_injection(&bundle, threshold, show_docs, Some(&injection_id));
     print!("{}", context_text);
+
+    // Store injection record on server (best-effort, non-blocking)
+    let agent = std::env::var("BD_ACTOR")
+        .or_else(|_| std::env::var("GT_ROLE"))
+        .unwrap_or_default();
+    let injected_files: Vec<String> = bundle.files.iter().map(|f| f.path.clone()).collect();
+    let injection_record = crate::storage::feedback::InjectionRecord {
+        injection_id: injection_id.clone(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        session_id: input.session_id.clone(),
+        agent,
+        query: prompt.to_string(),
+        files_returned: injected_files,
+        chunk_ids: vec![],
+        total_chunks: bundle.summary.total_chunks as u32,
+        budget_lines: bundle.budget.used_lines as u32,
+    };
+    // Try local feedback DB first, fall back to HTTP
+    let fb_path = Config::feedback_db_path(&repo_root);
+    if let Ok(fb_store) = crate::storage::FeedbackStore::open(&fb_path) {
+        let _ = fb_store.store_injection(&injection_record);
+    }
 
     // 10. Update hook state
     let chunk_keys: Vec<String> = bundle
@@ -2395,7 +2452,7 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
     }
 
     // 8. Format output
-    let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false);
+    let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false, None);
     let header = format!(
         "Bobbin found {} relevant chunks for this error (via search fallback):\n\n",
         bundle.summary.total_chunks,
@@ -3127,7 +3184,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true);
+        let result = format_context_for_injection(&bundle, 0.0, true, None);
         assert!(result.contains("0 relevant files"));
     }
 
@@ -3168,7 +3225,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.5, true);
+        let result = format_context_for_injection(&bundle, 0.5, true, None);
         assert!(result.contains("src/auth.rs:10-25"));
         assert!(result.contains("authenticate"));
         assert!(result.contains("fn authenticate()"));
@@ -3213,7 +3270,7 @@ mod tests {
             },
         };
         // With high threshold, chunk content should be filtered out
-        let result = format_context_for_injection(&bundle, 0.5, true);
+        let result = format_context_for_injection(&bundle, 0.5, true, None);
         assert!(!result.contains("low_score_fn"));
     }
 
@@ -3447,7 +3504,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true);
+        let result = format_context_for_injection(&bundle, 0.0, true, None);
         let line_count = result.lines().count();
         // Must not exceed max_lines budget
         assert!(
@@ -3497,7 +3554,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true);
+        let result = format_context_for_injection(&bundle, 0.0, true, None);
         // Score should be 2 decimal places
         assert!(result.contains("score 0.86"), "Expected 2-decimal score in: {}", result);
     }
@@ -3561,13 +3618,13 @@ mod tests {
         };
 
         // show_docs=true should include both
-        let with_docs = format_context_for_injection(&bundle, 0.0, true);
+        let with_docs = format_context_for_injection(&bundle, 0.0, true, None);
         assert!(with_docs.contains("Source Files"), "Should have source section");
         assert!(with_docs.contains("Documentation"), "Should have doc section");
         assert!(with_docs.contains("README.md"));
 
         // show_docs=false should exclude documentation
-        let without_docs = format_context_for_injection(&bundle, 0.0, false);
+        let without_docs = format_context_for_injection(&bundle, 0.0, false, None);
         assert!(without_docs.contains("Source Files"), "Should have source section");
         assert!(!without_docs.contains("Documentation"), "Should not have doc section");
         assert!(!without_docs.contains("README.md"), "Doc file should be excluded");
@@ -3612,7 +3669,7 @@ mod tests {
             },
         };
         // Budget 0 — should not panic and should produce empty or minimal output
-        let result = format_context_for_injection(&bundle, 0.0, true);
+        let result = format_context_for_injection(&bundle, 0.0, true, None);
         assert!(result.lines().count() <= 1, "Budget 0 should produce at most the header");
     }
 
@@ -3654,7 +3711,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true);
+        let result = format_context_for_injection(&bundle, 0.0, true, None);
         // Should still have the chunk header with file:lines
         assert!(result.contains("src/a.rs:1-10"));
         assert!(result.contains("fn_a"));
