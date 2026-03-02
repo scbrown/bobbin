@@ -1954,16 +1954,29 @@ pub(super) async fn archive_search(
     let embedder =
         Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
 
-    // Search with extra results to filter down
+    // Build a SQL filter to search only archive-language chunks directly in LanceDB,
+    // instead of overfetching all chunks and filtering in Rust.
+    let lang_filter = if archive_languages.len() == 1 {
+        format!("language = '{}'", archive_languages[0].replace('\'', "''"))
+    } else {
+        let quoted: Vec<String> = archive_languages
+            .iter()
+            .map(|l| format!("'{}'", l.replace('\'', "''")))
+            .collect();
+        format!("language IN ({})", quoted.join(", "))
+    };
+    let lang_filter_ref = lang_filter.as_str();
+
+    // Search with language filter pushed into LanceDB query
     let search_results = match mode {
         "keyword" => vector_store
-            .search_fts(&params.q, limit * 3, None)
+            .search_fts_filtered(&params.q, limit, None, Some(lang_filter_ref))
             .await
             .map_err(|e| internal_error(e.into()))?,
         "semantic" => {
             let mut search = SemanticSearch::new(embedder, vector_store);
             search
-                .search(&params.q, limit * 3, None)
+                .search_filtered(&params.q, limit, None, Some(lang_filter_ref))
                 .await
                 .map_err(|e| internal_error(e.into()))?
         }
@@ -1971,13 +1984,13 @@ pub(super) async fn archive_search(
             let mut search =
                 HybridSearch::new(embedder, vector_store, state.config.search.semantic_weight);
             search
-                .search(&params.q, limit * 3, None)
+                .search_filtered(&params.q, limit, None, Some(lang_filter_ref))
                 .await
                 .map_err(|e| internal_error(e.into()))?
         }
     };
 
-    // Filter to archive chunks only (language matches a configured source name)
+    // Post-filter by language (redundant safety check — LanceDB filter should handle this)
     let mut filtered: Vec<SearchResult> = search_results
         .into_iter()
         .filter(|r| archive_languages.contains(&r.chunk.language))

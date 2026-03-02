@@ -447,9 +447,14 @@ impl VectorStore {
         Ok(())
     }
 
-    /// Search for similar vectors using approximate nearest neighbor search
-    /// Optionally filter by repo name
+    /// Search for similar vectors using approximate nearest neighbor search.
+    /// Optionally filter by repo name and/or an additional SQL WHERE clause.
     pub async fn search(&self, query_embedding: &[f32], limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
+        self.search_filtered(query_embedding, limit, repo, None).await
+    }
+
+    /// Search with an additional SQL filter (e.g., "language IN ('hla', 'pensieve')").
+    pub async fn search_filtered(&self, query_embedding: &[f32], limit: usize, repo: Option<&str>, filter: Option<&str>) -> Result<Vec<SearchResult>> {
         let table = match &self.table {
             Some(t) => t,
             None => return Ok(vec![]),
@@ -459,8 +464,9 @@ impl VectorStore {
             .vector_search(query_embedding.to_vec())
             .context("Failed to create vector search")?;
 
-        if let Some(repo_name) = repo {
-            query = query.only_if(format!("repo = '{}'", repo_name.replace('\'', "''")));
+        let combined = Self::combine_filters(repo, filter);
+        if let Some(ref f) = combined {
+            query = query.only_if(f.clone());
         }
 
         let results = query
@@ -477,9 +483,14 @@ impl VectorStore {
         Self::batches_to_results(&batches, MatchType::Semantic)
     }
 
-    /// Full-text search on content and chunk_name
-    /// Optionally filter by repo name
+    /// Full-text search on content and chunk_name.
+    /// Optionally filter by repo name.
     pub async fn search_fts(&mut self, query: &str, limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
+        self.search_fts_filtered(query, limit, repo, None).await
+    }
+
+    /// Full-text search with an additional SQL filter.
+    pub async fn search_fts_filtered(&mut self, query: &str, limit: usize, repo: Option<&str>, filter: Option<&str>) -> Result<Vec<SearchResult>> {
         // Ensure FTS index exists (must be called before borrowing self.table)
         self.ensure_fts_index().await?;
 
@@ -492,8 +503,9 @@ impl VectorStore {
             .query()
             .full_text_search(FullTextSearchQuery::new(query.to_string()));
 
-        if let Some(repo_name) = repo {
-            q = q.only_if(format!("repo = '{}'", repo_name.replace('\'', "''")));
+        let combined = Self::combine_filters(repo, filter);
+        if let Some(ref f) = combined {
+            q = q.only_if(f.clone());
         }
 
         let results = q
@@ -508,6 +520,16 @@ impl VectorStore {
             .context("Failed to collect FTS results")?;
 
         Self::batches_to_fts_results(&batches)
+    }
+
+    /// Combine repo and extra filter into a single SQL WHERE clause.
+    fn combine_filters(repo: Option<&str>, filter: Option<&str>) -> Option<String> {
+        match (repo, filter) {
+            (Some(r), Some(f)) => Some(format!("repo = '{}' AND ({})", r.replace('\'', "''"), f)),
+            (Some(r), None) => Some(format!("repo = '{}'", r.replace('\'', "''"))),
+            (None, Some(f)) => Some(f.to_string()),
+            (None, None) => None,
+        }
     }
 
     /// Convert RecordBatches to SearchResults (for vector search with _distance)

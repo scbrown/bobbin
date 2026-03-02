@@ -91,18 +91,19 @@ impl HybridSearch {
     /// A preprocessed version (stopwords removed, prefixes stripped) is used for keyword
     /// search (BM25), improving relevance for conversational prompts.
     pub async fn search(&mut self, query: &str, limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
-        // Request more results from each source to have a good pool for fusion
+        self.search_filtered(query, limit, repo, None).await
+    }
+
+    /// Perform hybrid search with an additional SQL filter clause.
+    pub async fn search_filtered(&mut self, query: &str, limit: usize, repo: Option<&str>, filter: Option<&str>) -> Result<Vec<SearchResult>> {
         let fetch_limit = limit * 2;
 
-        // Run semantic search with raw query (embeddings handle natural language)
         let query_embedding = self.embedder.embed(query).await?;
-        let semantic_results = self.vector_store.search(&query_embedding, fetch_limit, repo).await?;
+        let semantic_results = self.vector_store.search_filtered(&query_embedding, fetch_limit, repo, filter).await?;
 
-        // Preprocess query for keyword search (remove stopwords, strip prefixes)
         let keyword_query = super::preprocess::preprocess_for_keywords(query);
-        let keyword_results = self.vector_store.search_fts(&keyword_query, fetch_limit, repo).await?;
+        let keyword_results = self.vector_store.search_fts_filtered(&keyword_query, fetch_limit, repo, filter).await?;
 
-        // Combine using RRF with recency boosting
         Self::combine_with_recency(
             semantic_results,
             keyword_results,
