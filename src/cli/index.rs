@@ -404,13 +404,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
         let hash = compute_hash(&content);
 
-        // Resolve tags for this file (convention + pattern rules)
-        let tags_str = crate::tags::resolve_tags(&tags_config, &rel_path, Some(repo_name));
-        if !tags_str.is_empty() {
-            for chunk in &mut chunks {
-                chunk.tags = tags_str.clone();
-            }
-        }
+        // Resolve tags for each chunk: convention + pattern + frontmatter + comments
+        crate::tags::resolve_tags_for_chunks(
+            &tags_config,
+            &rel_path,
+            Some(repo_name),
+            &content,
+            &mut chunks,
+        );
 
         // Compute contextual embeddings for enabled languages
         let t_ctx = Instant::now();

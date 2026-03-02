@@ -9,6 +9,9 @@ use crate::types::{classify_file, FileCategory};
 /// Maximum tag name length
 const TAG_MAX_LEN: usize = 32;
 
+/// Default frontmatter field names to check for tags
+const FRONTMATTER_FALLBACK_FIELDS: &[&str] = &["bobbin-tags", "labels"];
+
 /// Tags configuration loaded from .bobbin/tags.toml
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -19,6 +22,48 @@ pub struct TagsConfig {
     pub effects: std::collections::HashMap<String, TagEffect>,
     /// Role-scoped tag effects (`[[effects_scoped]]`)
     pub effects_scoped: Vec<ScopedEffect>,
+    /// Frontmatter tag extraction config
+    pub frontmatter: FrontmatterConfig,
+    /// Code comment tag extraction config
+    pub comments: CommentsConfig,
+}
+
+/// Configuration for extracting tags from markdown YAML frontmatter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FrontmatterConfig {
+    /// Whether frontmatter extraction is enabled
+    pub enabled: bool,
+    /// Primary YAML field name to extract tags from
+    pub field: String,
+}
+
+impl Default for FrontmatterConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            field: "tags".to_string(),
+        }
+    }
+}
+
+/// Configuration for extracting tags from code comments.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CommentsConfig {
+    /// Whether comment extraction is enabled
+    pub enabled: bool,
+    /// Comment directive prefix (e.g. "bobbin:tag")
+    pub prefix: String,
+}
+
+impl Default for CommentsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            prefix: "bobbin:tag".to_string(),
+        }
+    }
 }
 
 /// A single pattern → tags rule
@@ -312,6 +357,247 @@ pub fn resolve_tags(config: &TagsConfig, file_path: &str, repo: Option<&str>) ->
     tag_vec.join(",")
 }
 
+/// Resolve tags for each chunk in a file, merging all sources:
+/// convention + pattern rules + frontmatter (markdown) + code comments.
+///
+/// Modifies chunks in-place, setting their `tags` field.
+pub fn resolve_tags_for_chunks(
+    config: &TagsConfig,
+    file_path: &str,
+    repo: Option<&str>,
+    content: &str,
+    chunks: &mut [crate::types::Chunk],
+) {
+    // 1. File-level tags: convention + pattern rules
+    let file_tags_str = resolve_tags(config, file_path, repo);
+    let mut file_tags: BTreeSet<String> = if file_tags_str.is_empty() {
+        BTreeSet::new()
+    } else {
+        file_tags_str.split(',').map(|s| s.to_string()).collect()
+    };
+
+    // 2. Frontmatter tags (apply to all chunks in this file)
+    if config.frontmatter.enabled {
+        let fm_tags = extract_frontmatter_tags(content, &config.frontmatter);
+        file_tags.extend(fm_tags);
+    }
+
+    // 3. Code comment tags (per-chunk, keyed by line number)
+    let comment_tags = if config.comments.enabled {
+        extract_comment_tags(content, &config.comments)
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    // 4. Merge and assign per-chunk
+    for chunk in chunks.iter_mut() {
+        let mut tags = file_tags.clone();
+
+        // Check for comment tags on the line immediately before this chunk
+        if chunk.start_line > 1 {
+            if let Some(ct) = comment_tags.get(&(chunk.start_line - 1)) {
+                tags.extend(ct.iter().cloned());
+            }
+        }
+        // Also check the chunk's own first line (comment may be part of the chunk)
+        if let Some(ct) = comment_tags.get(&chunk.start_line) {
+            tags.extend(ct.iter().cloned());
+        }
+
+        if !tags.is_empty() {
+            chunk.tags = tags.into_iter().collect::<Vec<_>>().join(",");
+        }
+    }
+}
+
+/// Extract tags from YAML frontmatter content.
+///
+/// Looks for the configured field (default: `tags`) plus fallback fields
+/// (`bobbin-tags`, `labels`). Supports:
+/// - Inline YAML list: `tags: [canonical, architecture]`
+/// - Single value: `tags: canonical`
+/// - Block list: `tags:\n  - canonical\n  - architecture`
+///
+/// Tags without a namespace prefix get `user:` prepended.
+pub fn extract_frontmatter_tags(content: &str, config: &FrontmatterConfig) -> Vec<String> {
+    // Quick check: does this look like it has frontmatter?
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return vec![];
+    }
+
+    // Extract frontmatter text between --- fences
+    let after_fence = &trimmed[3..];
+    let Some(close_pos) = after_fence.find("\n---") else {
+        return vec![];
+    };
+    let fm_text = &after_fence[..close_pos];
+
+    // Try primary field, then fallback fields
+    let fields_to_check: Vec<&str> = std::iter::once(config.field.as_str())
+        .chain(FRONTMATTER_FALLBACK_FIELDS.iter().copied())
+        .collect();
+
+    for field in fields_to_check {
+        let tags = parse_yaml_field_tags(fm_text, field);
+        if !tags.is_empty() {
+            return tags;
+        }
+    }
+
+    vec![]
+}
+
+/// Parse tags from a specific YAML field in frontmatter text.
+fn parse_yaml_field_tags(fm_text: &str, field: &str) -> Vec<String> {
+    let lines: Vec<&str> = fm_text.lines().collect();
+    let field_prefix = format!("{}:", field);
+
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with(&field_prefix) {
+            continue;
+        }
+
+        let after_key = trimmed[field_prefix.len()..].trim();
+
+        if after_key.is_empty() {
+            // Block list format:
+            //   tags:
+            //     - canonical
+            //     - architecture
+            return parse_yaml_block_list(&lines[i + 1..]);
+        } else if after_key.starts_with('[') && after_key.ends_with(']') {
+            // Inline list: tags: [canonical, architecture]
+            let inner = &after_key[1..after_key.len() - 1];
+            return parse_tag_values(inner.split(','));
+        } else {
+            // Single value: tags: canonical
+            return parse_tag_values(std::iter::once(after_key));
+        }
+    }
+
+    vec![]
+}
+
+/// Parse a YAML block list (lines starting with `- `).
+fn parse_yaml_block_list(lines: &[&str]) -> Vec<String> {
+    let mut tags = Vec::new();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with("- ") {
+            let val = trimmed[2..].trim().trim_matches('"').trim_matches('\'');
+            if let Some(tag) = normalize_content_tag(val) {
+                tags.push(tag);
+            }
+        } else if !trimmed.is_empty() {
+            // Non-list-item, non-empty line means end of block list
+            break;
+        }
+    }
+    tags
+}
+
+/// Parse comma-separated or individual tag values, normalizing each.
+fn parse_tag_values<'a>(values: impl Iterator<Item = &'a str>) -> Vec<String> {
+    values
+        .map(|v| v.trim().trim_matches('"').trim_matches('\''))
+        .filter(|v| !v.is_empty())
+        .filter_map(normalize_content_tag)
+        .collect()
+}
+
+/// Normalize a tag from content extraction:
+/// - Lowercase it
+/// - If no namespace prefix, add `user:`
+/// - Validate the result
+/// Returns None if the tag is invalid.
+fn normalize_content_tag(raw: &str) -> Option<String> {
+    let tag = raw.trim().to_lowercase();
+    if tag.is_empty() {
+        return None;
+    }
+
+    let namespaced = if tag.contains(':') {
+        tag
+    } else {
+        format!("user:{}", tag)
+    };
+
+    if validate_tag(&namespaced).is_ok() {
+        Some(namespaced)
+    } else {
+        None
+    }
+}
+
+/// Extract `bobbin:tag` directives from code comments.
+///
+/// Scans each line for comment patterns like:
+/// - `// bobbin:tag security critical`
+/// - `# bobbin:tag deprecated`
+/// - `/* bobbin:tag internal */`
+///
+/// Returns a map from 1-based line number to tags found on that line.
+pub fn extract_comment_tags(
+    content: &str,
+    config: &CommentsConfig,
+) -> std::collections::HashMap<u32, Vec<String>> {
+    let mut result = std::collections::HashMap::new();
+    let prefix = &config.prefix;
+
+    for (idx, line) in content.lines().enumerate() {
+        let line_num = idx as u32 + 1;
+        let trimmed = line.trim();
+
+        // Try each comment style
+        let directive = None
+            .or_else(|| extract_after_comment_prefix(trimmed, "//", prefix))
+            .or_else(|| extract_after_comment_prefix(trimmed, "#", prefix))
+            .or_else(|| extract_block_comment_directive(trimmed, prefix));
+
+        if let Some(tag_str) = directive {
+            let tags = parse_tag_values(tag_str.split_whitespace());
+            if !tags.is_empty() {
+                result.insert(line_num, tags);
+            }
+        }
+    }
+
+    result
+}
+
+/// Try to extract a bobbin:tag directive after a line comment prefix (// or #).
+fn extract_after_comment_prefix<'a>(
+    line: &'a str,
+    comment_prefix: &str,
+    directive_prefix: &str,
+) -> Option<&'a str> {
+    let stripped = line.strip_prefix(comment_prefix)?.trim_start();
+    let after = stripped.strip_prefix(directive_prefix)?;
+    // Must be followed by whitespace or end of line
+    if after.is_empty() {
+        return None; // No tags specified
+    }
+    if !after.starts_with(char::is_whitespace) {
+        return None; // e.g. "bobbin:tagging" — not our directive
+    }
+    Some(after.trim())
+}
+
+/// Try to extract a bobbin:tag directive from a block comment (/* ... */).
+fn extract_block_comment_directive<'a>(line: &'a str, directive_prefix: &str) -> Option<&'a str> {
+    let inner = line.strip_prefix("/*")?.strip_suffix("*/")?.trim();
+    let after = inner.strip_prefix(directive_prefix)?;
+    if after.is_empty() {
+        return None;
+    }
+    if !after.starts_with(char::is_whitespace) {
+        return None;
+    }
+    Some(after.trim())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,6 +729,7 @@ mod tests {
                 boost: 0.0,
                 exclude: true,
             }],
+            ..Default::default()
         };
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
@@ -456,6 +743,11 @@ mod tests {
         assert_eq!(parsed.effects_scoped[0].tag, "internal");
         assert_eq!(parsed.effects_scoped[0].role, "external/*");
         assert!(parsed.effects_scoped[0].exclude);
+        // Phase 3 defaults
+        assert!(parsed.frontmatter.enabled);
+        assert_eq!(parsed.frontmatter.field, "tags");
+        assert!(parsed.comments.enabled);
+        assert_eq!(parsed.comments.prefix, "bobbin:tag");
     }
 
     #[test]
@@ -749,5 +1041,215 @@ exclude = true
         assert_eq!(config.effects_scoped[0].tag, "canonical");
         assert!((config.effects_scoped[0].boost - 0.5).abs() < f32::EPSILON);
         assert!(config.effects_scoped[1].exclude);
+    }
+
+    // ===== Phase 3: Content Extraction Tests =====
+
+    #[test]
+    fn test_frontmatter_tags_inline_list() {
+        let content = "---\ntitle: Auth Architecture\ntags: [canonical, architecture, security]\n---\n\n# Auth\n";
+        let config = FrontmatterConfig::default();
+        let tags = extract_frontmatter_tags(content, &config);
+        assert_eq!(tags, vec!["user:canonical", "user:architecture", "user:security"]);
+    }
+
+    #[test]
+    fn test_frontmatter_tags_single_value() {
+        let content = "---\ntags: canonical\n---\n\n# Doc\n";
+        let config = FrontmatterConfig::default();
+        let tags = extract_frontmatter_tags(content, &config);
+        assert_eq!(tags, vec!["user:canonical"]);
+    }
+
+    #[test]
+    fn test_frontmatter_tags_block_list() {
+        let content = "---\ntags:\n  - canonical\n  - architecture\n---\n\n# Doc\n";
+        let config = FrontmatterConfig::default();
+        let tags = extract_frontmatter_tags(content, &config);
+        assert_eq!(tags, vec!["user:canonical", "user:architecture"]);
+    }
+
+    #[test]
+    fn test_frontmatter_tags_with_namespace() {
+        let content = "---\ntags: [auto:test, security]\n---\n\n# Doc\n";
+        let config = FrontmatterConfig::default();
+        let tags = extract_frontmatter_tags(content, &config);
+        assert_eq!(tags, vec!["auto:test", "user:security"]);
+    }
+
+    #[test]
+    fn test_frontmatter_tags_quoted() {
+        let content = "---\ntags: [\"canonical\", 'architecture']\n---\n\n# Doc\n";
+        let config = FrontmatterConfig::default();
+        let tags = extract_frontmatter_tags(content, &config);
+        assert_eq!(tags, vec!["user:canonical", "user:architecture"]);
+    }
+
+    #[test]
+    fn test_frontmatter_fallback_field() {
+        let content = "---\nbobbin-tags: [security]\n---\n\n# Doc\n";
+        let config = FrontmatterConfig::default();
+        let tags = extract_frontmatter_tags(content, &config);
+        assert_eq!(tags, vec!["user:security"]);
+    }
+
+    #[test]
+    fn test_frontmatter_labels_fallback() {
+        let content = "---\nlabels: [internal, deprecated]\n---\n\n# Doc\n";
+        let config = FrontmatterConfig::default();
+        let tags = extract_frontmatter_tags(content, &config);
+        assert_eq!(tags, vec!["user:internal", "user:deprecated"]);
+    }
+
+    #[test]
+    fn test_frontmatter_no_frontmatter() {
+        let content = "# Just a heading\n\nSome content\n";
+        let config = FrontmatterConfig::default();
+        let tags = extract_frontmatter_tags(content, &config);
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn test_frontmatter_no_tags_field() {
+        let content = "---\ntitle: Something\nauthor: Someone\n---\n\n# Doc\n";
+        let config = FrontmatterConfig::default();
+        let tags = extract_frontmatter_tags(content, &config);
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn test_frontmatter_custom_field() {
+        let content = "---\ncategories: [security, ops]\n---\n\n# Doc\n";
+        let config = FrontmatterConfig {
+            enabled: true,
+            field: "categories".to_string(),
+        };
+        let tags = extract_frontmatter_tags(content, &config);
+        assert_eq!(tags, vec!["user:security", "user:ops"]);
+    }
+
+    #[test]
+    fn test_frontmatter_invalid_tags_skipped() {
+        let content = "---\ntags: [valid, INVALID, also-valid]\n---\n\n# Doc\n";
+        let config = FrontmatterConfig::default();
+        let tags = extract_frontmatter_tags(content, &config);
+        // INVALID gets lowercased to "invalid" which is valid
+        assert_eq!(tags, vec!["user:valid", "user:invalid", "user:also-valid"]);
+    }
+
+    #[test]
+    fn test_comment_tags_rust() {
+        let content = "use std::io;\n\n// bobbin:tag security critical\nfn authenticate() {\n}\n";
+        let config = CommentsConfig::default();
+        let tags = extract_comment_tags(content, &config);
+        assert_eq!(
+            tags.get(&3),
+            Some(&vec!["user:security".to_string(), "user:critical".to_string()])
+        );
+        assert_eq!(tags.len(), 1);
+    }
+
+    #[test]
+    fn test_comment_tags_python() {
+        let content = "import os\n\n# bobbin:tag deprecated\ndef old_handler():\n    pass\n";
+        let config = CommentsConfig::default();
+        let tags = extract_comment_tags(content, &config);
+        assert_eq!(
+            tags.get(&3),
+            Some(&vec!["user:deprecated".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_comment_tags_block_comment() {
+        let content = "/* bobbin:tag internal */\npub(crate) fn helper() {}\n";
+        let config = CommentsConfig::default();
+        let tags = extract_comment_tags(content, &config);
+        assert_eq!(
+            tags.get(&1),
+            Some(&vec!["user:internal".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_comment_tags_no_false_positive() {
+        let content = "// bobbin:tagging system\n// just a comment\nfn foo() {}\n";
+        let config = CommentsConfig::default();
+        let tags = extract_comment_tags(content, &config);
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn test_comment_tags_empty_directive() {
+        let content = "// bobbin:tag\nfn foo() {}\n";
+        let config = CommentsConfig::default();
+        let tags = extract_comment_tags(content, &config);
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn test_comment_tags_with_namespace() {
+        let content = "// bobbin:tag auto:test user:critical\nfn test_auth() {}\n";
+        let config = CommentsConfig::default();
+        let tags = extract_comment_tags(content, &config);
+        assert_eq!(
+            tags.get(&1),
+            Some(&vec!["auto:test".to_string(), "user:critical".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_comment_tags_disabled() {
+        let content = "// bobbin:tag security\nfn auth() {}\n";
+        let config = CommentsConfig {
+            enabled: false,
+            prefix: "bobbin:tag".to_string(),
+        };
+        // When disabled, the caller should not call extract_comment_tags,
+        // but the function itself still works — it's the caller's responsibility
+        let tags = extract_comment_tags(content, &config);
+        assert!(!tags.is_empty()); // function doesn't check enabled flag
+    }
+
+    #[test]
+    fn test_normalize_content_tag() {
+        assert_eq!(normalize_content_tag("canonical"), Some("user:canonical".to_string()));
+        assert_eq!(normalize_content_tag("auto:test"), Some("auto:test".to_string()));
+        assert_eq!(normalize_content_tag("SECURITY"), Some("user:security".to_string()));
+        assert_eq!(normalize_content_tag(""), None);
+        assert_eq!(normalize_content_tag("  "), None);
+    }
+
+    #[test]
+    fn test_toml_with_frontmatter_and_comments() {
+        let toml_str = r#"
+[frontmatter]
+enabled = true
+field = "categories"
+
+[comments]
+enabled = true
+prefix = "tag:"
+"#;
+        let config: TagsConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.frontmatter.enabled);
+        assert_eq!(config.frontmatter.field, "categories");
+        assert!(config.comments.enabled);
+        assert_eq!(config.comments.prefix, "tag:");
+    }
+
+    #[test]
+    fn test_toml_backward_compat_no_frontmatter_comments() {
+        let toml_str = r#"
+[[rules]]
+pattern = "*.md"
+tags = ["docs"]
+"#;
+        let config: TagsConfig = toml::from_str(toml_str).unwrap();
+        // Defaults should apply
+        assert!(config.frontmatter.enabled);
+        assert_eq!(config.frontmatter.field, "tags");
+        assert!(config.comments.enabled);
+        assert_eq!(config.comments.prefix, "bobbin:tag");
     }
 }
