@@ -10,6 +10,7 @@ use crate::config::Config;
 use crate::index::Embedder;
 use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{MetadataStore, VectorStore};
+use crate::tags::{build_tag_exclude_filter, build_tag_include_filter};
 use crate::types::{source_kind, ChunkType, MatchType, SearchResult};
 
 #[derive(Args)]
@@ -36,6 +37,14 @@ pub struct SearchArgs {
     /// Filter results to a named repo group (defined in config.toml)
     #[arg(long, short = 'g')]
     group: Option<String>,
+
+    /// Include only chunks with this tag (can be repeated)
+    #[arg(long = "tag")]
+    tags: Vec<String>,
+
+    /// Exclude chunks with this tag (can be repeated)
+    #[arg(long = "exclude-tag")]
+    exclude_tags: Vec<String>,
 
     /// Directory to search in (defaults to current directory)
     #[arg(default_value = ".")]
@@ -159,10 +168,27 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         })
     }).transpose()?;
 
+    // Build tag filters and combine with group filter
+    let mut extra_filters: Vec<String> = Vec::new();
+    if let Some(ref g) = group_sql {
+        extra_filters.push(g.clone());
+    }
+    if !args.tags.is_empty() {
+        extra_filters.push(build_tag_include_filter(&args.tags));
+    }
+    if !args.exclude_tags.is_empty() {
+        extra_filters.push(build_tag_exclude_filter(&args.exclude_tags));
+    }
+    let combined_filter = if extra_filters.is_empty() {
+        None
+    } else {
+        Some(extra_filters.join(" AND "))
+    };
+
     let results = match args.mode {
         SearchMode::Keyword => {
             vector_store
-                .search_fts_filtered(&args.query, search_limit, repo_filter, group_sql.as_deref())
+                .search_fts_filtered(&args.query, search_limit, repo_filter, combined_filter.as_deref())
                 .await
                 .context("Keyword search failed")?
         }
@@ -187,7 +213,7 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
                 SearchMode::Semantic => {
                     let mut search = SemanticSearch::new(embedder, vector_store);
                     search
-                        .search_filtered(&args.query, search_limit, repo_filter, group_sql.as_deref())
+                        .search_filtered(&args.query, search_limit, repo_filter, combined_filter.as_deref())
                         .await
                         .context("Semantic search failed")?
                 }
@@ -206,7 +232,7 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
                     )
                     .with_rrf_k(rrf);
                     search
-                        .search_filtered(&args.query, search_limit, repo_filter, group_sql.as_deref())
+                        .search_filtered(&args.query, search_limit, repo_filter, combined_filter.as_deref())
                         .await
                         .context("Hybrid search failed")?
                 }

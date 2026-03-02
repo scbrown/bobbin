@@ -154,6 +154,7 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
         rrf_k: config.search.rrf_k,
         bridge_mode: BridgeMode::default(),
         bridge_boost_factor: 0.3,
+        extra_filter: None,
     };
 
     // Build description of the diff for the query field

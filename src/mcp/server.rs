@@ -587,6 +587,7 @@ impl BobbinMcpServer {
             rrf_k: config.search.rrf_k,
             bridge_mode: BridgeMode::default(),
             bridge_boost_factor: 0.3,
+            extra_filter: None,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1047,6 +1048,7 @@ impl BobbinMcpServer {
             rrf_k: config.search.rrf_k,
             bridge_mode: BridgeMode::default(),
             bridge_boost_factor: 0.3,
+            extra_filter: None,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

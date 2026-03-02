@@ -76,6 +76,9 @@ pub struct ContextConfig {
     /// Score multiplier for bridge-boosted files: final_score *= (1.0 + factor).
     /// Only used in Boost and BoostInject modes. Default: 0.3.
     pub bridge_boost_factor: f32,
+    /// Additional SQL WHERE filter (e.g. tag include/exclude clauses).
+    /// Combined with repo filter via AND.
+    pub extra_filter: Option<String>,
 }
 
 /// How much content to include in output
@@ -582,7 +585,7 @@ impl ContextAssembler {
         let query_embedding = self.embedder.embed(query).await?;
         let all_semantic = self
             .vector_store
-            .search(&query_embedding, fetch_limit, repo)
+            .search_filtered(&query_embedding, fetch_limit, repo, self.config.extra_filter.as_deref())
             .await?;
 
         // Capture commit chunks before filtering (for commit→source bridging)
@@ -603,7 +606,7 @@ impl ContextAssembler {
         let keyword_query = crate::search::preprocess::preprocess_for_keywords(query);
         let all_keyword = self
             .vector_store
-            .search_fts(&keyword_query, fetch_limit, repo)
+            .search_fts_filtered(&keyword_query, fetch_limit, repo, self.config.extra_filter.as_deref())
             .await
             .unwrap_or_default();
 
@@ -1118,6 +1121,7 @@ mod tests {
             recency_weight: 0.0,
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
+            extra_filter: None,
         };
 
         let seeds = vec![
@@ -1148,6 +1152,7 @@ mod tests {
             recency_weight: 0.0,
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
+            extra_filter: None,
         };
 
         let seeds = vec![
@@ -1175,6 +1180,7 @@ mod tests {
             recency_weight: 0.0,
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
+            extra_filter: None,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1199,6 +1205,7 @@ mod tests {
             recency_weight: 0.0,
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
+            extra_filter: None,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1227,6 +1234,7 @@ mod tests {
             recency_weight: 0.0,
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
+            extra_filter: None,
         };
 
         let seeds = vec![
@@ -1256,6 +1264,7 @@ mod tests {
             recency_weight: 0.0,
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
+            extra_filter: None,
         };
 
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)
@@ -1282,6 +1291,7 @@ mod tests {
             recency_weight: 0.0,
             bridge_mode: BridgeMode::Inject,
             bridge_boost_factor: 0.3,
+            extra_filter: None,
         };
 
         // Mix of commit and function seeds — commits should be excluded

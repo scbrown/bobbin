@@ -11,6 +11,7 @@ use crate::search::context::{
     BridgeMode, ContentMode, ContextAssembler, ContextBundle, ContextConfig, FileRelevance,
 };
 use crate::storage::{MetadataStore, VectorStore};
+use crate::tags::{build_tag_exclude_filter, build_tag_include_filter};
 
 #[derive(Args)]
 pub struct ContextArgs {
@@ -56,6 +57,14 @@ pub struct ContextArgs {
     /// Filter to specific repository
     #[arg(long, short = 'r')]
     repo: Option<String>,
+
+    /// Include only chunks with this tag (can be repeated)
+    #[arg(long = "tag")]
+    tags: Vec<String>,
+
+    /// Exclude chunks with this tag (can be repeated)
+    #[arg(long = "exclude-tag")]
+    exclude_tags: Vec<String>,
 
     /// Directory to search in
     #[arg(default_value = ".")]
@@ -160,6 +169,20 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
     let cal_rrf = calibration.as_ref().map(|c| c.best_config.rrf_k);
     let cal_hl = calibration.as_ref().and_then(|c| c.best_config.recency_half_life_days);
     let cal_rw = calibration.as_ref().and_then(|c| c.best_config.recency_weight);
+    // Build tag filters
+    let mut tag_filters: Vec<String> = Vec::new();
+    if !args.tags.is_empty() {
+        tag_filters.push(build_tag_include_filter(&args.tags));
+    }
+    if !args.exclude_tags.is_empty() {
+        tag_filters.push(build_tag_exclude_filter(&args.exclude_tags));
+    }
+    let extra_filter = if tag_filters.is_empty() {
+        None
+    } else {
+        Some(tag_filters.join(" AND "))
+    };
+
     let context_config = ContextConfig {
         budget_lines: args.budget,
         depth: args.depth,
@@ -174,6 +197,7 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         rrf_k: args.rrf_k.unwrap_or(cal_rrf.unwrap_or(config.search.rrf_k)),
         bridge_mode: BridgeMode::default(),
         bridge_boost_factor: 0.3,
+        extra_filter,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

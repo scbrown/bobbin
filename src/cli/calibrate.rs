@@ -606,6 +606,7 @@ async fn run_probes(
         rrf_k: 60.0,
         bridge_mode: BridgeMode::Inject,
         bridge_boost_factor: 0.3,
+        extra_filter: None,
     };
     let mut assembler = ContextAssembler::new(embedder, vs, ms, initial_config);
 
@@ -632,6 +633,7 @@ async fn run_probes(
             rrf_k: point.rrf_k,
             bridge_mode: point.bridge_mode,
             bridge_boost_factor: point.bridge_boost_factor,
+            extra_filter: None,
         });
 
         let mut total_precision = 0.0_f32;
