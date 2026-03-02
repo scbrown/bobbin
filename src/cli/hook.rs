@@ -644,7 +644,7 @@ async fn inject_context_remote(
         }
         Err(_) => {
             // Fallback: /context endpoint unavailable, use /search
-            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, output).await
+            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, output, Some(&role)).await
         }
     }
 }
@@ -704,9 +704,10 @@ async fn inject_context_remote_search_fallback(
     budget: usize,
     show_docs: bool,
     output: &OutputConfig,
+    role: Option<&str>,
 ) -> Result<()> {
     let resp = client
-        .search(prompt, "hybrid", None, 10, None)
+        .search(prompt, "hybrid", None, 10, None, role)
         .await
         .context("Remote search failed")?;
 

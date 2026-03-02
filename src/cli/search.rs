@@ -236,6 +236,7 @@ async fn run_remote(args: SearchArgs, output: OutputConfig, server_url: &str) ->
         SearchMode::Keyword => "keyword",
     };
 
+    let role = crate::access::RepoFilter::resolve_role(None);
     let resp = client
         .search(
             &args.query,
@@ -243,6 +244,7 @@ async fn run_remote(args: SearchArgs, output: OutputConfig, server_url: &str) ->
             args.r#type.as_deref(),
             args.limit,
             args.repo.as_deref(),
+            Some(&role),
         )
         .await?;
 

@@ -391,6 +391,7 @@ impl Client {
         chunk_type: Option<&str>,
         limit: usize,
         repo: Option<&str>,
+        role: Option<&str>,
     ) -> Result<SearchResponse> {
         let url = format!("{}/search", self.base_url);
         let mut params: Vec<(&str, String)> = vec![
@@ -403,6 +404,9 @@ impl Client {
         }
         if let Some(r) = repo {
             params.push(("repo", r.to_string()));
+        }
+        if let Some(r) = role {
+            params.push(("role", r.to_string()));
         }
         self.get_json(&url, &params).await
     }
