@@ -66,6 +66,12 @@ pub struct ReactionRule {
     /// Minimum coupling score (when use_coupling = true).
     #[serde(default = "default_coupling_threshold")]
     pub coupling_threshold: f32,
+
+    /// Role patterns this reaction applies to (glob syntax).
+    /// Empty = applies to all roles (backward compatible).
+    /// Patterns match against resolved GT_ROLE (e.g., "aegis/crew/*").
+    #[serde(default)]
+    pub roles: Vec<String>,
 }
 
 fn default_max_context_lines() -> usize {
@@ -93,15 +99,31 @@ impl ReactionConfig {
         toml::from_str(toml_str).context("Failed to parse reactions TOML")
     }
 
-    /// Load from `.bobbin/reactions.toml` relative to a repo root.
-    /// Returns an empty config if the file doesn't exist.
+    /// Load reactions from global (~/.config/bobbin/reactions.toml) and local
+    /// (.bobbin/reactions.toml) configs. Local rules override global rules by name.
+    /// Returns an empty config if neither file exists.
     pub fn load_for_repo(repo_root: &Path) -> Self {
-        let path = repo_root.join(".bobbin").join("reactions.toml");
-        if path.exists() {
-            Self::load(&path).unwrap_or_default()
-        } else {
-            Self::default()
+        // Load global reactions (~/.config/bobbin/reactions.toml)
+        let mut config = crate::config::Config::global_config_dir()
+            .map(|dir| dir.join("reactions.toml"))
+            .filter(|p| p.exists())
+            .and_then(|p| Self::load(&p).ok())
+            .unwrap_or_default();
+
+        // Load local reactions (.bobbin/reactions.toml) — overrides global by name
+        let local_path = repo_root.join(".bobbin").join("reactions.toml");
+        if local_path.exists() {
+            if let Ok(local) = Self::load(&local_path) {
+                let local_names: std::collections::HashSet<String> =
+                    local.reactions.iter().map(|r| r.name.clone()).collect();
+                // Remove global rules that local overrides
+                config.reactions.retain(|r| !local_names.contains(&r.name));
+                // Append local rules
+                config.reactions.extend(local.reactions);
+            }
         }
+
+        config
     }
 }
 
@@ -135,6 +157,23 @@ impl CompiledRule {
             match_regexes,
         })
     }
+}
+
+// ---------------------------------------------------------------------------
+// Role matching
+// ---------------------------------------------------------------------------
+
+/// Check if a role matches any of the given role patterns.
+/// Empty patterns list = matches all roles (backward compatible).
+fn role_matches(patterns: &[String], role: &str) -> bool {
+    if patterns.is_empty() {
+        return true;
+    }
+    patterns.iter().any(|pattern| {
+        Pattern::new(pattern)
+            .map(|p| p.matches(role))
+            .unwrap_or(false)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -434,6 +473,7 @@ pub fn evaluate_reactions(
     dedup: &mut DedupTracker,
     metadata_store: Option<&MetadataStore>,
     global_budget: usize,
+    role: &str,
 ) -> EvaluationResult {
     let matches = match_rules(event, rules);
     let mut output = String::new();
@@ -447,6 +487,11 @@ pub fn evaluate_reactions(
         // Budget check
         if lines_used >= global_budget {
             break;
+        }
+
+        // Role check
+        if !role_matches(&compiled.rule.roles, role) {
+            continue;
         }
 
         // Dedup check
@@ -535,11 +580,15 @@ pub fn pending_searches(
     event: &ToolEvent,
     rules: &[CompiledRule],
     dedup: &DedupTracker,
+    role: &str,
 ) -> Vec<PendingSearch> {
     let matches = match_rules(event, rules);
     let mut searches = Vec::new();
 
     for (compiled, match_result) in &matches {
+        if !role_matches(&compiled.rule.roles, role) {
+            continue;
+        }
         if compiled.rule.use_coupling || compiled.rule.search_query.is_empty() {
             continue;
         }
@@ -601,6 +650,7 @@ pub fn builtin_rules() -> Vec<ReactionRule> {
             max_context_lines: 50,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         },
         ReactionRule {
             name: "service-known-issues".into(),
@@ -616,6 +666,7 @@ pub fn builtin_rules() -> Vec<ReactionRule> {
             max_context_lines: 50,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         },
         ReactionRule {
             name: "package-iac-declaration".into(),
@@ -636,6 +687,7 @@ pub fn builtin_rules() -> Vec<ReactionRule> {
             max_context_lines: 30,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         },
         ReactionRule {
             name: "terraform-plan-check".into(),
@@ -655,6 +707,7 @@ pub fn builtin_rules() -> Vec<ReactionRule> {
             max_context_lines: 40,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         },
         ReactionRule {
             name: "coupled-files".into(),
@@ -670,6 +723,7 @@ pub fn builtin_rules() -> Vec<ReactionRule> {
             max_context_lines: 30,
             use_coupling: true,
             coupling_threshold: 0.3,
+            roles: vec![],
         },
     ]
 }
@@ -878,6 +932,7 @@ tool = "Edit"
             max_context_lines: 50,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         };
         assert!(CompiledRule::compile(rule).is_ok());
     }
@@ -895,6 +950,7 @@ tool = "Edit"
             max_context_lines: 50,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         };
         let compiled = CompiledRule::compile(rule).unwrap();
         assert!(compiled.tool_pattern.matches("mcp__homelab__batch_probe"));
@@ -915,6 +971,7 @@ tool = "Edit"
             max_context_lines: 50,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         };
         assert!(CompiledRule::compile(rule).is_err());
     }
@@ -934,6 +991,7 @@ tool = "Edit"
             max_context_lines: 50,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         };
         assert!(CompiledRule::compile(rule).is_err());
     }
@@ -952,6 +1010,7 @@ tool = "Edit"
             max_context_lines: 50,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         })
         .unwrap()
     }
@@ -1229,6 +1288,7 @@ tool = "Edit"
             max_context_lines: 50,
             use_coupling: true,
             coupling_threshold: 0.3,
+            roles: vec![],
         };
         let files = vec![
             CoupledFile {
@@ -1265,6 +1325,7 @@ tool = "Edit"
             max_context_lines: 50,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         };
         let (output, injection_id) = format_reaction(&rule, "Remember to check IaC", None);
         assert!(output.contains("=== Reaction: simple"));
@@ -1287,6 +1348,7 @@ tool = "Edit"
             max_context_lines: 50,
             use_coupling: true,
             coupling_threshold: 0.3,
+            roles: vec![],
         };
         let (output, _injection_id) = format_reaction(&rule, "Checking coupling...", Some(&[]));
         assert!(output.contains("Checking coupling..."));
@@ -1412,6 +1474,7 @@ guidance = "Review coupled files for {file_stem}"
                 max_context_lines: 30,
                 use_coupling: false,
                 coupling_threshold: 0.3,
+                roles: vec![],
             }],
         };
         let serialized = toml::to_string_pretty(&config).unwrap();
@@ -1436,6 +1499,7 @@ guidance = "Review coupled files for {file_stem}"
             max_context_lines: 50,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         };
         let event1 = ToolEvent {
             tool_name: "Edit".into(),
@@ -1463,6 +1527,7 @@ guidance = "Review coupled files for {file_stem}"
             max_context_lines: 50,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         };
         let event1 = ToolEvent {
             tool_name: "Edit".into(),
@@ -1540,7 +1605,7 @@ guidance = "Review coupled files for {file_stem}"
             fired: std::collections::HashSet::new(),
             path: None,
         };
-        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 100);
+        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 100, "default");
         assert_eq!(result.reactions_fired, 1);
         assert_eq!(result.rules_fired, vec!["r1"]);
         assert!(result.output.contains("=== Reaction: r1 [injection_id: inj-react-"));
@@ -1562,11 +1627,11 @@ guidance = "Review coupled files for {file_stem}"
         };
 
         // First evaluation fires
-        let result1 = evaluate_reactions(&event, &rules, &mut dedup, None, 100);
+        let result1 = evaluate_reactions(&event, &rules, &mut dedup, None, 100, "default");
         assert_eq!(result1.reactions_fired, 1);
 
         // Second evaluation with same args is deduped
-        let result2 = evaluate_reactions(&event, &rules, &mut dedup, None, 100);
+        let result2 = evaluate_reactions(&event, &rules, &mut dedup, None, 100, "default");
         assert_eq!(result2.reactions_fired, 0);
         assert_eq!(result2.rules_deduped, 1);
         assert!(result2.output.is_empty());
@@ -1584,7 +1649,7 @@ guidance = "Review coupled files for {file_stem}"
             tool_name: "Edit".into(),
             tool_input: json!({"file_path": "/tmp/a.rs"}),
         };
-        let result1 = evaluate_reactions(&event1, &rules, &mut dedup, None, 100);
+        let result1 = evaluate_reactions(&event1, &rules, &mut dedup, None, 100, "default");
         assert_eq!(result1.reactions_fired, 1);
 
         // Different file = different args = fires again
@@ -1592,7 +1657,7 @@ guidance = "Review coupled files for {file_stem}"
             tool_name: "Edit".into(),
             tool_input: json!({"file_path": "/tmp/b.rs"}),
         };
-        let result2 = evaluate_reactions(&event2, &rules, &mut dedup, None, 100);
+        let result2 = evaluate_reactions(&event2, &rules, &mut dedup, None, 100, "default");
         assert_eq!(result2.reactions_fired, 1);
     }
 
@@ -1612,6 +1677,7 @@ guidance = "Review coupled files for {file_stem}"
                     max_context_lines: 50,
                     use_coupling: false,
                     coupling_threshold: 0.3,
+                    roles: vec![],
                 })
                 .unwrap()
             })
@@ -1627,7 +1693,7 @@ guidance = "Review coupled files for {file_stem}"
         };
 
         // Budget of 20 lines — not all 5 rules will fit
-        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 20);
+        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 20, "default");
         assert!(result.reactions_fired > 0);
         assert!(result.reactions_fired < 5);
     }
@@ -1643,7 +1709,7 @@ guidance = "Review coupled files for {file_stem}"
             fired: std::collections::HashSet::new(),
             path: None,
         };
-        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 100);
+        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 100, "default");
         assert_eq!(result.reactions_fired, 0);
         assert!(result.output.is_empty());
     }
@@ -1664,6 +1730,7 @@ guidance = "Review coupled files for {file_stem}"
                 max_context_lines: 50,
                 use_coupling: false,
                 coupling_threshold: 0.3,
+                roles: vec![],
             })
             .unwrap(),
             CompiledRule::compile(ReactionRule {
@@ -1677,6 +1744,7 @@ guidance = "Review coupled files for {file_stem}"
                 max_context_lines: 50,
                 use_coupling: true,
                 coupling_threshold: 0.3,
+                roles: vec![],
             })
             .unwrap(),
         ];
@@ -1690,7 +1758,7 @@ guidance = "Review coupled files for {file_stem}"
             path: None,
         };
 
-        let searches = pending_searches(&event, &rules, &dedup);
+        let searches = pending_searches(&event, &rules, &dedup, "default");
         assert_eq!(searches.len(), 1); // Only search-rule, not coupling-rule
         assert_eq!(searches[0].rule_name, "search-rule");
         assert_eq!(searches[0].query, "related to main");
@@ -1822,6 +1890,7 @@ guidance = "Review coupled files for {file_stem}"
                 max_context_lines: 50,
                 use_coupling: false,
                 coupling_threshold: 0.3,
+                roles: vec![],
             }],
         };
         let merged = config.with_builtins();
@@ -1847,6 +1916,7 @@ guidance = "Review coupled files for {file_stem}"
                 max_context_lines: 50,
                 use_coupling: false,
                 coupling_threshold: 0.3,
+                roles: vec![],
             }],
         };
         let merged = config.with_builtins();
@@ -1894,7 +1964,7 @@ guidance = "Review coupled files for {file_stem}"
             fired: std::collections::HashSet::new(),
             path: None,
         };
-        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 200);
+        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 200, "default");
         assert_eq!(result.reactions_fired, 2);
         assert_eq!(result.injection_ids.len(), 2);
         for id in &result.injection_ids {
@@ -1919,11 +1989,169 @@ guidance = "Review coupled files for {file_stem}"
             max_context_lines: 50,
             use_coupling: false,
             coupling_threshold: 0.3,
+            roles: vec![],
         };
         let (output, injection_id) = format_reaction(&rule, "Test guidance for feedback", None);
         // The injection_id should appear in the header line
         assert!(output.contains(&format!("[injection_id: {}]", injection_id)));
         // Output should be parseable — agents can extract the ID
         assert!(output.contains("inj-react-"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Role matching tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_role_matches_empty_allows_all() {
+        assert!(role_matches(&[], "anything"));
+        assert!(role_matches(&[], "aegis/crew/malcolm"));
+        assert!(role_matches(&[], "default"));
+    }
+
+    #[test]
+    fn test_role_matches_exact() {
+        let patterns = vec!["aegis/crew/malcolm".into()];
+        assert!(role_matches(&patterns, "aegis/crew/malcolm"));
+        assert!(!role_matches(&patterns, "aegis/crew/ellie"));
+    }
+
+    #[test]
+    fn test_role_matches_glob() {
+        let patterns = vec!["aegis/crew/*".into()];
+        assert!(role_matches(&patterns, "aegis/crew/malcolm"));
+        assert!(role_matches(&patterns, "aegis/crew/ellie"));
+        assert!(!role_matches(&patterns, "aegis/polecats/rust"));
+        assert!(!role_matches(&patterns, "goldblum/crew/planner"));
+    }
+
+    #[test]
+    fn test_role_matches_multiple_patterns() {
+        let patterns = vec!["aegis/crew/*".into(), "aegis/polecats/*".into()];
+        assert!(role_matches(&patterns, "aegis/crew/malcolm"));
+        assert!(role_matches(&patterns, "aegis/polecats/rust"));
+        assert!(!role_matches(&patterns, "goldblum/crew/planner"));
+    }
+
+    #[test]
+    fn test_evaluate_reactions_role_filtering() {
+        let rules = vec![
+            CompiledRule::compile(ReactionRule {
+                name: "ops-only".into(),
+                tool: "Edit".into(),
+                match_conditions: HashMap::new(),
+                guidance: "Ops guidance".into(),
+                search_query: String::new(),
+                search_group: String::new(),
+                search_tags: vec![],
+                max_context_lines: 50,
+                use_coupling: false,
+                coupling_threshold: 0.3,
+                roles: vec!["aegis/crew/*".into()],
+            })
+            .unwrap(),
+        ];
+        let event = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/test.rs"}),
+        };
+
+        // Matching role fires
+        let mut dedup = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 100, "aegis/crew/malcolm");
+        assert_eq!(result.reactions_fired, 1);
+
+        // Non-matching role does not fire
+        let mut dedup2 = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+        let result2 = evaluate_reactions(&event, &rules, &mut dedup2, None, 100, "goldblum/crew/planner");
+        assert_eq!(result2.reactions_fired, 0);
+    }
+
+    #[test]
+    fn test_evaluate_reactions_empty_roles_matches_all() {
+        let rules = vec![
+            CompiledRule::compile(ReactionRule {
+                name: "r1".into(),
+                tool: "Edit".into(),
+                match_conditions: HashMap::new(),
+                guidance: "All agents".into(),
+                search_query: String::new(),
+                search_group: String::new(),
+                search_tags: vec![],
+                max_context_lines: 50,
+                use_coupling: false,
+                coupling_threshold: 0.3,
+                roles: vec![],
+            })
+            .unwrap(),
+        ];
+        let event = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/tmp/test.rs"}),
+        };
+        let mut dedup = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 100, "any/role/at/all");
+        assert_eq!(result.reactions_fired, 1);
+    }
+
+    #[test]
+    fn test_parse_rule_with_roles() {
+        let toml = r#"
+[[reactions]]
+name = "ops-guard"
+tool = "mcp__homelab__*"
+guidance = "Ops guidance"
+roles = ["aegis/crew/*", "aegis/polecats/*"]
+"#;
+        let config = ReactionConfig::parse(toml).unwrap();
+        assert_eq!(
+            config.reactions[0].roles,
+            vec!["aegis/crew/*", "aegis/polecats/*"]
+        );
+    }
+
+    #[test]
+    fn test_parse_rule_without_roles_defaults_empty() {
+        let toml = r#"
+[[reactions]]
+name = "no-roles"
+tool = "Edit"
+guidance = "All agents"
+"#;
+        let config = ReactionConfig::parse(toml).unwrap();
+        assert!(config.reactions[0].roles.is_empty());
+    }
+
+    #[test]
+    fn test_global_reactions_loading() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bobbin_dir = tmp.path().join(".bobbin");
+        std::fs::create_dir_all(&bobbin_dir).unwrap();
+
+        // Create local reactions.toml
+        std::fs::write(
+            bobbin_dir.join("reactions.toml"),
+            r#"
+[[reactions]]
+name = "local-rule"
+tool = "Bash"
+guidance = "Local guidance"
+"#,
+        )
+        .unwrap();
+
+        // Load — should get local rules (global path doesn't exist in test)
+        let config = ReactionConfig::load_for_repo(tmp.path());
+        assert_eq!(config.reactions.len(), 1);
+        assert_eq!(config.reactions[0].name, "local-rule");
     }
 }

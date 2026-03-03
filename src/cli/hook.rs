@@ -2031,7 +2031,10 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         if input.session_id.is_empty() { None } else { Some(&input.session_id) },
     );
 
-    // 3b. Load reaction rules (builtins + user overrides) and compile them
+    // 3b. Resolve role for reaction filtering
+    let role = crate::access::RepoFilter::resolve_role(None);
+
+    // 3b'. Load reaction rules (builtins + user overrides) and compile them
     let reaction_config = ReactionConfig::load_for_repo(&repo_root).with_builtins();
     let compiled_rules: Vec<CompiledRule> = reaction_config
         .reactions
@@ -2381,6 +2384,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             &mut dedup,
             reaction_metadata.as_ref(),
             reaction_budget,
+            &role,
         );
 
         if !eval_result.output.is_empty() {
