@@ -1361,6 +1361,9 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let cal_bm = calibration.as_ref().and_then(|c| c.best_config.bridge_mode);
     let cal_bbf = calibration.as_ref().and_then(|c| c.best_config.bridge_boost_factor);
 
+    let tags_config = crate::tags::TagsConfig::load_or_default(
+        &crate::tags::TagsConfig::tags_path(&repo_root),
+    );
     let context_config = ContextConfig {
         budget_lines: cal_budget.unwrap_or(budget),
         depth: 1,
@@ -1376,7 +1379,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         bridge_mode: cal_bm.unwrap_or(BridgeMode::default()),
         bridge_boost_factor: cal_bbf.unwrap_or(0.3),
         extra_filter: None,
-        tags_config: None,
+        tags_config: Some(tags_config),
         role: None,
     };
 
@@ -2152,6 +2155,9 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         let cal_rw = calibration.as_ref().and_then(|c| c.best_config.recency_weight);
         let cal_sl = calibration.as_ref().and_then(|c| c.best_config.search_limit);
 
+        let tags_config = crate::tags::TagsConfig::load_or_default(
+            &crate::tags::TagsConfig::tags_path(&repo_root),
+        );
         let context_config = ContextConfig {
             budget_lines: budget,
             depth: 0, // No recursive expansion for post-tool
@@ -2167,7 +2173,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             bridge_mode: BridgeMode::Off, // No bridging for post-tool
             bridge_boost_factor: 0.0,
             extra_filter: None,
-            tags_config: None,
+            tags_config: Some(tags_config),
             role: None,
         };
 

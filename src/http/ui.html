@@ -136,23 +136,6 @@ h3{font-size:0.95rem;font-weight:600;margin-bottom:0.5rem;color:var(--dim)}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading{text-align:center;padding:2rem;color:var(--dim)}
 
-/* Detail overlay */
-.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:300;
-  backdrop-filter:blur(4px);justify-content:center;align-items:flex-start;padding:3rem 1rem;overflow-y:auto}
-.overlay.open{display:flex}
-.detail-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;
-  width:100%;max-width:800px;padding:1.5rem;position:relative}
-.detail-close{position:absolute;top:0.75rem;right:1rem;background:none;border:none;
-  color:var(--dim);font-size:1.2rem;cursor:pointer}
-.detail-close:hover{color:var(--red)}
-.detail-section{margin-top:1rem}
-.detail-section h4{font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--dim);margin-bottom:0.5rem}
-.detail-kv{display:grid;grid-template-columns:120px 1fr;gap:0.25rem 0.75rem;font-size:0.85rem}
-.detail-kv dt{color:var(--dim);font-family:var(--mono);font-size:0.8rem}
-.detail-kv dd{font-family:var(--mono);word-break:break-all}
-.detail-file{padding:0.3rem 0.5rem;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:0.8rem;color:var(--accent)}
-.detail-file:last-child{border-bottom:none}
-
 /* Empty state */
 .empty{text-align:center;padding:2rem;color:var(--dim);font-style:italic}
 
@@ -299,15 +282,6 @@ td.mono{font-family:var(--mono)}
     <div id="hotspots-table"></div>
   </div>
 </main>
-
-<!-- Injection detail overlay -->
-<div class="overlay" id="injection-overlay" onclick="if(event.target===this)closeDetail()">
-  <div class="detail-panel">
-    <button class="detail-close" onclick="closeDetail()">&times;</button>
-    <h2 style="font-size:1rem;font-family:var(--mono)" id="detail-title">Injection Detail</h2>
-    <div id="detail-content"><div class="loading"><div class="spinner"></div> Loading...</div></div>
-  </div>
-</div>
 
 <script>
 const API = '';  // same origin
@@ -698,7 +672,7 @@ async function loadFeedbackList() {
         const ts = f.timestamp ? f.timestamp.slice(0, 19).replace('T', ' ') : '?';
         const color = ratingColors[f.rating] || 'var(--dim)';
         return `
-          <div class="result" style="border-left:3px solid ${color};cursor:pointer" onclick="showInjectionDetail('${esc(f.injection_id)}')">
+          <div class="result" style="border-left:3px solid ${color}">
             <div class="result-header">
               <span class="result-path" style="font-size:0.8rem">${esc(f.injection_id)}</span>
               <span class="result-type" style="background:${color}20;color:${color}">${f.rating}</span>
@@ -825,74 +799,6 @@ document.addEventListener('click', e => {
 });
 
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
-// -- Injection detail overlay --
-async function showInjectionDetail(injectionId) {
-  const overlay = document.getElementById('injection-overlay');
-  const content = document.getElementById('detail-content');
-  const title = document.getElementById('detail-title');
-  title.textContent = injectionId;
-  content.innerHTML = '<div class="loading"><div class="spinner"></div> Loading injection detail...</div>';
-  overlay.classList.add('open');
-  try {
-    const data = await fetch(`${API}/injections/${encodeURIComponent(injectionId)}`).then(r => {
-      if (!r.ok) throw new Error(r.status === 404 ? 'Injection record not found — may have been recorded before payload logging was enabled' : `HTTP ${r.status}`);
-      return r.json();
-    });
-    const ratingColors = {useful:'var(--green)',noise:'var(--amber)',harmful:'var(--red)'};
-    const ts = data.timestamp ? data.timestamp.slice(0, 19).replace('T', ' ') : '—';
-    let html = `
-      <div class="detail-section">
-        <h4>Injection Info</h4>
-        <dl class="detail-kv">
-          <dt>Timestamp</dt><dd>${esc(ts)}</dd>
-          <dt>Agent</dt><dd>${esc(data.agent || '—')}</dd>
-          <dt>Session</dt><dd>${esc(data.session_id || '—')}</dd>
-          <dt>Query</dt><dd>${esc(data.query || '—')}</dd>
-          <dt>Total Chunks</dt><dd>${data.total_chunks}</dd>
-          <dt>Budget Lines</dt><dd>${data.budget_lines}</dd>
-        </dl>
-      </div>`;
-    if (data.files && data.files.length > 0) {
-      html += `
-        <div class="detail-section">
-          <h4>Files Injected (${data.files.length})</h4>
-          <div class="card" style="max-height:300px;overflow-y:auto">
-            ${data.files.map(f => {
-              const link = repoLink(f);
-              return `<div class="detail-file">${link ? `<a href="${link}" target="_blank">${esc(relPath(f))}</a>` : esc(relPath(f))}</div>`;
-            }).join('')}
-          </div>
-        </div>`;
-    }
-    if (data.feedback && data.feedback.length > 0) {
-      html += `
-        <div class="detail-section">
-          <h4>Feedback (${data.feedback.length})</h4>
-          ${data.feedback.map(f => {
-            const fts = f.timestamp ? f.timestamp.slice(0, 19).replace('T', ' ') : '?';
-            const color = ratingColors[f.rating] || 'var(--dim)';
-            return `<div class="result" style="border-left:3px solid ${color};margin-bottom:0.35rem">
-              <div class="result-header">
-                <span class="result-type" style="background:${color}20;color:${color}">${f.rating}</span>
-                <span style="font-size:0.8rem;color:var(--dim)">${esc(f.agent)}</span>
-                <span class="result-score">${fts}</span>
-              </div>
-              ${f.reason ? `<div style="font-size:0.85rem;color:var(--dim);margin-top:0.25rem">${esc(f.reason)}</div>` : ''}
-            </div>`;
-          }).join('')}
-        </div>`;
-    }
-    content.innerHTML = html;
-  } catch(e) {
-    content.innerHTML = `<div class="empty" style="color:var(--red)">${esc(e.message)}</div>`;
-  }
-}
-
-function closeDetail() {
-  document.getElementById('injection-overlay').classList.remove('open');
-}
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
 
 // Init
 loadStatus();

@@ -607,6 +607,9 @@ impl BobbinMcpServer {
 
         let extra_filter = Self::build_tag_filter(req.tag.as_deref(), req.exclude_tag.as_deref());
 
+        let tags_config = crate::tags::TagsConfig::load_or_default(
+            &crate::tags::TagsConfig::tags_path(&self.repo_root),
+        );
         let context_config = ContextConfig {
             budget_lines: req.budget.unwrap_or(500),
             depth: req.depth.unwrap_or(1),
@@ -622,7 +625,7 @@ impl BobbinMcpServer {
             bridge_mode: BridgeMode::default(),
             bridge_boost_factor: 0.3,
             extra_filter,
-            tags_config: None,
+            tags_config: Some(tags_config),
             role: None,
         };
 
@@ -1070,6 +1073,9 @@ impl BobbinMcpServer {
         .await
         .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
+        let tags_config = crate::tags::TagsConfig::load_or_default(
+            &crate::tags::TagsConfig::tags_path(&self.repo_root),
+        );
         let context_config = ContextConfig {
             budget_lines: req.budget.unwrap_or(500),
             depth: req.depth.unwrap_or(1),
@@ -1085,7 +1091,7 @@ impl BobbinMcpServer {
             bridge_mode: BridgeMode::default(),
             bridge_boost_factor: 0.3,
             extra_filter: None,
-            tags_config: None,
+            tags_config: Some(tags_config),
             role: None,
         };
 
