@@ -460,8 +460,6 @@ pub fn evaluate_reactions(
         let guidance = render_template(&compiled.rule.guidance, event, &match_result.captures);
 
         // Handle coupling-based reactions
-        // Skip the reaction entirely if no coupled files are found — showing
-        // "review coupled files" with an empty list is noise (bo-f43y, ellie report).
         let coupled_files = if compiled.rule.use_coupling {
             if let Some(store) = metadata_store {
                 let file_path = event.arg("file_path").unwrap_or("");
@@ -469,16 +467,11 @@ pub fn evaluate_reactions(
                     Ok(result) if !result.coupled_files.is_empty() => {
                         Some(result.coupled_files)
                     }
-                    _ => {
-                        // No coupled files or error — skip this reaction entirely
-                        rules_deduped += 1;
-                        continue;
-                    }
+                    Ok(_) => Some(vec![]), // Empty coupling — still fire with guidance
+                    Err(_) => Some(vec![]), // Error querying — still fire with guidance
                 }
             } else {
-                // No metadata store — skip coupling reaction
-                rules_deduped += 1;
-                continue;
+                Some(vec![]) // No store available
             }
         } else {
             None // Not a coupling rule

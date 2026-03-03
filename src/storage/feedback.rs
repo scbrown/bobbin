@@ -115,15 +115,21 @@ impl FeedbackStore {
             anyhow::bail!("injection_id is required");
         }
 
-        // Ensure the injection_id exists in the injections table (auto-create if needed)
+        // Explicitly set timestamp — older DB schemas may lack DEFAULT clauses.
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.fZ")
+            .to_string();
+
+        // Ensure the injection_id exists in the injections table (auto-create if needed).
+        // Include timestamp explicitly for older schemas where it's NOT NULL without DEFAULT.
         self.conn.execute(
-            "INSERT OR IGNORE INTO injections (injection_id) VALUES (?1)",
-            [&input.injection_id],
+            "INSERT OR IGNORE INTO injections (injection_id, timestamp) VALUES (?1, ?2)",
+            rusqlite::params![input.injection_id, now],
         )?;
 
         self.conn.execute(
-            "INSERT INTO feedback (injection_id, agent, rating, reason) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![input.injection_id, input.agent, input.rating, input.reason],
+            "INSERT INTO feedback (injection_id, timestamp, agent, rating, reason) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![input.injection_id, now, input.agent, input.rating, input.reason],
         )?;
 
         Ok(self.conn.last_insert_rowid())
