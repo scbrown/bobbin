@@ -1155,6 +1155,90 @@ impl VectorStore {
         Ok(repo_list)
     }
 
+    /// Get all unique languages in the index
+    pub async fn get_all_languages(&self) -> Result<Vec<String>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let results = table
+            .query()
+            .select(lancedb::query::Select::Columns(vec!["language".to_string()]))
+            .limit(SCAN_ALL_LIMIT)
+            .execute()
+            .await
+            .context("Failed to query languages")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect languages")?;
+
+        let mut langs = std::collections::HashSet::new();
+        for batch in &batches {
+            let lang_col = batch
+                .column_by_name("language")
+                .context("Missing language column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("language column has wrong type")?;
+
+            for i in 0..batch.num_rows() {
+                let val = lang_col.value(i);
+                if !val.is_empty() {
+                    langs.insert(val.to_string());
+                }
+            }
+        }
+
+        let mut lang_list: Vec<String> = langs.into_iter().collect();
+        lang_list.sort();
+        Ok(lang_list)
+    }
+
+    /// Get all unique chunk types in the index
+    pub async fn get_all_chunk_types(&self) -> Result<Vec<String>> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let results = table
+            .query()
+            .select(lancedb::query::Select::Columns(vec!["chunk_type".to_string()]))
+            .limit(SCAN_ALL_LIMIT)
+            .execute()
+            .await
+            .context("Failed to query chunk types")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect chunk types")?;
+
+        let mut types = std::collections::HashSet::new();
+        for batch in &batches {
+            let type_col = batch
+                .column_by_name("chunk_type")
+                .context("Missing chunk_type column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("chunk_type column has wrong type")?;
+
+            for i in 0..batch.num_rows() {
+                let val = type_col.value(i);
+                if !val.is_empty() {
+                    types.insert(val.to_string());
+                }
+            }
+        }
+
+        let mut type_list: Vec<String> = types.into_iter().collect();
+        type_list.sort();
+        Ok(type_list)
+    }
+
     /// Get file metadata from a chunk record
     pub async fn get_file(&self, file_path: &str) -> Result<Option<FileMetadata>> {
         let table = match &self.table {

@@ -80,6 +80,7 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/repos", get(list_repos))
         .route("/groups", get(list_groups))
         .route("/tags", get(tags))
+        .route("/suggest", get(suggest))
         .route("/repos/{name}/files", get(list_repo_files))
         .route("/commands", get(list_commands))
         .route("/metrics", get(metrics))
@@ -2955,6 +2956,96 @@ pub(super) async fn feedback_stats(
     let store = open_feedback_store(&state).map_err(internal_error)?;
     let stats = store.stats().map_err(internal_error)?;
     Ok(Json(stats))
+}
+
+// -- /suggest --
+
+#[derive(Deserialize)]
+struct SuggestParams {
+    /// Filter field to suggest values for: repo, lang, type, group, tag
+    field: String,
+    /// Optional prefix to filter suggestions
+    #[serde(default)]
+    q: Option<String>,
+    /// Role for access filtering
+    #[serde(default)]
+    role: Option<String>,
+    /// Max results (default 20)
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Serialize)]
+struct SuggestResponse {
+    field: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    query: Option<String>,
+    count: usize,
+    values: Vec<String>,
+}
+
+/// GET /suggest — autocomplete values for inline filter fields
+pub(super) async fn suggest(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SuggestParams>,
+) -> Result<Json<SuggestResponse>, (StatusCode, Json<ErrorBody>)> {
+    let limit = params.limit.unwrap_or(20);
+    let prefix = params.q.as_deref().unwrap_or("").to_lowercase();
+
+    let mut values: Vec<String> = match params.field.as_str() {
+        "repo" => {
+            let store = open_vector_store(&state).await.map_err(internal_error)?;
+            let repos = store
+                .get_all_repos()
+                .await
+                .map_err(|e| internal_error(e.into()))?;
+            let access = resolve_filter(&state, params.role.as_deref());
+            repos.into_iter().filter(|r| access.is_allowed(r)).collect()
+        }
+        "lang" | "language" => {
+            let store = open_vector_store(&state).await.map_err(internal_error)?;
+            store
+                .get_all_languages()
+                .await
+                .map_err(|e| internal_error(e.into()))?
+        }
+        "type" => {
+            let store = open_vector_store(&state).await.map_err(internal_error)?;
+            store
+                .get_all_chunk_types()
+                .await
+                .map_err(|e| internal_error(e.into()))?
+        }
+        "group" => state.config.groups.iter().map(|g| g.name.clone()).collect(),
+        "tag" => {
+            let store = open_vector_store(&state).await.map_err(internal_error)?;
+            let tag_counts = store
+                .get_tag_counts()
+                .await
+                .map_err(|e| internal_error(e.into()))?;
+            tag_counts.into_iter().map(|(name, _count)| name).collect()
+        }
+        other => {
+            return Err(bad_request(format!(
+                "Unknown field '{}'. Valid: repo, lang, type, group, tag",
+                other
+            )));
+        }
+    };
+
+    // Apply prefix filter
+    if !prefix.is_empty() {
+        values.retain(|v| v.to_lowercase().starts_with(&prefix));
+    }
+
+    values.truncate(limit);
+
+    Ok(Json(SuggestResponse {
+        field: params.field,
+        query: params.q,
+        count: values.len(),
+        values,
+    }))
 }
 
 // -- Helpers --
