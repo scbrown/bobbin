@@ -54,14 +54,6 @@ pub struct ContextArgs {
     #[arg(long)]
     rrf_k: Option<f32>,
 
-    /// Override recency weight (0.0=no recency boost, higher=more recency bias)
-    #[arg(long)]
-    recency_weight: Option<f32>,
-
-    /// Override recency half-life in days (how quickly recency boost decays)
-    #[arg(long)]
-    recency_half_life: Option<f32>,
-
     /// Filter to specific repository
     #[arg(long, short = 'r')]
     repo: Option<String>,
@@ -200,8 +192,8 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         content_mode,
         search_limit: args.limit,
         doc_demotion: args.doc_demotion.unwrap_or(cal_dd.unwrap_or(config.search.doc_demotion)),
-        recency_half_life_days: args.recency_half_life.unwrap_or(cal_hl.unwrap_or(config.search.recency_half_life_days)),
-        recency_weight: args.recency_weight.unwrap_or(cal_rw.unwrap_or(config.search.recency_weight)),
+        recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
+        recency_weight: cal_rw.unwrap_or(config.search.recency_weight),
         rrf_k: args.rrf_k.unwrap_or(cal_rrf.unwrap_or(config.search.rrf_k)),
         bridge_mode: BridgeMode::default(),
         bridge_boost_factor: 0.3,

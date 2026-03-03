@@ -3,7 +3,6 @@ mod calibrate;
 mod completions;
 mod context;
 mod deps;
-pub mod feedback;
 mod grep;
 mod history;
 mod hook;
@@ -139,9 +138,6 @@ enum Commands {
     /// Manage chunk tags (list, add rules, remove rules)
     Tag(tag::TagArgs),
 
-    /// Submit, list, or view injection feedback
-    Feedback(feedback::FeedbackArgs),
-
     /// Execute or manage user-defined convenience commands
     Run(run::RunArgs),
 }
@@ -174,7 +170,6 @@ impl Commands {
             Commands::Purge(_) => "purge",
             Commands::Prime(_) => "prime",
             Commands::Tag(_) => "tag",
-            Commands::Feedback(_) => "feedback",
             Commands::Run(_) => "run",
         }
     }
@@ -275,7 +270,6 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
         Commands::Purge(args) => purge::run(args, output).await,
         Commands::Prime(args) => prime::run(args, output).await,
         Commands::Tag(args) => tag::run(args, output).await,
-        Commands::Feedback(args) => feedback::run(args, output).await,
         // Run commands are resolved before dispatch, so this is unreachable
         Commands::Run(_) => anyhow::bail!("Nested run commands are not supported"),
     }

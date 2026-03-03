@@ -86,23 +86,77 @@ impl VectorStore {
             .context("Failed to list tables")?;
 
         let table = if tables.contains(&TABLE_NAME.to_string()) {
-            Some(
-                conn.open_table(TABLE_NAME)
-                    .execute()
+            let t = conn
+                .open_table(TABLE_NAME)
+                .execute()
+                .await
+                .context("Failed to open chunks table")?;
+
+            // Schema migration: if the on-disk schema doesn't match the
+            // expected schema (e.g. a new column was added), drop the table
+            // so the next insert recreates it with the correct schema.
+            let table_schema = t
+                .schema()
+                .await
+                .context("Failed to read chunks table schema")?;
+            let expected = Self::build_schema(embedding_dim);
+            let on_disk: Vec<&str> = table_schema
+                .fields()
+                .iter()
+                .map(|f| f.name().as_str())
+                .collect();
+            let expected_fields: Vec<&str> =
+                expected.fields().iter().map(|f| f.name().as_str()).collect();
+
+            if on_disk != expected_fields {
+                eprintln!(
+                    "bobbin: chunks table schema changed — dropping for re-creation"
+                );
+                eprintln!("  on-disk fields:  {:?}", on_disk);
+                eprintln!("  expected fields: {:?}", expected_fields);
+                conn.drop_table(TABLE_NAME)
                     .await
-                    .context("Failed to open chunks table")?,
-            )
+                    .context("Failed to drop outdated chunks table")?;
+                None
+            } else {
+                Some(t)
+            }
         } else {
             None
         };
 
         let deps_table = if tables.contains(&DEPS_TABLE_NAME.to_string()) {
-            Some(
-                conn.open_table(DEPS_TABLE_NAME)
-                    .execute()
+            let t = conn
+                .open_table(DEPS_TABLE_NAME)
+                .execute()
+                .await
+                .context("Failed to open dependencies table")?;
+
+            // Same schema migration check for dependencies table
+            let table_schema = t
+                .schema()
+                .await
+                .context("Failed to read deps table schema")?;
+            let expected = Self::deps_schema();
+            let on_disk: Vec<&str> = table_schema
+                .fields()
+                .iter()
+                .map(|f| f.name().as_str())
+                .collect();
+            let expected_fields: Vec<&str> =
+                expected.fields().iter().map(|f| f.name().as_str()).collect();
+
+            if on_disk != expected_fields {
+                eprintln!(
+                    "bobbin: deps table schema changed — dropping for re-creation"
+                );
+                conn.drop_table(DEPS_TABLE_NAME)
                     .await
-                    .context("Failed to open dependencies table")?,
-            )
+                    .context("Failed to drop outdated deps table")?;
+                None
+            } else {
+                Some(t)
+            }
         } else {
             None
         };
@@ -128,11 +182,18 @@ impl VectorStore {
 
     /// Get the Arrow schema for chunk records
     fn schema(&self) -> Schema {
+        Self::build_schema(self.embedding_dim)
+    }
+
+    /// Build the Arrow schema for chunk records with a given embedding dimension.
+    /// Static so it can be called before `self` is fully constructed (e.g. during
+    /// schema migration checks in `open_with_dim`).
+    fn build_schema(embedding_dim: i32) -> Schema {
         Schema::new(vec![
             Field::new("id", DataType::Utf8, false),
             Field::new(
                 "vector",
-                DataType::FixedSizeList(Self::vector_field(), self.embedding_dim),
+                DataType::FixedSizeList(Self::vector_field(), embedding_dim),
                 false,
             ),
             Field::new("repo", DataType::Utf8, false),
@@ -2696,5 +2757,101 @@ mod tests {
             assert_eq!(deps.len(), 1);
             assert_eq!(deps[0].file_b, "src/b.rs");
         }
+    }
+
+    #[tokio::test]
+    async fn test_schema_migration_drops_stale_table() {
+        // Simulate deploying a new bobbin with an extra column: create a table
+        // with the OLD schema (missing "tags"), then reopen with the current
+        // code which expects "tags". The store should drop the stale table.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+        std::fs::create_dir_all(&path).unwrap();
+
+        let conn = lancedb::connect(path.to_str().unwrap())
+            .execute()
+            .await
+            .unwrap();
+
+        // Old schema: same as current but WITHOUT the "tags" field
+        let old_schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Utf8, false),
+            Field::new(
+                "vector",
+                DataType::FixedSizeList(VectorStore::vector_field(), DEFAULT_EMBEDDING_DIM),
+                false,
+            ),
+            Field::new("repo", DataType::Utf8, false),
+            Field::new("file_path", DataType::Utf8, false),
+            Field::new("file_hash", DataType::Utf8, false),
+            Field::new("language", DataType::Utf8, false),
+            Field::new("chunk_type", DataType::Utf8, false),
+            Field::new("chunk_name", DataType::Utf8, true),
+            Field::new("start_line", DataType::UInt32, false),
+            Field::new("end_line", DataType::UInt32, false),
+            Field::new("content", DataType::Utf8, false),
+            Field::new("full_context", DataType::Utf8, true),
+            Field::new("indexed_at", DataType::Utf8, false),
+            // no "tags" field — this is the old schema
+        ]));
+
+        // Insert a dummy row to create the table with the old schema
+        let emb = sample_embedding();
+        let flat: Vec<f32> = emb.clone();
+        let vector_values: ArrayRef = Arc::new(Float32Array::from(flat));
+        let vector_array = FixedSizeListArray::try_new(
+            VectorStore::vector_field(),
+            DEFAULT_EMBEDDING_DIM,
+            vector_values,
+            None,
+        )
+        .unwrap();
+
+        let batch = RecordBatch::try_new(
+            old_schema.clone(),
+            vec![
+                Arc::new(StringArray::from(vec!["old1"])),
+                Arc::new(vector_array),
+                Arc::new(StringArray::from(vec!["testrepo"])),
+                Arc::new(StringArray::from(vec!["src/old.rs"])),
+                Arc::new(StringArray::from(vec!["hash1"])),
+                Arc::new(StringArray::from(vec!["rust"])),
+                Arc::new(StringArray::from(vec!["function"])),
+                Arc::new(StringArray::from(vec![Some("main")])),
+                Arc::new(UInt32Array::from(vec![1u32])),
+                Arc::new(UInt32Array::from(vec![10u32])),
+                Arc::new(StringArray::from(vec!["fn main() {}"])),
+                Arc::new(StringArray::from(vec![None::<&str>])),
+                Arc::new(StringArray::from(vec!["2026-01-01"])),
+            ],
+        )
+        .unwrap();
+
+        let reader = RecordBatchIterator::new(vec![Ok(batch)], old_schema);
+        conn.create_table(TABLE_NAME, reader)
+            .execute()
+            .await
+            .unwrap();
+
+        // Verify old table exists
+        let tables = conn.table_names().execute().await.unwrap();
+        assert!(tables.contains(&TABLE_NAME.to_string()));
+
+        // Drop the direct connection before VectorStore opens
+        drop(conn);
+
+        // Re-open via VectorStore — should detect schema mismatch and drop table
+        let mut store = VectorStore::open(&path).await.unwrap();
+        // Table was dropped, so count should be 0 (or table is None)
+        assert_eq!(store.count().await.unwrap(), 0);
+
+        // Insert with new schema should succeed (table gets recreated)
+        let chunks = vec![sample_chunk("new1", "main")];
+        let embeddings = vec![sample_embedding()];
+        store
+            .insert(&chunks, &embeddings, &no_contexts(1), "testrepo", "hash2", "2026-03-02")
+            .await
+            .unwrap();
+        assert_eq!(store.count().await.unwrap(), 1);
     }
 }

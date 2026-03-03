@@ -637,35 +637,9 @@ async fn inject_context_remote(
                 return Ok(());
             }
 
-            // Generate injection ID and format structured context output
-            let injection_id = format!("inj-{}", ulid::Ulid::new().to_string().to_lowercase());
-            let out = format_context_response(&resp, budget, hooks_cfg.show_docs, Some(&injection_id));
+            // Format structured context output
+            let out = format_context_response(&resp, budget, hooks_cfg.show_docs);
             print!("{}", out);
-
-            // Store injection record (best-effort via HTTP)
-            let agent = std::env::var("BD_ACTOR")
-                .or_else(|_| std::env::var("GT_ROLE"))
-                .unwrap_or_default();
-            let injected_files: Vec<String> = resp.files.iter().map(|f| f.path.clone()).collect();
-            let record = crate::storage::feedback::InjectionRecord {
-                injection_id: injection_id.clone(),
-                timestamp: chrono::Utc::now().to_rfc3339(),
-                session_id: input.session_id.clone(),
-                agent,
-                query: prompt.to_string(),
-                files_returned: injected_files,
-                chunk_ids: vec![],
-                total_chunks: resp.summary.total_chunks as u32,
-                budget_lines: budget as u32,
-            };
-            // POST to server non-blocking
-            let url = format!("{}/injections", server_url);
-            let _ = reqwest::Client::new()
-                .post(&url)
-                .json(&record)
-                .timeout(std::time::Duration::from_secs(2))
-                .send()
-                .await;
             Ok(())
         }
         Err(_) => {
@@ -680,7 +654,6 @@ fn format_context_response(
     resp: &crate::http::client::ContextResponse,
     budget: usize,
     show_docs: bool,
-    injection_id: Option<&str>,
 ) -> String {
     use std::fmt::Write;
     let mut out = String::new();
@@ -696,9 +669,6 @@ fn format_context_response(
         resp.summary.total_chunks,
         budget,
     );
-    if let Some(id) = injection_id {
-        let _ = writeln!(out, "[injection_id: {}]", id);
-    }
 
     // Partition files by type
     let is_doc = |path: &str| -> bool {
@@ -939,7 +909,6 @@ fn format_context_for_injection(
     bundle: &crate::search::context::ContextBundle,
     threshold: f32,
     show_docs: bool,
-    injection_id: Option<&str>,
 ) -> String {
     use crate::types::FileCategory;
     use std::fmt::Write;
@@ -956,9 +925,6 @@ fn format_context_for_injection(
         bundle.budget.max_lines,
     );
     out.push_str(&header);
-    if let Some(id) = injection_id {
-        let _ = write!(out, "\n[injection_id: {}]", id);
-    }
     out.push('\n');
 
     // Partition files: source/test first, then docs/config
@@ -1410,31 +1376,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     }
 
     let show_docs = args.show_docs.unwrap_or(hooks_cfg.show_docs);
-    let injection_id = format!("inj-{}", ulid::Ulid::new().to_string().to_lowercase());
-    let context_text = format_context_for_injection(&bundle, threshold, show_docs, Some(&injection_id));
+    let context_text = format_context_for_injection(&bundle, threshold, show_docs);
     print!("{}", context_text);
-
-    // Store injection record on server (best-effort, non-blocking)
-    let agent = std::env::var("BD_ACTOR")
-        .or_else(|_| std::env::var("GT_ROLE"))
-        .unwrap_or_default();
-    let injected_files: Vec<String> = bundle.files.iter().map(|f| f.path.clone()).collect();
-    let injection_record = crate::storage::feedback::InjectionRecord {
-        injection_id: injection_id.clone(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        session_id: input.session_id.clone(),
-        agent,
-        query: prompt.to_string(),
-        files_returned: injected_files,
-        chunk_ids: vec![],
-        total_chunks: bundle.summary.total_chunks as u32,
-        budget_lines: bundle.budget.used_lines as u32,
-    };
-    // Try local feedback DB first, fall back to HTTP
-    let fb_path = Config::feedback_db_path(&repo_root);
-    if let Ok(fb_store) = crate::storage::FeedbackStore::open(&fb_path) {
-        let _ = fb_store.store_injection(&injection_record);
-    }
 
     // 10. Update hook state
     let chunk_keys: Vec<String> = bundle
@@ -1817,10 +1760,12 @@ fn clean_regex_for_search(pattern: &str) -> String {
 /// PostToolUse handler: Smart dispatch based on tool type.
 /// - Edit/Write: hybrid search for related files (tests, snapshots, configs)
 /// - Bash(grep/rg/find): semantic search for the same query (competitive response)
+/// - Any tool: reaction rules from .bobbin/reactions.toml
 /// Uses ContextAssembler with full config cascade (calibration + config.toml).
 /// Fast because ensure_fts_index reuses persisted index.
 async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     use crate::index::Embedder;
+    use crate::reactions::{self, CompiledRule, DedupTracker, ReactionConfig, ToolEvent};
     use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig};
 
     let hook_start = std::time::Instant::now();
@@ -1834,6 +1779,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         EditRelated { file_path: String },
         SearchQuery { query: String, original_cmd: String },
         RefsOnly { file_path: String },
+        ReactionsOnly, // Unknown tool — only reactions, no built-in dispatch
     }
 
     let mode = match input.tool_name.as_str() {
@@ -1845,9 +1791,10 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 .unwrap_or("")
                 .to_string();
             if file_path.is_empty() {
-                return Ok(());
+                DispatchMode::ReactionsOnly
+            } else {
+                DispatchMode::EditRelated { file_path }
             }
-            DispatchMode::EditRelated { file_path }
         }
         "Bash" => {
             let command = input
@@ -1860,7 +1807,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                     query,
                     original_cmd: command.to_string(),
                 },
-                None => return Ok(()), // Not a search command
+                None => DispatchMode::ReactionsOnly,
             }
         }
         "Grep" => {
@@ -1871,15 +1818,17 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             if pattern.len() < 2 {
-                return Ok(());
-            }
-            let cleaned = clean_regex_for_search(pattern);
-            if cleaned.is_empty() {
-                return Ok(());
-            }
-            DispatchMode::SearchQuery {
-                query: cleaned,
-                original_cmd: format!("Grep: {}", pattern),
+                DispatchMode::ReactionsOnly
+            } else {
+                let cleaned = clean_regex_for_search(pattern);
+                if cleaned.is_empty() {
+                    DispatchMode::ReactionsOnly
+                } else {
+                    DispatchMode::SearchQuery {
+                        query: cleaned,
+                        original_cmd: format!("Grep: {}", pattern),
+                    }
+                }
             }
         }
         "Glob" => {
@@ -1889,24 +1838,26 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             if pattern.len() < 2 {
-                return Ok(());
-            }
-            // Strip glob wildcards for semantic search
-            let cleaned = pattern
-                .replace("**", " ")
-                .replace("*.", "")
-                .replace(".*", "")
-                .replace('*', " ")
-                .replace('/', " ")
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
-            if cleaned.len() < 2 {
-                return Ok(());
-            }
-            DispatchMode::SearchQuery {
-                query: cleaned,
-                original_cmd: format!("Glob: {}", pattern),
+                DispatchMode::ReactionsOnly
+            } else {
+                // Strip glob wildcards for semantic search
+                let cleaned = pattern
+                    .replace("**", " ")
+                    .replace("*.", "")
+                    .replace(".*", "")
+                    .replace('*', " ")
+                    .replace('/', " ")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if cleaned.len() < 2 {
+                    DispatchMode::ReactionsOnly
+                } else {
+                    DispatchMode::SearchQuery {
+                        query: cleaned,
+                        original_cmd: format!("Glob: {}", pattern),
+                    }
+                }
             }
         }
         "Read" => {
@@ -1917,11 +1868,18 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 .unwrap_or("")
                 .to_string();
             if file_path.is_empty() {
-                return Ok(());
+                DispatchMode::ReactionsOnly
+            } else {
+                DispatchMode::RefsOnly { file_path }
             }
-            DispatchMode::RefsOnly { file_path }
         }
-        _ => return Ok(()), // Unknown tool, skip
+        _ => DispatchMode::ReactionsOnly,
+    };
+
+    // 2b. Build ToolEvent for reaction matching
+    let tool_event = ToolEvent {
+        tool_name: input.tool_name.clone(),
+        tool_input: input.tool_input.clone(),
     };
 
     // 3. Resolve bobbin root and config
@@ -1944,8 +1902,30 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         if input.session_id.is_empty() { None } else { Some(&input.session_id) },
     );
 
+    // 3b. Load reaction rules (builtins + user overrides) and compile them
+    let reaction_config = ReactionConfig::load_for_repo(&repo_root).with_builtins();
+    let compiled_rules: Vec<CompiledRule> = reaction_config
+        .reactions
+        .into_iter()
+        .filter_map(|r| {
+            CompiledRule::compile(r).map_err(|e| {
+                eprintln!("bobbin: skipping reaction rule: {}", e);
+                e
+            }).ok()
+        })
+        .collect();
+    let has_reactions = !compiled_rules.is_empty();
+
+    // 3c. Session dedup tracker for reactions
+    let mut dedup = DedupTracker::load(&repo_root, &input.session_id);
+
+    // For ReactionsOnly mode with no reaction rules, nothing to do
+    if matches!(mode, DispatchMode::ReactionsOnly) && !has_reactions {
+        return Ok(());
+    }
+
     // 4. Determine query and context based on dispatch mode
-    let (query, rel_path, is_edit_mode, is_refs_only) = match &mode {
+    let (query, rel_path, is_edit_mode, is_refs_only, is_reactions_only) = match &mode {
         DispatchMode::EditRelated { file_path } => {
             let abs_path = if Path::new(file_path.as_str()).is_absolute() {
                 PathBuf::from(file_path)
@@ -1958,10 +1938,10 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 .to_string_lossy()
                 .to_string();
             let q = format!("files related to {}", rel);
-            (q, Some(rel), true, false)
+            (q, Some(rel), true, false, false)
         }
         DispatchMode::SearchQuery { query, .. } => {
-            (query.clone(), None, false, false)
+            (query.clone(), None, false, false, false)
         }
         DispatchMode::RefsOnly { file_path } => {
             let abs_path = if Path::new(file_path.as_str()).is_absolute() {
@@ -1974,7 +1954,10 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 .unwrap_or(abs_path.as_path())
                 .to_string_lossy()
                 .to_string();
-            ("".to_string(), Some(rel), false, true)
+            ("".to_string(), Some(rel), false, true, false)
+        }
+        DispatchMode::ReactionsOnly => {
+            ("".to_string(), None, false, false, true)
         }
     };
 
@@ -1989,27 +1972,25 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     let mut coupled_count: usize = 0;
     let mut search_file_count: usize = 0;
 
-    if !is_refs_only {
+    if !is_refs_only && !is_reactions_only {
         let model_dir = Config::model_cache_dir()?;
 
-        let vector_store = match VectorStore::open(&lance_path).await {
-            Ok(vs) => vs,
-            Err(_) => return Ok(()),
-        };
+        // Try to open stores — failure skips builtin search but reactions still fire
+        let builtin_result: Option<()> = 'builtin: {
+            let vector_store = match VectorStore::open(&lance_path).await {
+                Ok(vs) if vs.count().await.unwrap_or(0) > 0 => vs,
+                _ => break 'builtin None,
+            };
 
-        if vector_store.count().await.unwrap_or(0) == 0 {
-            return Ok(());
-        }
+            let metadata_store = match MetadataStore::open(&db_path) {
+                Ok(ms) => ms,
+                Err(_) => break 'builtin None,
+            };
 
-        let metadata_store = match MetadataStore::open(&db_path) {
-            Ok(ms) => ms,
-            Err(_) => return Ok(()),
-        };
-
-        let embedder = match Embedder::from_config(&config.embedding, &model_dir) {
-            Ok(e) => e,
-            Err(_) => return Ok(()),
-        };
+            let embedder = match Embedder::from_config(&config.embedding, &model_dir) {
+                Ok(e) => e,
+                Err(_) => break 'builtin None,
+            };
 
         // 6. Query coupled files (only for Edit mode — coupling is file-based)
         let coupled: Vec<(String, f32)> = if let Some(ref rp) = rel_path {
@@ -2152,28 +2133,20 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 lines_used += 1;
             }
         }
+
+            Some(()) // end of labeled block
+        }; // end 'builtin block
+        let _ = builtin_result; // suppress unused warning
     }
 
     // 9. Symbol refs lookup (Edit + Read modes)
     let mut refs_count: usize = 0;
     if (is_edit_mode || is_refs_only) && lines_used < budget {
         if let Some(ref rp) = rel_path {
-            let mut refs_vs = match VectorStore::open(&lance_path).await {
-                Ok(vs) => vs,
-                Err(_) => {
-                    // Can't open store for refs — skip refs but still output search results
-                    if !context.is_empty() {
-                        let response = HookResponse {
-                            hook_specific_output: HookSpecificOutput {
-                                hook_event_name: "PostToolUse".to_string(),
-                                additional_context: context,
-                            },
-                        };
-                        println!("{}", serde_json::to_string(&response)?);
-                    }
-                    return Ok(());
-                }
-            };
+            let refs_vs_result = VectorStore::open(&lance_path).await;
+            // Scope the refs analysis in a block — if store open fails, skip refs
+            // but continue to reactions below
+            if let Ok(mut refs_vs) = refs_vs_result {
 
             use crate::analysis::refs::RefAnalyzer;
             let mut analyzer = RefAnalyzer::new(&mut refs_vs);
@@ -2252,6 +2225,57 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                     }
                 }
             }
+            } // end if let Ok(refs_vs)
+        }
+    }
+
+    // 10. Evaluate reaction rules
+    let mut reactions_fired = 0usize;
+    let mut rules_fired: Vec<String> = Vec::new();
+    let mut rules_deduped = 0usize;
+    if has_reactions {
+        // Open MetadataStore for coupling reactions (may already be open above, but
+        // the store is cheap to reopen and this path also serves ReactionsOnly mode)
+        let reaction_metadata = MetadataStore::open(&db_path).ok();
+        let reaction_budget = budget.saturating_sub(lines_used);
+
+        let eval_result = reactions::evaluate_reactions(
+            &tool_event,
+            &compiled_rules,
+            &mut dedup,
+            reaction_metadata.as_ref(),
+            reaction_budget,
+        );
+
+        if !eval_result.output.is_empty() {
+            if !context.is_empty() {
+                context.push('\n');
+                lines_used += 1;
+            }
+            context.push_str(&eval_result.output);
+            lines_used += eval_result.output.lines().count();
+        }
+
+        reactions_fired = eval_result.reactions_fired;
+        rules_fired = eval_result.rules_fired.clone();
+        rules_deduped = eval_result.rules_deduped;
+
+        // Emit per-rule metrics with injection_ids
+        for (rule_name, inj_id) in eval_result.rules_fired.iter().zip(&eval_result.injection_ids) {
+            crate::metrics::emit(
+                &repo_root,
+                &crate::metrics::event(
+                    &metrics_source,
+                    "reaction_fired",
+                    rule_name,
+                    0,
+                    serde_json::json!({
+                        "tool_name": input.tool_name,
+                        "rule": rule_name,
+                        "injection_id": inj_id,
+                    }),
+                ),
+            );
         }
     }
 
@@ -2261,6 +2285,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             DispatchMode::EditRelated { file_path } => file_path.clone(),
             DispatchMode::SearchQuery { original_cmd, .. } => original_cmd.clone(),
             DispatchMode::RefsOnly { file_path } => file_path.clone(),
+            DispatchMode::ReactionsOnly => input.tool_name.clone(),
         };
         crate::metrics::emit(
             &repo_root,
@@ -2275,6 +2300,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                     "coupled_count": 0,
                     "search_files": 0,
                     "refs_count": 0,
+                    "reactions_fired": 0,
                     "skipped": true,
                 }),
             ),
@@ -2282,7 +2308,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         return Ok(());
     }
 
-    // 10. Output hook response JSON
+    // 11. Output hook response JSON
     let response = HookResponse {
         hook_specific_output: HookSpecificOutput {
             hook_event_name: "PostToolUse".to_string(),
@@ -2291,11 +2317,12 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     };
     println!("{}", serde_json::to_string(&response)?);
 
-    // 11. Emit metric
+    // 12. Emit metric
     let dispatch_label = match &mode {
         DispatchMode::EditRelated { file_path } => file_path.clone(),
         DispatchMode::SearchQuery { original_cmd, .. } => original_cmd.clone(),
         DispatchMode::RefsOnly { file_path } => file_path.clone(),
+        DispatchMode::ReactionsOnly => input.tool_name.clone(),
     };
     crate::metrics::emit(
         &repo_root,
@@ -2310,6 +2337,9 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 "coupled_count": coupled_count,
                 "search_files": search_file_count,
                 "refs_count": refs_count,
+                "reactions_fired": reactions_fired,
+                "reactions_rules": rules_fired,
+                "reactions_deduped": rules_deduped,
             }),
         ),
     );
@@ -2452,7 +2482,7 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
     }
 
     // 8. Format output
-    let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false, None);
+    let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false);
     let header = format!(
         "Bobbin found {} relevant chunks for this error (via search fallback):\n\n",
         bundle.summary.total_chunks,
@@ -3184,7 +3214,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         assert!(result.contains("0 relevant files"));
     }
 
@@ -3225,7 +3255,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.5, true, None);
+        let result = format_context_for_injection(&bundle, 0.5, true);
         assert!(result.contains("src/auth.rs:10-25"));
         assert!(result.contains("authenticate"));
         assert!(result.contains("fn authenticate()"));
@@ -3270,7 +3300,7 @@ mod tests {
             },
         };
         // With high threshold, chunk content should be filtered out
-        let result = format_context_for_injection(&bundle, 0.5, true, None);
+        let result = format_context_for_injection(&bundle, 0.5, true);
         assert!(!result.contains("low_score_fn"));
     }
 
@@ -3504,7 +3534,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         let line_count = result.lines().count();
         // Must not exceed max_lines budget
         assert!(
@@ -3554,7 +3584,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         // Score should be 2 decimal places
         assert!(result.contains("score 0.86"), "Expected 2-decimal score in: {}", result);
     }
@@ -3618,13 +3648,13 @@ mod tests {
         };
 
         // show_docs=true should include both
-        let with_docs = format_context_for_injection(&bundle, 0.0, true, None);
+        let with_docs = format_context_for_injection(&bundle, 0.0, true);
         assert!(with_docs.contains("Source Files"), "Should have source section");
         assert!(with_docs.contains("Documentation"), "Should have doc section");
         assert!(with_docs.contains("README.md"));
 
         // show_docs=false should exclude documentation
-        let without_docs = format_context_for_injection(&bundle, 0.0, false, None);
+        let without_docs = format_context_for_injection(&bundle, 0.0, false);
         assert!(without_docs.contains("Source Files"), "Should have source section");
         assert!(!without_docs.contains("Documentation"), "Should not have doc section");
         assert!(!without_docs.contains("README.md"), "Doc file should be excluded");
@@ -3669,7 +3699,7 @@ mod tests {
             },
         };
         // Budget 0 — should not panic and should produce empty or minimal output
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         assert!(result.lines().count() <= 1, "Budget 0 should produce at most the header");
     }
 
@@ -3711,7 +3741,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         // Should still have the chunk header with file:lines
         assert!(result.contains("src/a.rs:1-10"));
         assert!(result.contains("fn_a"));
