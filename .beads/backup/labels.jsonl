@@ -10,8 +10,6 @@
 {"issue_id":"bo-3ofr","label":"hooks"}
 {"issue_id":"bo-4eq9o","label":"eval metrics"}
 {"issue_id":"bo-4iep","label":"P2"}
-{"issue_id":"bo-4kfv","label":"dx"}
-{"issue_id":"bo-4kfv","label":"indexing"}
 {"issue_id":"bo-5on35","label":"metrics"}
 {"issue_id":"bo-72f","label":"bobbin"}
 {"issue_id":"bo-72f","label":"tooling"}
@@ -43,8 +41,6 @@
 {"issue_id":"bo-drth","label":"relevance"}
 {"issue_id":"bo-fli6","label":"ci"}
 {"issue_id":"bo-fli6","label":"divergence"}
-{"issue_id":"bo-gx4r","label":"dx"}
-{"issue_id":"bo-gx4r","label":"injection"}
 {"issue_id":"bo-gzkq","label":"search-quality"}
 {"issue_id":"bo-i8yui","label":"eval"}
 {"issue_id":"bo-i8yui","label":"metrics"}
@@ -99,8 +95,6 @@
 {"issue_id":"bobbin-3lse","label":"gt:merge-request"}
 {"issue_id":"bobbin-57wr","label":"pitch"}
 {"issue_id":"bobbin-57wr","label":"search-quality"}
-{"issue_id":"bobbin-6lfcct","label":"bobbin"}
-{"issue_id":"bobbin-6lfcct","label":"dx"}
 {"issue_id":"bobbin-6qdw","label":"gt:merge-request"}
 {"issue_id":"bobbin-9mg0","label":"search-quality"}
 {"issue_id":"bobbin-aknwye","label":"pitch"}

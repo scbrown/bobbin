@@ -129,6 +129,25 @@ impl FeedbackStore {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Store a full injection record (called from inject-context hook).
+    pub fn store_injection(
+        &self,
+        injection_id: &str,
+        session_id: Option<&str>,
+        agent: Option<&str>,
+        query: Option<&str>,
+        files: &[String],
+        total_chunks: usize,
+        budget_lines: usize,
+    ) -> Result<()> {
+        let files_json = serde_json::to_string(files).unwrap_or_default();
+        self.conn.execute(
+            "INSERT OR REPLACE INTO injections (injection_id, session_id, agent, query, files_json, total_chunks, budget_lines) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![injection_id, session_id, agent, query, files_json, total_chunks as i64, budget_lines as i64],
+        )?;
+        Ok(())
+    }
+
     /// List feedback records with optional filters.
     pub fn list_feedback(&self, query: &FeedbackQuery) -> Result<Vec<FeedbackRecord>> {
         let limit = query.limit.unwrap_or(20).min(50);
