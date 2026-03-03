@@ -637,6 +637,14 @@ async fn inject_context_remote(
                 return Ok(());
             }
 
+            // Filter out chunks that duplicate CLAUDE.md content already in context
+            let mut resp = resp;
+            let prompt_dedup_count = filter_prompt_duplicates(&mut resp, &cwd);
+
+            if resp.files.is_empty() {
+                return Ok(());
+            }
+
             // Generate injection ID for feedback tracking
             let injection_id = generate_context_injection_id(prompt);
 
@@ -661,7 +669,12 @@ async fn inject_context_remote(
             }
 
             // Format structured context output
-            let out = format_context_response(&resp, budget, hooks_cfg.show_docs, Some(&injection_id));
+            let suffix = if prompt_dedup_count > 0 {
+                format!(", {} prompt-deduped", prompt_dedup_count)
+            } else {
+                String::new()
+            };
+            let out = format_context_response(&resp, budget, hooks_cfg.show_docs, Some(&injection_id), &suffix);
             print!("{}", out);
             Ok(())
         }
@@ -672,12 +685,93 @@ async fn inject_context_remote(
     }
 }
 
+/// Collect CLAUDE.md content from the working directory and ancestors,
+/// then filter out response chunks that are near-duplicates of that content.
+/// Returns the number of chunks filtered.
+fn filter_prompt_duplicates(
+    resp: &mut crate::http::client::ContextResponse,
+    cwd: &Path,
+) -> usize {
+    use crate::search::context::ContentDeduplicator;
+
+    // Collect CLAUDE.md content by walking up from cwd
+    let mut dedup = ContentDeduplicator::new();
+    let mut dir = Some(cwd.to_path_buf());
+    while let Some(d) = dir {
+        let claude_md = d.join("CLAUDE.md");
+        if claude_md.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&claude_md) {
+                // Split into sections by ## headers and seed each section
+                for section in split_md_sections(&content) {
+                    dedup.accept(section);
+                }
+            }
+        }
+        dir = d.parent().map(|p| p.to_path_buf());
+    }
+
+    if dedup.skipped == 0 && dedup.accepted_count() == 0 {
+        return 0; // No CLAUDE.md found, nothing to filter
+    }
+
+    // Filter chunks within each file
+    let mut removed = 0;
+    for file in &mut resp.files {
+        let before = file.chunks.len();
+        file.chunks.retain(|chunk| {
+            if let Some(ref content) = chunk.content {
+                !dedup.is_duplicate(content)
+            } else {
+                true // Keep chunks without content
+            }
+        });
+        removed += before - file.chunks.len();
+    }
+
+    // Remove files that have no chunks left
+    resp.files.retain(|f| !f.chunks.is_empty());
+
+    removed
+}
+
+/// Split markdown content into sections at ## boundaries.
+/// Each section includes its header line and body text.
+fn split_md_sections(content: &str) -> Vec<&str> {
+    let mut sections = Vec::new();
+    let mut start = 0;
+
+    for (i, line) in content.lines().enumerate() {
+        if line.starts_with("## ") && i > 0 {
+            let byte_offset = content
+                .lines()
+                .take(i)
+                .map(|l| l.len() + 1) // +1 for newline
+                .sum::<usize>();
+            let section = &content[start..byte_offset.min(content.len())];
+            if !section.trim().is_empty() {
+                sections.push(section);
+            }
+            start = byte_offset.min(content.len());
+        }
+    }
+    // Last section
+    if start < content.len() {
+        let section = &content[start..];
+        if !section.trim().is_empty() {
+            sections.push(section);
+        }
+    }
+
+    sections
+}
+
 /// Format a ContextResponse into structured text for injection.
 fn format_context_response(
     resp: &crate::http::client::ContextResponse,
     budget: usize,
     show_docs: bool,
     injection_id: Option<&str>,
+    extra_suffix: &str,
 ) -> String {
     use std::fmt::Write;
     let mut out = String::new();
@@ -688,13 +782,14 @@ fn format_context_response(
         .unwrap_or_default();
     let _ = writeln!(
         out,
-        "Bobbin found {} relevant files ({} direct, {} coupled, {} bridged, {}/{} budget lines){}:",
+        "Bobbin found {} relevant files ({} direct, {} coupled, {} bridged, {}/{} budget lines{}){}:",
         resp.summary.total_files,
         resp.summary.direct_hits,
         resp.summary.coupled_additions,
         resp.summary.bridged_additions,
         resp.summary.total_chunks,
         budget,
+        extra_suffix,
         id_suffix,
     );
 

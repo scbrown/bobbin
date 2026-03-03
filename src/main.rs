@@ -11,7 +11,7 @@ mod index;
 mod mcp;
 mod metrics;
 pub mod reactions;
-mod search;
+pub mod search;
 mod storage;
 pub mod tags;
 mod types;

@@ -170,7 +170,7 @@ pub fn is_zero(v: &usize) -> bool {
 /// Detects near-duplicate content using line-level Jaccard similarity.
 /// Keeps a set of normalized line hashes for each accepted chunk, and
 /// rejects new chunks whose line overlap exceeds the threshold (default 0.8).
-struct ContentDeduplicator {
+pub struct ContentDeduplicator {
     /// Line-hash sets for each accepted chunk
     accepted: Vec<HashSet<u64>>,
     /// Similarity threshold above which a chunk is considered a duplicate
@@ -180,7 +180,7 @@ struct ContentDeduplicator {
 }
 
 impl ContentDeduplicator {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             accepted: Vec::new(),
             threshold: 0.65,
@@ -206,7 +206,7 @@ impl ContentDeduplicator {
 
     /// Check if content is a near-duplicate of any accepted chunk.
     /// Returns true if the chunk should be skipped.
-    fn is_duplicate(&self, content: &str) -> bool {
+    pub fn is_duplicate(&self, content: &str) -> bool {
         let new_hashes = Self::line_hashes(content);
         // Tiny chunks (≤2 unique lines) get exact-match only
         if new_hashes.len() <= 2 {
@@ -225,8 +225,13 @@ impl ContentDeduplicator {
         false
     }
 
+    /// Number of accepted content entries.
+    pub fn accepted_count(&self) -> usize {
+        self.accepted.len()
+    }
+
     /// Accept a chunk's content (add to the set of known content).
-    fn accept(&mut self, content: &str) {
+    pub fn accept(&mut self, content: &str) {
         let hashes = Self::line_hashes(content);
         if !hashes.is_empty() {
             self.accepted.push(hashes);
