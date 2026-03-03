@@ -603,6 +603,7 @@ async fn inject_context_remote(
     //    not forwarding the endpoint).
     let client = Client::new(server_url);
     let role = crate::access::RepoFilter::resolve_role(None);
+    let detected_repo = detect_repo(hooks_cfg, &cwd);
     let context_result = client
         .context(
             prompt,
@@ -611,7 +612,7 @@ async fn inject_context_remote(
             Some(3),    // max_coupled: 3 coupled files per seed
             Some(20),   // search_limit: 20 initial results
             Some(0.1),  // coupling_threshold
-            None,       // repo filter
+            detected_repo.as_deref(),
             Some(&role),
         )
         .await;
@@ -661,7 +662,7 @@ async fn inject_context_remote(
         Err(_) => {
             // Fallback: /context endpoint unavailable, use /search
             let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
-            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, output, Some(&role), session_id).await
+            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, output, Some(&role), session_id, detected_repo.as_deref()).await
         }
     }
 }
@@ -725,9 +726,10 @@ async fn inject_context_remote_search_fallback(
     output: &OutputConfig,
     role: Option<&str>,
     session_id: Option<&str>,
+    repo: Option<&str>,
 ) -> Result<()> {
     let resp = client
-        .search(prompt, "hybrid", None, 10, None, role)
+        .search(prompt, "hybrid", None, 10, repo, role)
         .await
         .context("Remote search failed")?;
 
@@ -947,6 +949,26 @@ fn find_bobbin_root(start: &Path) -> Option<PathBuf> {
     loop {
         if Config::config_path(&dir).exists() {
             return Some(dir);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
+/// Detect the repo name from a working directory.
+/// Priority: (1) explicit config value, (2) nearest .git parent directory name.
+fn detect_repo(hooks_cfg: &crate::config::HooksConfig, cwd: &Path) -> Option<String> {
+    // Explicit config takes priority
+    if !hooks_cfg.repo.is_empty() {
+        return Some(hooks_cfg.repo.clone());
+    }
+
+    // Walk up to find nearest .git directory and use its parent name
+    let mut dir = cwd.to_path_buf();
+    loop {
+        if dir.join(".git").exists() {
+            return dir.file_name().map(|n| n.to_string_lossy().to_string());
         }
         if !dir.pop() {
             return None;
@@ -5140,5 +5162,38 @@ mod tests {
         assert!(!is_source_code_file("styles.css"));
         assert!(!is_source_code_file("Makefile"));
         assert!(!is_source_code_file("data.yaml"));
+    }
+
+    #[test]
+    fn test_detect_repo_explicit_config() {
+        let cfg = crate::config::HooksConfig {
+            repo: "my-repo".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(detect_repo(&cfg, Path::new("/tmp/whatever")), Some("my-repo".to_string()));
+    }
+
+    #[test]
+    fn test_detect_repo_from_git_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let git_dir = tmp.path().join(".git");
+        std::fs::create_dir(&git_dir).unwrap();
+        let subdir = tmp.path().join("src").join("lib");
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let cfg = crate::config::HooksConfig::default();
+        let result = detect_repo(&cfg, &subdir);
+        // Should find .git in tmp dir and return the dir name
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), tmp.path().file_name().unwrap().to_string_lossy());
+    }
+
+    #[test]
+    fn test_detect_repo_no_git() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = crate::config::HooksConfig::default();
+        // No .git dir in temp, should eventually return None (or find system .git)
+        // We test that it doesn't panic
+        let _result = detect_repo(&cfg, tmp.path());
     }
 }

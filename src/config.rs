@@ -330,6 +330,11 @@ pub struct HooksConfig {
     /// When false, doc files are excluded from output but still used for
     /// provenance bridging to discover relevant source files.
     pub show_docs: bool,
+    /// Repo name to filter search results to. When set, hook injections
+    /// only return results from this repo, preventing cross-repo bleed.
+    /// Auto-detected from git repo name if not explicitly set.
+    #[serde(default)]
+    pub repo: String,
 }
 
 impl Default for HooksConfig {
@@ -342,6 +347,7 @@ impl Default for HooksConfig {
             gate_threshold: 0.50,
             dedup_enabled: true,
             show_docs: true,
+            repo: String::new(),
         }
     }
 }
