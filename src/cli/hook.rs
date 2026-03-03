@@ -220,7 +220,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook inject-context",
+                            "command": "bobbin hook inject-context || true",
                             "timeout": 10,
                             "statusMessage": "Loading code context..."
                         }
@@ -233,7 +233,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook session-context",
+                            "command": "bobbin hook session-context || true",
                             "timeout": 10,
                             "statusMessage": "Recovering project context..."
                         }
@@ -246,7 +246,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook post-tool-use",
+                            "command": "bobbin hook post-tool-use || true",
                             "timeout": 10,
                             "statusMessage": "Analyzing file changes..."
                         }
@@ -258,7 +258,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook post-tool-use-failure",
+                            "command": "bobbin hook post-tool-use-failure || true",
                             "timeout": 10,
                             "statusMessage": "Searching for related context..."
                         }
@@ -3789,13 +3789,13 @@ mod tests {
         let ups = hooks["UserPromptSubmit"].as_array().unwrap();
         assert_eq!(ups.len(), 1);
         let cmd = ups[0]["hooks"][0]["command"].as_str().unwrap();
-        assert_eq!(cmd, "bobbin hook inject-context");
+        assert_eq!(cmd, "bobbin hook inject-context || true");
 
         // Verify session-context command
         let ss = hooks["SessionStart"].as_array().unwrap();
         assert_eq!(ss.len(), 1);
         let cmd = ss[0]["hooks"][0]["command"].as_str().unwrap();
-        assert_eq!(cmd, "bobbin hook session-context");
+        assert_eq!(cmd, "bobbin hook session-context || true");
         assert_eq!(ss[0]["matcher"].as_str().unwrap(), "compact");
     }
 
@@ -3832,7 +3832,7 @@ mod tests {
         );
         assert_eq!(
             ups[1]["hooks"][0]["command"].as_str().unwrap(),
-            "bobbin hook inject-context"
+            "bobbin hook inject-context || true"
         );
     }
 
@@ -3856,6 +3856,21 @@ mod tests {
                 {
                     "type": "command",
                     "command": "bobbin hook inject-context",
+                    "timeout": 10
+                }
+            ]
+        });
+        assert!(is_bobbin_hook_group(&group));
+    }
+
+    #[test]
+    fn test_is_bobbin_hook_group_with_fallback() {
+        // Old-format hooks (without || true) should still be detected
+        let group = json!({
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "bobbin hook inject-context || true",
                     "timeout": 10
                 }
             ]
@@ -4173,12 +4188,12 @@ mod tests {
         let ups = hooks["UserPromptSubmit"].as_array().unwrap();
         assert_eq!(ups.len(), 2);
         assert_eq!(ups[0]["hooks"][0]["command"].as_str().unwrap(), "gt mail check --inject");
-        assert_eq!(ups[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook inject-context");
+        assert_eq!(ups[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook inject-context || true");
 
         let ss = hooks["SessionStart"].as_array().unwrap();
         assert_eq!(ss.len(), 2);
         assert_eq!(ss[0]["hooks"][0]["command"].as_str().unwrap(), "gt prime --hook");
-        assert_eq!(ss[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook session-context");
+        assert_eq!(ss[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook session-context || true");
 
         // Events bobbin doesn't touch are untouched
         assert_eq!(hooks["PreCompact"].as_array().unwrap().len(), 1);
@@ -4235,7 +4250,7 @@ mod tests {
         assert_eq!(ptu[0]["matcher"].as_str().unwrap(), "Write|Edit|Bash|Grep|Glob|Read");
         assert_eq!(
             ptu[0]["hooks"][0]["command"].as_str().unwrap(),
-            "bobbin hook post-tool-use"
+            "bobbin hook post-tool-use || true"
         );
         assert_eq!(ptu[0]["hooks"][0]["timeout"].as_i64().unwrap(), 10);
 
@@ -4244,7 +4259,7 @@ mod tests {
         assert_eq!(ptuf.len(), 1);
         assert_eq!(
             ptuf[0]["hooks"][0]["command"].as_str().unwrap(),
-            "bobbin hook post-tool-use-failure"
+            "bobbin hook post-tool-use-failure || true"
         );
         assert_eq!(ptuf[0]["hooks"][0]["timeout"].as_i64().unwrap(), 10);
     }
