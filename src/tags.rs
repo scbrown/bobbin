@@ -178,10 +178,28 @@ impl TagsConfig {
             }
         }
         // Fall back to global effect
-        self.effects.get(tag).map(|e| ResolvedEffect {
-            boost: e.boost,
-            exclude: e.exclude,
-        })
+        if let Some(e) = self.effects.get(tag) {
+            return Some(ResolvedEffect {
+                boost: e.boost,
+                exclude: e.exclude,
+            });
+        }
+        // Built-in defaults for auto-tags (overridable via tags.toml)
+        builtin_effect(tag)
+    }
+}
+
+/// Built-in default effects for auto-tags.
+/// These apply when no explicit effect is configured in tags.toml,
+/// giving sensible defaults that users can override.
+fn builtin_effect(tag: &str) -> Option<ResolvedEffect> {
+    match tag {
+        // Go init() functions: CLI flag definitions that pollute semantic search
+        "auto:init" => Some(ResolvedEffect {
+            boost: -0.8,
+            exclude: false,
+        }),
+        _ => None,
     }
 }
 
@@ -329,6 +347,23 @@ pub fn convention_tags(file_path: &str) -> Vec<String> {
     tags
 }
 
+/// Get chunk-level convention tags based on function name and language.
+/// These complement file-level convention_tags() with per-chunk heuristics.
+fn chunk_convention_tags(chunk: &crate::types::Chunk) -> Vec<String> {
+    let mut tags = Vec::new();
+
+    // Go init() functions: package initialization / CLI flag registration boilerplate.
+    // These contain keyword-rich flag descriptions that pollute semantic search.
+    if chunk.language == "go"
+        && chunk.chunk_type == crate::types::ChunkType::Function
+        && chunk.name.as_deref() == Some("init")
+    {
+        tags.push("auto:init".to_string());
+    }
+
+    tags
+}
+
 /// Resolve all tags for a file path: convention tags + pattern rules from config.
 /// Returns a comma-separated sorted string (empty string if no tags).
 pub fn resolve_tags(config: &TagsConfig, file_path: &str, repo: Option<&str>) -> String {
@@ -392,6 +427,9 @@ pub fn resolve_tags_for_chunks(
     // 4. Merge and assign per-chunk
     for chunk in chunks.iter_mut() {
         let mut tags = file_tags.clone();
+
+        // Chunk-level convention tags based on function name + language
+        tags.extend(chunk_convention_tags(chunk));
 
         // Check for comment tags on the line immediately before this chunk
         if chunk.start_line > 1 {
@@ -1251,5 +1289,87 @@ tags = ["docs"]
         assert_eq!(config.frontmatter.field, "tags");
         assert!(config.comments.enabled);
         assert_eq!(config.comments.prefix, "bobbin:tag");
+    }
+
+    #[test]
+    fn test_chunk_convention_tags_go_init() {
+        use crate::types::{Chunk, ChunkType};
+
+        // Go init() function should get auto:init tag
+        let chunk = Chunk {
+            id: "test".to_string(),
+            file_path: "cmd/mail.go".to_string(),
+            chunk_type: ChunkType::Function,
+            name: Some("init".to_string()),
+            start_line: 1,
+            end_line: 20,
+            content: "func init() { ... }".to_string(),
+            language: "go".to_string(),
+            tags: String::new(),
+        };
+        let tags = chunk_convention_tags(&chunk);
+        assert_eq!(tags, vec!["auto:init"]);
+
+        // Go main() function should NOT get auto:init
+        let main_chunk = Chunk {
+            name: Some("main".to_string()),
+            ..chunk.clone()
+        };
+        assert!(chunk_convention_tags(&main_chunk).is_empty());
+
+        // Rust init() should NOT get auto:init (Go-specific)
+        let rust_chunk = Chunk {
+            language: "rust".to_string(),
+            ..chunk.clone()
+        };
+        assert!(chunk_convention_tags(&rust_chunk).is_empty());
+
+        // Go method (not function) named init should NOT get tagged
+        let method_chunk = Chunk {
+            chunk_type: ChunkType::Method,
+            ..chunk.clone()
+        };
+        assert!(chunk_convention_tags(&method_chunk).is_empty());
+    }
+
+    #[test]
+    fn test_builtin_effect_auto_init() {
+        // auto:init has a built-in demote effect
+        let effect = builtin_effect("auto:init");
+        assert!(effect.is_some());
+        let e = effect.unwrap();
+        assert!((e.boost - (-0.8)).abs() < f32::EPSILON);
+        assert!(!e.exclude);
+
+        // Unknown tags have no builtin effect
+        assert!(builtin_effect("unknown").is_none());
+    }
+
+    #[test]
+    fn test_builtin_effect_overridable() {
+        // User-configured effect should override builtin
+        let config = TagsConfig {
+            effects: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "auto:init".to_string(),
+                    TagEffect {
+                        boost: -0.5, // less aggressive than builtin
+                        exclude: false,
+                    },
+                );
+                m
+            },
+            ..Default::default()
+        };
+
+        let resolved = config.resolve_effect("auto:init", None);
+        assert_eq!(
+            resolved,
+            Some(ResolvedEffect {
+                boost: -0.5,
+                exclude: false,
+            })
+        );
     }
 }
