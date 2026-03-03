@@ -278,7 +278,7 @@ pub(super) async fn search(
 
     // Apply role-based access filtering
     let access = resolve_filter(&state, params.role.as_deref());
-    let results = access.filter_vec(results, |r| RepoFilter::repo_from_path(&r.chunk.file_path));
+    let results = access.filter_vec_by_path(results, |r| &r.chunk.file_path);
 
     let filtered: Vec<_> = if let Some(ref chunk_type) = type_filter {
         results
@@ -890,7 +890,7 @@ pub(super) async fn grep(
 
     // Apply role-based access filtering
     let access = resolve_filter(&state, params.role.as_deref());
-    let results = access.filter_vec(results, |r| RepoFilter::repo_from_path(&r.chunk.file_path));
+    let results = access.filter_vec_by_path(results, |r| &r.chunk.file_path);
 
     let filtered: Vec<SearchResult> = results
         .into_iter()
@@ -1119,7 +1119,7 @@ pub(super) async fn context(
 
     // Apply role-based access filtering
     let access = resolve_filter(&state, params.role.as_deref());
-    bundle.files.retain(|f| access.is_allowed(RepoFilter::repo_from_path(&f.path)));
+    bundle.files.retain(|f| access.is_path_allowed(&f.path));
 
     // Apply group filtering (narrow to repos in the named group)
     if let Some(ref group_name) = params.group {
@@ -1264,7 +1264,7 @@ pub(super) async fn related(
                 co_changes: c.co_changes,
             }
         })
-        .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.path)))
+        .filter(|r| access.is_path_allowed(&r.path))
         .collect();
 
     Ok(Json(RelatedResponse {
@@ -1337,7 +1337,7 @@ pub(super) async fn find_refs(
 
     // Filter definition if it's in a denied repo
     let definition = refs.definition.and_then(|d| {
-        if access.is_allowed(RepoFilter::repo_from_path(&d.file_path)) {
+        if access.is_path_allowed(&d.file_path) {
             Some(SymbolDefinitionOutput {
                 name: d.name,
                 chunk_type: d.chunk_type.to_string(),
@@ -1354,7 +1354,7 @@ pub(super) async fn find_refs(
     let usages: Vec<SymbolUsageOutput> = refs
         .usages
         .iter()
-        .filter(|u| access.is_allowed(RepoFilter::repo_from_path(&u.file_path)))
+        .filter(|u| access.is_path_allowed(&u.file_path))
         .map(|u| SymbolUsageOutput {
             file_path: u.file_path.clone(),
             line: u.line,
@@ -1561,7 +1561,7 @@ pub(super) async fn hotspots(
     }
 
     let access = resolve_filter(&state, params.role.as_deref());
-    hotspot_items.retain(|h| access.is_allowed(RepoFilter::repo_from_path(&h.file)));
+    hotspot_items.retain(|h| access.is_path_allowed(&h.file));
     hotspot_items
         .sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     hotspot_items.truncate(limit);
@@ -1662,7 +1662,7 @@ pub(super) async fn impact(
     let access = resolve_filter(&state, params.role.as_deref());
     let filtered_results: Vec<ImpactResultItem> = results
         .iter()
-        .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.path)))
+        .filter(|r| access.is_path_allowed(&r.path))
         .map(|r| ImpactResultItem {
             file: r.path.clone(),
             signal: signal_name(&r.signal).to_string(),
@@ -1799,7 +1799,7 @@ pub(super) async fn review(
     let filtered_files: Vec<ContextFileOutput> = bundle
         .files
         .iter()
-        .filter(|f| access.is_allowed(RepoFilter::repo_from_path(&f.path)))
+        .filter(|f| access.is_path_allowed(&f.path))
         .map(to_context_file)
         .collect();
 
@@ -2001,12 +2001,12 @@ pub(super) async fn similar(
     // Apply role-based access filtering to response
     let response = SimilarResponse {
         results: response.results.into_iter()
-            .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.file_path)))
+            .filter(|r| access.is_path_allowed(&r.file_path))
             .collect(),
         clusters: response.clusters.into_iter()
-            .filter(|c| access.is_allowed(RepoFilter::repo_from_path(&c.representative.file_path)))
+            .filter(|c| access.is_path_allowed(&c.representative.file_path))
             .map(|mut c| {
-                c.members.retain(|m| access.is_allowed(RepoFilter::repo_from_path(&m.file_path)));
+                c.members.retain(|m| access.is_path_allowed(&m.file_path));
                 c.member_count = c.members.len();
                 c
             })
