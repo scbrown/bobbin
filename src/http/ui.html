@@ -97,6 +97,39 @@ h3{font-size:0.95rem;font-weight:600;margin-bottom:0.5rem;color:var(--dim)}
 .bead-title{font-size:0.9rem}
 .bead-meta{font-size:0.75rem;color:var(--dim);margin-top:0.25rem}
 
+/* Autocomplete */
+.search-wrap{position:relative;flex:1;display:flex}
+.search-wrap input{width:100%}
+.ac-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);
+  border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;z-index:200;display:none}
+.ac-dropdown.open{display:block}
+.ac-item{padding:0.4rem 0.75rem;font-size:0.85rem;cursor:pointer;font-family:var(--mono)}
+.ac-item:hover,.ac-item.selected{background:var(--surface2);color:var(--accent)}
+.ac-field{color:var(--dim);font-size:0.75rem;margin-left:0.5rem}
+
+/* Filter chips */
+.filter-chips{display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.5rem}
+.filter-chip{display:inline-flex;align-items:center;gap:0.3rem;font-size:0.75rem;font-family:var(--mono);
+  padding:2px 8px;border-radius:4px;background:var(--surface2);color:var(--accent);border:1px solid var(--border)}
+.filter-chip.negated{color:var(--red);border-color:rgba(248,113,113,0.3)}
+.filter-chip .chip-x{cursor:pointer;color:var(--dim);font-size:0.7rem;margin-left:0.15rem}
+.filter-chip .chip-x:hover{color:var(--red)}
+
+/* Syntax help */
+.syntax-help{position:relative;display:inline-flex}
+.syntax-btn{background:none;border:1px solid var(--border);border-radius:50%;width:24px;height:24px;
+  color:var(--dim);cursor:pointer;font-size:0.75rem;display:flex;align-items:center;justify-content:center}
+.syntax-btn:hover{color:var(--accent);border-color:var(--accent)}
+.syntax-popup{display:none;position:absolute;top:calc(100% + 6px);right:0;width:340px;background:var(--surface);
+  border:1px solid var(--border);border-radius:6px;padding:0.75rem;z-index:200;font-size:0.8rem;
+  box-shadow:0 4px 12px rgba(0,0,0,0.4)}
+.syntax-popup.open{display:block}
+.syntax-popup h4{font-size:0.8rem;color:var(--accent);margin-bottom:0.5rem}
+.syntax-popup code{font-family:var(--mono);font-size:0.75rem;background:var(--bg);padding:1px 4px;border-radius:3px}
+.syntax-popup .syn-row{display:flex;gap:0.5rem;margin-bottom:0.3rem}
+.syntax-popup .syn-key{color:var(--cyan);min-width:120px;font-family:var(--mono);font-size:0.75rem}
+.syntax-popup .syn-desc{color:var(--dim)}
+
 /* Spinner */
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);
   border-top-color:var(--accent);border-radius:50%;animation:spin 0.6s linear infinite}
@@ -153,8 +186,12 @@ td.mono{font-family:var(--mono)}
   <!-- SEARCH PAGE -->
   <div class="page" id="page-search">
     <h2>Search</h2>
+    <div id="filter-chips" class="filter-chips"></div>
     <div class="search-box">
-      <input type="text" id="search-q" placeholder="Search code, docs, symbols..." autofocus>
+      <div class="search-wrap">
+        <input type="text" id="search-q" placeholder="Search code, docs, symbols... (try repo: lang: type:)" autocomplete="off" autofocus>
+        <div class="ac-dropdown" id="ac-dropdown"></div>
+      </div>
       <select id="search-mode">
         <option value="hybrid">Hybrid</option>
         <option value="semantic">Semantic</option>
@@ -165,6 +202,22 @@ td.mono{font-family:var(--mono)}
         <input type="checkbox" id="search-archive" style="accent-color:var(--accent)"> Include archive
       </label>
       <button onclick="doSearch()">Search</button>
+      <div class="syntax-help">
+        <button class="syntax-btn" onclick="toggleSyntaxHelp()" title="Query syntax help">?</button>
+        <div class="syntax-popup" id="syntax-popup">
+          <h4>Query Syntax</h4>
+          <div class="syn-row"><span class="syn-key">repo:name</span><span class="syn-desc">Filter by repository</span></div>
+          <div class="syn-row"><span class="syn-key">lang:rust,go</span><span class="syn-desc">Filter by language(s)</span></div>
+          <div class="syn-row"><span class="syn-key">type:function</span><span class="syn-desc">Filter by chunk type</span></div>
+          <div class="syn-row"><span class="syn-key">file:*.rs</span><span class="syn-desc">Filter by file path (glob)</span></div>
+          <div class="syn-row"><span class="syn-key">group:infra</span><span class="syn-desc">Filter by repo group</span></div>
+          <div class="syn-row"><span class="syn-key">-repo:test</span><span class="syn-desc">Exclude a filter value</span></div>
+          <div class="syn-row"><span class="syn-key">"exact phrase"</span><span class="syn-desc">Match exact phrase</span></div>
+          <div class="syn-row"><span class="syn-key">A OR B</span><span class="syn-desc">Match either term</span></div>
+          <div class="syn-row"><span class="syn-key">-word / NOT word</span><span class="syn-desc">Exclude term from results</span></div>
+          <div class="syn-row"><span class="syn-key">/regex/</span><span class="syn-desc">Regex pattern filter</span></div>
+        </div>
+      </div>
     </div>
     <div id="search-results"></div>
   </div>
@@ -248,7 +301,31 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 
 // Keyboard shortcut: Enter to search
-document.getElementById('search-q').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+const searchInput = document.getElementById('search-q');
+const acDropdown = document.getElementById('ac-dropdown');
+let acItems = [];
+let acSelected = -1;
+let acCache = {};
+
+searchInput.addEventListener('keydown', e => {
+  if (acDropdown.classList.contains('open')) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); acNav(1); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); acNav(-1); return; }
+    if (e.key === 'Tab' || e.key === 'Enter') {
+      if (acSelected >= 0 && acSelected < acItems.length) {
+        e.preventDefault(); acAccept(acItems[acSelected]); return;
+      }
+      acClose();
+      if (e.key === 'Enter') doSearch();
+      return;
+    }
+    if (e.key === 'Escape') { acClose(); return; }
+  }
+  if (e.key === 'Enter') doSearch();
+});
+searchInput.addEventListener('input', () => { acCheck(); updateChips(); });
+searchInput.addEventListener('blur', () => { setTimeout(acClose, 150); });
+
 document.getElementById('beads-q').addEventListener('keydown', e => { if (e.key === 'Enter') doBeadsSearch(); });
 
 // Language colors
@@ -610,6 +687,116 @@ async function loadFeedbackList() {
     el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
   }
 }
+
+// -- Autocomplete --
+const AC_FIELDS = ['repo','lang','type','file','path','group','tag'];
+
+function acCheck() {
+  const val = searchInput.value;
+  const pos = searchInput.selectionStart;
+  const before = val.slice(0, pos);
+  // Match field:partial at cursor position
+  const m = before.match(/(-?)(repo|lang|language|type|kind|file|path|group|tag|label):([^\s]*)$/i);
+  if (!m) { acClose(); return; }
+  const field = m[2].toLowerCase();
+  const prefix = m[3].toLowerCase();
+  // Map aliases to canonical suggest field names
+  const fieldMap = {language:'lang',kind:'type',filename:'file',filepath:'path',label:'tag',repository:'repo'};
+  const suggestField = fieldMap[field] || field;
+  acFetch(suggestField, prefix);
+}
+
+async function acFetch(field, prefix) {
+  const key = field + ':' + prefix;
+  if (acCache[key]) { acShow(acCache[key], field, prefix); return; }
+  try {
+    const url = `${API}/suggest?field=${field}&q=${encodeURIComponent(prefix)}&limit=12`;
+    const data = await fetch(url).then(r => r.json());
+    const values = data.values || [];
+    acCache[key] = values;
+    acShow(values, field, prefix);
+  } catch(e) { acClose(); }
+}
+
+function acShow(values, field, prefix) {
+  if (values.length === 0) { acClose(); return; }
+  acItems = values;
+  acSelected = -1;
+  acDropdown.innerHTML = values.map((v, i) =>
+    `<div class="ac-item" data-idx="${i}" onmousedown="acAccept('${esc(v)}')">${esc(v)}</div>`
+  ).join('');
+  acDropdown.classList.add('open');
+}
+
+function acNav(dir) {
+  acSelected += dir;
+  if (acSelected < 0) acSelected = acItems.length - 1;
+  if (acSelected >= acItems.length) acSelected = 0;
+  acDropdown.querySelectorAll('.ac-item').forEach((el, i) => {
+    el.classList.toggle('selected', i === acSelected);
+  });
+}
+
+function acAccept(value) {
+  const val = searchInput.value;
+  const pos = searchInput.selectionStart;
+  const before = val.slice(0, pos);
+  const after = val.slice(pos);
+  // Replace the partial value after the colon
+  const m = before.match(/(-?(?:repo|lang|language|type|kind|file|path|group|tag|label):)([^\s]*)$/i);
+  if (m) {
+    const prefix = before.slice(0, before.length - m[0].length) + m[1] + value;
+    searchInput.value = prefix + (after.startsWith(' ') ? after : ' ' + after);
+    searchInput.selectionStart = searchInput.selectionEnd = prefix.length + 1;
+  }
+  acClose();
+  updateChips();
+  searchInput.focus();
+}
+
+function acClose() {
+  acDropdown.classList.remove('open');
+  acItems = [];
+  acSelected = -1;
+}
+
+// -- Filter chips --
+function updateChips() {
+  const el = document.getElementById('filter-chips');
+  const val = searchInput.value;
+  const chips = [];
+  // Parse filters from query
+  const re = /(-?)(repo|lang|language|type|kind|file|path|group|tag|label):("[^"]*"|[^\s]+)/gi;
+  let match;
+  while ((match = re.exec(val)) !== null) {
+    const neg = match[1] === '-';
+    const field = match[2];
+    const value = match[3].replace(/^"|"$/g, '');
+    chips.push({ field, value, neg, raw: match[0] });
+  }
+  if (chips.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = chips.map(c =>
+    `<span class="filter-chip${c.neg ? ' negated' : ''}">${c.neg ? '-' : ''}${c.field}:${esc(c.value)}<span class="chip-x" onclick="removeChip('${esc(c.raw)}')">&times;</span></span>`
+  ).join('');
+}
+
+function removeChip(raw) {
+  searchInput.value = searchInput.value.replace(raw, '').replace(/\s{2,}/g, ' ').trim();
+  updateChips();
+  searchInput.focus();
+}
+
+// -- Syntax help --
+function toggleSyntaxHelp() {
+  document.getElementById('syntax-popup').classList.toggle('open');
+}
+// Close syntax help on outside click
+document.addEventListener('click', e => {
+  const popup = document.getElementById('syntax-popup');
+  if (popup.classList.contains('open') && !e.target.closest('.syntax-help')) {
+    popup.classList.remove('open');
+  }
+});
 
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 

@@ -2137,6 +2137,11 @@ guidance = "All agents"
         let bobbin_dir = tmp.path().join(".bobbin");
         std::fs::create_dir_all(&bobbin_dir).unwrap();
 
+        // Isolate from host global config
+        let fake_config = tmp.path().join("fake_xdg");
+        std::fs::create_dir_all(&fake_config).unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", &fake_config);
+
         // Create local reactions.toml
         std::fs::write(
             bobbin_dir.join("reactions.toml"),
@@ -2149,8 +2154,12 @@ guidance = "Local guidance"
         )
         .unwrap();
 
-        // Load — should get local rules (global path doesn't exist in test)
+        // Load — should get local rules only (no global config in isolated dir)
         let config = ReactionConfig::load_for_repo(tmp.path());
+
+        // Restore env
+        std::env::remove_var("XDG_CONFIG_HOME");
+
         assert_eq!(config.reactions.len(), 1);
         assert_eq!(config.reactions[0].name, "local-rule");
     }
