@@ -1,6 +1,5 @@
 mod common;
 
-use assert_cmd::Command;
 use common::TestProject;
 use predicates::prelude::*;
 
@@ -8,7 +7,7 @@ use predicates::prelude::*;
 fn status_not_initialized() {
     let project = TestProject::new();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("status")
         .arg(project.path())
         .assert()
@@ -20,7 +19,7 @@ fn status_not_initialized() {
 fn status_not_initialized_json() {
     let project = TestProject::new();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["--json", "status"])
         .arg(project.path())
         .assert()
@@ -33,14 +32,14 @@ fn status_after_init_shows_ready() {
     let project = TestProject::new();
 
     // Initialize
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("init")
         .arg(project.path())
         .assert()
         .success();
 
     // Check status
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("status")
         .arg(project.path())
         .assert()
@@ -52,13 +51,13 @@ fn status_after_init_shows_ready() {
 fn status_json_after_init() {
     let project = TestProject::new();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("init")
         .arg(project.path())
         .assert()
         .success();
 
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["--json", "status"])
         .arg(project.path())
         .assert()
@@ -77,13 +76,13 @@ fn status_json_after_init() {
 fn status_shows_zero_files_before_index() {
     let project = TestProject::new();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("init")
         .arg(project.path())
         .assert()
         .success();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("status")
         .arg(project.path())
         .assert()

@@ -1,6 +1,5 @@
 mod common;
 
-use assert_cmd::Command;
 use common::TestProject;
 use predicates::prelude::*;
 
@@ -9,7 +8,7 @@ fn index_fails_without_init() {
     let project = TestProject::new();
     project.write_rust_fixtures();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("index")
         .arg(project.path())
         .assert()
@@ -27,7 +26,7 @@ fn index_rust_files() {
     if !project.bobbin_index() { return };
 
     // Verify via status
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["--json", "status"])
         .arg(project.path())
         .assert()
@@ -54,7 +53,7 @@ fn index_json_output() {
     // Check if ONNX runtime is available via plain index first
     if !project.bobbin_index() { return };
 
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["--json", "index", "--force"])
         .arg(project.path())
         .assert()
@@ -81,7 +80,7 @@ fn index_incremental_skips_unchanged_files() {
     if !project.bobbin_index() { return };
 
     // Re-index without changes — should skip everything (0 files indexed)
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["--json", "index"])
         .arg(project.path())
         .assert()
@@ -108,7 +107,7 @@ fn index_incremental_reindexes_modified_file() {
     project.write_file("src/lib.rs", "pub fn modified() -> bool { true }\npub fn another() -> i32 { 42 }\n");
 
     // Re-index — should pick up the changed file
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["--json", "index"])
         .arg(project.path())
         .assert()
@@ -133,7 +132,7 @@ fn index_incremental_flag_backwards_compat() {
     if !project.bobbin_index() { return };
 
     // --incremental flag should still work (now a no-op since it's the default)
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["--json", "index", "--incremental"])
         .arg(project.path())
         .assert()
@@ -156,7 +155,7 @@ fn index_force_reindexes_all() {
     if !project.bobbin_index() { return };
 
     // Force reindex
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["--json", "index", "--force"])
         .arg(project.path())
         .assert()
@@ -182,7 +181,7 @@ fn index_multi_language() {
     // Check ONNX runtime available, then get JSON output via force reindex
     if !project.bobbin_index() { return };
 
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["--json", "index", "--force"])
         .arg(project.path())
         .assert()
@@ -200,7 +199,7 @@ fn index_multi_language() {
     );
 
     // Verify via detailed status
-    let status_output = Command::new(TestProject::bobbin_bin())
+    let status_output = TestProject::bobbin_cmd()
         .args(["--json", "status", "--detailed"])
         .arg(project.path())
         .assert()

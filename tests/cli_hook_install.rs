@@ -1,6 +1,5 @@
 mod common;
 
-use assert_cmd::Command;
 use common::TestProject;
 use predicates::prelude::*;
 
@@ -11,7 +10,7 @@ fn hook_install_creates_settings_json() {
     let project = TestProject::new();
     project.git_commit("initial");
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install"])
         .current_dir(project.path())
         .assert()
@@ -31,7 +30,7 @@ fn hook_install_creates_settings_json() {
     let cmd = settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
         .as_str()
         .unwrap();
-    assert_eq!(cmd, "bobbin hook inject-context");
+    assert_eq!(cmd, "bobbin hook inject-context || true");
 }
 
 #[test]
@@ -41,7 +40,7 @@ fn hook_install_idempotent() {
 
     // Install twice
     for _ in 0..2 {
-        Command::new(TestProject::bobbin_bin())
+        TestProject::bobbin_cmd()
             .args(["hook", "install"])
             .current_dir(project.path())
             .assert()
@@ -86,7 +85,7 @@ fn hook_install_preserves_existing_hooks() {
     )
     .unwrap();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install"])
         .current_dir(project.path())
         .assert()
@@ -107,7 +106,7 @@ fn hook_install_preserves_existing_hooks() {
     );
     assert_eq!(
         ups[1]["hooks"][0]["command"].as_str().unwrap(),
-        "bobbin hook inject-context"
+        "bobbin hook inject-context || true"
     );
 }
 
@@ -164,7 +163,7 @@ fn hook_install_global_preserves_existing_hooks() {
     )
     .unwrap();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install", "--global"])
         .env("HOME", &fake_home)
         .current_dir(project.path())
@@ -184,7 +183,7 @@ fn hook_install_global_preserves_existing_hooks() {
     );
     assert_eq!(
         ups[1]["hooks"][0]["command"].as_str().unwrap(),
-        "bobbin hook inject-context"
+        "bobbin hook inject-context || true"
     );
 
     // Gas Town SessionStart hook preserved alongside bobbin
@@ -196,7 +195,7 @@ fn hook_install_global_preserves_existing_hooks() {
     );
     assert_eq!(
         ss[1]["hooks"][0]["command"].as_str().unwrap(),
-        "bobbin hook session-context"
+        "bobbin hook session-context || true"
     );
 
     // Events bobbin doesn't touch are completely untouched
@@ -247,7 +246,7 @@ fn hook_install_global_uninstall_preserves_other_tools() {
     .unwrap();
 
     // Install bobbin hooks
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install", "--global"])
         .env("HOME", &fake_home)
         .current_dir(project.path())
@@ -255,7 +254,7 @@ fn hook_install_global_uninstall_preserves_other_tools() {
         .success();
 
     // Now uninstall bobbin hooks
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "uninstall", "--global"])
         .env("HOME", &fake_home)
         .current_dir(project.path())
@@ -282,7 +281,7 @@ fn hook_install_json_output() {
     let project = TestProject::new();
     project.git_commit("initial");
 
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["hook", "install", "--json"])
         .current_dir(project.path())
         .assert()
@@ -304,14 +303,14 @@ fn hook_uninstall_removes_bobbin_hooks() {
     project.git_commit("initial");
 
     // Install first
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install"])
         .current_dir(project.path())
         .assert()
         .success();
 
     // Uninstall
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "uninstall"])
         .current_dir(project.path())
         .assert()
@@ -331,7 +330,7 @@ fn hook_uninstall_no_settings_file() {
     let project = TestProject::new();
     project.git_commit("initial");
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "uninstall"])
         .current_dir(project.path())
         .assert()
@@ -368,7 +367,7 @@ fn hook_uninstall_preserves_other_hooks() {
     )
     .unwrap();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "uninstall"])
         .current_dir(project.path())
         .assert()
@@ -393,7 +392,7 @@ fn install_git_hook_creates_post_commit() {
     let project = TestProject::new();
     project.git_commit("initial");
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install-git-hook"])
         .current_dir(project.path())
         .assert()
@@ -422,7 +421,7 @@ fn install_git_hook_idempotent() {
 
     // Install twice
     for _ in 0..2 {
-        Command::new(TestProject::bobbin_bin())
+        TestProject::bobbin_cmd()
             .args(["hook", "install-git-hook"])
             .current_dir(project.path())
             .assert()
@@ -453,7 +452,7 @@ fn install_git_hook_appends_to_existing() {
     )
     .unwrap();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install-git-hook"])
         .current_dir(project.path())
         .assert()
@@ -472,13 +471,13 @@ fn uninstall_git_hook_removes_section() {
     project.git_commit("initial");
 
     // Install then uninstall
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install-git-hook"])
         .current_dir(project.path())
         .assert()
         .success();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "uninstall-git-hook"])
         .current_dir(project.path())
         .assert()
@@ -504,14 +503,14 @@ fn uninstall_git_hook_preserves_other_sections() {
     )
     .unwrap();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install-git-hook"])
         .current_dir(project.path())
         .assert()
         .success();
 
     // Uninstall bobbin
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "uninstall-git-hook"])
         .current_dir(project.path())
         .assert()
@@ -527,7 +526,7 @@ fn uninstall_git_hook_no_hook_file() {
     let project = TestProject::new();
     project.git_commit("initial");
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "uninstall-git-hook"])
         .current_dir(project.path())
         .assert()
@@ -543,27 +542,27 @@ fn hook_status_shows_installed_state() {
     project.git_commit("initial");
 
     // Initialize bobbin (status needs .bobbin/config.toml)
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["init"])
         .current_dir(project.path())
         .assert()
         .success();
 
     // Install hooks
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install"])
         .current_dir(project.path())
         .assert()
         .success();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install-git-hook"])
         .current_dir(project.path())
         .assert()
         .success();
 
     // Check status
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "status"])
         .current_dir(project.path())
         .assert()
@@ -580,19 +579,19 @@ fn hook_status_json_reflects_installation() {
     let project = TestProject::new();
     project.git_commit("initial");
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["init"])
         .current_dir(project.path())
         .assert()
         .success();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install"])
         .current_dir(project.path())
         .assert()
         .success();
 
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["hook", "status", "--json"])
         .current_dir(project.path())
         .assert()

@@ -1,6 +1,5 @@
 mod common;
 
-use assert_cmd::Command;
 use common::TestProject;
 use predicates::prelude::*;
 
@@ -8,7 +7,7 @@ use predicates::prelude::*;
 fn init_creates_bobbin_directory() {
     let project = TestProject::new();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("init")
         .arg(project.path())
         .assert()
@@ -26,7 +25,7 @@ fn init_creates_bobbin_directory() {
 fn init_json_output() {
     let project = TestProject::new();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["--json", "init"])
         .arg(project.path())
         .assert()
@@ -39,14 +38,14 @@ fn init_twice_fails_without_force() {
     let project = TestProject::new();
 
     // First init succeeds
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("init")
         .arg(project.path())
         .assert()
         .success();
 
     // Second init fails
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("init")
         .arg(project.path())
         .assert()
@@ -59,14 +58,14 @@ fn init_force_reinitializes() {
     let project = TestProject::new();
 
     // First init
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("init")
         .arg(project.path())
         .assert()
         .success();
 
     // Force reinit succeeds
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["init", "--force"])
         .arg(project.path())
         .assert()
@@ -78,7 +77,7 @@ fn init_force_reinitializes() {
 fn init_default_config_is_valid_toml() {
     let project = TestProject::new();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("init")
         .arg(project.path())
         .assert()
@@ -101,7 +100,7 @@ fn init_updates_gitignore() {
     // Create a .gitignore without .bobbin
     project.write_file(".gitignore", "target/\n");
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("init")
         .arg(project.path())
         .assert()
@@ -115,7 +114,7 @@ fn init_updates_gitignore() {
 fn init_quiet_suppresses_output() {
     let project = TestProject::new();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["--quiet", "init"])
         .arg(project.path())
         .assert()
