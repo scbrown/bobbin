@@ -1,0 +1,2773 @@
+{
+  "metadata": {
+    "repos": [
+      "django/django",
+      "golang/go",
+      "nushell/nushell",
+      "pandas-dev/pandas",
+      "typst/typst"
+    ],
+    "tasks_per_repo": {
+      "django/django": [
+        "django-001",
+        "django-002"
+      ],
+      "golang/go": [
+        "go-001",
+        "go-002"
+      ],
+      "nushell/nushell": [
+        "nushell-001",
+        "nushell-002"
+      ],
+      "pandas-dev/pandas": [
+        "pandas-001",
+        "pandas-002"
+      ],
+      "typst/typst": [
+        "typst-001",
+        "typst-002"
+      ]
+    },
+    "coupling_depths": [
+      0,
+      100,
+      500,
+      1000,
+      5000
+    ],
+    "recency_weights": [
+      0.0,
+      0.1,
+      0.2,
+      0.3,
+      0.5
+    ]
+  },
+  "coupling_depth": {
+    "sweep_type": "coupling_depth",
+    "sweep_values": [
+      0.0,
+      100.0,
+      500.0,
+      1000.0,
+      5000.0
+    ],
+    "probes": [
+      {
+        "task_id": "django-001",
+        "repo": "django/django",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "tests/fixtures_regress/tests.py",
+          "tests/model_fields/test_jsonfield.py",
+          "tests/serializers/test_natural.py",
+          "tests/serializers/test_xml.py",
+          "tests/composite_pk/tests.py"
+        ],
+        "ground_truth_files": [
+          "django/core/serializers/xml_serializer.py",
+          "tests/serializers/models/natural.py",
+          "tests/serializers/test_natural.py"
+        ],
+        "precision": 0.2,
+        "recall": 0.3333333333333333,
+        "f1": 0.25,
+        "duration_ms": 2421.4871560106985,
+        "total_files": 5,
+        "total_chunks": 14,
+        "error": null
+      },
+      {
+        "task_id": "django-002",
+        "repo": "django/django",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "tests/template_tests/syntax_tests/test_querystring.py",
+          "django/template/defaulttags.py",
+          "django/http/request.py",
+          "django/utils/http.py",
+          "django/core/handlers/asgi.py",
+          "django/contrib/admin/filters.py",
+          "tests/httpwrappers/tests.py",
+          "django/contrib/admin/views/main.py",
+          "django/views/debug.py"
+        ],
+        "ground_truth_files": [
+          "django/template/defaulttags.py",
+          "docs/releases/6.0.1.txt",
+          "tests/template_tests/syntax_tests/test_querystring.py"
+        ],
+        "precision": 0.2222222222222222,
+        "recall": 0.6666666666666666,
+        "f1": 0.3333333333333333,
+        "duration_ms": 637.0053740101866,
+        "total_files": 9,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "django-001",
+        "repo": "django/django",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 100.0,
+        "returned_files": [
+          "tests/fixtures_regress/tests.py",
+          "tests/model_fields/test_jsonfield.py",
+          "tests/serializers/test_natural.py",
+          "tests/serializers/test_xml.py",
+          "tests/composite_pk/tests.py"
+        ],
+        "ground_truth_files": [
+          "django/core/serializers/xml_serializer.py",
+          "tests/serializers/models/natural.py",
+          "tests/serializers/test_natural.py"
+        ],
+        "precision": 0.2,
+        "recall": 0.3333333333333333,
+        "f1": 0.25,
+        "duration_ms": 2171.833422005875,
+        "total_files": 5,
+        "total_chunks": 14,
+        "error": null
+      },
+      {
+        "task_id": "django-002",
+        "repo": "django/django",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 100.0,
+        "returned_files": [
+          "tests/template_tests/syntax_tests/test_querystring.py",
+          "django/template/defaulttags.py",
+          "django/http/request.py",
+          "django/utils/http.py",
+          "django/core/handlers/asgi.py",
+          "django/contrib/admin/filters.py",
+          "tests/httpwrappers/tests.py",
+          "django/contrib/admin/views/main.py",
+          "django/views/debug.py",
+          "django/contrib/admin/widgets.py",
+          "django/core/handlers/wsgi.py"
+        ],
+        "ground_truth_files": [
+          "django/template/defaulttags.py",
+          "docs/releases/6.0.1.txt",
+          "tests/template_tests/syntax_tests/test_querystring.py"
+        ],
+        "precision": 0.18181818181818182,
+        "recall": 0.6666666666666666,
+        "f1": 0.28571428571428575,
+        "duration_ms": 601.7006380134262,
+        "total_files": 11,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "django-001",
+        "repo": "django/django",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 500.0,
+        "returned_files": [
+          "tests/fixtures_regress/tests.py",
+          "tests/model_fields/test_jsonfield.py",
+          "tests/serializers/test_natural.py",
+          "tests/serializers/test_xml.py",
+          "tests/composite_pk/tests.py"
+        ],
+        "ground_truth_files": [
+          "django/core/serializers/xml_serializer.py",
+          "tests/serializers/models/natural.py",
+          "tests/serializers/test_natural.py"
+        ],
+        "precision": 0.2,
+        "recall": 0.3333333333333333,
+        "f1": 0.25,
+        "duration_ms": 2443.676928000059,
+        "total_files": 5,
+        "total_chunks": 14,
+        "error": null
+      },
+      {
+        "task_id": "django-002",
+        "repo": "django/django",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 500.0,
+        "returned_files": [
+          "tests/template_tests/syntax_tests/test_querystring.py",
+          "django/template/defaulttags.py",
+          "django/http/request.py",
+          "django/utils/http.py",
+          "django/core/handlers/asgi.py",
+          "django/contrib/admin/filters.py",
+          "tests/httpwrappers/tests.py",
+          "django/contrib/admin/views/main.py",
+          "django/views/debug.py",
+          "django/contrib/admin/widgets.py",
+          "django/core/handlers/wsgi.py"
+        ],
+        "ground_truth_files": [
+          "django/template/defaulttags.py",
+          "docs/releases/6.0.1.txt",
+          "tests/template_tests/syntax_tests/test_querystring.py"
+        ],
+        "precision": 0.18181818181818182,
+        "recall": 0.6666666666666666,
+        "f1": 0.28571428571428575,
+        "duration_ms": 689.6857490064576,
+        "total_files": 11,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "django-001",
+        "repo": "django/django",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 1000.0,
+        "returned_files": [
+          "tests/fixtures_regress/tests.py",
+          "tests/model_fields/test_jsonfield.py",
+          "tests/serializers/test_natural.py",
+          "tests/serializers/test_xml.py",
+          "tests/composite_pk/tests.py"
+        ],
+        "ground_truth_files": [
+          "django/core/serializers/xml_serializer.py",
+          "tests/serializers/models/natural.py",
+          "tests/serializers/test_natural.py"
+        ],
+        "precision": 0.2,
+        "recall": 0.3333333333333333,
+        "f1": 0.25,
+        "duration_ms": 2423.817497008713,
+        "total_files": 5,
+        "total_chunks": 14,
+        "error": null
+      },
+      {
+        "task_id": "django-002",
+        "repo": "django/django",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 1000.0,
+        "returned_files": [
+          "tests/template_tests/syntax_tests/test_querystring.py",
+          "django/template/defaulttags.py",
+          "django/http/request.py",
+          "django/utils/http.py",
+          "django/core/handlers/asgi.py",
+          "django/contrib/admin/filters.py",
+          "tests/httpwrappers/tests.py",
+          "django/contrib/admin/views/main.py",
+          "django/views/debug.py",
+          "django/contrib/admin/widgets.py",
+          "django/core/handlers/wsgi.py"
+        ],
+        "ground_truth_files": [
+          "django/template/defaulttags.py",
+          "docs/releases/6.0.1.txt",
+          "tests/template_tests/syntax_tests/test_querystring.py"
+        ],
+        "precision": 0.18181818181818182,
+        "recall": 0.6666666666666666,
+        "f1": 0.28571428571428575,
+        "duration_ms": 716.4196080120746,
+        "total_files": 11,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "django-001",
+        "repo": "django/django",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 5000.0,
+        "returned_files": [
+          "tests/fixtures_regress/tests.py",
+          "tests/model_fields/test_jsonfield.py",
+          "tests/serializers/test_natural.py",
+          "tests/serializers/test_xml.py",
+          "tests/composite_pk/tests.py"
+        ],
+        "ground_truth_files": [
+          "django/core/serializers/xml_serializer.py",
+          "tests/serializers/models/natural.py",
+          "tests/serializers/test_natural.py"
+        ],
+        "precision": 0.2,
+        "recall": 0.3333333333333333,
+        "f1": 0.25,
+        "duration_ms": 2495.8750759833492,
+        "total_files": 5,
+        "total_chunks": 14,
+        "error": null
+      },
+      {
+        "task_id": "django-002",
+        "repo": "django/django",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 5000.0,
+        "returned_files": [
+          "tests/template_tests/syntax_tests/test_querystring.py",
+          "django/template/defaulttags.py",
+          "django/http/request.py",
+          "django/utils/http.py",
+          "django/core/handlers/asgi.py",
+          "django/contrib/admin/filters.py",
+          "tests/httpwrappers/tests.py",
+          "django/contrib/admin/views/main.py",
+          "django/views/debug.py",
+          "django/contrib/admin/widgets.py",
+          "django/core/handlers/wsgi.py"
+        ],
+        "ground_truth_files": [
+          "django/template/defaulttags.py",
+          "docs/releases/6.0.1.txt",
+          "tests/template_tests/syntax_tests/test_querystring.py"
+        ],
+        "precision": 0.18181818181818182,
+        "recall": 0.6666666666666666,
+        "f1": 0.28571428571428575,
+        "duration_ms": 706.5311899932567,
+        "total_files": 11,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-001",
+        "repo": "golang/go",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "test/fixedbugs/issue46938.go",
+          "test/fixedbugs/issue15002.go",
+          "src/runtime/metrics/sample.go",
+          "test/escape_slice.go",
+          "src/runtime/metrics.go",
+          "src/cmd/compile/internal/rangefunc/rangefunc_test.go",
+          "src/runtime/panic32.go",
+          "src/runtime/unsafe.go",
+          "src/runtime/panic.go",
+          "src/bytes/reader.go",
+          "src/index/suffixarray/suffixarray.go",
+          "src/cmd/vendor/golang.org/x/sys/unix/syscall_linux.go",
+          "src/bufio/scan_test.go"
+        ],
+        "ground_truth_files": [
+          "src/crypto/tls/common.go",
+          "src/crypto/tls/handshake_client.go",
+          "src/crypto/tls/handshake_server.go",
+          "src/crypto/tls/handshake_server_test.go",
+          "src/crypto/tls/handshake_server_tls13.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 8624.959772016155,
+        "total_files": 13,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-002",
+        "repo": "golang/go",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "src/fmt/scan.go",
+          "src/database/sql/sql.go",
+          "src/fmt/scan_test.go",
+          "test/fixedbugs/issue50169.go",
+          "src/database/sql/driver/types.go",
+          "src/math/big/floatconv.go",
+          "src/math/big/intconv.go",
+          "src/encoding/json/scanner.go"
+        ],
+        "ground_truth_files": [
+          "src/simd/archsimd/_gen/simdgen/ops/Others/categories.yaml",
+          "src/simd/archsimd/ops_amd64.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 765.7999789807945,
+        "total_files": 8,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-001",
+        "repo": "golang/go",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 100.0,
+        "returned_files": [
+          "src/runtime/metrics/description_test.go",
+          "test/fixedbugs/issue46938.go",
+          "test/fixedbugs/issue15002.go",
+          "src/runtime/metrics/sample.go",
+          "test/escape_slice.go",
+          "src/runtime/metrics.go",
+          "src/cmd/compile/internal/rangefunc/rangefunc_test.go",
+          "src/runtime/panic32.go",
+          "src/runtime/unsafe.go",
+          "src/runtime/panic.go",
+          "src/bytes/reader.go",
+          "src/index/suffixarray/suffixarray.go",
+          "src/cmd/vendor/golang.org/x/sys/unix/syscall_linux.go",
+          "src/bufio/scan_test.go"
+        ],
+        "ground_truth_files": [
+          "src/crypto/tls/common.go",
+          "src/crypto/tls/handshake_client.go",
+          "src/crypto/tls/handshake_server.go",
+          "src/crypto/tls/handshake_server_test.go",
+          "src/crypto/tls/handshake_server_tls13.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 8676.419349008938,
+        "total_files": 14,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-002",
+        "repo": "golang/go",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 100.0,
+        "returned_files": [
+          "src/fmt/scan.go",
+          "src/database/sql/sql.go",
+          "src/fmt/scan_test.go",
+          "test/fixedbugs/issue50169.go",
+          "src/database/sql/driver/types.go",
+          "src/math/big/floatconv.go",
+          "src/math/big/intconv.go",
+          "src/encoding/json/scanner.go"
+        ],
+        "ground_truth_files": [
+          "src/simd/archsimd/_gen/simdgen/ops/Others/categories.yaml",
+          "src/simd/archsimd/ops_amd64.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 749.3597299908288,
+        "total_files": 8,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-001",
+        "repo": "golang/go",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 500.0,
+        "returned_files": [
+          "src/runtime/metrics/description_test.go",
+          "test/fixedbugs/issue46938.go",
+          "test/fixedbugs/issue15002.go",
+          "src/runtime/metrics/sample.go",
+          "test/escape_slice.go",
+          "src/runtime/metrics.go",
+          "src/cmd/compile/internal/rangefunc/rangefunc_test.go",
+          "src/runtime/panic32.go",
+          "src/runtime/unsafe.go",
+          "src/runtime/panic.go",
+          "src/bytes/reader.go",
+          "src/index/suffixarray/suffixarray.go",
+          "src/cmd/vendor/golang.org/x/sys/unix/syscall_linux.go",
+          "src/bufio/scan_test.go"
+        ],
+        "ground_truth_files": [
+          "src/crypto/tls/common.go",
+          "src/crypto/tls/handshake_client.go",
+          "src/crypto/tls/handshake_server.go",
+          "src/crypto/tls/handshake_server_test.go",
+          "src/crypto/tls/handshake_server_tls13.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 8569.581307005137,
+        "total_files": 14,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-002",
+        "repo": "golang/go",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 500.0,
+        "returned_files": [
+          "src/fmt/scan.go",
+          "src/database/sql/sql.go",
+          "src/fmt/scan_test.go",
+          "test/fixedbugs/issue50169.go",
+          "src/database/sql/driver/types.go",
+          "src/math/big/floatconv.go",
+          "src/math/big/intconv.go",
+          "src/encoding/json/scanner.go"
+        ],
+        "ground_truth_files": [
+          "src/simd/archsimd/_gen/simdgen/ops/Others/categories.yaml",
+          "src/simd/archsimd/ops_amd64.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 752.6868020067923,
+        "total_files": 8,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-001",
+        "repo": "golang/go",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 1000.0,
+        "returned_files": [
+          "src/runtime/metrics/description_test.go",
+          "test/fixedbugs/issue46938.go",
+          "test/fixedbugs/issue15002.go",
+          "src/runtime/metrics/sample.go",
+          "test/escape_slice.go",
+          "src/runtime/metrics.go",
+          "src/cmd/compile/internal/rangefunc/rangefunc_test.go",
+          "src/runtime/panic32.go",
+          "src/runtime/unsafe.go",
+          "src/runtime/panic.go",
+          "src/bytes/reader.go",
+          "src/index/suffixarray/suffixarray.go",
+          "src/cmd/vendor/golang.org/x/sys/unix/syscall_linux.go",
+          "src/bufio/scan_test.go"
+        ],
+        "ground_truth_files": [
+          "src/crypto/tls/common.go",
+          "src/crypto/tls/handshake_client.go",
+          "src/crypto/tls/handshake_server.go",
+          "src/crypto/tls/handshake_server_test.go",
+          "src/crypto/tls/handshake_server_tls13.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 8378.529326000717,
+        "total_files": 14,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-002",
+        "repo": "golang/go",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 1000.0,
+        "returned_files": [
+          "src/fmt/scan.go",
+          "src/database/sql/sql.go",
+          "src/fmt/scan_test.go",
+          "test/fixedbugs/issue50169.go",
+          "src/database/sql/driver/types.go",
+          "src/math/big/floatconv.go",
+          "src/math/big/intconv.go",
+          "src/encoding/json/scanner.go"
+        ],
+        "ground_truth_files": [
+          "src/simd/archsimd/_gen/simdgen/ops/Others/categories.yaml",
+          "src/simd/archsimd/ops_amd64.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 742.5745390064549,
+        "total_files": 8,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-001",
+        "repo": "golang/go",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 5000.0,
+        "returned_files": [
+          "src/runtime/metrics/description_test.go",
+          "test/fixedbugs/issue46938.go",
+          "test/fixedbugs/issue15002.go",
+          "src/runtime/metrics/sample.go",
+          "test/escape_slice.go",
+          "src/runtime/metrics.go",
+          "src/cmd/compile/internal/rangefunc/rangefunc_test.go",
+          "src/runtime/panic32.go",
+          "src/runtime/unsafe.go",
+          "src/runtime/panic.go",
+          "src/bytes/reader.go",
+          "src/index/suffixarray/suffixarray.go",
+          "src/cmd/vendor/golang.org/x/sys/unix/syscall_linux.go",
+          "src/bufio/scan_test.go"
+        ],
+        "ground_truth_files": [
+          "src/crypto/tls/common.go",
+          "src/crypto/tls/handshake_client.go",
+          "src/crypto/tls/handshake_server.go",
+          "src/crypto/tls/handshake_server_test.go",
+          "src/crypto/tls/handshake_server_tls13.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 9260.984079010086,
+        "total_files": 14,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-002",
+        "repo": "golang/go",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 5000.0,
+        "returned_files": [
+          "src/fmt/scan.go",
+          "src/database/sql/sql.go",
+          "src/fmt/scan_test.go",
+          "test/fixedbugs/issue50169.go",
+          "src/database/sql/driver/types.go",
+          "src/math/big/floatconv.go",
+          "src/math/big/intconv.go",
+          "src/encoding/json/scanner.go"
+        ],
+        "ground_truth_files": [
+          "src/simd/archsimd/_gen/simdgen/ops/Others/categories.yaml",
+          "src/simd/archsimd/ops_amd64.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 919.9651020171586,
+        "total_files": 8,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "nushell-001",
+        "repo": "nushell/nushell",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-protocol/src/ast/operator.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-protocol/src/value/mod.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs"
+        ],
+        "precision": 0.4,
+        "recall": 1.0,
+        "f1": 0.5714285714285715,
+        "duration_ms": 2415.94656201778,
+        "total_files": 5,
+        "total_chunks": 11,
+        "error": null
+      },
+      {
+        "task_id": "nushell-002",
+        "repo": "nushell/nushell",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-command/src/strings/detect_columns.rs",
+          "crates/nu-command/src/misc/panic.rs",
+          "crates/nu-command/tests/commands/math/mode.rs",
+          "crates/nu-command/tests/commands/parse.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-parser/src/parser.rs",
+          "tests/parsing/mod.rs"
+        ],
+        "precision": 0.16666666666666666,
+        "recall": 0.5,
+        "f1": 0.25,
+        "duration_ms": 709.7920659871306,
+        "total_files": 6,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "nushell-001",
+        "repo": "nushell/nushell",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 100.0,
+        "returned_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-protocol/src/ast/operator.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-protocol/src/value/mod.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs"
+        ],
+        "precision": 0.4,
+        "recall": 1.0,
+        "f1": 0.5714285714285715,
+        "duration_ms": 2706.726615986554,
+        "total_files": 5,
+        "total_chunks": 11,
+        "error": null
+      },
+      {
+        "task_id": "nushell-002",
+        "repo": "nushell/nushell",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 100.0,
+        "returned_files": [
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-command/src/strings/detect_columns.rs",
+          "crates/nu-command/src/misc/panic.rs",
+          "crates/nu-command/tests/commands/math/mode.rs",
+          "crates/nu-command/tests/commands/parse.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-parser/src/parser.rs",
+          "tests/parsing/mod.rs"
+        ],
+        "precision": 0.16666666666666666,
+        "recall": 0.5,
+        "f1": 0.25,
+        "duration_ms": 783.8763869949616,
+        "total_files": 6,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "nushell-001",
+        "repo": "nushell/nushell",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 500.0,
+        "returned_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-protocol/src/ast/operator.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-protocol/src/value/mod.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs"
+        ],
+        "precision": 0.4,
+        "recall": 1.0,
+        "f1": 0.5714285714285715,
+        "duration_ms": 2469.314468995435,
+        "total_files": 5,
+        "total_chunks": 11,
+        "error": null
+      },
+      {
+        "task_id": "nushell-002",
+        "repo": "nushell/nushell",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 500.0,
+        "returned_files": [
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-command/src/strings/detect_columns.rs",
+          "crates/nu-command/src/misc/panic.rs",
+          "crates/nu-command/tests/commands/math/mode.rs",
+          "crates/nu-command/tests/commands/parse.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-parser/src/parser.rs",
+          "tests/parsing/mod.rs"
+        ],
+        "precision": 0.16666666666666666,
+        "recall": 0.5,
+        "f1": 0.25,
+        "duration_ms": 714.6106919972226,
+        "total_files": 6,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "nushell-001",
+        "repo": "nushell/nushell",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 1000.0,
+        "returned_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-protocol/src/ast/operator.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-protocol/src/value/mod.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs"
+        ],
+        "precision": 0.4,
+        "recall": 1.0,
+        "f1": 0.5714285714285715,
+        "duration_ms": 2398.970605019713,
+        "total_files": 5,
+        "total_chunks": 11,
+        "error": null
+      },
+      {
+        "task_id": "nushell-002",
+        "repo": "nushell/nushell",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 1000.0,
+        "returned_files": [
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-command/src/strings/detect_columns.rs",
+          "crates/nu-command/src/misc/panic.rs",
+          "crates/nu-command/tests/commands/math/mode.rs",
+          "crates/nu-command/tests/commands/parse.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-parser/src/parser.rs",
+          "tests/parsing/mod.rs"
+        ],
+        "precision": 0.16666666666666666,
+        "recall": 0.5,
+        "f1": 0.25,
+        "duration_ms": 730.9014110069256,
+        "total_files": 6,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "nushell-001",
+        "repo": "nushell/nushell",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 5000.0,
+        "returned_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-protocol/src/ast/operator.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-protocol/src/value/mod.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs"
+        ],
+        "precision": 0.4,
+        "recall": 1.0,
+        "f1": 0.5714285714285715,
+        "duration_ms": 2229.99402199639,
+        "total_files": 5,
+        "total_chunks": 11,
+        "error": null
+      },
+      {
+        "task_id": "nushell-002",
+        "repo": "nushell/nushell",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 5000.0,
+        "returned_files": [
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-command/src/strings/detect_columns.rs",
+          "crates/nu-command/src/misc/panic.rs",
+          "crates/nu-command/tests/commands/math/mode.rs",
+          "crates/nu-command/tests/commands/parse.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-parser/src/parser.rs",
+          "tests/parsing/mod.rs"
+        ],
+        "precision": 0.16666666666666666,
+        "recall": 0.5,
+        "f1": 0.25,
+        "duration_ms": 694.5821359986439,
+        "total_files": 6,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "pandas-001",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "pandas/tests/series/methods/test_clip.py",
+          "pandas/tests/frame/methods/test_clip.py",
+          "pandas/tests/arrays/numpy_/test_numpy.py",
+          "pandas/core/resample.py",
+          "pandas/compat/numpy/function.py",
+          "pandas/core/arrays/datetimelike.py",
+          "pandas/core/generic.py",
+          "pandas/core/arrays/sparse/array.py",
+          "pandas/core/indexers/utils.py",
+          "pandas/core/construction.py",
+          "pandas/tests/copy_view/test_indexing.py",
+          "asv_bench/benchmarks/strings.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/reference/aliases.rst"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 2372.93459000648,
+        "total_files": 12,
+        "total_chunks": 19,
+        "error": null
+      },
+      {
+        "task_id": "pandas-002",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "pandas/tests/groupby/test_categorical.py",
+          "pandas/tests/groupby/aggregate/test_aggregate.py",
+          "pandas/core/groupby/grouper.py",
+          "pandas/tests/reshape/merge/test_merge_asof.py",
+          "pandas/tests/groupby/methods/test_rank.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/whatsnew/v3.0.1.rst",
+          "pandas/core/generic.py",
+          "pandas/tests/extension/uuid/__init__.py",
+          "pandas/tests/extension/uuid/test_uuid.py"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 710.6324239866808,
+        "total_files": 5,
+        "total_chunks": 15,
+        "error": null
+      },
+      {
+        "task_id": "pandas-001",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 100.0,
+        "returned_files": [
+          "pandas/tests/series/methods/test_clip.py",
+          "pandas/tests/frame/methods/test_clip.py",
+          "pandas/tests/arrays/numpy_/test_numpy.py",
+          "pandas/core/resample.py",
+          "pandas/compat/numpy/function.py",
+          "pandas/core/arrays/datetimelike.py",
+          "pandas/core/generic.py",
+          "pandas/core/arrays/sparse/array.py",
+          "pandas/core/indexers/utils.py",
+          "pandas/core/construction.py",
+          "pandas/tests/copy_view/test_indexing.py",
+          "asv_bench/benchmarks/strings.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/reference/aliases.rst"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 2087.197057000594,
+        "total_files": 12,
+        "total_chunks": 19,
+        "error": null
+      },
+      {
+        "task_id": "pandas-002",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 100.0,
+        "returned_files": [
+          "pandas/tests/groupby/test_categorical.py",
+          "pandas/tests/groupby/aggregate/test_aggregate.py",
+          "pandas/core/groupby/grouper.py",
+          "pandas/tests/groupby/test_groupby.py",
+          "pandas/tests/reshape/merge/test_merge_asof.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/whatsnew/v3.0.1.rst",
+          "pandas/core/generic.py",
+          "pandas/tests/extension/uuid/__init__.py",
+          "pandas/tests/extension/uuid/test_uuid.py"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 662.1145270182751,
+        "total_files": 5,
+        "total_chunks": 15,
+        "error": null
+      },
+      {
+        "task_id": "pandas-001",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 500.0,
+        "returned_files": [
+          "pandas/tests/series/methods/test_clip.py",
+          "pandas/tests/frame/methods/test_clip.py",
+          "pandas/tests/arrays/numpy_/test_numpy.py",
+          "pandas/core/resample.py",
+          "pandas/compat/numpy/function.py",
+          "pandas/core/arrays/datetimelike.py",
+          "pandas/core/generic.py",
+          "pandas/core/arrays/sparse/array.py",
+          "pandas/core/indexers/utils.py",
+          "pandas/core/construction.py",
+          "pandas/tests/copy_view/test_indexing.py",
+          "asv_bench/benchmarks/strings.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/reference/aliases.rst"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 2120.0850019813515,
+        "total_files": 12,
+        "total_chunks": 19,
+        "error": null
+      },
+      {
+        "task_id": "pandas-002",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 500.0,
+        "returned_files": [
+          "pandas/tests/groupby/test_categorical.py",
+          "pandas/tests/groupby/aggregate/test_aggregate.py",
+          "pandas/core/groupby/grouper.py",
+          "pandas/tests/groupby/test_groupby.py",
+          "pandas/tests/reshape/merge/test_merge_asof.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/whatsnew/v3.0.1.rst",
+          "pandas/core/generic.py",
+          "pandas/tests/extension/uuid/__init__.py",
+          "pandas/tests/extension/uuid/test_uuid.py"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 691.1962679878343,
+        "total_files": 5,
+        "total_chunks": 15,
+        "error": null
+      },
+      {
+        "task_id": "pandas-001",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 1000.0,
+        "returned_files": [
+          "pandas/tests/series/methods/test_clip.py",
+          "pandas/tests/frame/methods/test_clip.py",
+          "pandas/tests/arrays/numpy_/test_numpy.py",
+          "pandas/core/resample.py",
+          "pandas/compat/numpy/function.py",
+          "pandas/core/arrays/datetimelike.py",
+          "pandas/core/generic.py",
+          "pandas/core/arrays/sparse/array.py",
+          "pandas/core/indexers/utils.py",
+          "pandas/core/construction.py",
+          "pandas/tests/copy_view/test_indexing.py",
+          "asv_bench/benchmarks/strings.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/reference/aliases.rst"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 2052.7704739943147,
+        "total_files": 12,
+        "total_chunks": 19,
+        "error": null
+      },
+      {
+        "task_id": "pandas-002",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 1000.0,
+        "returned_files": [
+          "pandas/tests/groupby/test_categorical.py",
+          "pandas/tests/groupby/aggregate/test_aggregate.py",
+          "pandas/core/groupby/grouper.py",
+          "pandas/tests/groupby/test_groupby.py",
+          "pandas/tests/reshape/merge/test_merge_asof.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/whatsnew/v3.0.1.rst",
+          "pandas/core/generic.py",
+          "pandas/tests/extension/uuid/__init__.py",
+          "pandas/tests/extension/uuid/test_uuid.py"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 647.4448880180717,
+        "total_files": 5,
+        "total_chunks": 15,
+        "error": null
+      },
+      {
+        "task_id": "pandas-001",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 5000.0,
+        "returned_files": [
+          "pandas/tests/series/methods/test_clip.py",
+          "pandas/tests/frame/methods/test_clip.py",
+          "pandas/tests/arrays/numpy_/test_numpy.py",
+          "pandas/core/resample.py",
+          "pandas/compat/numpy/function.py",
+          "pandas/core/arrays/datetimelike.py",
+          "pandas/core/generic.py",
+          "pandas/core/arrays/sparse/array.py",
+          "pandas/core/indexers/utils.py",
+          "pandas/core/construction.py",
+          "pandas/tests/copy_view/test_indexing.py",
+          "asv_bench/benchmarks/strings.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/reference/aliases.rst"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 2364.509717997862,
+        "total_files": 12,
+        "total_chunks": 19,
+        "error": null
+      },
+      {
+        "task_id": "pandas-002",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 5000.0,
+        "returned_files": [
+          "pandas/tests/groupby/test_categorical.py",
+          "pandas/tests/groupby/aggregate/test_aggregate.py",
+          "pandas/core/groupby/grouper.py",
+          "pandas/tests/groupby/test_groupby.py",
+          "pandas/tests/reshape/merge/test_merge_asof.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/whatsnew/v3.0.1.rst",
+          "pandas/core/generic.py",
+          "pandas/tests/extension/uuid/__init__.py",
+          "pandas/tests/extension/uuid/test_uuid.py"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 696.9859309901949,
+        "total_files": 5,
+        "total_chunks": 15,
+        "error": null
+      },
+      {
+        "task_id": "typst-001",
+        "repo": "typst/typst",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "crates/typst-library/src/foundations/decimal.rs",
+          "crates/typst-utils/src/round.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "tests/suite/foundations/calc.typ"
+        ],
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "f1": 0.4,
+        "duration_ms": 1212.9865259921644,
+        "total_files": 3,
+        "total_chunks": 18,
+        "error": null
+      },
+      {
+        "task_id": "typst-002",
+        "repo": "typst/typst",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "crates/typst-syntax/src/parser.rs",
+          "crates/typst-syntax/src/lexer.rs",
+          "docs/changelog/0.11.1.md"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "tests/ref/issue-6961-tab-crlf-raw-indent.png",
+          "tests/suite/html/syntax.typ",
+          "tests/suite/text/raw.typ"
+        ],
+        "precision": 0.25,
+        "recall": 0.25,
+        "f1": 0.25,
+        "duration_ms": 739.9571269925218,
+        "total_files": 4,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "typst-001",
+        "repo": "typst/typst",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 100.0,
+        "returned_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "crates/typst-library/src/foundations/decimal.rs",
+          "crates/typst-utils/src/round.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "tests/suite/foundations/calc.typ"
+        ],
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "f1": 0.4,
+        "duration_ms": 1044.2993360047694,
+        "total_files": 3,
+        "total_chunks": 18,
+        "error": null
+      },
+      {
+        "task_id": "typst-002",
+        "repo": "typst/typst",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 100.0,
+        "returned_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "crates/typst-syntax/src/parser.rs",
+          "crates/typst-syntax/src/lexer.rs",
+          "docs/changelog/0.11.1.md",
+          "tests/src/run.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "tests/ref/issue-6961-tab-crlf-raw-indent.png",
+          "tests/suite/html/syntax.typ",
+          "tests/suite/text/raw.typ"
+        ],
+        "precision": 0.2,
+        "recall": 0.25,
+        "f1": 0.22222222222222224,
+        "duration_ms": 723.4605519915931,
+        "total_files": 5,
+        "total_chunks": 13,
+        "error": null
+      },
+      {
+        "task_id": "typst-001",
+        "repo": "typst/typst",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 500.0,
+        "returned_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "crates/typst-library/src/foundations/decimal.rs",
+          "crates/typst-utils/src/round.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "tests/suite/foundations/calc.typ"
+        ],
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "f1": 0.4,
+        "duration_ms": 1056.4085509977303,
+        "total_files": 3,
+        "total_chunks": 18,
+        "error": null
+      },
+      {
+        "task_id": "typst-002",
+        "repo": "typst/typst",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 500.0,
+        "returned_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "crates/typst-syntax/src/parser.rs",
+          "crates/typst-syntax/src/lexer.rs",
+          "docs/changelog/0.11.1.md",
+          "tests/src/run.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "tests/ref/issue-6961-tab-crlf-raw-indent.png",
+          "tests/suite/html/syntax.typ",
+          "tests/suite/text/raw.typ"
+        ],
+        "precision": 0.2,
+        "recall": 0.25,
+        "f1": 0.22222222222222224,
+        "duration_ms": 757.1350660000462,
+        "total_files": 5,
+        "total_chunks": 13,
+        "error": null
+      },
+      {
+        "task_id": "typst-001",
+        "repo": "typst/typst",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 1000.0,
+        "returned_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "crates/typst-library/src/foundations/decimal.rs",
+          "crates/typst-utils/src/round.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "tests/suite/foundations/calc.typ"
+        ],
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "f1": 0.4,
+        "duration_ms": 1046.361035987502,
+        "total_files": 3,
+        "total_chunks": 18,
+        "error": null
+      },
+      {
+        "task_id": "typst-002",
+        "repo": "typst/typst",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 1000.0,
+        "returned_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "crates/typst-syntax/src/parser.rs",
+          "crates/typst-syntax/src/lexer.rs",
+          "docs/changelog/0.11.1.md",
+          "tests/src/run.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "tests/ref/issue-6961-tab-crlf-raw-indent.png",
+          "tests/suite/html/syntax.typ",
+          "tests/suite/text/raw.typ"
+        ],
+        "precision": 0.2,
+        "recall": 0.25,
+        "f1": 0.22222222222222224,
+        "duration_ms": 697.8947110183071,
+        "total_files": 5,
+        "total_chunks": 13,
+        "error": null
+      },
+      {
+        "task_id": "typst-001",
+        "repo": "typst/typst",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 5000.0,
+        "returned_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "crates/typst-library/src/foundations/decimal.rs",
+          "crates/typst-utils/src/round.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "tests/suite/foundations/calc.typ"
+        ],
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "f1": 0.4,
+        "duration_ms": 1035.8157500158995,
+        "total_files": 3,
+        "total_chunks": 18,
+        "error": null
+      },
+      {
+        "task_id": "typst-002",
+        "repo": "typst/typst",
+        "sweep_param": "coupling_depth",
+        "sweep_value": 5000.0,
+        "returned_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "crates/typst-syntax/src/parser.rs",
+          "crates/typst-syntax/src/lexer.rs",
+          "docs/changelog/0.11.1.md",
+          "tests/src/run.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "tests/ref/issue-6961-tab-crlf-raw-indent.png",
+          "tests/suite/html/syntax.typ",
+          "tests/suite/text/raw.typ"
+        ],
+        "precision": 0.2,
+        "recall": 0.25,
+        "f1": 0.22222222222222224,
+        "duration_ms": 728.038038010709,
+        "total_files": 5,
+        "total_chunks": 13,
+        "error": null
+      }
+    ],
+    "started_at": "2026-03-03T00:23:57Z",
+    "finished_at": "2026-03-03T01:12:44Z",
+    "total_duration_s": 2640.5
+  },
+  "recency_weight": {
+    "sweep_type": "recency_weight",
+    "sweep_values": [
+      0.0,
+      0.1,
+      0.2,
+      0.3,
+      0.5
+    ],
+    "probes": [
+      {
+        "task_id": "django-001",
+        "repo": "django/django",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "tests/fixtures_regress/tests.py",
+          "tests/model_fields/test_jsonfield.py",
+          "tests/serializers/test_natural.py",
+          "tests/serializers/test_xml.py",
+          "tests/composite_pk/tests.py"
+        ],
+        "ground_truth_files": [
+          "django/core/serializers/xml_serializer.py",
+          "tests/serializers/models/natural.py",
+          "tests/serializers/test_natural.py"
+        ],
+        "precision": 0.2,
+        "recall": 0.3333333333333333,
+        "f1": 0.25,
+        "duration_ms": 2146.2958570045885,
+        "total_files": 5,
+        "total_chunks": 14,
+        "error": null
+      },
+      {
+        "task_id": "django-002",
+        "repo": "django/django",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "tests/template_tests/syntax_tests/test_querystring.py",
+          "django/template/defaulttags.py",
+          "django/http/request.py",
+          "django/utils/http.py",
+          "django/core/handlers/asgi.py",
+          "django/contrib/admin/filters.py",
+          "tests/httpwrappers/tests.py",
+          "django/contrib/admin/views/main.py",
+          "django/views/debug.py"
+        ],
+        "ground_truth_files": [
+          "django/template/defaulttags.py",
+          "docs/releases/6.0.1.txt",
+          "tests/template_tests/syntax_tests/test_querystring.py"
+        ],
+        "precision": 0.2222222222222222,
+        "recall": 0.6666666666666666,
+        "f1": 0.3333333333333333,
+        "duration_ms": 599.0647719881963,
+        "total_files": 9,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "django-001",
+        "repo": "django/django",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.1,
+        "returned_files": [
+          "tests/fixtures_regress/tests.py",
+          "tests/model_fields/test_jsonfield.py",
+          "tests/serializers/test_natural.py",
+          "tests/serializers/test_xml.py",
+          "tests/composite_pk/tests.py"
+        ],
+        "ground_truth_files": [
+          "django/core/serializers/xml_serializer.py",
+          "tests/serializers/models/natural.py",
+          "tests/serializers/test_natural.py"
+        ],
+        "precision": 0.2,
+        "recall": 0.3333333333333333,
+        "f1": 0.25,
+        "duration_ms": 579.7307689790614,
+        "total_files": 5,
+        "total_chunks": 14,
+        "error": null
+      },
+      {
+        "task_id": "django-002",
+        "repo": "django/django",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.1,
+        "returned_files": [
+          "tests/template_tests/syntax_tests/test_querystring.py",
+          "django/template/defaulttags.py",
+          "django/http/request.py",
+          "django/utils/http.py",
+          "django/core/handlers/asgi.py",
+          "django/contrib/admin/filters.py",
+          "tests/httpwrappers/tests.py",
+          "django/contrib/admin/views/main.py",
+          "django/views/debug.py"
+        ],
+        "ground_truth_files": [
+          "django/template/defaulttags.py",
+          "docs/releases/6.0.1.txt",
+          "tests/template_tests/syntax_tests/test_querystring.py"
+        ],
+        "precision": 0.2222222222222222,
+        "recall": 0.6666666666666666,
+        "f1": 0.3333333333333333,
+        "duration_ms": 581.8496709980536,
+        "total_files": 9,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "django-001",
+        "repo": "django/django",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.2,
+        "returned_files": [
+          "tests/fixtures_regress/tests.py",
+          "tests/model_fields/test_jsonfield.py",
+          "tests/serializers/test_natural.py",
+          "tests/serializers/test_xml.py",
+          "tests/composite_pk/tests.py"
+        ],
+        "ground_truth_files": [
+          "django/core/serializers/xml_serializer.py",
+          "tests/serializers/models/natural.py",
+          "tests/serializers/test_natural.py"
+        ],
+        "precision": 0.2,
+        "recall": 0.3333333333333333,
+        "f1": 0.25,
+        "duration_ms": 598.5648519999813,
+        "total_files": 5,
+        "total_chunks": 14,
+        "error": null
+      },
+      {
+        "task_id": "django-002",
+        "repo": "django/django",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.2,
+        "returned_files": [
+          "tests/template_tests/syntax_tests/test_querystring.py",
+          "django/template/defaulttags.py",
+          "django/http/request.py",
+          "django/utils/http.py",
+          "django/core/handlers/asgi.py",
+          "django/contrib/admin/filters.py",
+          "tests/httpwrappers/tests.py",
+          "django/contrib/admin/views/main.py",
+          "django/views/debug.py"
+        ],
+        "ground_truth_files": [
+          "django/template/defaulttags.py",
+          "docs/releases/6.0.1.txt",
+          "tests/template_tests/syntax_tests/test_querystring.py"
+        ],
+        "precision": 0.2222222222222222,
+        "recall": 0.6666666666666666,
+        "f1": 0.3333333333333333,
+        "duration_ms": 564.4436239963397,
+        "total_files": 9,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "django-001",
+        "repo": "django/django",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.3,
+        "returned_files": [
+          "tests/fixtures_regress/tests.py",
+          "tests/model_fields/test_jsonfield.py",
+          "tests/serializers/test_natural.py",
+          "tests/serializers/test_xml.py",
+          "tests/composite_pk/tests.py"
+        ],
+        "ground_truth_files": [
+          "django/core/serializers/xml_serializer.py",
+          "tests/serializers/models/natural.py",
+          "tests/serializers/test_natural.py"
+        ],
+        "precision": 0.2,
+        "recall": 0.3333333333333333,
+        "f1": 0.25,
+        "duration_ms": 581.5307390003,
+        "total_files": 5,
+        "total_chunks": 14,
+        "error": null
+      },
+      {
+        "task_id": "django-002",
+        "repo": "django/django",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.3,
+        "returned_files": [
+          "tests/template_tests/syntax_tests/test_querystring.py",
+          "django/template/defaulttags.py",
+          "django/http/request.py",
+          "django/utils/http.py",
+          "django/core/handlers/asgi.py",
+          "django/contrib/admin/filters.py",
+          "tests/httpwrappers/tests.py",
+          "django/contrib/admin/views/main.py",
+          "django/views/debug.py"
+        ],
+        "ground_truth_files": [
+          "django/template/defaulttags.py",
+          "docs/releases/6.0.1.txt",
+          "tests/template_tests/syntax_tests/test_querystring.py"
+        ],
+        "precision": 0.2222222222222222,
+        "recall": 0.6666666666666666,
+        "f1": 0.3333333333333333,
+        "duration_ms": 576.2732599978335,
+        "total_files": 9,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "django-001",
+        "repo": "django/django",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.5,
+        "returned_files": [
+          "tests/fixtures_regress/tests.py",
+          "tests/model_fields/test_jsonfield.py",
+          "tests/serializers/test_natural.py",
+          "tests/serializers/test_xml.py",
+          "tests/composite_pk/tests.py"
+        ],
+        "ground_truth_files": [
+          "django/core/serializers/xml_serializer.py",
+          "tests/serializers/models/natural.py",
+          "tests/serializers/test_natural.py"
+        ],
+        "precision": 0.2,
+        "recall": 0.3333333333333333,
+        "f1": 0.25,
+        "duration_ms": 561.6586430114694,
+        "total_files": 5,
+        "total_chunks": 14,
+        "error": null
+      },
+      {
+        "task_id": "django-002",
+        "repo": "django/django",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.5,
+        "returned_files": [
+          "tests/template_tests/syntax_tests/test_querystring.py",
+          "django/template/defaulttags.py",
+          "django/http/request.py",
+          "django/utils/http.py",
+          "django/core/handlers/asgi.py",
+          "django/contrib/admin/filters.py",
+          "tests/httpwrappers/tests.py",
+          "django/contrib/admin/views/main.py",
+          "django/views/debug.py"
+        ],
+        "ground_truth_files": [
+          "django/template/defaulttags.py",
+          "docs/releases/6.0.1.txt",
+          "tests/template_tests/syntax_tests/test_querystring.py"
+        ],
+        "precision": 0.2222222222222222,
+        "recall": 0.6666666666666666,
+        "f1": 0.3333333333333333,
+        "duration_ms": 588.68117100792,
+        "total_files": 9,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-001",
+        "repo": "golang/go",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "test/fixedbugs/issue46938.go",
+          "test/fixedbugs/issue15002.go",
+          "src/runtime/metrics/sample.go",
+          "test/escape_slice.go",
+          "src/runtime/metrics.go",
+          "src/cmd/compile/internal/rangefunc/rangefunc_test.go",
+          "src/runtime/panic32.go",
+          "src/runtime/unsafe.go",
+          "src/runtime/panic.go",
+          "src/bytes/reader.go",
+          "src/index/suffixarray/suffixarray.go",
+          "src/cmd/vendor/golang.org/x/sys/unix/syscall_linux.go",
+          "src/bufio/scan_test.go"
+        ],
+        "ground_truth_files": [
+          "src/crypto/tls/common.go",
+          "src/crypto/tls/handshake_client.go",
+          "src/crypto/tls/handshake_server.go",
+          "src/crypto/tls/handshake_server_test.go",
+          "src/crypto/tls/handshake_server_tls13.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 8352.370037988294,
+        "total_files": 13,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-002",
+        "repo": "golang/go",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "src/fmt/scan.go",
+          "src/database/sql/sql.go",
+          "src/fmt/scan_test.go",
+          "test/fixedbugs/issue50169.go",
+          "src/database/sql/driver/types.go",
+          "src/math/big/floatconv.go",
+          "src/math/big/intconv.go",
+          "src/encoding/json/scanner.go"
+        ],
+        "ground_truth_files": [
+          "src/simd/archsimd/_gen/simdgen/ops/Others/categories.yaml",
+          "src/simd/archsimd/ops_amd64.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 741.3292299897876,
+        "total_files": 8,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-001",
+        "repo": "golang/go",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.1,
+        "returned_files": [
+          "test/fixedbugs/issue46938.go",
+          "test/fixedbugs/issue15002.go",
+          "src/runtime/metrics/sample.go",
+          "test/escape_slice.go",
+          "src/runtime/metrics.go",
+          "src/cmd/compile/internal/rangefunc/rangefunc_test.go",
+          "src/runtime/panic32.go",
+          "src/runtime/unsafe.go",
+          "src/runtime/panic.go",
+          "src/bytes/reader.go",
+          "src/index/suffixarray/suffixarray.go",
+          "src/cmd/vendor/golang.org/x/sys/unix/syscall_linux.go",
+          "src/bufio/scan_test.go"
+        ],
+        "ground_truth_files": [
+          "src/crypto/tls/common.go",
+          "src/crypto/tls/handshake_client.go",
+          "src/crypto/tls/handshake_server.go",
+          "src/crypto/tls/handshake_server_test.go",
+          "src/crypto/tls/handshake_server_tls13.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 757.487915980164,
+        "total_files": 13,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-002",
+        "repo": "golang/go",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.1,
+        "returned_files": [
+          "src/fmt/scan.go",
+          "src/database/sql/sql.go",
+          "src/fmt/scan_test.go",
+          "test/fixedbugs/issue50169.go",
+          "src/database/sql/driver/types.go",
+          "src/math/big/floatconv.go",
+          "src/math/big/intconv.go",
+          "src/encoding/json/scanner.go"
+        ],
+        "ground_truth_files": [
+          "src/simd/archsimd/_gen/simdgen/ops/Others/categories.yaml",
+          "src/simd/archsimd/ops_amd64.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 758.4222930017859,
+        "total_files": 8,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-001",
+        "repo": "golang/go",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.2,
+        "returned_files": [
+          "test/fixedbugs/issue46938.go",
+          "test/fixedbugs/issue15002.go",
+          "src/runtime/metrics/sample.go",
+          "test/escape_slice.go",
+          "src/runtime/metrics.go",
+          "src/cmd/compile/internal/rangefunc/rangefunc_test.go",
+          "src/runtime/panic32.go",
+          "src/runtime/unsafe.go",
+          "src/runtime/panic.go",
+          "src/bytes/reader.go",
+          "src/index/suffixarray/suffixarray.go",
+          "src/cmd/vendor/golang.org/x/sys/unix/syscall_linux.go",
+          "src/bufio/scan_test.go"
+        ],
+        "ground_truth_files": [
+          "src/crypto/tls/common.go",
+          "src/crypto/tls/handshake_client.go",
+          "src/crypto/tls/handshake_server.go",
+          "src/crypto/tls/handshake_server_test.go",
+          "src/crypto/tls/handshake_server_tls13.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 787.009168008808,
+        "total_files": 13,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-002",
+        "repo": "golang/go",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.2,
+        "returned_files": [
+          "src/fmt/scan.go",
+          "src/database/sql/sql.go",
+          "src/fmt/scan_test.go",
+          "test/fixedbugs/issue50169.go",
+          "src/database/sql/driver/types.go",
+          "src/math/big/floatconv.go",
+          "src/math/big/intconv.go",
+          "src/encoding/json/scanner.go"
+        ],
+        "ground_truth_files": [
+          "src/simd/archsimd/_gen/simdgen/ops/Others/categories.yaml",
+          "src/simd/archsimd/ops_amd64.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 727.9461950238328,
+        "total_files": 8,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-001",
+        "repo": "golang/go",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.3,
+        "returned_files": [
+          "test/fixedbugs/issue46938.go",
+          "test/fixedbugs/issue15002.go",
+          "src/runtime/metrics/sample.go",
+          "test/escape_slice.go",
+          "src/runtime/metrics.go",
+          "src/cmd/compile/internal/rangefunc/rangefunc_test.go",
+          "src/runtime/panic32.go",
+          "src/runtime/unsafe.go",
+          "src/runtime/panic.go",
+          "src/bytes/reader.go",
+          "src/index/suffixarray/suffixarray.go",
+          "src/cmd/vendor/golang.org/x/sys/unix/syscall_linux.go",
+          "src/bufio/scan_test.go"
+        ],
+        "ground_truth_files": [
+          "src/crypto/tls/common.go",
+          "src/crypto/tls/handshake_client.go",
+          "src/crypto/tls/handshake_server.go",
+          "src/crypto/tls/handshake_server_test.go",
+          "src/crypto/tls/handshake_server_tls13.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 780.4302150034346,
+        "total_files": 13,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-002",
+        "repo": "golang/go",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.3,
+        "returned_files": [
+          "src/fmt/scan.go",
+          "src/database/sql/sql.go",
+          "src/fmt/scan_test.go",
+          "test/fixedbugs/issue50169.go",
+          "src/database/sql/driver/types.go",
+          "src/math/big/floatconv.go",
+          "src/math/big/intconv.go",
+          "src/encoding/json/scanner.go"
+        ],
+        "ground_truth_files": [
+          "src/simd/archsimd/_gen/simdgen/ops/Others/categories.yaml",
+          "src/simd/archsimd/ops_amd64.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 829.6599370078184,
+        "total_files": 8,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-001",
+        "repo": "golang/go",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.5,
+        "returned_files": [
+          "test/fixedbugs/issue46938.go",
+          "test/fixedbugs/issue15002.go",
+          "src/runtime/metrics/sample.go",
+          "test/escape_slice.go",
+          "src/runtime/metrics.go",
+          "src/cmd/compile/internal/rangefunc/rangefunc_test.go",
+          "src/runtime/panic32.go",
+          "src/runtime/unsafe.go",
+          "src/runtime/panic.go",
+          "src/bytes/reader.go",
+          "src/index/suffixarray/suffixarray.go",
+          "src/cmd/vendor/golang.org/x/sys/unix/syscall_linux.go",
+          "src/bufio/scan_test.go"
+        ],
+        "ground_truth_files": [
+          "src/crypto/tls/common.go",
+          "src/crypto/tls/handshake_client.go",
+          "src/crypto/tls/handshake_server.go",
+          "src/crypto/tls/handshake_server_test.go",
+          "src/crypto/tls/handshake_server_tls13.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 786.4349160226993,
+        "total_files": 13,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "go-002",
+        "repo": "golang/go",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.5,
+        "returned_files": [
+          "src/fmt/scan.go",
+          "src/database/sql/sql.go",
+          "src/fmt/scan_test.go",
+          "test/fixedbugs/issue50169.go",
+          "src/database/sql/driver/types.go",
+          "src/math/big/floatconv.go",
+          "src/math/big/intconv.go",
+          "src/encoding/json/scanner.go"
+        ],
+        "ground_truth_files": [
+          "src/simd/archsimd/_gen/simdgen/ops/Others/categories.yaml",
+          "src/simd/archsimd/ops_amd64.go"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 802.552075998392,
+        "total_files": 8,
+        "total_chunks": 20,
+        "error": null
+      },
+      {
+        "task_id": "nushell-001",
+        "repo": "nushell/nushell",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-protocol/src/ast/operator.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-protocol/src/value/mod.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs"
+        ],
+        "precision": 0.4,
+        "recall": 1.0,
+        "f1": 0.5714285714285715,
+        "duration_ms": 1803.3695080084726,
+        "total_files": 5,
+        "total_chunks": 11,
+        "error": null
+      },
+      {
+        "task_id": "nushell-002",
+        "repo": "nushell/nushell",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-command/src/strings/detect_columns.rs",
+          "crates/nu-command/src/misc/panic.rs",
+          "crates/nu-command/tests/commands/math/mode.rs",
+          "crates/nu-command/tests/commands/parse.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-parser/src/parser.rs",
+          "tests/parsing/mod.rs"
+        ],
+        "precision": 0.16666666666666666,
+        "recall": 0.5,
+        "f1": 0.25,
+        "duration_ms": 672.4460179975722,
+        "total_files": 6,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "nushell-001",
+        "repo": "nushell/nushell",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.1,
+        "returned_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-protocol/src/ast/operator.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-protocol/src/value/mod.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs"
+        ],
+        "precision": 0.4,
+        "recall": 1.0,
+        "f1": 0.5714285714285715,
+        "duration_ms": 895.0194209755864,
+        "total_files": 5,
+        "total_chunks": 11,
+        "error": null
+      },
+      {
+        "task_id": "nushell-002",
+        "repo": "nushell/nushell",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.1,
+        "returned_files": [
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-command/src/strings/detect_columns.rs",
+          "crates/nu-command/src/misc/panic.rs",
+          "crates/nu-command/tests/commands/math/mode.rs",
+          "crates/nu-command/tests/commands/parse.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-parser/src/parser.rs",
+          "tests/parsing/mod.rs"
+        ],
+        "precision": 0.16666666666666666,
+        "recall": 0.5,
+        "f1": 0.25,
+        "duration_ms": 668.8310139870737,
+        "total_files": 6,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "nushell-001",
+        "repo": "nushell/nushell",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.2,
+        "returned_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-protocol/src/ast/operator.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-protocol/src/value/mod.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs"
+        ],
+        "precision": 0.4,
+        "recall": 1.0,
+        "f1": 0.5714285714285715,
+        "duration_ms": 874.1867530043237,
+        "total_files": 5,
+        "total_chunks": 11,
+        "error": null
+      },
+      {
+        "task_id": "nushell-002",
+        "repo": "nushell/nushell",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.2,
+        "returned_files": [
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-command/src/strings/detect_columns.rs",
+          "crates/nu-command/src/misc/panic.rs",
+          "crates/nu-command/tests/commands/math/mode.rs",
+          "crates/nu-command/tests/commands/parse.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-parser/src/parser.rs",
+          "tests/parsing/mod.rs"
+        ],
+        "precision": 0.16666666666666666,
+        "recall": 0.5,
+        "f1": 0.25,
+        "duration_ms": 670.4750169883482,
+        "total_files": 6,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "nushell-001",
+        "repo": "nushell/nushell",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.3,
+        "returned_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-protocol/src/ast/operator.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-protocol/src/value/mod.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs"
+        ],
+        "precision": 0.4,
+        "recall": 1.0,
+        "f1": 0.5714285714285715,
+        "duration_ms": 886.5934380155522,
+        "total_files": 5,
+        "total_chunks": 11,
+        "error": null
+      },
+      {
+        "task_id": "nushell-002",
+        "repo": "nushell/nushell",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.3,
+        "returned_files": [
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-command/src/strings/detect_columns.rs",
+          "crates/nu-command/src/misc/panic.rs",
+          "crates/nu-command/tests/commands/math/mode.rs",
+          "crates/nu-command/tests/commands/parse.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-parser/src/parser.rs",
+          "tests/parsing/mod.rs"
+        ],
+        "precision": 0.16666666666666666,
+        "recall": 0.5,
+        "f1": 0.25,
+        "duration_ms": 668.0549590091687,
+        "total_files": 6,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "nushell-001",
+        "repo": "nushell/nushell",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.5,
+        "returned_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-protocol/src/ast/operator.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-protocol/src/value/mod.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-command/tests/commands/match_.rs",
+          "crates/nu-parser/src/parser.rs"
+        ],
+        "precision": 0.4,
+        "recall": 1.0,
+        "f1": 0.5714285714285715,
+        "duration_ms": 922.7554459939711,
+        "total_files": 5,
+        "total_chunks": 11,
+        "error": null
+      },
+      {
+        "task_id": "nushell-002",
+        "repo": "nushell/nushell",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.5,
+        "returned_files": [
+          "crates/nu-parser/src/parser.rs",
+          "crates/nu-parser/tests/test_parser.rs",
+          "crates/nu-command/src/strings/detect_columns.rs",
+          "crates/nu-command/src/misc/panic.rs",
+          "crates/nu-command/tests/commands/math/mode.rs",
+          "crates/nu-command/tests/commands/parse.rs"
+        ],
+        "ground_truth_files": [
+          "crates/nu-parser/src/parser.rs",
+          "tests/parsing/mod.rs"
+        ],
+        "precision": 0.16666666666666666,
+        "recall": 0.5,
+        "f1": 0.25,
+        "duration_ms": 677.2810809779912,
+        "total_files": 6,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "pandas-001",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "pandas/tests/series/methods/test_clip.py",
+          "pandas/tests/frame/methods/test_clip.py",
+          "pandas/tests/arrays/numpy_/test_numpy.py",
+          "pandas/core/resample.py",
+          "pandas/compat/numpy/function.py",
+          "pandas/core/arrays/datetimelike.py",
+          "pandas/core/generic.py",
+          "pandas/core/arrays/sparse/array.py",
+          "pandas/core/indexers/utils.py",
+          "pandas/core/construction.py",
+          "pandas/tests/copy_view/test_indexing.py",
+          "asv_bench/benchmarks/strings.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/reference/aliases.rst"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 2127.238801011117,
+        "total_files": 12,
+        "total_chunks": 19,
+        "error": null
+      },
+      {
+        "task_id": "pandas-002",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "pandas/tests/groupby/test_categorical.py",
+          "pandas/tests/groupby/aggregate/test_aggregate.py",
+          "pandas/core/groupby/grouper.py",
+          "pandas/tests/reshape/merge/test_merge_asof.py",
+          "pandas/tests/groupby/methods/test_rank.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/whatsnew/v3.0.1.rst",
+          "pandas/core/generic.py",
+          "pandas/tests/extension/uuid/__init__.py",
+          "pandas/tests/extension/uuid/test_uuid.py"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 663.1756290153135,
+        "total_files": 5,
+        "total_chunks": 15,
+        "error": null
+      },
+      {
+        "task_id": "pandas-001",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.1,
+        "returned_files": [
+          "pandas/tests/series/methods/test_clip.py",
+          "pandas/tests/frame/methods/test_clip.py",
+          "pandas/tests/arrays/numpy_/test_numpy.py",
+          "pandas/core/resample.py",
+          "pandas/compat/numpy/function.py",
+          "pandas/core/arrays/datetimelike.py",
+          "pandas/core/generic.py",
+          "pandas/core/arrays/sparse/array.py",
+          "pandas/core/indexers/utils.py",
+          "pandas/core/construction.py",
+          "pandas/tests/copy_view/test_indexing.py",
+          "asv_bench/benchmarks/strings.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/reference/aliases.rst"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 636.5408120036591,
+        "total_files": 12,
+        "total_chunks": 19,
+        "error": null
+      },
+      {
+        "task_id": "pandas-002",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.1,
+        "returned_files": [
+          "pandas/tests/groupby/test_categorical.py",
+          "pandas/tests/groupby/aggregate/test_aggregate.py",
+          "pandas/core/groupby/grouper.py",
+          "pandas/tests/reshape/merge/test_merge_asof.py",
+          "pandas/tests/groupby/methods/test_rank.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/whatsnew/v3.0.1.rst",
+          "pandas/core/generic.py",
+          "pandas/tests/extension/uuid/__init__.py",
+          "pandas/tests/extension/uuid/test_uuid.py"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 624.3058260006364,
+        "total_files": 5,
+        "total_chunks": 15,
+        "error": null
+      },
+      {
+        "task_id": "pandas-001",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.2,
+        "returned_files": [
+          "pandas/tests/series/methods/test_clip.py",
+          "pandas/tests/frame/methods/test_clip.py",
+          "pandas/tests/arrays/numpy_/test_numpy.py",
+          "pandas/core/resample.py",
+          "pandas/compat/numpy/function.py",
+          "pandas/core/arrays/datetimelike.py",
+          "pandas/core/generic.py",
+          "pandas/core/arrays/sparse/array.py",
+          "pandas/core/indexers/utils.py",
+          "pandas/core/construction.py",
+          "pandas/tests/copy_view/test_indexing.py",
+          "asv_bench/benchmarks/strings.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/reference/aliases.rst"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 633.6404350004159,
+        "total_files": 12,
+        "total_chunks": 19,
+        "error": null
+      },
+      {
+        "task_id": "pandas-002",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.2,
+        "returned_files": [
+          "pandas/tests/groupby/test_categorical.py",
+          "pandas/tests/groupby/aggregate/test_aggregate.py",
+          "pandas/core/groupby/grouper.py",
+          "pandas/tests/reshape/merge/test_merge_asof.py",
+          "pandas/tests/groupby/methods/test_rank.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/whatsnew/v3.0.1.rst",
+          "pandas/core/generic.py",
+          "pandas/tests/extension/uuid/__init__.py",
+          "pandas/tests/extension/uuid/test_uuid.py"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 613.8584410073236,
+        "total_files": 5,
+        "total_chunks": 15,
+        "error": null
+      },
+      {
+        "task_id": "pandas-001",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.3,
+        "returned_files": [
+          "pandas/tests/series/methods/test_clip.py",
+          "pandas/tests/frame/methods/test_clip.py",
+          "pandas/tests/arrays/numpy_/test_numpy.py",
+          "pandas/core/resample.py",
+          "pandas/compat/numpy/function.py",
+          "pandas/core/arrays/datetimelike.py",
+          "pandas/core/generic.py",
+          "pandas/core/arrays/sparse/array.py",
+          "pandas/core/indexers/utils.py",
+          "pandas/core/construction.py",
+          "pandas/tests/copy_view/test_indexing.py",
+          "asv_bench/benchmarks/strings.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/reference/aliases.rst"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 556.0376039939001,
+        "total_files": 12,
+        "total_chunks": 19,
+        "error": null
+      },
+      {
+        "task_id": "pandas-002",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.3,
+        "returned_files": [
+          "pandas/tests/groupby/test_categorical.py",
+          "pandas/tests/groupby/aggregate/test_aggregate.py",
+          "pandas/core/groupby/grouper.py",
+          "pandas/tests/reshape/merge/test_merge_asof.py",
+          "pandas/tests/groupby/methods/test_rank.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/whatsnew/v3.0.1.rst",
+          "pandas/core/generic.py",
+          "pandas/tests/extension/uuid/__init__.py",
+          "pandas/tests/extension/uuid/test_uuid.py"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 565.918178006541,
+        "total_files": 5,
+        "total_chunks": 15,
+        "error": null
+      },
+      {
+        "task_id": "pandas-001",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.5,
+        "returned_files": [
+          "pandas/tests/series/methods/test_clip.py",
+          "pandas/tests/frame/methods/test_clip.py",
+          "pandas/tests/arrays/numpy_/test_numpy.py",
+          "pandas/core/resample.py",
+          "pandas/compat/numpy/function.py",
+          "pandas/core/arrays/datetimelike.py",
+          "pandas/core/generic.py",
+          "pandas/core/arrays/sparse/array.py",
+          "pandas/core/indexers/utils.py",
+          "pandas/core/construction.py",
+          "pandas/tests/copy_view/test_indexing.py",
+          "asv_bench/benchmarks/strings.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/reference/aliases.rst"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 571.5518009965308,
+        "total_files": 12,
+        "total_chunks": 19,
+        "error": null
+      },
+      {
+        "task_id": "pandas-002",
+        "repo": "pandas-dev/pandas",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.5,
+        "returned_files": [
+          "pandas/tests/groupby/test_categorical.py",
+          "pandas/tests/groupby/aggregate/test_aggregate.py",
+          "pandas/core/groupby/grouper.py",
+          "pandas/tests/reshape/merge/test_merge_asof.py",
+          "pandas/tests/groupby/methods/test_rank.py"
+        ],
+        "ground_truth_files": [
+          "doc/source/whatsnew/v3.0.1.rst",
+          "pandas/core/generic.py",
+          "pandas/tests/extension/uuid/__init__.py",
+          "pandas/tests/extension/uuid/test_uuid.py"
+        ],
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "duration_ms": 596.6631529736333,
+        "total_files": 5,
+        "total_chunks": 15,
+        "error": null
+      },
+      {
+        "task_id": "typst-001",
+        "repo": "typst/typst",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "crates/typst-library/src/foundations/decimal.rs",
+          "crates/typst-utils/src/round.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "tests/suite/foundations/calc.typ"
+        ],
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "f1": 0.4,
+        "duration_ms": 1137.8651950217318,
+        "total_files": 3,
+        "total_chunks": 18,
+        "error": null
+      },
+      {
+        "task_id": "typst-002",
+        "repo": "typst/typst",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.0,
+        "returned_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "crates/typst-syntax/src/parser.rs",
+          "crates/typst-syntax/src/lexer.rs",
+          "docs/changelog/0.11.1.md"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "tests/ref/issue-6961-tab-crlf-raw-indent.png",
+          "tests/suite/html/syntax.typ",
+          "tests/suite/text/raw.typ"
+        ],
+        "precision": 0.25,
+        "recall": 0.25,
+        "f1": 0.25,
+        "duration_ms": 702.510461997008,
+        "total_files": 4,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "typst-001",
+        "repo": "typst/typst",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.1,
+        "returned_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "crates/typst-library/src/foundations/decimal.rs",
+          "crates/typst-utils/src/round.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "tests/suite/foundations/calc.typ"
+        ],
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "f1": 0.4,
+        "duration_ms": 581.7166380002163,
+        "total_files": 3,
+        "total_chunks": 18,
+        "error": null
+      },
+      {
+        "task_id": "typst-002",
+        "repo": "typst/typst",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.1,
+        "returned_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "crates/typst-syntax/src/parser.rs",
+          "crates/typst-syntax/src/lexer.rs",
+          "docs/changelog/0.11.1.md"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "tests/ref/issue-6961-tab-crlf-raw-indent.png",
+          "tests/suite/html/syntax.typ",
+          "tests/suite/text/raw.typ"
+        ],
+        "precision": 0.25,
+        "recall": 0.25,
+        "f1": 0.25,
+        "duration_ms": 707.2684750019107,
+        "total_files": 4,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "typst-001",
+        "repo": "typst/typst",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.2,
+        "returned_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "crates/typst-library/src/foundations/decimal.rs",
+          "crates/typst-utils/src/round.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "tests/suite/foundations/calc.typ"
+        ],
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "f1": 0.4,
+        "duration_ms": 570.0348090031184,
+        "total_files": 3,
+        "total_chunks": 18,
+        "error": null
+      },
+      {
+        "task_id": "typst-002",
+        "repo": "typst/typst",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.2,
+        "returned_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "crates/typst-syntax/src/parser.rs",
+          "crates/typst-syntax/src/lexer.rs",
+          "docs/changelog/0.11.1.md"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "tests/ref/issue-6961-tab-crlf-raw-indent.png",
+          "tests/suite/html/syntax.typ",
+          "tests/suite/text/raw.typ"
+        ],
+        "precision": 0.25,
+        "recall": 0.25,
+        "f1": 0.25,
+        "duration_ms": 685.5808169930242,
+        "total_files": 4,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "typst-001",
+        "repo": "typst/typst",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.3,
+        "returned_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "crates/typst-library/src/foundations/decimal.rs",
+          "crates/typst-utils/src/round.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "tests/suite/foundations/calc.typ"
+        ],
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "f1": 0.4,
+        "duration_ms": 588.4332490095403,
+        "total_files": 3,
+        "total_chunks": 18,
+        "error": null
+      },
+      {
+        "task_id": "typst-002",
+        "repo": "typst/typst",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.3,
+        "returned_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "crates/typst-syntax/src/parser.rs",
+          "crates/typst-syntax/src/lexer.rs",
+          "docs/changelog/0.11.1.md"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "tests/ref/issue-6961-tab-crlf-raw-indent.png",
+          "tests/suite/html/syntax.typ",
+          "tests/suite/text/raw.typ"
+        ],
+        "precision": 0.25,
+        "recall": 0.25,
+        "f1": 0.25,
+        "duration_ms": 711.757249024231,
+        "total_files": 4,
+        "total_chunks": 12,
+        "error": null
+      },
+      {
+        "task_id": "typst-001",
+        "repo": "typst/typst",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.5,
+        "returned_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "crates/typst-library/src/foundations/decimal.rs",
+          "crates/typst-utils/src/round.rs"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/foundations/calc.rs",
+          "tests/suite/foundations/calc.typ"
+        ],
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "f1": 0.4,
+        "duration_ms": 574.410478991922,
+        "total_files": 3,
+        "total_chunks": 18,
+        "error": null
+      },
+      {
+        "task_id": "typst-002",
+        "repo": "typst/typst",
+        "sweep_param": "recency_weight",
+        "sweep_value": 0.5,
+        "returned_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "crates/typst-syntax/src/parser.rs",
+          "crates/typst-syntax/src/lexer.rs",
+          "docs/changelog/0.11.1.md"
+        ],
+        "ground_truth_files": [
+          "crates/typst-library/src/text/raw.rs",
+          "tests/ref/issue-6961-tab-crlf-raw-indent.png",
+          "tests/suite/html/syntax.typ",
+          "tests/suite/text/raw.typ"
+        ],
+        "precision": 0.25,
+        "recall": 0.25,
+        "f1": 0.25,
+        "duration_ms": 708.4301809954923,
+        "total_files": 4,
+        "total_chunks": 12,
+        "error": null
+      }
+    ],
+    "started_at": "2026-03-03T01:12:44Z",
+    "finished_at": "2026-03-03T01:18:06Z",
+    "total_duration_s": 291.0
+  }
+}
