@@ -183,7 +183,7 @@ impl ContentDeduplicator {
     fn new() -> Self {
         Self {
             accepted: Vec::new(),
-            threshold: 0.8,
+            threshold: 0.65,
             skipped: 0,
         }
     }
