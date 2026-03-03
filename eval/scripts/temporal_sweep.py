@@ -217,8 +217,14 @@ def modify_config_toml(workspace: Path, section: str, key: str, value: Any) -> N
 
 def setup_workspace(
     task: dict, tmpdir: str, bobbin: str, *, index_timeout: int = 1800,
+    coupling_depth: int | None = None,
 ) -> tuple[Path, list[str]]:
-    """Clone repo, checkout parent, init+index with bobbin."""
+    """Clone repo, checkout parent, init+index with bobbin.
+
+    If coupling_depth is set, override the default (5000) before indexing.
+    Use coupling_depth=0 when the caller will re-index at different depths
+    to avoid wasting time building a coupling table that gets overwritten.
+    """
     repo = task["repo"]
     commit = task["commit"]
 
@@ -237,6 +243,9 @@ def setup_workspace(
 
     # Enable GPU for embedding — default config has gpu=false
     modify_config_toml(ws, "embedding", "gpu", True)
+
+    if coupling_depth is not None:
+        modify_config_toml(ws, "git", "coupling_depth", coupling_depth)
 
     logger.info("Indexing workspace %s", ws)
     subprocess.run(
@@ -338,7 +347,9 @@ def run_coupling_depth_sweep(
 
         with tempfile.TemporaryDirectory(prefix="bobbin-sweep-cd-") as tmpdir:
             try:
-                ws, _ = setup_workspace(tasks[0], tmpdir, bobbin)
+                # Use first sweep depth for initial index to avoid wasted work
+                ws, _ = setup_workspace(tasks[0], tmpdir, bobbin,
+                                        coupling_depth=COUPLING_DEPTHS[0])
             except Exception as exc:
                 logger.error("Failed to set up %s: %s", repo, exc)
                 continue
