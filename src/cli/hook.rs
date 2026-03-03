@@ -2132,6 +2132,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                         total_files: 0, total_chunks: 0, direct_hits: 0,
                         coupled_additions: 0, bridged_additions: 0,
                         source_files: 0, doc_files: 0, top_semantic_score: 0.0,
+                        content_deduped: 0,
                     },
                 }
             }
@@ -3285,6 +3286,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                content_deduped: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None);
@@ -3326,6 +3328,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                content_deduped: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.5, true, None);
@@ -3370,6 +3373,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                content_deduped: 0,
             },
         };
         // With high threshold, chunk content should be filtered out
@@ -3605,6 +3609,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                content_deduped: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None);
@@ -3655,6 +3660,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                content_deduped: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None);
@@ -3717,6 +3723,7 @@ mod tests {
                 source_files: 1,
                 doc_files: 1,
                 top_semantic_score: 0.0,
+                content_deduped: 0,
             },
         };
 
@@ -3769,6 +3776,7 @@ mod tests {
                 source_files: 1,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                content_deduped: 0,
             },
         };
         // Budget 0 — should not panic and should produce empty or minimal output
@@ -3812,6 +3820,7 @@ mod tests {
                 source_files: 1,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                content_deduped: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None);
@@ -4506,6 +4515,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
+                content_deduped: 0,
             },
         };
 
@@ -4550,6 +4560,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
+                content_deduped: 0,
             },
         };
 
@@ -4604,6 +4615,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
+                content_deduped: 0,
             },
         };
 
@@ -4632,6 +4644,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                content_deduped: 0,
             },
         };
 
@@ -4679,6 +4692,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
+                content_deduped: 0,
             },
         };
 
@@ -4724,6 +4738,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
+                content_deduped: 0,
             },
         };
 

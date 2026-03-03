@@ -156,6 +156,82 @@ pub struct ContextSummary {
     /// Raw cosine similarity of the top semantic search result (before RRF normalization).
     /// Used by the gate_threshold check to decide whether to inject context at all.
     pub top_semantic_score: f32,
+    /// Number of chunks skipped because their content was near-identical (>80% line
+    /// overlap) to an already-included chunk. Prevents budget waste from templated
+    /// files (e.g., CLAUDE.md sections duplicated across crew harnesses).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub content_deduped: usize,
+}
+
+pub fn is_zero(v: &usize) -> bool {
+    *v == 0
+}
+
+/// Detects near-duplicate content using line-level Jaccard similarity.
+/// Keeps a set of normalized line hashes for each accepted chunk, and
+/// rejects new chunks whose line overlap exceeds the threshold (default 0.8).
+struct ContentDeduplicator {
+    /// Line-hash sets for each accepted chunk
+    accepted: Vec<HashSet<u64>>,
+    /// Similarity threshold above which a chunk is considered a duplicate
+    threshold: f64,
+    /// How many chunks were rejected as near-duplicates
+    pub skipped: usize,
+}
+
+impl ContentDeduplicator {
+    fn new() -> Self {
+        Self {
+            accepted: Vec::new(),
+            threshold: 0.8,
+            skipped: 0,
+        }
+    }
+
+    /// Normalize content into a set of line hashes for comparison.
+    fn line_hashes(content: &str) -> HashSet<u64> {
+        use std::hash::{Hash, Hasher};
+        content
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .map(|l| {
+                let lower = l.to_lowercase();
+                let mut hasher = std::hash::DefaultHasher::new();
+                lower.hash(&mut hasher);
+                hasher.finish()
+            })
+            .collect()
+    }
+
+    /// Check if content is a near-duplicate of any accepted chunk.
+    /// Returns true if the chunk should be skipped.
+    fn is_duplicate(&self, content: &str) -> bool {
+        let new_hashes = Self::line_hashes(content);
+        // Tiny chunks (≤2 unique lines) get exact-match only
+        if new_hashes.len() <= 2 {
+            return self.accepted.iter().any(|prev| prev == &new_hashes);
+        }
+        for prev in &self.accepted {
+            let intersection = new_hashes.intersection(prev).count();
+            let union = new_hashes.union(prev).count();
+            if union > 0 {
+                let jaccard = intersection as f64 / union as f64;
+                if jaccard >= self.threshold {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Accept a chunk's content (add to the set of known content).
+    fn accept(&mut self, content: &str) {
+        let hashes = Self::line_hashes(content);
+        if !hashes.is_empty() {
+            self.accepted.push(hashes);
+        }
+    }
 }
 
 /// How a file was found
@@ -790,6 +866,7 @@ fn assemble_bundle(
     let max_chunk_lines = budget / 2; // Cap individual chunks at 50% of budget
     let mut used_lines: usize = 0;
     let mut seen_chunk_ids: HashSet<String> = HashSet::new();
+    let mut content_dedup = ContentDeduplicator::new();
 
     // Filter out commit chunks — they're useful for `bobbin log` but shouldn't
     // be injected into context. Commit messages pollute the context budget without
@@ -852,6 +929,13 @@ fn assemble_bundle(
                 continue;
             }
 
+            // Content-level dedup: skip chunks near-identical to already-accepted content
+            if content_dedup.is_duplicate(&result.content) {
+                content_dedup.skipped += 1;
+                seen_chunk_ids.insert(result.chunk_id.clone());
+                continue;
+            }
+
             let chunk_lines = (result.end_line - result.start_line + 1) as usize;
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
@@ -860,6 +944,7 @@ fn assemble_bundle(
             }
 
             seen_chunk_ids.insert(result.chunk_id.clone());
+            content_dedup.accept(&result.content);
             used_lines += capped_lines;
             direct_hit_count += 1;
 
@@ -945,6 +1030,12 @@ fn assemble_bundle(
                 continue;
             }
 
+            if content_dedup.is_duplicate(&chunk.content) {
+                content_dedup.skipped += 1;
+                seen_chunk_ids.insert(chunk.chunk_id.clone());
+                continue;
+            }
+
             let chunk_lines = (chunk.end_line - chunk.start_line + 1) as usize;
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
@@ -953,6 +1044,7 @@ fn assemble_bundle(
             }
 
             seen_chunk_ids.insert(chunk.chunk_id.clone());
+            content_dedup.accept(&chunk.content);
             used_lines += capped_lines;
             coupled_addition_count += 1;
 
@@ -1025,6 +1117,12 @@ fn assemble_bundle(
                 continue;
             }
 
+            if content_dedup.is_duplicate(&chunk.content) {
+                content_dedup.skipped += 1;
+                seen_chunk_ids.insert(chunk.chunk_id.clone());
+                continue;
+            }
+
             let chunk_lines = (chunk.end_line - chunk.start_line + 1) as usize;
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
@@ -1033,6 +1131,7 @@ fn assemble_bundle(
             }
 
             seen_chunk_ids.insert(chunk.chunk_id.clone());
+            content_dedup.accept(&chunk.content);
             used_lines += capped_lines;
             bridged_addition_count += 1;
 
@@ -1085,6 +1184,7 @@ fn assemble_bundle(
             source_files,
             doc_files,
             top_semantic_score: 0.0,
+            content_deduped: content_dedup.skipped,
         },
     })
 }
@@ -1230,6 +1330,166 @@ mod tests {
 
         let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
         assert_eq!(bundle.summary.total_chunks, 1);
+    }
+
+    #[test]
+    fn test_content_dedup_near_identical_chunks() {
+        let config = ContextConfig {
+            budget_lines: 500,
+            depth: 0,
+            max_coupled: 3,
+            coupling_threshold: 0.1,
+            semantic_weight: 0.7,
+            content_mode: ContentMode::Full,
+            search_limit: 20,
+            doc_demotion: 0.5,
+            rrf_k: 60.0,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
+            extra_filter: None,
+            tags_config: None,
+            role: None,
+        };
+
+        // Simulate the CLAUDE.md problem: same section in different harness files
+        // with only the agent name differing (>80% line overlap)
+        let shared_section = "\
+## You Are a Gas Town Crew Member\n\
+\n\
+You run as crew `NAME` in the `aegis` rig on luvu (192.168.4.187). Gas Town\n\
+manages your lifecycle — the deacon patrols you, the daemon respawns you, the\n\
+mayor coordinates work across rigs.\n\
+\n\
+**The GUPP Principle**: If you find work on your hook, YOU RUN IT.\n\
+\n\
+**Startup protocol** (handled by `gt prime` hook automatically):\n\
+1. Check hook: `gt mol status` — if work hooked, EXECUTE immediately\n\
+2. Check mail: `gt mail inbox` — handle incoming messages\n\
+3. If nothing hooked or mailed — run keeper review\n\
+\n\
+**Session close protocol**:\n\
+1. `git add . && git commit && git push`\n\
+2. Either continue with next task OR cycle: `gt handoff`";
+
+        let content_arnold = shared_section.replace("NAME", "arnold");
+        let content_ellie = shared_section.replace("NAME", "ellie");
+        let content_malcolm = shared_section.replace("NAME", "malcolm");
+
+        let seeds = vec![
+            SeedResult {
+                chunk_id: "arnold-crew".to_string(),
+                file_path: "harnesses/arnold/CLAUDE.md".to_string(),
+                language: "markdown".to_string(),
+                name: Some("You Are a Gas Town Crew Member".to_string()),
+                chunk_type: ChunkType::Section,
+                indexed_at: None,
+                start_line: 47,
+                end_line: 64,
+                content: content_arnold,
+                score: 0.95,
+                match_type: Some(MatchType::Hybrid),
+                repo: Some("aegis".to_string()),
+                tags: String::new(),
+            },
+            SeedResult {
+                chunk_id: "ellie-crew".to_string(),
+                file_path: "harnesses/ellie/CLAUDE.md".to_string(),
+                language: "markdown".to_string(),
+                name: Some("You Are a Gas Town Crew Member".to_string()),
+                chunk_type: ChunkType::Section,
+                indexed_at: None,
+                start_line: 47,
+                end_line: 64,
+                content: content_ellie,
+                score: 0.93,
+                match_type: Some(MatchType::Hybrid),
+                repo: Some("aegis".to_string()),
+                tags: String::new(),
+            },
+            SeedResult {
+                chunk_id: "malcolm-crew".to_string(),
+                file_path: "harnesses/malcolm/CLAUDE.md".to_string(),
+                language: "markdown".to_string(),
+                name: Some("You Are a Gas Town Crew Member".to_string()),
+                chunk_type: ChunkType::Section,
+                indexed_at: None,
+                start_line: 47,
+                end_line: 64,
+                content: content_malcolm,
+                score: 0.91,
+                match_type: Some(MatchType::Hybrid),
+                repo: Some("aegis".to_string()),
+                tags: String::new(),
+            },
+        ];
+
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        // Only the first (highest-scored) chunk should survive content dedup
+        assert_eq!(bundle.summary.total_chunks, 1, "near-identical chunks should be deduped");
+        assert_eq!(bundle.summary.content_deduped, 2, "two duplicates should be reported");
+        assert_eq!(bundle.files[0].path, "harnesses/arnold/CLAUDE.md");
+    }
+
+    #[test]
+    fn test_content_dedup_distinct_chunks_kept() {
+        let config = ContextConfig {
+            budget_lines: 500,
+            depth: 0,
+            max_coupled: 3,
+            coupling_threshold: 0.1,
+            semantic_weight: 0.7,
+            content_mode: ContentMode::Full,
+            search_limit: 20,
+            doc_demotion: 0.5,
+            rrf_k: 60.0,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
+            extra_filter: None,
+            tags_config: None,
+            role: None,
+        };
+
+        // Two chunks with completely different content — both should be kept
+        let seeds = vec![
+            SeedResult {
+                chunk_id: "auth".to_string(),
+                file_path: "src/auth.rs".to_string(),
+                language: "rust".to_string(),
+                name: Some("authenticate".to_string()),
+                chunk_type: ChunkType::Function,
+                indexed_at: None,
+                start_line: 1,
+                end_line: 10,
+                content: "fn authenticate(user: &str, pass: &str) -> bool {\n    let hash = sha256(pass);\n    db.verify(user, &hash)\n}".to_string(),
+                score: 0.9,
+                match_type: Some(MatchType::Hybrid),
+                repo: None,
+                tags: String::new(),
+            },
+            SeedResult {
+                chunk_id: "config".to_string(),
+                file_path: "src/config.rs".to_string(),
+                language: "rust".to_string(),
+                name: Some("load_config".to_string()),
+                chunk_type: ChunkType::Function,
+                indexed_at: None,
+                start_line: 1,
+                end_line: 8,
+                content: "fn load_config(path: &Path) -> Config {\n    let data = fs::read_to_string(path).unwrap();\n    toml::from_str(&data).unwrap()\n}".to_string(),
+                score: 0.85,
+                match_type: Some(MatchType::Hybrid),
+                repo: None,
+                tags: String::new(),
+            },
+        ];
+
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        assert_eq!(bundle.summary.total_chunks, 2, "distinct chunks should both be kept");
+        assert_eq!(bundle.summary.content_deduped, 0, "no duplicates detected");
     }
 
     #[test]
@@ -1410,7 +1670,7 @@ mod tests {
             indexed_at: None,
             start_line: start,
             end_line: end,
-            content: "fn test() {}".to_string(),
+            content: format!("fn {}() {{}}", id),
             score,
             match_type: Some(MatchType::Hybrid),
             repo: None,
@@ -1434,7 +1694,7 @@ mod tests {
             chunk_type: ChunkType::Function,
             start_line: start,
             end_line: end,
-            content: "fn test() {}".to_string(),
+            content: format!("fn {}() {{}}", id),
             coupling_score,
             coupled_to: coupled_to.to_string(),
         }

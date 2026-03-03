@@ -1031,6 +1031,8 @@ struct ContextSummaryOutput {
     bridged_additions: usize,
     source_files: usize,
     doc_files: usize,
+    #[serde(skip_serializing_if = "crate::search::context::is_zero")]
+    content_deduped: usize,
 }
 
 pub(super) async fn context(
@@ -1059,6 +1061,7 @@ pub(super) async fn context(
                 bridged_additions: 0,
                 source_files: 0,
                 doc_files: 0,
+                content_deduped: 0,
             },
         }));
     }
@@ -1754,6 +1757,7 @@ pub(super) async fn review(
                 bridged_additions: 0,
                 source_files: 0,
                 doc_files: 0,
+                content_deduped: 0,
             },
         }));
     }
@@ -3122,6 +3126,7 @@ fn to_context_summary(s: &crate::search::context::ContextSummary) -> ContextSumm
         bridged_additions: s.bridged_additions,
         source_files: s.source_files,
         doc_files: s.doc_files,
+        content_deduped: s.content_deduped,
     }
 }
 
