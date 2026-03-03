@@ -154,8 +154,6 @@ pub struct ContextSummaryOutput {
     pub bridged_additions: usize,
     pub source_files: usize,
     pub doc_files: usize,
-    #[serde(default)]
-    pub content_deduped: usize,
 }
 
 /// Response from the /read endpoint

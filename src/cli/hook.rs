@@ -220,7 +220,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook inject-context || true",
+                            "command": "bobbin hook inject-context",
                             "timeout": 10,
                             "statusMessage": "Loading code context..."
                         }
@@ -233,7 +233,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook session-context || true",
+                            "command": "bobbin hook session-context",
                             "timeout": 10,
                             "statusMessage": "Recovering project context..."
                         }
@@ -246,7 +246,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook post-tool-use || true",
+                            "command": "bobbin hook post-tool-use",
                             "timeout": 10,
                             "statusMessage": "Analyzing file changes..."
                         }
@@ -258,7 +258,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook post-tool-use-failure || true",
+                            "command": "bobbin hook post-tool-use-failure",
                             "timeout": 10,
                             "statusMessage": "Searching for related context..."
                         }
@@ -637,44 +637,8 @@ async fn inject_context_remote(
                 return Ok(());
             }
 
-            // Filter out chunks that duplicate CLAUDE.md content already in context
-            let mut resp = resp;
-            let prompt_dedup_count = filter_prompt_duplicates(&mut resp, &cwd);
-
-            if resp.files.is_empty() {
-                return Ok(());
-            }
-
-            // Generate injection ID for feedback tracking
-            let injection_id = generate_context_injection_id(prompt);
-
-            // Store injection record (best-effort)
-            if let Some(ref root) = find_bobbin_root(&cwd) {
-                let feedback_db_path = Config::feedback_db_path(root);
-                if let Ok(store) = crate::storage::feedback::FeedbackStore::open(&feedback_db_path) {
-                    let injected_files: Vec<String> = resp.files.iter().map(|f| f.path.clone()).collect();
-                    let total_chunks: usize = resp.files.iter().map(|f| f.chunks.len()).sum();
-                    let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
-                    let agent = std::env::var("BD_ACTOR").ok();
-                    let _ = store.store_injection(
-                        &injection_id,
-                        session_id,
-                        agent.as_deref(),
-                        Some(prompt),
-                        &injected_files,
-                        total_chunks,
-                        budget,
-                    );
-                }
-            }
-
             // Format structured context output
-            let suffix = if prompt_dedup_count > 0 {
-                format!(", {} prompt-deduped", prompt_dedup_count)
-            } else {
-                String::new()
-            };
-            let out = format_context_response(&resp, budget, hooks_cfg.show_docs, Some(&injection_id), &suffix);
+            let out = format_context_response(&resp, budget, hooks_cfg.show_docs);
             print!("{}", out);
             Ok(())
         }
@@ -685,112 +649,25 @@ async fn inject_context_remote(
     }
 }
 
-/// Collect CLAUDE.md content from the working directory and ancestors,
-/// then filter out response chunks that are near-duplicates of that content.
-/// Returns the number of chunks filtered.
-fn filter_prompt_duplicates(
-    resp: &mut crate::http::client::ContextResponse,
-    cwd: &Path,
-) -> usize {
-    use crate::search::context::ContentDeduplicator;
-
-    // Collect CLAUDE.md content by walking up from cwd
-    let mut dedup = ContentDeduplicator::new();
-    let mut dir = Some(cwd.to_path_buf());
-    while let Some(d) = dir {
-        let claude_md = d.join("CLAUDE.md");
-        if claude_md.is_file() {
-            if let Ok(content) = std::fs::read_to_string(&claude_md) {
-                // Split into sections by ## headers and seed each section
-                for section in split_md_sections(&content) {
-                    dedup.accept(section);
-                }
-            }
-        }
-        dir = d.parent().map(|p| p.to_path_buf());
-    }
-
-    if dedup.skipped == 0 && dedup.accepted_count() == 0 {
-        return 0; // No CLAUDE.md found, nothing to filter
-    }
-
-    // Filter chunks within each file
-    let mut removed = 0;
-    for file in &mut resp.files {
-        let before = file.chunks.len();
-        file.chunks.retain(|chunk| {
-            if let Some(ref content) = chunk.content {
-                !dedup.is_duplicate(content)
-            } else {
-                true // Keep chunks without content
-            }
-        });
-        removed += before - file.chunks.len();
-    }
-
-    // Remove files that have no chunks left
-    resp.files.retain(|f| !f.chunks.is_empty());
-
-    removed
-}
-
-/// Split markdown content into sections at ## boundaries.
-/// Each section includes its header line and body text.
-fn split_md_sections(content: &str) -> Vec<&str> {
-    let mut sections = Vec::new();
-    let mut start = 0;
-
-    for (i, line) in content.lines().enumerate() {
-        if line.starts_with("## ") && i > 0 {
-            let byte_offset = content
-                .lines()
-                .take(i)
-                .map(|l| l.len() + 1) // +1 for newline
-                .sum::<usize>();
-            let section = &content[start..byte_offset.min(content.len())];
-            if !section.trim().is_empty() {
-                sections.push(section);
-            }
-            start = byte_offset.min(content.len());
-        }
-    }
-    // Last section
-    if start < content.len() {
-        let section = &content[start..];
-        if !section.trim().is_empty() {
-            sections.push(section);
-        }
-    }
-
-    sections
-}
-
 /// Format a ContextResponse into structured text for injection.
 fn format_context_response(
     resp: &crate::http::client::ContextResponse,
     budget: usize,
     show_docs: bool,
-    injection_id: Option<&str>,
-    extra_suffix: &str,
 ) -> String {
     use std::fmt::Write;
     let mut out = String::new();
 
     // Header with summary
-    let id_suffix = injection_id
-        .map(|id| format!(" [injection_id: {}]", id))
-        .unwrap_or_default();
     let _ = writeln!(
         out,
-        "Bobbin found {} relevant files ({} direct, {} coupled, {} bridged, {}/{} budget lines{}){}:",
+        "Bobbin found {} relevant files ({} direct, {} coupled, {} bridged, {}/{} budget lines):",
         resp.summary.total_files,
         resp.summary.direct_hits,
         resp.summary.coupled_additions,
         resp.summary.bridged_additions,
         resp.summary.total_chunks,
         budget,
-        extra_suffix,
-        id_suffix,
     );
 
     // Partition files by type
@@ -1023,23 +900,6 @@ fn find_bobbin_root(start: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Generate a unique injection ID for context injection.
-/// Format: `inj-<8 hex chars>` (compact, unique per query+time).
-fn generate_context_injection_id(query: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(query.as_bytes());
-    hasher.update(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-            .to_le_bytes(),
-    );
-    let hash = hex::encode(hasher.finalize());
-    format!("inj-{}", &hash[..8])
-}
-
 /// Format a context bundle into a compact text block for Claude Code injection.
 ///
 /// Produces a plain-text summary of relevant code chunks, enforcing a hard line
@@ -1049,7 +909,6 @@ fn format_context_for_injection(
     bundle: &crate::search::context::ContextBundle,
     threshold: f32,
     show_docs: bool,
-    injection_id: Option<&str>,
 ) -> String {
     use crate::types::FileCategory;
     use std::fmt::Write;
@@ -1057,17 +916,13 @@ fn format_context_for_injection(
     let budget = bundle.budget.max_lines;
     let mut out = String::new();
 
-    let id_suffix = injection_id
-        .map(|id| format!(" [injection_id: {}]", id))
-        .unwrap_or_default();
     let header = format!(
-        "Bobbin found {} relevant files ({} source, {} docs, {}/{} budget lines){}:",
+        "Bobbin found {} relevant files ({} source, {} docs, {}/{} budget lines):",
         bundle.summary.total_files,
         bundle.summary.source_files,
         bundle.summary.doc_files,
         bundle.budget.used_lines,
         bundle.budget.max_lines,
-        id_suffix,
     );
     out.push_str(&header);
     out.push('\n');
@@ -1520,31 +1375,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         return Ok(());
     }
 
-    // 9a. Generate injection ID and store record for feedback tracking
-    let injection_id = generate_context_injection_id(prompt);
-    let injected_files: Vec<String> = bundle.files.iter().map(|f| f.path.clone()).collect();
-    let total_chunks: usize = bundle.files.iter().map(|f| f.chunks.len()).sum();
-
-    // Store injection record in feedback.db (best-effort, don't fail the hook)
-    let feedback_db_path = Config::feedback_db_path(&repo_root);
-    if let Ok(store) = crate::storage::feedback::FeedbackStore::open(&feedback_db_path) {
-        let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
-        let agent = std::env::var("BD_ACTOR").ok();
-        if let Err(e) = store.store_injection(
-            &injection_id,
-            session_id,
-            agent.as_deref(),
-            Some(prompt),
-            &injected_files,
-            total_chunks,
-            bundle.budget.max_lines,
-        ) {
-            eprintln!("bobbin: failed to store injection record: {}", e);
-        }
-    }
-
     let show_docs = args.show_docs.unwrap_or(hooks_cfg.show_docs);
-    let context_text = format_context_for_injection(&bundle, threshold, show_docs, Some(&injection_id));
+    let context_text = format_context_for_injection(&bundle, threshold, show_docs);
     print!("{}", context_text);
 
     // 10. Update hook state
@@ -2227,7 +2059,6 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                         total_files: 0, total_chunks: 0, direct_hits: 0,
                         coupled_additions: 0, bridged_additions: 0,
                         source_files: 0, doc_files: 0, top_semantic_score: 0.0,
-                        content_deduped: 0,
                     },
                 }
             }
@@ -2651,7 +2482,7 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
     }
 
     // 8. Format output
-    let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false, None);
+    let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false);
     let header = format!(
         "Bobbin found {} relevant chunks for this error (via search fallback):\n\n",
         bundle.summary.total_chunks,
@@ -3381,10 +3212,9 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
-                content_deduped: 0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         assert!(result.contains("0 relevant files"));
     }
 
@@ -3423,10 +3253,9 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
-                content_deduped: 0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.5, true, None);
+        let result = format_context_for_injection(&bundle, 0.5, true);
         assert!(result.contains("src/auth.rs:10-25"));
         assert!(result.contains("authenticate"));
         assert!(result.contains("fn authenticate()"));
@@ -3468,11 +3297,10 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
-                content_deduped: 0,
             },
         };
         // With high threshold, chunk content should be filtered out
-        let result = format_context_for_injection(&bundle, 0.5, true, None);
+        let result = format_context_for_injection(&bundle, 0.5, true);
         assert!(!result.contains("low_score_fn"));
     }
 
@@ -3704,10 +3532,9 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
-                content_deduped: 0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         let line_count = result.lines().count();
         // Must not exceed max_lines budget
         assert!(
@@ -3755,10 +3582,9 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
-                content_deduped: 0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         // Score should be 2 decimal places
         assert!(result.contains("score 0.86"), "Expected 2-decimal score in: {}", result);
     }
@@ -3818,18 +3644,17 @@ mod tests {
                 source_files: 1,
                 doc_files: 1,
                 top_semantic_score: 0.0,
-                content_deduped: 0,
             },
         };
 
         // show_docs=true should include both
-        let with_docs = format_context_for_injection(&bundle, 0.0, true, None);
+        let with_docs = format_context_for_injection(&bundle, 0.0, true);
         assert!(with_docs.contains("Source Files"), "Should have source section");
         assert!(with_docs.contains("Documentation"), "Should have doc section");
         assert!(with_docs.contains("README.md"));
 
         // show_docs=false should exclude documentation
-        let without_docs = format_context_for_injection(&bundle, 0.0, false, None);
+        let without_docs = format_context_for_injection(&bundle, 0.0, false);
         assert!(without_docs.contains("Source Files"), "Should have source section");
         assert!(!without_docs.contains("Documentation"), "Should not have doc section");
         assert!(!without_docs.contains("README.md"), "Doc file should be excluded");
@@ -3871,11 +3696,10 @@ mod tests {
                 source_files: 1,
                 doc_files: 0,
                 top_semantic_score: 0.0,
-                content_deduped: 0,
             },
         };
         // Budget 0 — should not panic and should produce empty or minimal output
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         assert!(result.lines().count() <= 1, "Budget 0 should produce at most the header");
     }
 
@@ -3915,10 +3739,9 @@ mod tests {
                 source_files: 1,
                 doc_files: 0,
                 top_semantic_score: 0.0,
-                content_deduped: 0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true);
         // Should still have the chunk header with file:lines
         assert!(result.contains("src/a.rs:1-10"));
         assert!(result.contains("fn_a"));
@@ -3966,13 +3789,13 @@ mod tests {
         let ups = hooks["UserPromptSubmit"].as_array().unwrap();
         assert_eq!(ups.len(), 1);
         let cmd = ups[0]["hooks"][0]["command"].as_str().unwrap();
-        assert_eq!(cmd, "bobbin hook inject-context || true");
+        assert_eq!(cmd, "bobbin hook inject-context");
 
         // Verify session-context command
         let ss = hooks["SessionStart"].as_array().unwrap();
         assert_eq!(ss.len(), 1);
         let cmd = ss[0]["hooks"][0]["command"].as_str().unwrap();
-        assert_eq!(cmd, "bobbin hook session-context || true");
+        assert_eq!(cmd, "bobbin hook session-context");
         assert_eq!(ss[0]["matcher"].as_str().unwrap(), "compact");
     }
 
@@ -4009,7 +3832,7 @@ mod tests {
         );
         assert_eq!(
             ups[1]["hooks"][0]["command"].as_str().unwrap(),
-            "bobbin hook inject-context || true"
+            "bobbin hook inject-context"
         );
     }
 
@@ -4033,21 +3856,6 @@ mod tests {
                 {
                     "type": "command",
                     "command": "bobbin hook inject-context",
-                    "timeout": 10
-                }
-            ]
-        });
-        assert!(is_bobbin_hook_group(&group));
-    }
-
-    #[test]
-    fn test_is_bobbin_hook_group_with_fallback() {
-        // Old-format hooks (without || true) should still be detected
-        let group = json!({
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "bobbin hook inject-context || true",
                     "timeout": 10
                 }
             ]
@@ -4365,12 +4173,12 @@ mod tests {
         let ups = hooks["UserPromptSubmit"].as_array().unwrap();
         assert_eq!(ups.len(), 2);
         assert_eq!(ups[0]["hooks"][0]["command"].as_str().unwrap(), "gt mail check --inject");
-        assert_eq!(ups[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook inject-context || true");
+        assert_eq!(ups[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook inject-context");
 
         let ss = hooks["SessionStart"].as_array().unwrap();
         assert_eq!(ss.len(), 2);
         assert_eq!(ss[0]["hooks"][0]["command"].as_str().unwrap(), "gt prime --hook");
-        assert_eq!(ss[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook session-context || true");
+        assert_eq!(ss[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook session-context");
 
         // Events bobbin doesn't touch are untouched
         assert_eq!(hooks["PreCompact"].as_array().unwrap().len(), 1);
@@ -4427,7 +4235,7 @@ mod tests {
         assert_eq!(ptu[0]["matcher"].as_str().unwrap(), "Write|Edit|Bash|Grep|Glob|Read");
         assert_eq!(
             ptu[0]["hooks"][0]["command"].as_str().unwrap(),
-            "bobbin hook post-tool-use || true"
+            "bobbin hook post-tool-use"
         );
         assert_eq!(ptu[0]["hooks"][0]["timeout"].as_i64().unwrap(), 10);
 
@@ -4436,7 +4244,7 @@ mod tests {
         assert_eq!(ptuf.len(), 1);
         assert_eq!(
             ptuf[0]["hooks"][0]["command"].as_str().unwrap(),
-            "bobbin hook post-tool-use-failure || true"
+            "bobbin hook post-tool-use-failure"
         );
         assert_eq!(ptuf[0]["hooks"][0]["timeout"].as_i64().unwrap(), 10);
     }
@@ -4625,7 +4433,6 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
-                content_deduped: 0,
             },
         };
 
@@ -4670,7 +4477,6 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
-                content_deduped: 0,
             },
         };
 
@@ -4725,7 +4531,6 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
-                content_deduped: 0,
             },
         };
 
@@ -4754,7 +4559,6 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
-                content_deduped: 0,
             },
         };
 
@@ -4802,7 +4606,6 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
-                content_deduped: 0,
             },
         };
 
@@ -4848,7 +4651,6 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
-                content_deduped: 0,
             },
         };
 

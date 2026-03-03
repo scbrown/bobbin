@@ -46,13 +46,6 @@ pub struct IndexConfig {
     pub exclude: Vec<String>,
     /// Whether to respect .gitignore
     pub use_gitignore: bool,
-    /// Minimum content bytes for a chunk to be indexed (skip near-empty stubs)
-    #[serde(default = "default_min_chunk_bytes")]
-    pub min_chunk_bytes: usize,
-}
-
-fn default_min_chunk_bytes() -> usize {
-    50
 }
 
 impl Default for IndexConfig {
@@ -75,15 +68,8 @@ impl Default for IndexConfig {
                 "**/.git/**".into(),
                 "**/build/**".into(),
                 "**/__pycache__/**".into(),
-                "**/.scratch/**".into(),
-                "**/*.min.js".into(),
-                "**/*.min.css".into(),
-                "**/searchindex*.js".into(),
-                "**/vendor/**".into(),
-                "**/.venv/**".into(),
             ],
             use_gitignore: true,
-            min_chunk_bytes: default_min_chunk_bytes(),
         }
     }
 }
@@ -490,9 +476,6 @@ pub struct RoleConfig {
     /// Repos this role cannot see (glob patterns, deny takes precedence over allow)
     #[serde(default)]
     pub deny: Vec<String>,
-    /// File path patterns to deny within allowed repos (glob patterns, e.g. "**/harnesses/*/CLAUDE.md")
-    #[serde(default)]
-    pub deny_paths: Vec<String>,
 }
 
 /// Maps indexed repo short names to their web browse URLs.

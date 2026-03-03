@@ -278,7 +278,7 @@ pub(super) async fn search(
 
     // Apply role-based access filtering
     let access = resolve_filter(&state, params.role.as_deref());
-    let results = access.filter_vec_by_path(results, |r| &r.chunk.file_path);
+    let results = access.filter_vec(results, |r| RepoFilter::repo_from_path(&r.chunk.file_path));
 
     let filtered: Vec<_> = if let Some(ref chunk_type) = type_filter {
         results
@@ -890,7 +890,7 @@ pub(super) async fn grep(
 
     // Apply role-based access filtering
     let access = resolve_filter(&state, params.role.as_deref());
-    let results = access.filter_vec_by_path(results, |r| &r.chunk.file_path);
+    let results = access.filter_vec(results, |r| RepoFilter::repo_from_path(&r.chunk.file_path));
 
     let filtered: Vec<SearchResult> = results
         .into_iter()
@@ -1031,8 +1031,6 @@ struct ContextSummaryOutput {
     bridged_additions: usize,
     source_files: usize,
     doc_files: usize,
-    #[serde(skip_serializing_if = "crate::search::context::is_zero")]
-    content_deduped: usize,
 }
 
 pub(super) async fn context(
@@ -1061,7 +1059,6 @@ pub(super) async fn context(
                 bridged_additions: 0,
                 source_files: 0,
                 doc_files: 0,
-                content_deduped: 0,
             },
         }));
     }
@@ -1119,7 +1116,7 @@ pub(super) async fn context(
 
     // Apply role-based access filtering
     let access = resolve_filter(&state, params.role.as_deref());
-    bundle.files.retain(|f| access.is_path_allowed(&f.path));
+    bundle.files.retain(|f| access.is_allowed(RepoFilter::repo_from_path(&f.path)));
 
     // Apply group filtering (narrow to repos in the named group)
     if let Some(ref group_name) = params.group {
@@ -1264,7 +1261,7 @@ pub(super) async fn related(
                 co_changes: c.co_changes,
             }
         })
-        .filter(|r| access.is_path_allowed(&r.path))
+        .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.path)))
         .collect();
 
     Ok(Json(RelatedResponse {
@@ -1337,7 +1334,7 @@ pub(super) async fn find_refs(
 
     // Filter definition if it's in a denied repo
     let definition = refs.definition.and_then(|d| {
-        if access.is_path_allowed(&d.file_path) {
+        if access.is_allowed(RepoFilter::repo_from_path(&d.file_path)) {
             Some(SymbolDefinitionOutput {
                 name: d.name,
                 chunk_type: d.chunk_type.to_string(),
@@ -1354,7 +1351,7 @@ pub(super) async fn find_refs(
     let usages: Vec<SymbolUsageOutput> = refs
         .usages
         .iter()
-        .filter(|u| access.is_path_allowed(&u.file_path))
+        .filter(|u| access.is_allowed(RepoFilter::repo_from_path(&u.file_path)))
         .map(|u| SymbolUsageOutput {
             file_path: u.file_path.clone(),
             line: u.line,
@@ -1472,43 +1469,10 @@ pub(super) async fn hotspots(
     let limit = params.limit.unwrap_or(20);
     let threshold = params.threshold.unwrap_or(0.0);
 
-    // Scan repo directories under repos/ — each is its own git repo
-    let repos_dir = state.repo_root.join("repos");
-    let mut all_churn: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
-    let mut repo_roots: Vec<(String, std::path::PathBuf)> = Vec::new();
+    let git = GitAnalyzer::new(&state.repo_root).map_err(internal_error)?;
+    let churn_map = git.get_file_churn(Some(since)).map_err(internal_error)?;
 
-    if repos_dir.is_dir() {
-        if let Ok(entries) = std::fs::read_dir(&repos_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() && path.join(".git").exists() {
-                    let repo_name = entry.file_name().to_string_lossy().to_string();
-                    if let Ok(git) = GitAnalyzer::new(&path) {
-                        if let Ok(churn) = git.get_file_churn(Some(since)) {
-                            for (file, count) in churn {
-                                let prefixed = format!("{}/{}", repo_name, file);
-                                all_churn.insert(prefixed, count);
-                            }
-                            repo_roots.push((repo_name, path));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Fallback: try repo_root itself as a git repo (original behavior)
-    if all_churn.is_empty() {
-        if let Ok(git) = GitAnalyzer::new(&state.repo_root) {
-            if let Ok(churn) = git.get_file_churn(Some(since)) {
-                for (file, count) in churn {
-                    all_churn.insert(file, count);
-                }
-            }
-        }
-    }
-
-    if all_churn.is_empty() {
+    if churn_map.is_empty() {
         return Ok(Json(HotspotsResponse {
             count: 0,
             since: since.to_string(),
@@ -1517,10 +1481,10 @@ pub(super) async fn hotspots(
     }
 
     let mut analyzer = ComplexityAnalyzer::new().map_err(internal_error)?;
-    let max_churn = all_churn.values().copied().max().unwrap_or(1) as f32;
+    let max_churn = churn_map.values().copied().max().unwrap_or(1) as f32;
     let mut hotspot_items: Vec<HotspotItem> = Vec::new();
 
-    for (file_path, churn) in &all_churn {
+    for (file_path, churn) in &churn_map {
         let language = detect_language(file_path);
         if matches!(
             language.as_str(),
@@ -1529,16 +1493,10 @@ pub(super) async fn hotspots(
             continue;
         }
 
-        let abs_path = repos_dir.join(file_path);
+        let abs_path = state.repo_root.join(file_path);
         let content = match std::fs::read_to_string(&abs_path) {
             Ok(c) => c,
-            Err(_) => {
-                // Try from repo_root as fallback
-                match std::fs::read_to_string(state.repo_root.join(file_path)) {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                }
-            }
+            Err(_) => continue,
         };
 
         let complexity = match analyzer.analyze_file(file_path, &content, &language) {
@@ -1561,7 +1519,7 @@ pub(super) async fn hotspots(
     }
 
     let access = resolve_filter(&state, params.role.as_deref());
-    hotspot_items.retain(|h| access.is_path_allowed(&h.file));
+    hotspot_items.retain(|h| access.is_allowed(RepoFilter::repo_from_path(&h.file)));
     hotspot_items
         .sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     hotspot_items.truncate(limit);
@@ -1662,7 +1620,7 @@ pub(super) async fn impact(
     let access = resolve_filter(&state, params.role.as_deref());
     let filtered_results: Vec<ImpactResultItem> = results
         .iter()
-        .filter(|r| access.is_path_allowed(&r.path))
+        .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.path)))
         .map(|r| ImpactResultItem {
             file: r.path.clone(),
             signal: signal_name(&r.signal).to_string(),
@@ -1757,7 +1715,6 @@ pub(super) async fn review(
                 bridged_additions: 0,
                 source_files: 0,
                 doc_files: 0,
-                content_deduped: 0,
             },
         }));
     }
@@ -1799,7 +1756,7 @@ pub(super) async fn review(
     let filtered_files: Vec<ContextFileOutput> = bundle
         .files
         .iter()
-        .filter(|f| access.is_path_allowed(&f.path))
+        .filter(|f| access.is_allowed(RepoFilter::repo_from_path(&f.path)))
         .map(to_context_file)
         .collect();
 
@@ -2001,12 +1958,12 @@ pub(super) async fn similar(
     // Apply role-based access filtering to response
     let response = SimilarResponse {
         results: response.results.into_iter()
-            .filter(|r| access.is_path_allowed(&r.file_path))
+            .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.file_path)))
             .collect(),
         clusters: response.clusters.into_iter()
-            .filter(|c| access.is_path_allowed(&c.representative.file_path))
+            .filter(|c| access.is_allowed(RepoFilter::repo_from_path(&c.representative.file_path)))
             .map(|mut c| {
-                c.members.retain(|m| access.is_path_allowed(&m.file_path));
+                c.members.retain(|m| access.is_allowed(RepoFilter::repo_from_path(&m.file_path)));
                 c.member_count = c.members.len();
                 c
             })
@@ -2301,8 +2258,7 @@ pub(super) async fn archive_entry(
 
 #[derive(Deserialize)]
 struct ArchiveRecentParams {
-    /// Only return records after this date (YYYY-MM-DD). Defaults to no filter.
-    after: Option<String>,
+    after: String,
     limit: Option<usize>,
     /// Filter by archive source name (e.g., "hla", "pensieve")
     source: Option<String>,
@@ -2340,8 +2296,7 @@ pub(super) async fn archive_recent(
         }
         let archive_root = std::path::Path::new(source_path);
         let mut source_records: Vec<(String, String, String)> = Vec::new();
-        let after = params.after.as_deref().unwrap_or("");
-        collect_recent_records(archive_root, archive_root, after, &mut source_records);
+        collect_recent_records(archive_root, archive_root, &params.after, &mut source_records);
         for (id, content, rel_path) in source_records {
             records.push((source_name.clone(), id, content, rel_path));
         }
@@ -3126,7 +3081,6 @@ fn to_context_summary(s: &crate::search::context::ContextSummary) -> ContextSumm
         bridged_additions: s.bridged_additions,
         source_files: s.source_files,
         doc_files: s.doc_files,
-        content_deduped: s.content_deduped,
     }
 }
 
@@ -3335,18 +3289,13 @@ async fn run_incremental_index(
     );
 
     for (rel_path, content, hash) in &files_to_index {
-        let mut chunks = match parser.parse_file(Path::new(rel_path), content) {
+        let chunks = match parser.parse_file(Path::new(rel_path), content) {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!("Failed to parse {}: {}", rel_path, e);
                 continue;
             }
         };
-        // Filter out near-empty chunks
-        let min_bytes = config.index.min_chunk_bytes;
-        if min_bytes > 0 {
-            chunks.retain(|c| c.content.trim().len() >= min_bytes);
-        }
         if chunks.is_empty() {
             continue;
         }
@@ -3358,11 +3307,8 @@ async fn run_incremental_index(
         let contexts: Vec<Option<String>> = vec![None; chunks.len()];
         let now = chrono::Utc::now().to_rfc3339();
 
-        // Extract repo name from relative path (e.g., "repos/aegis/..." → "aegis")
-        let repo = crate::access::RepoFilter::repo_from_path(rel_path);
-
         vector_store
-            .insert(&chunks, &embeddings, &contexts, repo, hash, &now)
+            .insert(&chunks, &embeddings, &contexts, "default", hash, &now)
             .await?;
     }
 

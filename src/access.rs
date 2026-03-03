@@ -5,8 +5,6 @@
 
 use std::collections::HashSet;
 
-use glob::Pattern;
-
 use crate::config::{AccessConfig, RoleConfig};
 
 /// Determines which repositories are visible to a given role.
@@ -18,8 +16,6 @@ pub struct RepoFilter {
     denied: HashSet<String>,
     /// Whether unlisted repos are visible
     default_allow: bool,
-    /// File path patterns to deny within allowed repos
-    denied_paths: Vec<Pattern>,
 }
 
 impl RepoFilter {
@@ -43,16 +39,10 @@ impl RepoFilter {
                     Some(role_config.allow.iter().cloned().collect())
                 };
                 let denied = role_config.deny.iter().cloned().collect();
-                let denied_paths = role_config
-                    .deny_paths
-                    .iter()
-                    .filter_map(|p| Pattern::new(p).ok())
-                    .collect();
                 Self {
                     allowed,
                     denied,
                     default_allow: config.default_allow,
-                    denied_paths,
                 }
             }
             None => {
@@ -61,7 +51,6 @@ impl RepoFilter {
                     allowed: None,
                     denied: HashSet::new(),
                     default_allow: config.default_allow,
-                    denied_paths: Vec::new(),
                 }
             }
         }
@@ -73,7 +62,6 @@ impl RepoFilter {
             allowed: None,
             denied: HashSet::new(),
             default_allow: true,
-            denied_paths: Vec::new(),
         }
     }
 
@@ -93,28 +81,6 @@ impl RepoFilter {
         self.default_allow
     }
 
-    /// Check if a full file path is allowed (repo-level + path-level filtering).
-    ///
-    /// This checks both the repo-level access (same as `is_allowed`) and any
-    /// `deny_paths` patterns configured for the role.
-    pub fn is_path_allowed(&self, file_path: &str) -> bool {
-        let repo = Self::repo_from_path(file_path);
-        if !self.is_allowed(repo) {
-            return false;
-        }
-        // Check path-level deny patterns
-        if !self.denied_paths.is_empty() {
-            // Extract the repo-relative path for matching
-            let rel_path = Self::repo_relative_path(file_path);
-            for pattern in &self.denied_paths {
-                if pattern.matches(rel_path) {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
     /// Filter a list of results, keeping only those from allowed repos.
     /// The `repo_extractor` function extracts the repo name from each item.
     pub fn filter_vec<T, F>(&self, items: Vec<T>, repo_extractor: F) -> Vec<T>
@@ -124,17 +90,6 @@ impl RepoFilter {
         items
             .into_iter()
             .filter(|item| self.is_allowed(repo_extractor(item)))
-            .collect()
-    }
-
-    /// Filter a list of results by full file path (repo + path-level filtering).
-    pub fn filter_vec_by_path<T, F>(&self, items: Vec<T>, path_extractor: F) -> Vec<T>
-    where
-        F: Fn(&T) -> &str,
-    {
-        items
-            .into_iter()
-            .filter(|item| self.is_path_allowed(path_extractor(item)))
             .collect()
     }
 
@@ -158,31 +113,6 @@ impl RepoFilter {
         }
         // Fallback: first path component (for relative paths like "aegis/src/main.rs")
         path.split('/').next().unwrap_or(path)
-    }
-
-    /// Extract the repo-relative path from a full file path.
-    ///
-    /// `/var/lib/bobbin/repos/aegis/harnesses/ian/CLAUDE.md` → `harnesses/ian/CLAUDE.md`
-    /// `repos/aegis/src/main.rs` → `src/main.rs`
-    pub fn repo_relative_path(path: &str) -> &str {
-        // Find "/repos/<name>/" and return everything after the repo name
-        if let Some(idx) = path.find("/repos/") {
-            let after_repos = &path[idx + 7..]; // skip "/repos/"
-            if let Some(slash) = after_repos.find('/') {
-                return &after_repos[slash + 1..];
-            }
-        }
-        // Handle "repos/<name>/..." (relative paths)
-        if let Some(after) = path.strip_prefix("repos/") {
-            if let Some(slash) = after.find('/') {
-                return &after[slash + 1..];
-            }
-        }
-        // Fallback: skip first path component (repo name)
-        if let Some(slash) = path.find('/') {
-            return &path[slash + 1..];
-        }
-        path
     }
 
     /// Resolve the effective role from explicit value, env vars, or default.
@@ -272,16 +202,6 @@ mod tests {
             name: name.to_string(),
             allow: allow.iter().map(|s| s.to_string()).collect(),
             deny: deny.iter().map(|s| s.to_string()).collect(),
-            deny_paths: vec![],
-        }
-    }
-
-    fn role_with_paths(name: &str, allow: &[&str], deny: &[&str], deny_paths: &[&str]) -> RoleConfig {
-        RoleConfig {
-            name: name.to_string(),
-            allow: allow.iter().map(|s| s.to_string()).collect(),
-            deny: deny.iter().map(|s| s.to_string()).collect(),
-            deny_paths: deny_paths.iter().map(|s| s.to_string()).collect(),
         }
     }
 
@@ -443,13 +363,11 @@ mod tests {
                     name: "human".to_string(),
                     allow: vec!["*".to_string()],
                     deny: vec![],
-                    deny_paths: vec![],
                 },
                 RoleConfig {
                     name: "default".to_string(),
                     allow: vec![],
                     deny: vec!["cv".to_string(), "resume".to_string()],
-                    deny_paths: vec![],
                 },
             ],
         };
@@ -473,108 +391,5 @@ model = "all-MiniLM-L6-v2"
         assert!(config.access.roles.is_empty());
         let filter = RepoFilter::from_config(&config.access, "anything");
         assert!(filter.is_allowed("any-repo"));
-    }
-
-    #[test]
-    fn test_repo_relative_path() {
-        assert_eq!(
-            RepoFilter::repo_relative_path("/var/lib/bobbin/repos/aegis/harnesses/ian/CLAUDE.md"),
-            "harnesses/ian/CLAUDE.md"
-        );
-        assert_eq!(
-            RepoFilter::repo_relative_path("repos/aegis/src/main.rs"),
-            "src/main.rs"
-        );
-        assert_eq!(
-            RepoFilter::repo_relative_path("bobbin/src/lib.rs"),
-            "src/lib.rs"
-        );
-    }
-
-    #[test]
-    fn test_deny_paths_filters_files() {
-        let config = make_config(true, vec![
-            role_with_paths("default", &[], &[], &["harnesses/*/CLAUDE.md", "crew/*/CLAUDE.md"]),
-        ]);
-        let filter = RepoFilter::from_config(&config, "some-agent");
-
-        // Repo is allowed
-        assert!(filter.is_allowed("aegis"));
-
-        // But specific paths within it are denied
-        assert!(!filter.is_path_allowed("/var/lib/bobbin/repos/aegis/harnesses/ian/CLAUDE.md"));
-        assert!(!filter.is_path_allowed("/var/lib/bobbin/repos/aegis/harnesses/ellie/CLAUDE.md"));
-        assert!(!filter.is_path_allowed("/var/lib/bobbin/repos/bobbin/crew/strider/CLAUDE.md"));
-
-        // Other files in the same repos are fine
-        assert!(filter.is_path_allowed("/var/lib/bobbin/repos/aegis/src/main.rs"));
-        assert!(filter.is_path_allowed("/var/lib/bobbin/repos/aegis/docs/design.md"));
-    }
-
-    #[test]
-    fn test_deny_paths_combined_with_repo_deny() {
-        let config = make_config(true, vec![
-            role_with_paths("default", &[], &["cv", "resume"], &["harnesses/*/CLAUDE.md"]),
-        ]);
-        let filter = RepoFilter::from_config(&config, "agent");
-
-        // Denied repos still denied
-        assert!(!filter.is_path_allowed("/var/lib/bobbin/repos/cv/resume.md"));
-
-        // Denied paths within allowed repos
-        assert!(!filter.is_path_allowed("/var/lib/bobbin/repos/aegis/harnesses/ian/CLAUDE.md"));
-
-        // Allowed paths in allowed repos
-        assert!(filter.is_path_allowed("/var/lib/bobbin/repos/aegis/src/main.rs"));
-    }
-
-    #[test]
-    fn test_deny_paths_no_patterns_allows_all() {
-        let config = make_config(true, vec![
-            role("default", &[], &[]),
-        ]);
-        let filter = RepoFilter::from_config(&config, "agent");
-
-        // Everything allowed when no deny_paths
-        assert!(filter.is_path_allowed("/var/lib/bobbin/repos/aegis/harnesses/ian/CLAUDE.md"));
-        assert!(filter.is_path_allowed("/var/lib/bobbin/repos/aegis/src/main.rs"));
-    }
-
-    #[test]
-    fn test_filter_vec_by_path() {
-        let config = make_config(true, vec![
-            role_with_paths("default", &[], &[], &["harnesses/*/CLAUDE.md"]),
-        ]);
-        let filter = RepoFilter::from_config(&config, "agent");
-
-        let items = vec![
-            "/var/lib/bobbin/repos/aegis/src/main.rs",
-            "/var/lib/bobbin/repos/aegis/harnesses/ian/CLAUDE.md",
-            "/var/lib/bobbin/repos/aegis/docs/design.md",
-        ];
-        let filtered = filter.filter_vec_by_path(items, |item| item);
-        assert_eq!(filtered, vec![
-            "/var/lib/bobbin/repos/aegis/src/main.rs",
-            "/var/lib/bobbin/repos/aegis/docs/design.md",
-        ]);
-    }
-
-    #[test]
-    fn test_deny_paths_config_roundtrip() {
-        let toml_str = r#"
-default_allow = true
-
-[[roles]]
-name = "default"
-deny = ["cv"]
-deny_paths = ["harnesses/*/CLAUDE.md", "crew/*/CLAUDE.md"]
-"#;
-        let config: AccessConfig = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.roles[0].deny_paths.len(), 2);
-        assert_eq!(config.roles[0].deny_paths[0], "harnesses/*/CLAUDE.md");
-
-        let filter = RepoFilter::from_config(&config, "agent");
-        assert!(!filter.is_path_allowed("/var/lib/bobbin/repos/aegis/harnesses/ian/CLAUDE.md"));
-        assert!(filter.is_path_allowed("/var/lib/bobbin/repos/aegis/src/main.rs"));
     }
 }

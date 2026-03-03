@@ -225,7 +225,8 @@ impl VectorStore {
         indexed_at: &str,
     ) -> Result<RecordBatch> {
         let file_hashes: Vec<&str> = chunks.iter().map(|_| file_hash).collect();
-        self.to_record_batch_bulk(chunks, embeddings, full_contexts, repo, &file_hashes, indexed_at)
+        let indexed_ats: Vec<&str> = chunks.iter().map(|_| indexed_at).collect();
+        self.to_record_batch_bulk(chunks, embeddings, full_contexts, repo, &file_hashes, &indexed_ats)
     }
 
     fn to_record_batch_bulk(
@@ -235,7 +236,7 @@ impl VectorStore {
         full_contexts: &[Option<String>],
         repo: &str,
         file_hashes: &[&str],
-        indexed_at: &str,
+        indexed_at_values: &[&str],
     ) -> Result<RecordBatch> {
         let schema = Arc::new(self.schema());
 
@@ -255,7 +256,7 @@ impl VectorStore {
             .iter()
             .map(|c| c.as_deref())
             .collect();
-        let indexed_ats: Vec<&str> = chunks.iter().map(|_| indexed_at).collect();
+        let indexed_ats: Vec<&str> = indexed_at_values.to_vec();
         let tags: Vec<&str> = chunks.iter().map(|c| c.tags.as_str()).collect();
 
         // Flatten embeddings for FixedSizeList
@@ -379,7 +380,7 @@ impl VectorStore {
         full_contexts: &[Option<String>],
         repo: &str,
         file_hashes: &[&str],
-        indexed_at: &str,
+        indexed_at_values: &[&str],
     ) -> Result<()> {
         if chunks.is_empty() {
             return Ok(());
@@ -388,19 +389,21 @@ impl VectorStore {
         if chunks.len() != embeddings.len()
             || chunks.len() != full_contexts.len()
             || chunks.len() != file_hashes.len()
+            || chunks.len() != indexed_at_values.len()
         {
             anyhow::bail!(
-                "insert_bulk: length mismatch — chunks={}, embeddings={}, contexts={}, hashes={}",
+                "insert_bulk: length mismatch — chunks={}, embeddings={}, contexts={}, hashes={}, indexed_at={}",
                 chunks.len(),
                 embeddings.len(),
                 full_contexts.len(),
-                file_hashes.len()
+                file_hashes.len(),
+                indexed_at_values.len()
             );
         }
 
         let schema = Arc::new(self.schema());
         let batch =
-            self.to_record_batch_bulk(chunks, embeddings, full_contexts, repo, file_hashes, indexed_at)?;
+            self.to_record_batch_bulk(chunks, embeddings, full_contexts, repo, file_hashes, indexed_at_values)?;
 
         match &self.table {
             Some(table) => {

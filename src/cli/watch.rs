@@ -363,19 +363,10 @@ async fn reindex_files(
             }
         }
 
-        let mut chunks = match parser.parse_file(path, &content) {
+        let chunks = match parser.parse_file(path, &content) {
             Ok(c) if !c.is_empty() => c,
             _ => continue,
         };
-
-        // Filter out near-empty chunks
-        let min_bytes = config.index.min_chunk_bytes;
-        if min_bytes > 0 {
-            chunks.retain(|c| c.content.trim().len() >= min_bytes);
-            if chunks.is_empty() {
-                continue;
-            }
-        }
 
         let contexts = build_context_windows(&chunks, &content, &config.embedding.context);
 

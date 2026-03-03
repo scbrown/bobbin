@@ -280,6 +280,38 @@ impl GitAnalyzer {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
+    /// Get the last commit timestamp for every file in the repo in one pass.
+    ///
+    /// Returns a map of relative file path -> unix timestamp of the most recent
+    /// commit that touched that file. Uses reverse-chronological git log order
+    /// so the first occurrence of each file is its most recent commit.
+    pub fn get_file_last_modified(&self) -> Result<HashMap<String, i64>> {
+        let output = Command::new("git")
+            .args(["log", "--format=COMMIT %ct", "--name-only"])
+            .current_dir(&self.repo_root)
+            .output()
+            .context("Failed to get file timestamps from git log")?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut timestamps: HashMap<String, i64> = HashMap::new();
+        let mut current_ts: Option<i64> = None;
+
+        for line in stdout.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if let Some(ts_str) = line.strip_prefix("COMMIT ") {
+                current_ts = ts_str.parse::<i64>().ok();
+            } else if let Some(ts) = current_ts {
+                // First occurrence = most recent commit (git log is reverse-chronological)
+                timestamps.entry(line.to_string()).or_insert(ts);
+            }
+        }
+
+        Ok(timestamps)
+    }
+
     /// Get commit log for semantic indexing.
     ///
     /// Returns commit entries with hash, author, date, message, and touched files.

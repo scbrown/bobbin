@@ -5,7 +5,7 @@ use ignore::WalkBuilder;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -99,7 +99,6 @@ struct ProfileStats {
     compact_ms: u128,
     total_chunks_embedded: usize,
     total_batches: usize,
-    chunks_filtered: usize,
 }
 
 pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
@@ -343,6 +342,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     } else {
         config.embedding.batch_size
     };
+    // Build file → last-commit-timestamp map for recency tracking.
+    // Falls back to empty map (all files get now()) if not in a git repo.
+    let file_timestamps: HashMap<String, i64> =
+        match crate::index::git::GitAnalyzer::new(&source_root) {
+            Ok(analyzer) => analyzer.get_file_last_modified().unwrap_or_default(),
+            Err(_) => HashMap::new(),
+        };
+
     let mut pending_results: Vec<FileIndexResult> = Vec::new();
     let mut all_imports: Vec<ImportEdge> = Vec::new();
 
@@ -385,17 +392,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             }
         };
         profile.parse_ms += t_parse.elapsed().as_millis();
-
-        // Filter out near-empty chunks (e.g. mdbook template stubs with just "# Testing")
-        let min_bytes = config.index.min_chunk_bytes;
-        if min_bytes > 0 {
-            let before = chunks.len();
-            chunks.retain(|c| c.content.trim().len() >= min_bytes);
-            let dropped = before - chunks.len();
-            if dropped > 0 {
-                profile.chunks_filtered += dropped;
-            }
-        }
 
         // Extract imports from this file (if dependency tracking enabled)
         if config.dependencies.enabled {
@@ -452,6 +448,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 repo_name,
                 &mut profile,
                 &existing_files,
+                &file_timestamps,
             )
             .await?;
 
@@ -488,6 +485,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             repo_name,
             &mut profile,
             &existing_files,
+            &file_timestamps,
         )
         .await?;
 
@@ -1187,12 +1185,13 @@ async fn process_batch(
     repo: &str,
     profile: &mut ProfileStats,
     existing_files: &HashSet<String>,
+    file_timestamps: &HashMap<String, i64>,
 ) -> Result<(usize, usize)> {
     if results.is_empty() {
         return Ok((0, 0));
     }
 
-    let now = chrono::Utc::now().timestamp().to_string();
+    let fallback_ts = chrono::Utc::now().timestamp();
 
     // Collect all embed texts across files into one batch
     let mut all_texts: Vec<String> = Vec::new();
@@ -1238,17 +1237,24 @@ async fn process_batch(
     }
     profile.delete_ms += t_del.elapsed().as_millis();
 
-    // Accumulate all chunks, embeddings, contexts, and per-chunk file hashes
-    // for a single bulk Lance insert instead of per-file inserts.
+    // Accumulate all chunks, embeddings, contexts, per-chunk file hashes,
+    // and per-chunk indexed_at timestamps for a single bulk Lance insert.
     let mut all_chunks: Vec<Chunk> = Vec::new();
     let mut all_contexts: Vec<Option<String>> = Vec::new();
     let mut all_hashes: Vec<String> = Vec::new();
+    let mut all_indexed_at: Vec<String> = Vec::new();
     let mut indexed_count = 0;
     let mut chunks_count = 0;
 
     for (result, &chunk_count) in results.drain(..).zip(file_chunk_counts.iter()) {
+        let ts = file_timestamps
+            .get(&result.path)
+            .copied()
+            .unwrap_or(fallback_ts)
+            .to_string();
         for _ in 0..chunk_count {
             all_hashes.push(result.hash.clone());
+            all_indexed_at.push(ts.clone());
         }
         all_chunks.extend(result.chunks);
         all_contexts.extend(result.contexts);
@@ -1258,6 +1264,7 @@ async fn process_batch(
 
     let t_ins = Instant::now();
     let hash_refs: Vec<&str> = all_hashes.iter().map(|s| s.as_str()).collect();
+    let ts_refs: Vec<&str> = all_indexed_at.iter().map(|s| s.as_str()).collect();
     vector_store
         .insert_bulk(
             &all_chunks,
@@ -1265,7 +1272,7 @@ async fn process_batch(
             &all_contexts,
             repo,
             &hash_refs,
-            &now,
+            &ts_refs,
         )
         .await
         .context("Failed to store chunks")?;
