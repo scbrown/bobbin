@@ -242,7 +242,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
             ],
             "PostToolUse": [
                 {
-                    "matcher": "Write|Edit",
+                    "matcher": "Write|Edit|Bash|Grep|Glob|Read",
                     "hooks": [
                         {
                             "type": "command",
@@ -405,7 +405,7 @@ async fn run_install(args: InstallArgs, output: OutputConfig) -> Result<()> {
         println!("  Location: {}", settings_path.display().to_string().dimmed());
         println!("  UserPromptSubmit:    {}", "inject-context".cyan());
         println!("  SessionStart:        {}", "session-context (compact)".cyan());
-        println!("  PostToolUse:         {}", "post-tool-use (Write|Edit)".cyan());
+        println!("  PostToolUse:         {}", "post-tool-use (Write|Edit|Bash|Grep|Glob)".cyan());
         println!("  PostToolUseFailure:  {}", "post-tool-use-failure".cyan());
     }
 
@@ -4247,7 +4247,7 @@ mod tests {
         // PostToolUse
         let ptu = hooks["PostToolUse"].as_array().unwrap();
         assert_eq!(ptu.len(), 1);
-        assert_eq!(ptu[0]["matcher"].as_str().unwrap(), "Write|Edit");
+        assert_eq!(ptu[0]["matcher"].as_str().unwrap(), "Write|Edit|Bash|Grep|Glob|Read");
         assert_eq!(
             ptu[0]["hooks"][0]["command"].as_str().unwrap(),
             "bobbin hook post-tool-use || true"
