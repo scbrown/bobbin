@@ -235,6 +235,9 @@ def setup_workspace(
         capture_output=True, text=True, timeout=30,
     )
 
+    # Enable GPU for embedding — default config has gpu=false
+    modify_config_toml(ws, "embedding", "gpu", True)
+
     logger.info("Indexing workspace %s", ws)
     subprocess.run(
         [bobbin, "index", "--skip-calibrate"], cwd=ws, check=True,
