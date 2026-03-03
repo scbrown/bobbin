@@ -2,6 +2,7 @@ pub mod context;
 pub mod hybrid;
 pub mod keyword;
 pub mod preprocess;
+pub mod query;
 pub mod review;
 pub mod semantic;
 

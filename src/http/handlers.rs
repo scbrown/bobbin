@@ -171,6 +171,9 @@ pub(super) async fn search(
     let limit = params.limit.unwrap_or(10);
     let mode = params.mode.as_deref().unwrap_or("hybrid");
 
+    // Parse advanced query syntax: extract inline filters, phrases, and free text
+    let parsed = crate::search::query::parse(&params.q);
+
     let type_filter = params
         .r#type
         .as_deref()
@@ -206,12 +209,29 @@ pub(super) async fn search(
         limit
     };
 
-    let repo_filter = params.repo.as_deref();
-    let group_sql = resolve_group_filter(&state, params.group.as_deref())
+    // Repo filter: prefer inline filter, fall back to query param
+    let inline_repo: Option<String> = parsed.filters.iter()
+        .find(|f| f.field == crate::search::query::FilterField::Repo && !f.negated && f.values.len() == 1)
+        .map(|f| f.values[0].clone());
+    let repo_filter_str = inline_repo.as_deref().or(params.repo.as_deref());
+
+    // Group filter: prefer inline filter, fall back to query param
+    let inline_groups = crate::search::query::extract_group_filters(&parsed.filters);
+    let group_param = if !inline_groups.is_empty() {
+        Some(inline_groups[0].as_str())
+    } else {
+        params.group.as_deref()
+    };
+    let group_sql = resolve_group_filter(&state, group_param)
         .map_err(|e| bad_request(e))?;
 
-    // Build combined filter from group + tag include/exclude
+    // Build combined filter from parsed inline filters + group + tag include/exclude
     let mut extra_filters: Vec<String> = Vec::new();
+
+    // Add SQL from inline filters (repo:, lang:, type:, file:, path:, tag:)
+    let inline_sql = crate::search::query::filters_to_sql(&parsed.filters);
+    extra_filters.extend(inline_sql);
+
     if let Some(ref g) = group_sql {
         extra_filters.push(g.clone());
     }
@@ -233,9 +253,17 @@ pub(super) async fn search(
         Some(extra_filters.join(" AND "))
     };
 
+    // Use parsed text_query (filters stripped) for actual search
+    let search_query = if parsed.text_query.is_empty() {
+        // If only filters and no text, use a broad match
+        params.q.clone()
+    } else {
+        parsed.text_query.clone()
+    };
+
     let results = match mode {
         "keyword" => vector_store
-            .search_fts_filtered(&params.q, search_limit, repo_filter, combined_filter.as_deref())
+            .search_fts_filtered(&search_query, search_limit, repo_filter_str, combined_filter.as_deref())
             .await
             .map_err(|e| internal_error(e.into()))?,
 
@@ -247,7 +275,7 @@ pub(super) async fn search(
             if mode == "semantic" {
                 let mut search = SemanticSearch::new(embedder, vector_store);
                 search
-                    .search_filtered(&params.q, search_limit, repo_filter, combined_filter.as_deref())
+                    .search_filtered(&search_query, search_limit, repo_filter_str, combined_filter.as_deref())
                     .await
                     .map_err(|e| internal_error(e.into()))?
             } else {
@@ -257,7 +285,7 @@ pub(super) async fn search(
                     state.config.search.semantic_weight,
                 );
                 search
-                    .search_filtered(&params.q, search_limit, repo_filter, combined_filter.as_deref())
+                    .search_filtered(&search_query, search_limit, repo_filter_str, combined_filter.as_deref())
                     .await
                     .map_err(|e| internal_error(e.into()))?
             }
@@ -278,7 +306,7 @@ pub(super) async fn search(
 
     // Apply role-based access filtering
     let access = resolve_filter(&state, params.role.as_deref());
-    let results = access.filter_vec(results, |r| RepoFilter::repo_from_path(&r.chunk.file_path));
+    let results = access.filter_vec_by_path(results, |r| &r.chunk.file_path);
 
     let filtered: Vec<_> = if let Some(ref chunk_type) = type_filter {
         results
@@ -890,7 +918,7 @@ pub(super) async fn grep(
 
     // Apply role-based access filtering
     let access = resolve_filter(&state, params.role.as_deref());
-    let results = access.filter_vec(results, |r| RepoFilter::repo_from_path(&r.chunk.file_path));
+    let results = access.filter_vec_by_path(results, |r| &r.chunk.file_path);
 
     let filtered: Vec<SearchResult> = results
         .into_iter()
@@ -1116,7 +1144,7 @@ pub(super) async fn context(
 
     // Apply role-based access filtering
     let access = resolve_filter(&state, params.role.as_deref());
-    bundle.files.retain(|f| access.is_allowed(RepoFilter::repo_from_path(&f.path)));
+    bundle.files.retain(|f| access.is_path_allowed(&f.path));
 
     // Apply group filtering (narrow to repos in the named group)
     if let Some(ref group_name) = params.group {
@@ -1261,7 +1289,7 @@ pub(super) async fn related(
                 co_changes: c.co_changes,
             }
         })
-        .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.path)))
+        .filter(|r| access.is_path_allowed(&r.path))
         .collect();
 
     Ok(Json(RelatedResponse {
@@ -1334,7 +1362,7 @@ pub(super) async fn find_refs(
 
     // Filter definition if it's in a denied repo
     let definition = refs.definition.and_then(|d| {
-        if access.is_allowed(RepoFilter::repo_from_path(&d.file_path)) {
+        if access.is_path_allowed(&d.file_path) {
             Some(SymbolDefinitionOutput {
                 name: d.name,
                 chunk_type: d.chunk_type.to_string(),
@@ -1351,7 +1379,7 @@ pub(super) async fn find_refs(
     let usages: Vec<SymbolUsageOutput> = refs
         .usages
         .iter()
-        .filter(|u| access.is_allowed(RepoFilter::repo_from_path(&u.file_path)))
+        .filter(|u| access.is_path_allowed(&u.file_path))
         .map(|u| SymbolUsageOutput {
             file_path: u.file_path.clone(),
             line: u.line,
@@ -1519,7 +1547,7 @@ pub(super) async fn hotspots(
     }
 
     let access = resolve_filter(&state, params.role.as_deref());
-    hotspot_items.retain(|h| access.is_allowed(RepoFilter::repo_from_path(&h.file)));
+    hotspot_items.retain(|h| access.is_path_allowed(&h.file));
     hotspot_items
         .sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     hotspot_items.truncate(limit);
@@ -1620,7 +1648,7 @@ pub(super) async fn impact(
     let access = resolve_filter(&state, params.role.as_deref());
     let filtered_results: Vec<ImpactResultItem> = results
         .iter()
-        .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.path)))
+        .filter(|r| access.is_path_allowed(&r.path))
         .map(|r| ImpactResultItem {
             file: r.path.clone(),
             signal: signal_name(&r.signal).to_string(),
@@ -1756,7 +1784,7 @@ pub(super) async fn review(
     let filtered_files: Vec<ContextFileOutput> = bundle
         .files
         .iter()
-        .filter(|f| access.is_allowed(RepoFilter::repo_from_path(&f.path)))
+        .filter(|f| access.is_path_allowed(&f.path))
         .map(to_context_file)
         .collect();
 
@@ -1958,12 +1986,12 @@ pub(super) async fn similar(
     // Apply role-based access filtering to response
     let response = SimilarResponse {
         results: response.results.into_iter()
-            .filter(|r| access.is_allowed(RepoFilter::repo_from_path(&r.file_path)))
+            .filter(|r| access.is_path_allowed(&r.file_path))
             .collect(),
         clusters: response.clusters.into_iter()
-            .filter(|c| access.is_allowed(RepoFilter::repo_from_path(&c.representative.file_path)))
+            .filter(|c| access.is_path_allowed(&c.representative.file_path))
             .map(|mut c| {
-                c.members.retain(|m| access.is_allowed(RepoFilter::repo_from_path(&m.file_path)));
+                c.members.retain(|m| access.is_path_allowed(&m.file_path));
                 c.member_count = c.members.len();
                 c
             })
