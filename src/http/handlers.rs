@@ -3354,7 +3354,7 @@ async fn run_incremental_index(
         let now = chrono::Utc::now().to_rfc3339();
 
         // Extract repo name from relative path (e.g., "repos/aegis/..." → "aegis")
-        let repo = crate::access::repo_from_path(rel_path);
+        let repo = crate::access::RepoFilter::repo_from_path(rel_path);
 
         vector_store
             .insert(&chunks, &embeddings, &contexts, repo, hash, &now)
