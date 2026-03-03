@@ -145,8 +145,8 @@ td.mono{font-family:var(--mono)}
       <div id="lang-list" class="lang-list"></div>
     </div>
     <div style="margin-top:1.5rem">
-      <h3>Prometheus Metrics</h3>
-      <div class="card"><pre id="metrics-raw" style="font-family:var(--mono);font-size:0.8rem;color:var(--dim);white-space:pre-wrap"></pre></div>
+      <h3>Service Health</h3>
+      <div class="grid grid-3" id="health-cards"></div>
     </div>
   </div>
 
@@ -294,7 +294,23 @@ async function loadStatus() {
     document.getElementById('lang-list').innerHTML = langs.map(l =>
       `<div class="lang-item"><div class="lang-dot" style="background:${langColor(l.language)}"></div>${l.language} <span style="color:var(--dim)">${l.file_count} files / ${l.chunk_count} chunks</span></div>`
     ).join('');
-    document.getElementById('metrics-raw').textContent = metricsText;
+    // Parse Prometheus metrics into health cards
+    const metrics = {};
+    metricsText.split('\n').forEach(line => {
+      if (line.startsWith('#') || !line.trim()) return;
+      const match = line.match(/^(\w+)\s+([\d.e+-]+)/);
+      if (match) metrics[match[1]] = parseFloat(match[2]);
+    });
+    const health = document.getElementById('health-cards');
+    const uptime = metrics.bobbin_uptime_seconds;
+    const uptimeStr = uptime ? (uptime > 86400 ? Math.floor(uptime/86400) + 'd' : uptime > 3600 ? Math.floor(uptime/3600) + 'h' : Math.floor(uptime/60) + 'm') : '?';
+    const searchCount = metrics.bobbin_search_total || 0;
+    const hookCount = metrics.bobbin_hook_queries_total || 0;
+    health.innerHTML = `
+      <div class="card"><div class="card-header">Service</div><div class="stat-value green">Online</div><div style="color:var(--dim);font-size:0.8rem">Uptime: ${uptimeStr}</div></div>
+      <div class="card"><div class="card-header">Searches</div><div class="stat-value accent">${searchCount.toLocaleString()}</div><div style="color:var(--dim);font-size:0.8rem">Total queries served</div></div>
+      <div class="card"><div class="card-header">Hook Injections</div><div class="stat-value">${hookCount.toLocaleString()}</div><div style="color:var(--dim);font-size:0.8rem">Context injections</div></div>
+    `;
     document.getElementById('pulse').style.background = 'var(--green)';
   } catch(e) {
     document.getElementById('pulse').style.background = 'var(--red)';
@@ -597,7 +613,7 @@ async function loadFeedbackList() {
         return `
           <div class="result" style="border-left:3px solid ${color}">
             <div class="result-header">
-              <span class="result-path" style="font-size:0.8rem">${esc(f.injection_id)}</span>
+              <a class="result-path" style="font-size:0.8rem;cursor:pointer" onclick="filterByInjection('${esc(f.injection_id)}')" title="Filter feedback for this injection">${esc(f.injection_id)}</a>
               <span class="result-type" style="background:${color}20;color:${color}">${f.rating}</span>
               <span style="font-size:0.8rem;color:var(--dim)">${esc(f.agent)}</span>
               <span class="result-score">${ts}</span>
@@ -609,6 +625,29 @@ async function loadFeedbackList() {
   } catch(e) {
     el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
   }
+}
+
+function filterByInjection(id) {
+  // Show all feedback for this injection_id
+  const el = document.getElementById('feedback-list');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Loading...</div>';
+  fetch(API + '/feedback?injection_id=' + encodeURIComponent(id) + '&limit=50')
+    .then(r => r.json())
+    .then(data => {
+      const ratingColors = {useful:'var(--green)',noise:'var(--amber)',harmful:'var(--red)'};
+      let html = `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
+        <span style="color:var(--dim);font-size:0.85rem">Feedback for <span style="color:var(--accent);font-family:var(--mono)">${esc(id)}</span></span>
+        <span style="color:var(--accent);cursor:pointer;font-size:0.8rem" onclick="loadFeedbackList()">[clear filter]</span>
+      </div>`;
+      if (!data || data.length === 0) { html += '<div class="empty">No feedback for this injection</div>'; }
+      else { html += data.map(f => {
+        const ts = f.timestamp ? f.timestamp.slice(0,19).replace('T',' ') : '?';
+        const color = ratingColors[f.rating] || 'var(--dim)';
+        return `<div class="result" style="border-left:3px solid ${color}"><div class="result-header"><span class="result-type" style="background:${color}20;color:${color}">${f.rating}</span><span style="font-size:0.8rem;color:var(--dim)">${esc(f.agent)}</span><span class="result-score">${ts}</span></div>${f.reason ? `<div style="font-size:0.85rem;color:var(--dim);margin-top:0.25rem">${esc(f.reason)}</div>` : ''}</div>`;
+      }).join(''); }
+      el.innerHTML = html;
+    })
+    .catch(e => { el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`; });
 }
 
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }

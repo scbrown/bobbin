@@ -1469,10 +1469,43 @@ pub(super) async fn hotspots(
     let limit = params.limit.unwrap_or(20);
     let threshold = params.threshold.unwrap_or(0.0);
 
-    let git = GitAnalyzer::new(&state.repo_root).map_err(internal_error)?;
-    let churn_map = git.get_file_churn(Some(since)).map_err(internal_error)?;
+    // Scan repo directories under repos/ — each is its own git repo
+    let repos_dir = state.repo_root.join("repos");
+    let mut all_churn: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut repo_roots: Vec<(String, std::path::PathBuf)> = Vec::new();
 
-    if churn_map.is_empty() {
+    if repos_dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&repos_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() && path.join(".git").exists() {
+                    let repo_name = entry.file_name().to_string_lossy().to_string();
+                    if let Ok(git) = GitAnalyzer::new(&path) {
+                        if let Ok(churn) = git.get_file_churn(Some(since)) {
+                            for (file, count) in churn {
+                                let prefixed = format!("{}/{}", repo_name, file);
+                                all_churn.insert(prefixed, count);
+                            }
+                            repo_roots.push((repo_name, path));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: try repo_root itself as a git repo (original behavior)
+    if all_churn.is_empty() {
+        if let Ok(git) = GitAnalyzer::new(&state.repo_root) {
+            if let Ok(churn) = git.get_file_churn(Some(since)) {
+                for (file, count) in churn {
+                    all_churn.insert(file, count);
+                }
+            }
+        }
+    }
+
+    if all_churn.is_empty() {
         return Ok(Json(HotspotsResponse {
             count: 0,
             since: since.to_string(),
@@ -1481,10 +1514,10 @@ pub(super) async fn hotspots(
     }
 
     let mut analyzer = ComplexityAnalyzer::new().map_err(internal_error)?;
-    let max_churn = churn_map.values().copied().max().unwrap_or(1) as f32;
+    let max_churn = all_churn.values().copied().max().unwrap_or(1) as f32;
     let mut hotspot_items: Vec<HotspotItem> = Vec::new();
 
-    for (file_path, churn) in &churn_map {
+    for (file_path, churn) in &all_churn {
         let language = detect_language(file_path);
         if matches!(
             language.as_str(),
@@ -1493,10 +1526,16 @@ pub(super) async fn hotspots(
             continue;
         }
 
-        let abs_path = state.repo_root.join(file_path);
+        let abs_path = repos_dir.join(file_path);
         let content = match std::fs::read_to_string(&abs_path) {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(_) => {
+                // Try from repo_root as fallback
+                match std::fs::read_to_string(state.repo_root.join(file_path)) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                }
+            }
         };
 
         let complexity = match analyzer.analyze_file(file_path, &content, &language) {
@@ -3309,8 +3348,11 @@ async fn run_incremental_index(
         let contexts: Vec<Option<String>> = vec![None; chunks.len()];
         let now = chrono::Utc::now().to_rfc3339();
 
+        // Extract repo name from relative path (e.g., "repos/aegis/..." → "aegis")
+        let repo = crate::access::repo_from_path(rel_path);
+
         vector_store
-            .insert(&chunks, &embeddings, &contexts, "default", hash, &now)
+            .insert(&chunks, &embeddings, &contexts, repo, hash, &now)
             .await?;
     }
 
