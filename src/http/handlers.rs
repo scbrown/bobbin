@@ -190,7 +190,7 @@ pub(super) async fn search(
             )
         })?;
 
-    let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+    let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
 
     let stats = vector_store
         .get_stats(None)
@@ -263,52 +263,44 @@ pub(super) async fn search(
         parsed.text_query.clone()
     };
 
-    let results = match mode {
-        "keyword" => vector_store
-            .search_fts_filtered(&search_query, search_limit, repo_filter_str, combined_filter.as_deref())
-            .await
-            .map_err(|e| internal_error(e.into()))?,
-
-        "semantic" | "hybrid" => {
-            let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
-            let embedder = Embedder::load(&model_dir, &state.config.embedding.model)
-                .map_err(|e| internal_error(e.into()))?;
-
-            if mode == "semantic" {
-                let mut search = SemanticSearch::new(embedder, vector_store);
-                search
-                    .search_filtered(&search_query, search_limit, repo_filter_str, combined_filter.as_deref())
-                    .await
-                    .map_err(|e| internal_error(e.into()))?
-            } else {
-                let mut search = HybridSearch::new(
-                    embedder,
-                    vector_store,
-                    state.config.search.semantic_weight,
-                );
-                search
-                    .search_filtered(&search_query, search_limit, repo_filter_str, combined_filter.as_deref())
-                    .await
-                    .map_err(|e| internal_error(e.into()))?
-            }
-        }
-
-        _ => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorBody {
-                    error: format!(
-                        "Invalid mode: {}. Use 'hybrid', 'semantic', or 'keyword'",
-                        mode
-                    ),
-                }),
-            ));
-        }
+    // Execute search — with OR branch merging if applicable
+    let results = if parsed.has_or && parsed.or_branches.len() > 1 {
+        // OR query: run each branch separately and merge results by best score
+        execute_or_search(
+            &state,
+            &parsed.or_branches,
+            mode,
+            search_limit,
+            repo_filter_str,
+            combined_filter.as_deref(),
+        )
+        .await?
+    } else {
+        execute_single_search(
+            &state,
+            &search_query,
+            mode,
+            search_limit,
+            repo_filter_str,
+            combined_filter.as_deref(),
+        )
+        .await?
     };
 
     // Apply role-based access filtering
     let access = resolve_filter(&state, params.role.as_deref());
-    let results = access.filter_vec_by_path(results, |r| &r.chunk.file_path);
+    let mut results = access.filter_vec_by_path(results, |r| &r.chunk.file_path);
+
+    // Apply NOT exclusions: filter out results containing negated terms
+    if !parsed.negated_terms.is_empty() {
+        results.retain(|r| {
+            let content_lower = r.chunk.content.to_lowercase();
+            !parsed
+                .negated_terms
+                .iter()
+                .any(|neg| content_lower.contains(&neg.to_lowercase()))
+        });
+    }
 
     let filtered: Vec<_> = if let Some(ref chunk_type) = type_filter {
         results
@@ -3046,6 +3038,102 @@ pub(super) async fn suggest(
         count: values.len(),
         values,
     }))
+}
+
+// -- Search execution helpers --
+
+/// Execute a single search query against the given mode.
+async fn execute_single_search(
+    state: &AppState,
+    query: &str,
+    mode: &str,
+    limit: usize,
+    repo_filter: Option<&str>,
+    combined_filter: Option<&str>,
+) -> Result<Vec<SearchResult>, (StatusCode, Json<ErrorBody>)> {
+    let mut vector_store = open_vector_store(state).await.map_err(internal_error)?;
+
+    match mode {
+        "keyword" => vector_store
+            .search_fts_filtered(query, limit, repo_filter, combined_filter)
+            .await
+            .map_err(|e| internal_error(e.into())),
+
+        "semantic" | "hybrid" => {
+            let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
+            let embedder = Embedder::load(&model_dir, &state.config.embedding.model)
+                .map_err(|e| internal_error(e.into()))?;
+
+            if mode == "semantic" {
+                let mut search = SemanticSearch::new(embedder, vector_store);
+                search
+                    .search_filtered(query, limit, repo_filter, combined_filter)
+                    .await
+                    .map_err(|e| internal_error(e.into()))
+            } else {
+                let mut search = HybridSearch::new(
+                    embedder,
+                    vector_store,
+                    state.config.search.semantic_weight,
+                );
+                search
+                    .search_filtered(query, limit, repo_filter, combined_filter)
+                    .await
+                    .map_err(|e| internal_error(e.into()))
+            }
+        }
+
+        _ => Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorBody {
+                error: format!(
+                    "Invalid mode: {}. Use 'hybrid', 'semantic', or 'keyword'",
+                    mode
+                ),
+            }),
+        )),
+    }
+}
+
+/// Execute OR-branched search: run each branch, merge results by best score per chunk.
+async fn execute_or_search(
+    state: &AppState,
+    branches: &[String],
+    mode: &str,
+    limit: usize,
+    repo_filter: Option<&str>,
+    combined_filter: Option<&str>,
+) -> Result<Vec<SearchResult>, (StatusCode, Json<ErrorBody>)> {
+    use std::collections::HashMap;
+
+    let mut best_by_id: HashMap<String, SearchResult> = HashMap::new();
+
+    for branch in branches {
+        let results = execute_single_search(
+            state,
+            branch,
+            mode,
+            limit,
+            repo_filter,
+            combined_filter,
+        )
+        .await?;
+
+        for result in results {
+            let id = result.chunk.id.clone();
+            match best_by_id.get(&id) {
+                Some(existing) if existing.score >= result.score => {}
+                _ => {
+                    best_by_id.insert(id, result);
+                }
+            }
+        }
+    }
+
+    // Sort merged results by score descending
+    let mut merged: Vec<SearchResult> = best_by_id.into_values().collect();
+    merged.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(merged)
 }
 
 // -- Helpers --

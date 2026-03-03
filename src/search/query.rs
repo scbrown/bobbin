@@ -17,8 +17,14 @@ pub struct ParsedQuery {
     pub phrases: Vec<String>,
     /// Inline field filters
     pub filters: Vec<Filter>,
+    /// Terms to exclude from results (-word or NOT word)
+    pub negated_terms: Vec<String>,
     /// The reconstructed free-text query (terms + phrases joined)
     pub text_query: String,
+    /// Whether the query contains OR operators (signals multi-branch search)
+    pub has_or: bool,
+    /// OR-separated branches of the text query (only populated when has_or is true)
+    pub or_branches: Vec<String>,
 }
 
 /// An inline field filter extracted from the query.
@@ -117,6 +123,9 @@ pub fn parse(input: &str) -> ParsedQuery {
     let mut terms: Vec<String> = Vec::new();
     let mut phrases: Vec<String> = Vec::new();
     let mut filters: Vec<Filter> = Vec::new();
+    let mut negated_terms: Vec<String> = Vec::new();
+    let mut has_or = false;
+    let mut next_negated = false; // set by NOT keyword
 
     let input = input.trim();
     if input.is_empty() {
@@ -124,7 +133,10 @@ pub fn parse(input: &str) -> ParsedQuery {
             terms,
             phrases,
             filters,
+            negated_terms,
             text_query: String::new(),
+            has_or: false,
+            or_branches: vec![],
         };
     }
 
@@ -143,7 +155,12 @@ pub fn parse(input: &str) -> ParsedQuery {
         if chars[i] == '"' {
             if let Some((phrase, end)) = parse_quoted(&chars, i) {
                 if !phrase.is_empty() {
-                    phrases.push(phrase);
+                    if next_negated {
+                        negated_terms.push(phrase);
+                        next_negated = false;
+                    } else {
+                        phrases.push(phrase);
+                    }
                 }
                 i = end;
                 continue;
@@ -151,15 +168,25 @@ pub fn parse(input: &str) -> ParsedQuery {
             // Unmatched quote — fall through to treat as literal
         }
 
-        // Check for negation prefix followed by a filter
-        let (negated, filter_start) = if chars[i] == '-' && i + 1 < len && !chars[i + 1].is_whitespace() {
-            (true, i + 1)
-        } else {
-            (false, i)
-        };
+        // Check for negation prefix: -word (not a filter)
+        if chars[i] == '-' && i + 1 < len && !chars[i + 1].is_whitespace() {
+            // Try filter first: -repo:aegis
+            if let Some((filter, end)) = parse_filter(&chars, i + 1, true) {
+                filters.push(filter);
+                i = end;
+                continue;
+            }
+            // Not a filter — it's a negated term: -assembler
+            let (word, end) = parse_word(&chars, i + 1);
+            if !word.is_empty() {
+                negated_terms.push(word);
+            }
+            i = end;
+            continue;
+        }
 
-        // Try to parse as field:value filter
-        if let Some((filter, end)) = parse_filter(&chars, filter_start, negated) {
+        // Try to parse as field:value filter (non-negated)
+        if let Some((filter, end)) = parse_filter(&chars, i, false) {
             filters.push(filter);
             i = end;
             continue;
@@ -168,9 +195,18 @@ pub fn parse(input: &str) -> ParsedQuery {
         // Regular word/token
         let (word, end) = parse_word(&chars, i);
         if !word.is_empty() {
-            // Skip boolean operators as standalone words — they're structural, not search terms
             let upper = word.to_uppercase();
-            if upper != "AND" && upper != "OR" && upper != "NOT" {
+            if upper == "AND" {
+                // AND is implicit — skip
+            } else if upper == "OR" {
+                has_or = true;
+            } else if upper == "NOT" {
+                // Next term is negated
+                next_negated = true;
+            } else if next_negated {
+                negated_terms.push(word);
+                next_negated = false;
+            } else {
                 terms.push(word);
             }
         }
@@ -183,17 +219,76 @@ pub fn parse(input: &str) -> ParsedQuery {
         text_parts.push(t.clone());
     }
     for p in &phrases {
-        // Keep phrases quoted in the text query for FTS
         text_parts.push(format!("\"{}\"", p));
     }
     let text_query = text_parts.join(" ");
+
+    // Build OR branches if query contains OR operators
+    // Re-parse the original input to split on OR boundaries
+    let or_branches = if has_or {
+        build_or_branches(input, &filters)
+    } else {
+        vec![]
+    };
 
     ParsedQuery {
         terms,
         phrases,
         filters,
+        negated_terms,
         text_query,
+        has_or,
+        or_branches,
     }
+}
+
+/// Split a query into OR-separated branches, stripping filters from each.
+/// e.g. "redis OR memcached repo:aegis" → ["redis", "memcached"]
+fn build_or_branches(input: &str, _filters: &[Filter]) -> Vec<String> {
+    // Split on " OR " (case-insensitive), then strip filters/AND/NOT from each branch
+    let mut branches = Vec::new();
+    let parts: Vec<&str> = split_on_or(input);
+
+    for part in parts {
+        let sub = parse(part);
+        if !sub.text_query.is_empty() {
+            branches.push(sub.text_query);
+        }
+    }
+    branches
+}
+
+/// Split input on " OR " boundaries (case-insensitive).
+fn split_on_or(input: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut last = 0;
+    let bytes = input.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i + 4 <= len {
+        // Check for " OR " (with surrounding spaces)
+        if bytes[i] == b' '
+            && (bytes[i + 1] == b'O' || bytes[i + 1] == b'o')
+            && (bytes[i + 2] == b'R' || bytes[i + 2] == b'r')
+            && bytes[i + 3] == b' '
+        {
+            let part = &input[last..i];
+            if !part.trim().is_empty() {
+                parts.push(part.trim());
+            }
+            last = i + 4;
+            i = last;
+        } else {
+            i += 1;
+        }
+    }
+    // Last segment
+    let remaining = &input[last..];
+    if !remaining.trim().is_empty() {
+        parts.push(remaining.trim());
+    }
+    parts
 }
 
 /// Convert parsed filters into SQL WHERE clause fragments for LanceDB.
@@ -456,13 +551,75 @@ mod tests {
     }
 
     #[test]
-    fn test_boolean_operators_stripped() {
+    fn test_and_is_implicit() {
         let q = parse("context AND assembler");
         assert_eq!(q.terms, vec!["context", "assembler"]);
         assert!(q.filters.is_empty());
+        assert!(!q.has_or);
+        assert_eq!(q.text_query, "context assembler");
+    }
 
-        let q2 = parse("redis OR memcached");
-        assert_eq!(q2.terms, vec!["redis", "memcached"]);
+    #[test]
+    fn test_or_sets_flag_and_branches() {
+        let q = parse("redis OR memcached");
+        assert_eq!(q.terms, vec!["redis", "memcached"]);
+        assert!(q.has_or);
+        assert_eq!(q.or_branches, vec!["redis", "memcached"]);
+    }
+
+    #[test]
+    fn test_or_with_multiple_branches() {
+        let q = parse("redis OR memcached OR etcd");
+        assert!(q.has_or);
+        assert_eq!(q.or_branches, vec!["redis", "memcached", "etcd"]);
+    }
+
+    #[test]
+    fn test_or_preserves_filters() {
+        let q = parse("redis OR memcached repo:aegis");
+        assert!(q.has_or);
+        assert_eq!(q.filters.len(), 1);
+        assert_eq!(q.filters[0].field, FilterField::Repo);
+        // Branches should strip filters
+        assert_eq!(q.or_branches, vec!["redis", "memcached"]);
+    }
+
+    #[test]
+    fn test_negated_term_dash_prefix() {
+        let q = parse("context -assembler");
+        assert_eq!(q.terms, vec!["context"]);
+        assert_eq!(q.negated_terms, vec!["assembler"]);
+        assert_eq!(q.text_query, "context");
+    }
+
+    #[test]
+    fn test_negated_term_not_keyword() {
+        let q = parse("context NOT assembler");
+        assert_eq!(q.terms, vec!["context"]);
+        assert_eq!(q.negated_terms, vec!["assembler"]);
+    }
+
+    #[test]
+    fn test_and_not_combination() {
+        let q = parse("context AND NOT assembler");
+        assert_eq!(q.terms, vec!["context"]);
+        assert_eq!(q.negated_terms, vec!["assembler"]);
+    }
+
+    #[test]
+    fn test_negated_phrase() {
+        let q = parse("search NOT \"error handling\"");
+        assert_eq!(q.terms, vec!["search"]);
+        assert_eq!(q.negated_terms, vec!["error handling"]);
+        assert!(q.phrases.is_empty()); // negated phrase is NOT a search phrase
+    }
+
+    #[test]
+    fn test_plus_prefix_treated_as_term() {
+        // +word is just a regular term (+ doesn't negate)
+        let q = parse("+context -assembler");
+        assert_eq!(q.terms, vec!["+context"]);
+        assert_eq!(q.negated_terms, vec!["assembler"]);
     }
 
     #[test]
