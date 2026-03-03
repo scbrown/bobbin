@@ -594,7 +594,7 @@ impl Config {
         Self::data_dir(repo_root).join("index.db")
     }
 
-    /// Get the feedback SQLite database path
+    /// Get the feedback database path
     pub fn feedback_db_path(repo_root: &Path) -> PathBuf {
         Self::data_dir(repo_root).join("feedback.db")
     }
