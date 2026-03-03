@@ -762,15 +762,37 @@ pub(super) async fn webhook_push(
         git_ref
     );
 
-    // Spawn background re-index task
+    // Derive the short repo name from Forgejo's full_name (e.g., "stiwi/gastown" → "gastown")
+    let short_repo = repo_name
+        .rsplit('/')
+        .next()
+        .unwrap_or(repo_name)
+        .to_string();
+
+    // Spawn background re-index task for the specific repo
     let repo_root = state.repo_root.clone();
     let config = state.config.clone();
     tokio::spawn(async move {
-        tracing::info!("Starting background re-index from webhook");
-        if let Err(e) = run_incremental_index(repo_root, config).await {
+        // Index from the repo's subdirectory under repos/
+        let source_dir = repo_root.join("repos").join(&short_repo);
+        if !source_dir.is_dir() {
+            tracing::warn!(
+                "Webhook: repo dir {} not found, skipping re-index",
+                source_dir.display()
+            );
+            return;
+        }
+        tracing::info!(
+            "Starting background re-index from webhook: repo={}, source={}",
+            short_repo,
+            source_dir.display()
+        );
+        if let Err(e) =
+            run_incremental_index(repo_root, config, &source_dir, &short_repo).await
+        {
             tracing::error!("Background re-index failed: {:#}", e);
         } else {
-            tracing::info!("Background re-index completed");
+            tracing::info!("Background re-index completed for {}", short_repo);
         }
     });
 
@@ -3465,17 +3487,20 @@ fn clean_bead_snippet(content: &str, max_len: usize) -> String {
     }
 }
 
-/// Run incremental indexing (used by webhook handler)
+/// Run incremental indexing for a specific repo (used by webhook handler).
+///
+/// `source_dir` is the directory to walk (e.g., `/var/lib/bobbin/repos/gastown`).
+/// `repo_name` is the tag stored in the vector DB (e.g., `"gastown"`).
 async fn run_incremental_index(
     repo_root: PathBuf,
     config: crate::config::Config,
+    source_dir: &std::path::Path,
+    repo_name: &str,
 ) -> anyhow::Result<()> {
     use crate::index::{Embedder, Parser};
     use ignore::WalkBuilder;
     use sha2::{Digest, Sha256};
     use std::path::Path;
-
-    let source_dir = &repo_root;
     let lance_path = Config::lance_path(&repo_root);
     let mut vector_store = VectorStore::open(&lance_path).await?;
 
@@ -3557,7 +3582,7 @@ async fn run_incremental_index(
         let now = chrono::Utc::now().to_rfc3339();
 
         vector_store
-            .insert(&chunks, &embeddings, &contexts, "default", hash, &now)
+            .insert(&chunks, &embeddings, &contexts, repo_name, hash, &now)
             .await?;
     }
 
