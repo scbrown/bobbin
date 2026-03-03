@@ -121,9 +121,14 @@ impl FeedbackStore {
             [&input.injection_id],
         )?;
 
+        // Explicitly set timestamp rather than relying on SQLite DEFAULT, which
+        // doesn't apply if the DB was created with an older schema missing the DEFAULT.
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.fZ")
+            .to_string();
         self.conn.execute(
-            "INSERT INTO feedback (injection_id, agent, rating, reason) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![input.injection_id, input.agent, input.rating, input.reason],
+            "INSERT INTO feedback (injection_id, timestamp, agent, rating, reason) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![input.injection_id, now, input.agent, input.rating, input.reason],
         )?;
 
         Ok(self.conn.last_insert_rowid())
