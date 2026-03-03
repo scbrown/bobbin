@@ -25,6 +25,8 @@ pub struct ParsedQuery {
     pub has_or: bool,
     /// OR-separated branches of the text query (only populated when has_or is true)
     pub or_branches: Vec<String>,
+    /// Regex patterns extracted from /pattern/ syntax
+    pub regex_patterns: Vec<String>,
 }
 
 /// An inline field filter extracted from the query.
@@ -124,6 +126,7 @@ pub fn parse(input: &str) -> ParsedQuery {
     let mut phrases: Vec<String> = Vec::new();
     let mut filters: Vec<Filter> = Vec::new();
     let mut negated_terms: Vec<String> = Vec::new();
+    let mut regex_patterns: Vec<String> = Vec::new();
     let mut has_or = false;
     let mut next_negated = false; // set by NOT keyword
 
@@ -137,6 +140,7 @@ pub fn parse(input: &str) -> ParsedQuery {
             text_query: String::new(),
             has_or: false,
             or_branches: vec![],
+            regex_patterns: vec![],
         };
     }
 
@@ -149,6 +153,18 @@ pub fn parse(input: &str) -> ParsedQuery {
         if chars[i].is_whitespace() {
             i += 1;
             continue;
+        }
+
+        // Regex pattern: /pattern/
+        if chars[i] == '/' {
+            if let Some((pattern, end)) = parse_regex(&chars, i) {
+                if !pattern.is_empty() {
+                    regex_patterns.push(pattern);
+                }
+                i = end;
+                continue;
+            }
+            // Not a valid regex — fall through to treat as literal
         }
 
         // Quoted phrase: "exact match"
@@ -239,6 +255,7 @@ pub fn parse(input: &str) -> ParsedQuery {
         text_query,
         has_or,
         or_branches,
+        regex_patterns,
     }
 }
 
@@ -391,6 +408,42 @@ fn parse_quoted(chars: &[char], start: usize) -> Option<(String, usize)> {
     }
     // No closing quote found — return content anyway (graceful degradation)
     Some((content, i))
+}
+
+/// Parse a regex pattern enclosed in `/pattern/` starting at position `start`.
+/// Returns the pattern content and the position after the closing `/`.
+/// Requires the closing `/` to be followed by whitespace or end of input
+/// (to avoid matching path-like strings such as `src/cli/hook.rs`).
+fn parse_regex(chars: &[char], start: usize) -> Option<(String, usize)> {
+    if start >= chars.len() || chars[start] != '/' {
+        return None;
+    }
+    let mut i = start + 1;
+    let mut content = String::new();
+    while i < chars.len() {
+        if chars[i] == '/' {
+            // Closing slash must be at end of input or followed by whitespace
+            let next = i + 1;
+            if next >= chars.len() || chars[next].is_whitespace() {
+                if content.is_empty() {
+                    return None; // empty pattern `//` is not valid
+                }
+                return Some((content, next));
+            }
+            // Slash followed by non-whitespace — not a regex delimiter
+            return None;
+        }
+        if chars[i] == '\\' && i + 1 < chars.len() && chars[i + 1] == '/' {
+            // Only \/ is an escape inside regex (literal slash)
+            content.push('/');
+            i += 2;
+        } else {
+            content.push(chars[i]);
+            i += 1;
+        }
+    }
+    // No closing slash found — not a regex
+    None
 }
 
 /// Try to parse a field:value filter starting at position `start`.
@@ -783,6 +836,52 @@ mod tests {
         let q = parse("group:infra group:apps search");
         let groups = extract_group_filters(&q.filters);
         assert_eq!(groups, vec!["infra", "apps"]);
+    }
+
+    // -- regex pattern tests --
+
+    #[test]
+    fn test_regex_pattern_basic() {
+        let q = parse("/fn\\s+\\w+/");
+        assert!(q.terms.is_empty());
+        assert_eq!(q.regex_patterns, vec!["fn\\s+\\w+"]);
+    }
+
+    #[test]
+    fn test_regex_pattern_with_terms() {
+        let q = parse("search /TODO/ repo:aegis");
+        assert_eq!(q.terms, vec!["search"]);
+        assert_eq!(q.regex_patterns, vec!["TODO"]);
+        assert_eq!(q.filters.len(), 1);
+    }
+
+    #[test]
+    fn test_regex_multiple_patterns() {
+        let q = parse("/error/ /warning/");
+        assert_eq!(q.regex_patterns, vec!["error", "warning"]);
+    }
+
+    #[test]
+    fn test_regex_not_matched_for_paths() {
+        // src/cli/hook.rs should NOT be parsed as regex
+        let q = parse("file:src/cli/hook.rs search");
+        assert!(q.regex_patterns.is_empty());
+        assert_eq!(q.filters.len(), 1);
+    }
+
+    #[test]
+    fn test_regex_unclosed_is_literal() {
+        // /unclosed should be treated as a literal term
+        let q = parse("/unclosed search");
+        assert!(q.regex_patterns.is_empty());
+        assert_eq!(q.terms, vec!["/unclosed", "search"]);
+    }
+
+    #[test]
+    fn test_regex_empty_pattern_rejected() {
+        // // should not be parsed as regex
+        let q = parse("// search");
+        assert!(q.regex_patterns.is_empty());
     }
 
     #[test]

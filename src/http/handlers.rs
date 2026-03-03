@@ -302,6 +302,18 @@ pub(super) async fn search(
         });
     }
 
+    // Apply regex pattern filters: keep only results whose content matches ALL patterns
+    if !parsed.regex_patterns.is_empty() {
+        let compiled: Vec<Regex> = parsed
+            .regex_patterns
+            .iter()
+            .filter_map(|p| Regex::new(p).ok())
+            .collect();
+        if !compiled.is_empty() {
+            results.retain(|r| compiled.iter().all(|re| re.is_match(&r.chunk.content)));
+        }
+    }
+
     let filtered: Vec<_> = if let Some(ref chunk_type) = type_filter {
         results
             .into_iter()
