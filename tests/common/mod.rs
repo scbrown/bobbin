@@ -1,3 +1,4 @@
+use assert_cmd::Command;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
@@ -207,6 +208,14 @@ Provides semantic and keyword search capabilities.
     pub fn bobbin_bin() -> PathBuf {
         // assert_cmd finds the binary automatically via cargo
         PathBuf::from(env!("CARGO_BIN_EXE_bobbin"))
+    }
+
+    /// Create an assert_cmd Command for bobbin with test isolation.
+    /// Sets BOBBIN_SERVER="" to prevent global config from routing to production.
+    pub fn bobbin_cmd() -> Command {
+        let mut cmd = Command::new(Self::bobbin_bin());
+        cmd.env("BOBBIN_SERVER", "");
+        cmd
     }
 }
 

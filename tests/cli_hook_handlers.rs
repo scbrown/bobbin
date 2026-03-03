@@ -1,6 +1,5 @@
 mod common;
 
-use assert_cmd::Command;
 use common::{init_project, try_indexed_project, TestProject};
 use predicates::prelude::*;
 
@@ -15,7 +14,7 @@ fn inject_context_returns_relevant_context() {
         "cwd": project.path().to_str().unwrap()
     });
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--gate-threshold", "0.0"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -36,7 +35,7 @@ fn inject_context_includes_file_and_score() {
         "cwd": project.path().to_str().unwrap()
     });
 
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--gate-threshold", "0.0"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -65,7 +64,7 @@ fn inject_context_skips_short_prompts() {
         "cwd": project.path().to_str().unwrap()
     });
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "inject-context"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -80,7 +79,7 @@ fn inject_context_silent_on_missing_index() {
     project.git_commit("initial");
 
     // Init but don't index
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .arg("init")
         .arg(project.path())
         .output()
@@ -92,7 +91,7 @@ fn inject_context_silent_on_missing_index() {
     });
 
     // Should exit 0 with no output (never block user prompts)
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "inject-context"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -112,7 +111,7 @@ fn inject_context_silent_on_no_bobbin() {
         "cwd": project.path().to_str().unwrap()
     });
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "inject-context"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -130,7 +129,7 @@ fn inject_context_budget_limits_output() {
         "cwd": project.path().to_str().unwrap()
     });
 
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--budget", "10"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -159,7 +158,7 @@ fn inject_context_respects_threshold_override() {
     });
 
     // Very high threshold should filter out everything
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--threshold", "0.99"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -178,7 +177,7 @@ fn inject_context_gate_threshold_skips_low_similarity() {
     });
 
     // Very high gate threshold should suppress all injection
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--gate-threshold", "0.99"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -197,7 +196,7 @@ fn inject_context_gate_threshold_zero_allows_all() {
     });
 
     // Gate threshold of 0 should allow all injection
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--gate-threshold", "0.0"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -221,7 +220,7 @@ fn session_context_returns_json_with_git_state() {
         "cwd": project.path().to_str().unwrap()
     });
 
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["hook", "session-context"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -268,7 +267,7 @@ fn session_context_includes_modified_files() {
         "cwd": project.path().to_str().unwrap()
     });
 
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["hook", "session-context"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -305,7 +304,7 @@ fn session_context_ignores_non_compact_events() {
     });
 
     // Non-compact source should produce no output
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "session-context"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -318,7 +317,7 @@ fn session_context_ignores_non_compact_events() {
 fn session_context_silent_on_empty_stdin() {
     let project = init_project();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "session-context"])
         .current_dir(project.path())
         .write_stdin("")
@@ -345,7 +344,7 @@ fn session_context_budget_limits_output() {
         "cwd": project.path().to_str().unwrap()
     });
 
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["hook", "session-context", "--budget", "8"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -379,7 +378,7 @@ fn end_to_end_install_inject_uninstall() {
     let Some(project) = try_indexed_project() else { return };
 
     // 1. Install hooks
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install"])
         .current_dir(project.path())
         .assert()
@@ -387,7 +386,7 @@ fn end_to_end_install_inject_uninstall() {
         .stdout(predicate::str::contains("hooks installed"));
 
     // 2. Verify status shows installed
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "status"])
         .current_dir(project.path())
         .assert()
@@ -400,7 +399,7 @@ fn end_to_end_install_inject_uninstall() {
         "cwd": project.path().to_str().unwrap()
     });
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--gate-threshold", "0.0"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&inject_input).unwrap())
@@ -414,7 +413,7 @@ fn end_to_end_install_inject_uninstall() {
         "cwd": project.path().to_str().unwrap()
     });
 
-    let output = Command::new(TestProject::bobbin_bin())
+    let output = TestProject::bobbin_cmd()
         .args(["hook", "session-context"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&session_input).unwrap())
@@ -432,14 +431,14 @@ fn end_to_end_install_inject_uninstall() {
     }
 
     // 5. Install git hook
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "install-git-hook"])
         .current_dir(project.path())
         .assert()
         .success();
 
     // 6. Verify status shows both installed
-    let status_output = Command::new(TestProject::bobbin_bin())
+    let status_output = TestProject::bobbin_cmd()
         .args(["hook", "status", "--json"])
         .current_dir(project.path())
         .assert()
@@ -457,20 +456,20 @@ fn end_to_end_install_inject_uninstall() {
     );
 
     // 7. Uninstall everything
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "uninstall"])
         .current_dir(project.path())
         .assert()
         .success();
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "uninstall-git-hook"])
         .current_dir(project.path())
         .assert()
         .success();
 
     // 8. Verify status shows nothing installed
-    let final_status = Command::new(TestProject::bobbin_bin())
+    let final_status = TestProject::bobbin_cmd()
         .args(["hook", "status", "--json"])
         .current_dir(project.path())
         .assert()
@@ -497,7 +496,7 @@ fn inject_context_dedup_skips_identical_prompt() {
     let stdin_str = serde_json::to_string(&stdin_json).unwrap();
 
     // First call: should produce output (gate_threshold=0 to ensure injection)
-    let first = Command::new(TestProject::bobbin_bin())
+    let first = TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--gate-threshold", "0.0"])
         .current_dir(project.path())
         .write_stdin(stdin_str.clone())
@@ -514,7 +513,7 @@ fn inject_context_dedup_skips_identical_prompt() {
     );
 
     // Second call with same prompt: dedup should skip injection
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--gate-threshold", "0.0"])
         .current_dir(project.path())
         .write_stdin(stdin_str)
@@ -534,7 +533,7 @@ fn inject_context_no_dedup_forces_output() {
     let stdin_str = serde_json::to_string(&stdin_json).unwrap();
 
     // First call
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--gate-threshold", "0.0"])
         .current_dir(project.path())
         .write_stdin(stdin_str.clone())
@@ -542,7 +541,7 @@ fn inject_context_no_dedup_forces_output() {
         .success();
 
     // Second call with --no-dedup: should still produce output
-    let second = Command::new(TestProject::bobbin_bin())
+    let second = TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--gate-threshold", "0.0", "--no-dedup"])
         .current_dir(project.path())
         .write_stdin(stdin_str)
@@ -568,7 +567,7 @@ fn inject_context_updates_hook_state() {
         "cwd": project.path().to_str().unwrap()
     });
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "inject-context", "--gate-threshold", "0.0"])
         .current_dir(project.path())
         .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -595,14 +594,14 @@ fn hot_topics_requires_injection_data() {
     project.write_rust_fixtures();
     project.git_commit("initial");
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["init"])
         .current_dir(project.path())
         .output()
         .expect("init failed");
 
     // No injection data yet — should print informational message
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "hot-topics"])
         .current_dir(project.path())
         .assert()
@@ -616,14 +615,14 @@ fn hot_topics_force_generates_without_data() {
     project.write_rust_fixtures();
     project.git_commit("initial");
 
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["init"])
         .current_dir(project.path())
         .output()
         .expect("init failed");
 
     // --force should generate even without injection data
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "hot-topics", "--force"])
         .current_dir(project.path())
         .assert()
@@ -654,7 +653,7 @@ fn hot_topics_generates_after_injections() {
             "cwd": project.path().to_str().unwrap()
         });
 
-        Command::new(TestProject::bobbin_bin())
+        TestProject::bobbin_cmd()
             .args(["hook", "inject-context", "--gate-threshold", "0.0", "--no-dedup"])
             .current_dir(project.path())
             .write_stdin(serde_json::to_string(&stdin_json).unwrap())
@@ -663,7 +662,7 @@ fn hot_topics_generates_after_injections() {
     }
 
     // Now generate hot topics
-    Command::new(TestProject::bobbin_bin())
+    TestProject::bobbin_cmd()
         .args(["hook", "hot-topics"])
         .current_dir(project.path())
         .assert()
