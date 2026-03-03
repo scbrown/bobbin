@@ -735,6 +735,42 @@ impl Client {
         self.get_json(&url, &params).await
     }
 
+    /// Store an injection record on the server (for feedback reference).
+    /// Best-effort: callers should ignore errors to avoid blocking the hook.
+    pub async fn store_injection(
+        &self,
+        injection_id: &str,
+        session_id: Option<&str>,
+        agent: Option<&str>,
+        query: &str,
+        files: &[String],
+        total_chunks: usize,
+        budget_lines: usize,
+    ) -> Result<()> {
+        let url = format!("{}/injections", self.base_url);
+        let body = serde_json::json!({
+            "injection_id": injection_id,
+            "session_id": session_id,
+            "agent": agent,
+            "query": query,
+            "files": files,
+            "total_chunks": total_chunks,
+            "budget_lines": budget_lines,
+        });
+        let resp = self
+            .http
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .context("Failed to store injection")?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            anyhow::bail!("Failed to store injection: HTTP {}", status);
+        }
+        Ok(())
+    }
+
     /// Return the base URL (for display/logging).
     pub fn base_url(&self) -> &str {
         &self.base_url

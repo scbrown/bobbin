@@ -93,6 +93,23 @@ impl RepoFilter {
             .collect()
     }
 
+    /// Check if a file path is allowed by extracting its repo and checking access.
+    pub fn is_path_allowed(&self, path: &str) -> bool {
+        self.is_allowed(Self::repo_from_path(path))
+    }
+
+    /// Filter a list of results by file path, keeping only those from allowed repos.
+    /// The `path_extractor` function extracts the file path from each item.
+    pub fn filter_vec_by_path<T, F>(&self, items: Vec<T>, path_extractor: F) -> Vec<T>
+    where
+        F: Fn(&T) -> &str,
+    {
+        items
+            .into_iter()
+            .filter(|item| self.is_path_allowed(path_extractor(item)))
+            .collect()
+    }
+
     /// Extract repo name from a file path like `/var/lib/bobbin/repos/aegis/src/main.rs`.
     /// Returns the segment after "repos/" or the first path component.
     pub fn repo_from_path(path: &str) -> &str {

@@ -102,6 +102,28 @@ impl FeedbackStore {
         Ok(())
     }
 
+    /// Store an injection record (what bobbin injected, for later feedback reference).
+    pub fn store_injection(
+        &self,
+        injection_id: &str,
+        session_id: Option<&str>,
+        agent: Option<&str>,
+        query: &str,
+        files: &[String],
+        total_chunks: usize,
+        budget_lines: usize,
+    ) -> Result<()> {
+        let files_json = serde_json::to_string(files).unwrap_or_default();
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.fZ")
+            .to_string();
+        self.conn.execute(
+            "INSERT OR REPLACE INTO injections (injection_id, timestamp, session_id, agent, query, files_json, total_chunks, budget_lines) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![injection_id, now, session_id, agent, query, files_json, total_chunks as i64, budget_lines as i64],
+        )?;
+        Ok(())
+    }
+
     /// Store feedback for an injection.
     pub fn store_feedback(&self, input: &FeedbackInput) -> Result<i64> {
         if !VALID_RATINGS.contains(&input.rating.as_str()) {
@@ -321,5 +343,38 @@ mod tests {
         }).unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].injection_id, "inj-react-abc123");
+    }
+
+    #[test]
+    fn test_store_injection() {
+        let (store, _f) = temp_store();
+        let files = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
+        store
+            .store_injection(
+                "inj-test1234",
+                Some("session-abc"),
+                Some("aegis/crew/test"),
+                "how does auth work?",
+                &files,
+                5,
+                300,
+            )
+            .unwrap();
+
+        // Verify injection was stored
+        let stats = store.stats().unwrap();
+        assert_eq!(stats.total_injections, 1);
+
+        // Feedback referencing this injection should work
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-test1234".to_string(),
+                agent: "test".to_string(),
+                rating: "useful".to_string(),
+                reason: "found the auth module".to_string(),
+            })
+            .unwrap();
+        let stats = store.stats().unwrap();
+        assert_eq!(stats.total_feedback, 1);
     }
 }

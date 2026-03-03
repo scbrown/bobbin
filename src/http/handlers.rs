@@ -84,6 +84,7 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/commands", get(list_commands))
         .route("/metrics", get(metrics))
         .route("/webhook/push", post(webhook_push))
+        .route("/injections", post(injection_store))
         .route("/feedback", post(feedback_submit))
         .route("/feedback", get(feedback_list))
         .route("/feedback/stats", get(feedback_stats))
@@ -2861,6 +2862,47 @@ pub(super) async fn tags(
 fn open_feedback_store(state: &AppState) -> anyhow::Result<FeedbackStore> {
     let path = Config::feedback_db_path(&state.repo_root);
     FeedbackStore::open(&path)
+}
+
+/// POST /injections — store an injection record for feedback reference
+pub(super) async fn injection_store(
+    State(state): State<Arc<AppState>>,
+    Json(input): Json<InjectionInput>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    if input.injection_id.is_empty() {
+        return Err(bad_request("injection_id is required".to_string()));
+    }
+    let store = open_feedback_store(&state).map_err(internal_error)?;
+    store.store_injection(
+        &input.injection_id,
+        input.session_id.as_deref(),
+        input.agent.as_deref(),
+        &input.query,
+        &input.files,
+        input.total_chunks,
+        input.budget_lines,
+    ).map_err(internal_error)?;
+    Ok(Json(serde_json::json!({
+        "status": "ok",
+        "injection_id": input.injection_id
+    })))
+}
+
+#[derive(Deserialize)]
+pub(super) struct InjectionInput {
+    injection_id: String,
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    agent: Option<String>,
+    #[serde(default)]
+    query: String,
+    #[serde(default)]
+    files: Vec<String>,
+    #[serde(default)]
+    total_chunks: usize,
+    #[serde(default)]
+    budget_lines: usize,
 }
 
 /// POST /feedback — submit feedback on an injection
