@@ -54,6 +54,20 @@ pub struct FeedbackStats {
     pub harmful: u64,
 }
 
+/// Full injection detail with associated feedback.
+#[derive(Debug, Serialize)]
+pub struct InjectionDetail {
+    pub injection_id: String,
+    pub timestamp: String,
+    pub session_id: Option<String>,
+    pub agent: Option<String>,
+    pub query: Option<String>,
+    pub files: Vec<String>,
+    pub total_chunks: i64,
+    pub budget_lines: i64,
+    pub feedback: Vec<FeedbackRecord>,
+}
+
 const VALID_RATINGS: &[&str] = &["useful", "noise", "harmful"];
 
 impl FeedbackStore {
@@ -238,6 +252,42 @@ impl FeedbackStore {
             harmful,
         })
     }
+
+    /// Get full injection detail by ID, including associated feedback.
+    pub fn get_injection(&self, injection_id: &str) -> Result<Option<InjectionDetail>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT injection_id, timestamp, session_id, agent, query, files_json, total_chunks, budget_lines FROM injections WHERE injection_id = ?1",
+        )?;
+
+        let mut rows = stmt.query(rusqlite::params![injection_id])?;
+        let row = match rows.next()? {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        let files_json: Option<String> = row.get(5)?;
+        let files: Vec<String> = files_json
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default();
+
+        let feedback = self.list_feedback(&FeedbackQuery {
+            injection_id: Some(injection_id.to_string()),
+            limit: Some(50),
+            ..Default::default()
+        })?;
+
+        Ok(Some(InjectionDetail {
+            injection_id: row.get(0)?,
+            timestamp: row.get(1)?,
+            session_id: row.get(2)?,
+            agent: row.get(3)?,
+            query: row.get(4)?,
+            files,
+            total_chunks: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
+            budget_lines: row.get::<_, Option<i64>>(7)?.unwrap_or(0),
+            feedback,
+        }))
+    }
 }
 
 #[cfg(test)]
@@ -376,5 +426,34 @@ mod tests {
             .unwrap();
         let stats = store.stats().unwrap();
         assert_eq!(stats.total_feedback, 1);
+    }
+
+    #[test]
+    fn test_get_injection_detail() {
+        let (store, _f) = temp_store();
+        let files = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
+        store
+            .store_injection("inj-detail", Some("sess-1"), Some("aegis/crew/ian"), "how does auth work?", &files, 5, 300)
+            .unwrap();
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-detail".to_string(),
+                agent: "aegis/crew/ellie".to_string(),
+                rating: "useful".to_string(),
+                reason: "great context".to_string(),
+            })
+            .unwrap();
+
+        let detail = store.get_injection("inj-detail").unwrap().unwrap();
+        assert_eq!(detail.injection_id, "inj-detail");
+        assert_eq!(detail.query.as_deref(), Some("how does auth work?"));
+        assert_eq!(detail.files.len(), 2);
+        assert_eq!(detail.total_chunks, 5);
+        assert_eq!(detail.budget_lines, 300);
+        assert_eq!(detail.feedback.len(), 1);
+        assert_eq!(detail.feedback[0].rating, "useful");
+
+        // Non-existent injection returns None
+        assert!(store.get_injection("inj-nope").unwrap().is_none());
     }
 }

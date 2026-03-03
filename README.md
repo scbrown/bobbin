@@ -6,29 +6,9 @@
   <img src="assets/bobbin-spool.svg" alt="Thread bobbin spool" width="360"/>
 </p>
 
-**Local-first context injection engine for AI coding agents.** Index your codebase, search it semantically, and automatically inject relevant context into every agent prompt. No API keys. No cloud. Sub-100ms queries.
+**Local-first code context engine.** Semantic search, keyword search, and git coupling analysis — all running on your machine. No API keys. No cloud. Sub-100ms queries.
 
-> *Your codebase has structure, history, and meaning. Bobbin indexes all three — and feeds them to your agent exactly when needed.*
-
-## How It Works
-
-Bobbin sits between your codebase and your AI agent, automatically providing the right context at the right time:
-
-```text
- ┌──────────┐     ┌──────────┐     ┌───────────────┐     ┌──────────┐
- │ Codebase │────▶│  Index   │────▶│ Context Engine │────▶│  Agent   │
- │          │     │          │     │               │     │          │
- │ code     │     │ chunks   │     │ search        │     │ Claude   │
- │ docs     │     │ vectors  │     │ couple        │     │ Cursor   │
- │ git      │     │ coupling │     │ assemble      │     │ any MCP  │
- │ commits  │     │ commits  │     │ inject        │     │ client   │
- └──────────┘     └──────────┘     └───────────────┘     └──────────┘
-```
-
-**1. Index** — Parse code with tree-sitter, embed with ONNX, analyze git history for coupling.
-**2. Search** — Hybrid semantic + keyword search via Reciprocal Rank Fusion.
-**3. Assemble** — Build budget-controlled context bundles from search results + coupled files.
-**4. Inject** — Deliver context via Claude Code hooks or MCP tools, automatically on every prompt.
+> *Your codebase has structure, history, and meaning. Bobbin indexes all three.*
 
 ## See It In Action
 
@@ -41,6 +21,9 @@ $ bobbin search "authentication middleware"
 
 2. src/auth/session.rs:88 (create_session)
    function rust · lines 88-121 · score 0.8541 [semantic]
+
+3. src/handlers/login.rs:31 (handle_login)
+   function rust · lines 31-62 · score 0.7892 [keyword]
 ```
 
 ```text
@@ -50,85 +33,104 @@ $ bobbin context "fix the login bug"
 
 --- src/auth/middleware.rs [direct, score: 0.8923] ---
   verify_token (function), lines 14-47
+--- src/handlers/login.rs [direct, score: 0.7892] ---
+  handle_login (function), lines 31-62
 --- src/auth/session.rs [coupled via src/auth/middleware.rs] ---
   create_session (function), lines 88-121
 ```
 
-## Quick Start
-
-```bash
-cargo install bobbin            # Install
-cd your-project
-bobbin init && bobbin index     # Index your codebase
-bobbin hook install             # Set up automatic context injection
+```text
+$ bobbin related src/auth/middleware.rs
+Related to src/auth/middleware.rs:
+1. src/auth/session.rs (score: 0.85) - Co-changed 23 times
+2. src/handlers/login.rs (score: 0.72) - Co-changed 18 times
+3. tests/auth_test.rs (score: 0.68) - Co-changed 15 times
 ```
 
-That's it. Every prompt you send now gets relevant context injected automatically.
+## Why Bobbin?
+
+|  | **ripgrep** | **Sourcegraph** | **Bobbin** |
+|--|:-----------:|:---------------:|:----------:|
+| Keyword search          | ✅ | ✅ | ✅ |
+| Semantic search         | ❌ | ✅ | ✅ |
+| Git coupling analysis   | ❌ | ❌ | ✅ |
+| Task-aware context      | ❌ | ❌ | ✅ |
+| MCP server (AI agents)  | ❌ | ❌ | ✅ |
+| Runs 100% locally       | ✅ | ❌ | ✅ |
+| No API keys required    | ✅ | ❌ | ✅ |
+| Sub-100ms queries       | ✅ | ❌ | ✅ |
 
 ## Features
 
-### Context Injection Pipeline
+🔍 **Hybrid Search** — Semantic + keyword results fused via [Reciprocal Rank Fusion](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf). Ask in natural language or grep by pattern.
 
-**[Automatic Hook Injection](https://scbrown.github.io/bobbin/guides/hooks.html)** — On every prompt, bobbin embeds your message, searches the index, assembles a context bundle, and injects it as a system reminder. Smart gating skips injection when context would be irrelevant. Session dedup avoids re-injecting unchanged context.
+🌳 **Structure-Aware Parsing** — Tree-sitter extracts functions, classes, structs, traits, and more from 7 languages. Markdown parsed into sections, tables, and code blocks.
 
-**[Tool-Aware Reactions](https://scbrown.github.io/bobbin/guides/hooks.html)** — Rules that fire after tool calls. When an agent edits a Terraform-managed file, remind them to update IaC. When they restart a service, surface known issues. Configurable in `.bobbin/reactions.toml`.
+🔗 **Git Temporal Coupling** — Analyzes commit history to find files that change together. `bobbin related src/auth.rs` reveals hidden dependencies no import graph can see.
 
-**[PostToolUseFailure Context](https://scbrown.github.io/bobbin/guides/hooks.html)** — When a tool fails, bobbin searches for relevant code and docs to help the agent recover.
+📦 **Task-Aware Context** — `bobbin context "fix the login bug"` builds a budget-controlled bundle from search results + coupled files. Feed it straight to an AI agent.
 
-**[Feedback Loop](https://scbrown.github.io/bobbin/guides/hooks.html)** — Every injection gets a unique `injection_id`. Agents can rate injections as useful, noise, or harmful to improve quality over time.
+🤖 **MCP Server** — `bobbin serve` exposes 12 tools to Claude Code, Cursor, and any MCP-compatible agent.
 
-### Indexing & Search
+🌐 **Multi-Repo** — Index multiple repositories into one database. Search across all or filter by name.
 
-**[Hybrid Search](https://scbrown.github.io/bobbin/guides/searching.html)** — Semantic + keyword results fused via Reciprocal Rank Fusion. Boolean queries (`OR`, `NOT`), regex patterns, and inline filters (`repo:`, `lang:`, `type:`).
+⚡ **Fast & Private** — ONNX embeddings (all-MiniLM-L6-v2), LanceDB vector storage, SQLite for coupling. Everything on your machine.
 
-**[Structure-Aware Parsing](https://scbrown.github.io/bobbin/architecture/languages.html)** — Tree-sitter extracts functions, classes, structs, traits, and more from 7 languages. Markdown parsed into sections, tables, and code blocks.
+🚀 **GPU Accelerated** — Automatic CUDA detection for 10-25x faster indexing on NVIDIA GPUs. Index 57K chunks in under 5 minutes. Falls back to CPU seamlessly.
 
-**[Multi-Repo Indexing](https://scbrown.github.io/bobbin/guides/multi-repo.html)** — Index multiple repositories into one database. Named groups for scoped search. Webhook-triggered incremental reindexing.
+🪝 **Claude Code Hooks** — Automatic context injection on every prompt via `UserPromptSubmit` hook. Session primer via `SessionStart` hook. Smart gating skips injection when context is irrelevant.
 
-**[Tags & Annotations](https://scbrown.github.io/bobbin/config/reference.html)** — Tag chunks with `auto:config`, `user:ops-docs`, or any label. Tag effects (boost, demote, exclude) control how tagged content ranks in search.
+## Quick Start
 
-### Codebase Intelligence
+**1. Install**
 
-**[Git Temporal Coupling](https://scbrown.github.io/bobbin/guides/git-coupling.html)** — Analyzes commit history to find files that change together. Reveals hidden dependencies no import graph can see.
+```bash
+cargo install bobbin
+```
 
-**[Context Assembly](https://scbrown.github.io/bobbin/guides/context-assembly.html)** — `bobbin context "fix the login bug"` builds a budget-controlled bundle: search results, coupled files, bridging signals, and temporal decay — all within a configurable line budget.
+**2. Index your codebase**
 
-**[Hotspot Analysis](https://scbrown.github.io/bobbin/guides/hotspots.html)** — Identify high-churn, high-complexity code that's most likely to cause bugs.
+```bash
+cd your-project
+bobbin init && bobbin index
+```
 
-**[Impact Prediction](https://scbrown.github.io/bobbin/cli/impact.html)** — Predict which files are affected by a change using coupling data and dependency graphs.
+**3. Search**
 
-**[Duplicate Detection](https://scbrown.github.io/bobbin/cli/similar.html)** — Find semantically similar code chunks or scan for duplicates across the codebase.
+```bash
+bobbin search "error handling"         # Semantic + keyword hybrid
+bobbin context "fix the login bug"     # Task-aware context bundle
+bobbin related src/auth.rs             # Git coupling analysis
+```
 
-**[Review Context](https://scbrown.github.io/bobbin/cli/review.html)** — Assemble review bundles from git diffs to aid code review.
+## GPU Acceleration
 
-### Agent Integration
-
-**[MCP Server](https://scbrown.github.io/bobbin/mcp/overview.html)** — `bobbin serve` exposes 12+ tools to Claude Code, Cursor, and any MCP-compatible client.
-
-**[HTTP API](https://scbrown.github.io/bobbin/mcp/http-mode.html)** — Multi-repo search server with web UI, REST API, Prometheus metrics, and Forgejo webhook integration.
-
-**[Role-Based Access](https://scbrown.github.io/bobbin/config/reference.html)** — Control what each agent can see with path-based filtering per role.
-
-### Performance
-
-**GPU Accelerated** — Automatic CUDA detection for 10-25x faster indexing on NVIDIA GPUs. Falls back to CPU seamlessly.
+Bobbin automatically detects NVIDIA CUDA GPUs and accelerates embedding inference. No configuration needed — if a GPU is available, it's used.
 
 | Metric | CPU | GPU (RTX 4070S) |
 |--------|-----|-----------------|
 | Embed throughput | ~100 chunks/s | ~2,400 chunks/s |
-| Index 57K chunks | >30 min | ~4 min |
+| Index ruff (57K chunks) | >30 min | ~4 min |
 
-## AI Agent Setup
-
-### Claude Code Hooks (recommended)
+**Setup** (optional — CPU works out of the box):
 
 ```bash
-bobbin hook install    # Auto-installs all hooks
+# Install ONNX Runtime GPU (requires CUDA toolkit)
+# See docs for full setup: https://scbrown.github.io/bobbin/config/gpu.html
+
+# Force CPU even when GPU is available:
+BOBBIN_GPU=0 bobbin index
 ```
 
-This installs hooks for `UserPromptSubmit` (context injection), `SessionStart` (project primer), `PostToolUse` (reactions), and `PostToolUseFailure` (error recovery context).
+## AI Agent Integration
 
-### MCP Server
+Bobbin ships an MCP server that gives AI agents direct access to your codebase:
+
+```bash
+bobbin serve
+```
+
+Add to your Claude Code or Cursor MCP config:
 
 ```json
 {
@@ -141,7 +143,34 @@ This installs hooks for `UserPromptSubmit` (context injection), `SessionStart` (
 }
 ```
 
-Tools: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `impact`, `review`, `similar`, `prime`.
+Exposes 12 tools: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `impact`, `review`, `similar`, and `prime`.
+
+### Claude Code Hooks
+
+For automatic context injection without MCP, add hooks to `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{
+      "hooks": [{
+        "command": "bobbin hook inject-context",
+        "timeout": 10,
+        "type": "command"
+      }]
+    }],
+    "SessionStart": [{
+      "hooks": [{
+        "command": "bobbin hook prime-context",
+        "timeout": 5,
+        "type": "command"
+      }]
+    }]
+  }
+}
+```
+
+The `inject-context` hook embeds your prompt, searches the index, and injects the most relevant code snippets. A relevance gate skips injection when the best match is too weak, and session dedup avoids re-injecting unchanged context.
 
 ## Supported Languages
 
@@ -155,26 +184,19 @@ Tools: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `rea
 | C++        | Tree-sitter   | functions, classes, structs, enums |
 | Markdown   | pulldown-cmark| sections, tables, code blocks, YAML frontmatter |
 
-Other file types (YAML, TOML, shell scripts, etc.) use line-based chunking with overlap.
+Other file types use line-based chunking with overlap.
 
 ## Documentation
 
-**[The Bobbin Book](https://scbrown.github.io/bobbin/)** — comprehensive guides, reference, and architecture docs.
+📚 **[The Bobbin Book](https://scbrown.github.io/bobbin/)** — Comprehensive guides, CLI reference, architecture, and more
 
-| Topic | Link |
-|-------|------|
-| Getting Started | [Installation & first index](https://scbrown.github.io/bobbin/getting-started/quick-start.html) |
-| Hooks & Injection | [Automatic context injection](https://scbrown.github.io/bobbin/guides/hooks.html) |
-| Searching | [Hybrid, boolean, regex queries](https://scbrown.github.io/bobbin/guides/searching.html) |
-| Context Assembly | [Budget-controlled bundles](https://scbrown.github.io/bobbin/guides/context-assembly.html) |
-| Git Coupling | [Temporal co-change analysis](https://scbrown.github.io/bobbin/guides/git-coupling.html) |
-| Multi-Repo | [Named groups, webhooks](https://scbrown.github.io/bobbin/guides/multi-repo.html) |
-| CLI Reference | [All 20+ commands](https://scbrown.github.io/bobbin/cli/overview.html) |
-| MCP Tools | [Agent integration reference](https://scbrown.github.io/bobbin/mcp/overview.html) |
-| Configuration | [`.bobbin/config.toml` reference](https://scbrown.github.io/bobbin/config/reference.html) |
-| Architecture | [System design & data flow](https://scbrown.github.io/bobbin/architecture/overview.html) |
-| Evaluation | [Methodology & results](https://scbrown.github.io/bobbin/eval/overview.html) |
-| Contributing | [Build, test, develop](CONTRIBUTING.md) |
+- [Getting Started](https://scbrown.github.io/bobbin/getting-started/quick-start.html) — Installation and first index
+- [CLI Reference](https://scbrown.github.io/bobbin/cli/overview.html) — All commands, flags, and examples
+- [MCP Tools](https://scbrown.github.io/bobbin/mcp/overview.html) — AI agent integration reference
+- [Configuration](https://scbrown.github.io/bobbin/config/reference.html) — `.bobbin/config.toml` reference
+- [Architecture](https://scbrown.github.io/bobbin/architecture/overview.html) — System design, data flow, storage schema
+- [Evaluation](https://scbrown.github.io/bobbin/eval/overview.html) — Methodology, results, and metrics
+- [Contributing](CONTRIBUTING.md) — Build, test, and development setup
 
 ## License
 

@@ -86,6 +86,7 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/metrics", get(metrics))
         .route("/webhook/push", post(webhook_push))
         .route("/injections", post(injection_store))
+        .route("/injections/{id}", get(injection_detail))
         .route("/feedback", post(feedback_submit))
         .route("/feedback", get(feedback_list))
         .route("/feedback/stats", get(feedback_stats))
@@ -2932,6 +2933,18 @@ pub(super) struct InjectionInput {
     budget_lines: usize,
 }
 
+/// GET /injections/:id — get injection detail with associated feedback
+pub(super) async fn injection_detail(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let store = open_feedback_store(&state).map_err(internal_error)?;
+    match store.get_injection(&id).map_err(internal_error)? {
+        Some(detail) => Ok(Json(serde_json::to_value(detail).unwrap())),
+        None => Err(not_found(format!("injection {} not found", id))),
+    }
+}
+
 /// POST /feedback — submit feedback on an injection
 pub(super) async fn feedback_submit(
     State(state): State<Arc<AppState>>,
@@ -3174,6 +3187,10 @@ async fn execute_or_search(
 
 fn bad_request(msg: String) -> (StatusCode, Json<ErrorBody>) {
     (StatusCode::BAD_REQUEST, Json(ErrorBody { error: msg }))
+}
+
+fn not_found(msg: String) -> (StatusCode, Json<ErrorBody>) {
+    (StatusCode::NOT_FOUND, Json(ErrorBody { error: msg }))
 }
 
 async fn open_vector_store(state: &AppState) -> anyhow::Result<VectorStore> {
