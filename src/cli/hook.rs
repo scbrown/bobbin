@@ -1757,6 +1757,46 @@ fn clean_regex_for_search(pattern: &str) -> String {
         .join(" ")
 }
 
+/// Check if a cleaned search query is meaningful enough for semantic search.
+/// Rejects too-short queries, pure language keywords, and file extensions.
+fn is_meaningful_search_query(query: &str) -> bool {
+    let q = query.trim();
+    // Too short — likely noise
+    if q.len() < 3 {
+        return false;
+    }
+    // Single token that's a common language keyword or file extension — too generic
+    let tokens: Vec<&str> = q.split_whitespace().collect();
+    if tokens.len() == 1 {
+        let lower = tokens[0].to_lowercase();
+        let noise_words = [
+            "fn", "let", "var", "const", "use", "import", "from", "return",
+            "if", "else", "for", "while", "match", "type", "struct", "enum",
+            "class", "def", "func", "pub", "mod", "crate", "self", "super",
+            "rs", "go", "py", "ts", "js", "tsx", "jsx", "md", "toml", "yaml",
+            "yml", "json", "html", "css", "sh", "bash", "txt",
+        ];
+        if noise_words.contains(&lower.as_str()) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Check if a file path points to source code (where symbol refs are useful).
+fn is_source_code_file(path: &str) -> bool {
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    matches!(
+        ext,
+        "rs" | "go" | "py" | "ts" | "tsx" | "js" | "jsx" | "java" | "c" | "cpp"
+            | "h" | "hpp" | "cs" | "rb" | "swift" | "kt" | "scala" | "zig" | "lua"
+            | "ex" | "exs" | "erl" | "hs" | "ml" | "mli" | "fs" | "fsi"
+    )
+}
+
 /// PostToolUse handler: Smart dispatch based on tool type.
 /// - Edit/Write: hybrid search for related files (tests, snapshots, configs)
 /// - Bash(grep/rg/find): semantic search for the same query (competitive response)
@@ -1803,11 +1843,13 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             match extract_search_query_from_bash(command) {
-                Some(query) => DispatchMode::SearchQuery {
-                    query,
-                    original_cmd: command.to_string(),
-                },
-                None => DispatchMode::ReactionsOnly,
+                Some(query) if is_meaningful_search_query(&query) => {
+                    DispatchMode::SearchQuery {
+                        query,
+                        original_cmd: command.to_string(),
+                    }
+                }
+                _ => DispatchMode::ReactionsOnly,
             }
         }
         "Grep" => {
@@ -1821,7 +1863,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 DispatchMode::ReactionsOnly
             } else {
                 let cleaned = clean_regex_for_search(pattern);
-                if cleaned.is_empty() {
+                if cleaned.is_empty() || !is_meaningful_search_query(&cleaned) {
                     DispatchMode::ReactionsOnly
                 } else {
                     DispatchMode::SearchQuery {
@@ -1840,7 +1882,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             if pattern.len() < 2 {
                 DispatchMode::ReactionsOnly
             } else {
-                // Strip glob wildcards for semantic search
+                // Strip glob wildcards for semantic search, keeping meaningful path segments
                 let cleaned = pattern
                     .replace("**", " ")
                     .replace("*.", "")
@@ -1850,7 +1892,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                     .split_whitespace()
                     .collect::<Vec<_>>()
                     .join(" ");
-                if cleaned.len() < 2 {
+                if cleaned.len() < 2 || !is_meaningful_search_query(&cleaned) {
                     DispatchMode::ReactionsOnly
                 } else {
                     DispatchMode::SearchQuery {
@@ -1867,7 +1909,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            if file_path.is_empty() {
+            if file_path.is_empty() || !is_source_code_file(&file_path) {
                 DispatchMode::ReactionsOnly
             } else {
                 DispatchMode::RefsOnly { file_path }
@@ -2064,12 +2106,18 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             }
         };
 
-        // Filter out the edited file itself from search results (for Edit mode)
-        // ContextFile.path is absolute — strip repo_root for comparison
+        // Filter out the edited file itself and low-score results
+        // For non-edit search modes, apply a stricter score threshold to reduce noise
+        let min_score = if is_edit_mode { 0.0 } else { 0.005 };
         let search_files: Vec<_> = bundle
             .files
             .iter()
             .filter(|f| {
+                // Score gate: skip low-relevance results (especially for search tools)
+                if f.score < min_score {
+                    return false;
+                }
+                // Skip the edited file itself (for Edit mode)
                 if let Some(ref rp) = rel_path {
                     let f_rel = Path::new(&f.path)
                         .strip_prefix(&repo_root)
@@ -2110,7 +2158,8 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 let _ = writeln!(context, "**Semantically related** (from bobbin search):");
                 lines_used += 1;
             }
-        } else {
+        } else if !search_files.is_empty() {
+            // Only show search results header if we have results above the score gate
             let original_cmd = match &mode {
                 DispatchMode::SearchQuery { original_cmd, .. } => original_cmd.as_str(),
                 _ => "search",
@@ -4895,5 +4944,43 @@ mod tests {
         assert_eq!(clean_regex_for_search("impl.*Display"), "impl Display");
         assert_eq!(clean_regex_for_search("^use\\b"), "use");
         assert_eq!(clean_regex_for_search("Stmt::Import"), "Stmt::Import");
+    }
+
+    #[test]
+    fn test_is_meaningful_search_query() {
+        // Too short
+        assert!(!is_meaningful_search_query(""));
+        assert!(!is_meaningful_search_query("fn"));
+        assert!(!is_meaningful_search_query("rs"));
+
+        // Single noise words (language keywords, file extensions)
+        assert!(!is_meaningful_search_query("let"));
+        assert!(!is_meaningful_search_query("import"));
+        assert!(!is_meaningful_search_query("toml"));
+        assert!(!is_meaningful_search_query("json"));
+
+        // Meaningful queries
+        assert!(is_meaningful_search_query("PostToolUse"));
+        assert!(is_meaningful_search_query("context assembler"));
+        assert!(is_meaningful_search_query("fn main")); // multi-word is fine
+        assert!(is_meaningful_search_query("search query"));
+        assert!(is_meaningful_search_query("ContextConfig"));
+    }
+
+    #[test]
+    fn test_is_source_code_file() {
+        // Source code files — refs are useful
+        assert!(is_source_code_file("src/main.rs"));
+        assert!(is_source_code_file("/home/user/project/handler.go"));
+        assert!(is_source_code_file("app.py"));
+        assert!(is_source_code_file("components/Button.tsx"));
+
+        // Non-source files — refs not useful
+        assert!(!is_source_code_file("README.md"));
+        assert!(!is_source_code_file("config.toml"));
+        assert!(!is_source_code_file("package.json"));
+        assert!(!is_source_code_file("styles.css"));
+        assert!(!is_source_code_file("Makefile"));
+        assert!(!is_source_code_file("data.yaml"));
     }
 }
