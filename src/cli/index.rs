@@ -99,6 +99,7 @@ struct ProfileStats {
     compact_ms: u128,
     total_chunks_embedded: usize,
     total_batches: usize,
+    chunks_filtered: usize,
 }
 
 pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
@@ -384,6 +385,17 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             }
         };
         profile.parse_ms += t_parse.elapsed().as_millis();
+
+        // Filter out near-empty chunks (e.g. mdbook template stubs with just "# Testing")
+        let min_bytes = config.index.min_chunk_bytes;
+        if min_bytes > 0 {
+            let before = chunks.len();
+            chunks.retain(|c| c.content.trim().len() >= min_bytes);
+            let dropped = before - chunks.len();
+            if dropped > 0 {
+                profile.chunks_filtered += dropped;
+            }
+        }
 
         // Extract imports from this file (if dependency tracking enabled)
         if config.dependencies.enabled {

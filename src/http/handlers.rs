@@ -3335,13 +3335,18 @@ async fn run_incremental_index(
     );
 
     for (rel_path, content, hash) in &files_to_index {
-        let chunks = match parser.parse_file(Path::new(rel_path), content) {
+        let mut chunks = match parser.parse_file(Path::new(rel_path), content) {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!("Failed to parse {}: {}", rel_path, e);
                 continue;
             }
         };
+        // Filter out near-empty chunks
+        let min_bytes = config.index.min_chunk_bytes;
+        if min_bytes > 0 {
+            chunks.retain(|c| c.content.trim().len() >= min_bytes);
+        }
         if chunks.is_empty() {
             continue;
         }
