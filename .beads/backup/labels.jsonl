@@ -71,6 +71,8 @@
 {"issue_id":"bo-nltau","label":"eval"}
 {"issue_id":"bo-nltau","label":"metrics"}
 {"issue_id":"bo-otup","label":"docs"}
+{"issue_id":"bo-pag2","label":"access"}
+{"issue_id":"bo-pag2","label":"dx"}
 {"issue_id":"bo-qfvz","label":"indexing"}
 {"issue_id":"bo-qxt6","label":"feature"}
 {"issue_id":"bo-rd42","label":"P1"}
