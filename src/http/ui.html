@@ -12,111 +12,175 @@
   --green:#34d399;--amber:#fbbf24;--red:#f87171;--cyan:#22d3ee;
   --mono:'JetBrains Mono','Fira Code','Cascadia Code',monospace;
   --sans:system-ui,-apple-system,sans-serif;
+  --radius:8px;--transition:0.2s ease;
 }
-body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5}
-a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.6}
+a{color:var(--accent);text-decoration:none;transition:color var(--transition)}
+a:hover{color:var(--cyan);text-decoration:none}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--dim)}
 
 /* Nav */
-nav{background:linear-gradient(135deg,#1e2235,#252a3e);border-bottom:1px solid var(--border);
+nav{background:rgba(30,34,53,0.85);border-bottom:1px solid var(--border);
   padding:0 1.5rem;display:flex;align-items:center;gap:2rem;position:sticky;top:0;z-index:100;
-  backdrop-filter:blur(12px)}
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
 nav .logo{font-family:var(--mono);font-size:1.1rem;font-weight:700;color:var(--accent);
-  padding:0.8rem 0;letter-spacing:-0.5px}
+  padding:0.75rem 0;letter-spacing:-0.5px;display:flex;align-items:center;gap:0.5rem}
+nav .logo::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--accent);box-shadow:0 0 8px var(--accent)}
 nav .tabs{display:flex;gap:0}
-nav .tab{padding:0.8rem 1rem;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;
-  transition:all 0.15s;font-size:0.85rem;font-weight:500}
-nav .tab:hover{color:var(--text)}
+nav .tab{padding:0.75rem 1.1rem;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;
+  transition:all var(--transition);font-size:0.85rem;font-weight:500;position:relative}
+nav .tab:hover{color:var(--text);background:rgba(255,255,255,0.03)}
 nav .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
-nav .pulse{margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--green);
-  animation:pulse 2s infinite}
+nav .status-dot{margin-left:auto;display:flex;align-items:center;gap:0.5rem;font-size:0.75rem;color:var(--dim)}
+nav .pulse{width:8px;height:8px;border-radius:50%;background:var(--green);
+  animation:pulse 2s infinite;flex-shrink:0}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
 
 /* Layout */
-main{max-width:1200px;margin:0 auto;padding:1.5rem}
+main{max-width:1200px;margin:0 auto;padding:1.5rem 1.5rem 3rem}
 .page{display:none}.page.active{display:block}
-h2{font-size:1.2rem;font-weight:600;margin-bottom:1rem;color:var(--text)}
-h3{font-size:0.95rem;font-weight:600;margin-bottom:0.5rem;color:var(--dim)}
+.page-header{margin-bottom:1.25rem}
+.page-header h2{font-size:1.25rem;font-weight:600;color:var(--text);margin-bottom:0.25rem}
+.page-header p{font-size:0.85rem;color:var(--dim);line-height:1.5}
+h2{font-size:1.25rem;font-weight:600;margin-bottom:1rem;color:var(--text)}
+h3{font-size:0.9rem;font-weight:600;margin-bottom:0.5rem;color:var(--dim);
+  text-transform:uppercase;letter-spacing:0.04em}
+.section{margin-top:1.75rem}
 
 /* Cards */
-.grid{display:grid;gap:1rem}
+.grid{display:grid;gap:0.875rem}
 .grid-4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
 .grid-3{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem}
-.card-header{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--dim);margin-bottom:0.5rem}
-.stat-value{font-size:1.8rem;font-weight:700;font-family:var(--mono)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1rem;transition:border-color var(--transition),box-shadow var(--transition)}
+.card:hover{border-color:rgba(96,165,250,0.2);box-shadow:0 2px 12px rgba(0,0,0,0.15)}
+.card-header{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--dim);
+  margin-bottom:0.5rem;font-weight:500}
+.stat-value{font-size:1.8rem;font-weight:700;font-family:var(--mono);line-height:1.2}
 .stat-value.accent{color:var(--accent)}
 .stat-value.green{color:var(--green)}
 .stat-value.amber{color:var(--amber)}
+.stat-label{font-size:0.75rem;color:var(--dim);margin-top:0.15rem}
 
 /* Search */
-.search-box{display:flex;gap:0.5rem;margin-bottom:1rem}
-.search-box input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;
-  padding:0.6rem 1rem;color:var(--text);font-size:0.9rem;font-family:var(--sans);outline:none}
-.search-box input:focus{border-color:var(--accent)}
+.search-box{display:flex;gap:0.5rem;margin-bottom:1rem;align-items:center}
+.search-box input[type="text"]{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:0.65rem 1rem;color:var(--text);font-size:0.9rem;font-family:var(--sans);outline:none;
+  transition:border-color var(--transition),box-shadow var(--transition)}
+.search-box input[type="text"]:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
+.search-box input[type="number"]{background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:0.65rem 0.5rem;color:var(--text);font-size:0.85rem;outline:none;width:60px;
+  transition:border-color var(--transition)}
+.search-box input[type="number"]:focus{border-color:var(--accent)}
 .search-box select{background:var(--surface);border:1px solid var(--border);border-radius:6px;
-  padding:0.6rem 0.75rem;color:var(--text);font-size:0.85rem;outline:none}
+  padding:0.65rem 0.75rem;color:var(--text);font-size:0.85rem;outline:none;cursor:pointer;
+  transition:border-color var(--transition)}
+.search-box select:focus{border-color:var(--accent)}
 .search-box button{background:var(--accent);color:#fff;border:none;border-radius:6px;
-  padding:0.6rem 1.2rem;cursor:pointer;font-weight:600;font-size:0.85rem}
-.search-box button:hover{opacity:0.9}
+  padding:0.65rem 1.4rem;cursor:pointer;font-weight:600;font-size:0.85rem;
+  transition:background var(--transition),transform var(--transition)}
+.search-box button:hover{background:#4f94e8}
+.search-box button:active{transform:scale(0.97)}
+.search-box label{display:flex;align-items:center;gap:0.35rem;font-size:0.8rem;color:var(--dim);
+  cursor:pointer;white-space:nowrap;user-select:none}
 
 /* Results */
 .result{background:var(--surface);border:1px solid var(--border);border-radius:6px;
-  padding:0.75rem 1rem;margin-bottom:0.5rem}
-.result-header{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem}
+  padding:0.75rem 1rem;margin-bottom:0.5rem;transition:border-color var(--transition)}
+.result:hover{border-color:rgba(96,165,250,0.25)}
+.result-header{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;flex-wrap:wrap}
 .result-path{font-family:var(--mono);font-size:0.85rem;color:var(--accent)}
 .result-type{font-size:0.7rem;padding:2px 6px;border-radius:3px;background:var(--surface2);color:var(--dim)}
-.result-score{font-family:var(--mono);font-size:0.75rem;color:var(--dim);margin-left:auto}
+.result-score{font-family:var(--mono);font-size:0.75rem;color:var(--dim);margin-left:auto;
+  display:flex;align-items:center;gap:0.4rem}
+.score-bar{width:40px;height:3px;background:var(--surface2);border-radius:2px;overflow:hidden}
+.score-fill{height:100%;border-radius:2px;background:var(--accent);transition:width 0.3s}
 .result-name{font-family:var(--mono);font-size:0.85rem;font-weight:600;color:var(--cyan)}
 .result-preview{font-family:var(--mono);font-size:0.8rem;color:var(--dim);white-space:pre-wrap;
-  overflow:hidden;max-height:80px;line-height:1.4;margin-top:0.25rem;
-  background:var(--bg);padding:0.5rem;border-radius:4px}
+  overflow:hidden;max-height:80px;line-height:1.4;margin-top:0.35rem;
+  background:var(--bg);padding:0.5rem 0.75rem;border-radius:4px;border:1px solid var(--border)}
 .result-lines{font-size:0.75rem;color:var(--dim)}
+.results-summary{color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem;
+  padding-bottom:0.5rem;border-bottom:1px solid var(--border)}
 
 /* Lang bars */
-.lang-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin:0.5rem 0}
-.lang-segment{height:100%}
+.lang-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin:0.5rem 0;
+  background:var(--surface2)}
+.lang-segment{height:100%;transition:opacity var(--transition)}
+.lang-segment:hover{opacity:0.8}
 .lang-list{display:flex;flex-wrap:wrap;gap:0.75rem;margin-top:0.5rem}
 .lang-item{display:flex;align-items:center;gap:0.35rem;font-size:0.8rem}
-.lang-dot{width:8px;height:8px;border-radius:50%}
+.lang-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 
 /* File tree */
-.file-item{padding:0.4rem 0.75rem;display:flex;align-items:center;gap:0.5rem;
-  border-bottom:1px solid var(--border);font-size:0.85rem}
+.file-item{padding:0.5rem 0.75rem;display:flex;align-items:center;gap:0.5rem;
+  border-bottom:1px solid var(--border);font-size:0.85rem;transition:background var(--transition)}
 .file-item:hover{background:var(--surface2)}
+.file-item:last-child{border-bottom:none}
 .file-path{font-family:var(--mono);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .file-chunks{font-family:var(--mono);color:var(--dim);font-size:0.8rem}
 
 /* Bead results */
 .bead{background:var(--surface);border:1px solid var(--border);border-radius:6px;
-  padding:0.75rem 1rem;margin-bottom:0.5rem;display:flex;align-items:flex-start;gap:0.75rem}
+  padding:0.75rem 1rem;margin-bottom:0.5rem;display:flex;align-items:flex-start;gap:0.75rem;
+  transition:border-color var(--transition)}
+.bead:hover{border-color:rgba(96,165,250,0.25)}
 .bead-id{font-family:var(--mono);font-size:0.8rem;color:var(--accent);white-space:nowrap}
-.bead-priority{font-family:var(--mono);font-size:0.7rem;padding:1px 5px;border-radius:3px;font-weight:700}
-.bead-priority.P1{background:rgba(248,113,113,0.2);color:var(--red)}
-.bead-priority.P2{background:rgba(251,191,36,0.2);color:var(--amber)}
-.bead-priority.P3{background:rgba(148,163,184,0.2);color:var(--dim)}
+.bead-priority{font-family:var(--mono);font-size:0.7rem;padding:2px 6px;border-radius:3px;font-weight:700}
+.bead-priority.P1{background:rgba(248,113,113,0.15);color:var(--red)}
+.bead-priority.P2{background:rgba(251,191,36,0.15);color:var(--amber)}
+.bead-priority.P3{background:rgba(148,163,184,0.15);color:var(--dim)}
 .bead-title{font-size:0.9rem}
 .bead-meta{font-size:0.75rem;color:var(--dim);margin-top:0.25rem}
 
 /* Spinner */
-.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--border);
   border-top-color:var(--accent);border-radius:50%;animation:spin 0.6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.loading{text-align:center;padding:2rem;color:var(--dim)}
+.loading{text-align:center;padding:2.5rem;color:var(--dim);display:flex;align-items:center;
+  justify-content:center;gap:0.75rem}
 
 /* Empty state */
-.empty{text-align:center;padding:2rem;color:var(--dim);font-style:italic}
+.empty{text-align:center;padding:3rem 1.5rem;color:var(--dim)}
+.empty-icon{font-size:1.5rem;margin-bottom:0.5rem;opacity:0.5}
+
+/* Metrics cards */
+.metrics-grid{display:grid;gap:0.75rem;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:0.75rem 1rem;transition:border-color var(--transition)}
+.metric-card:hover{border-color:rgba(96,165,250,0.2)}
+.metric-label{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--dim);margin-bottom:0.25rem}
+.metric-value{font-family:var(--mono);font-size:1.1rem;font-weight:600;color:var(--text)}
+.metric-value.ok{color:var(--green)}
+.metric-value.warn{color:var(--amber)}
 
 /* Tables */
 table{width:100%;border-collapse:collapse}
-th{text-align:left;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;
-  color:var(--dim);padding:0.5rem 0.75rem;border-bottom:1px solid var(--border)}
-td{padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);font-size:0.85rem}
+th{text-align:left;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;
+  color:var(--dim);padding:0.6rem 0.75rem;border-bottom:2px solid var(--border);font-weight:600}
+td{padding:0.6rem 0.75rem;border-bottom:1px solid var(--border);font-size:0.85rem}
 td.mono{font-family:var(--mono)}
+tbody tr{transition:background var(--transition)}
+tbody tr:hover{background:rgba(255,255,255,0.02)}
+tbody tr:last-child td{border-bottom:none}
+
+/* Footer */
+.footer{text-align:center;padding:2rem 0 1rem;color:var(--border);font-size:0.75rem;
+  font-family:var(--mono)}
 
 @media(max-width:768px){
   .grid-4{grid-template-columns:repeat(2,1fr)}
+  .metrics-grid{grid-template-columns:repeat(2,1fr)}
   nav{padding:0 0.75rem;gap:1rem}
-  main{padding:0.75rem}
+  nav .status-dot span{display:none}
+  main{padding:0.75rem 0.75rem 2rem}
+  .search-box{flex-wrap:wrap}
 }
 </style>
 </head>
@@ -131,28 +195,41 @@ td.mono{font-family:var(--mono)}
     <div class="tab" data-page="hotspots">Hotspots</div>
     <div class="tab" data-page="feedback">Feedback</div>
   </div>
-  <div class="pulse" id="pulse" title="Connected"></div>
+  <div class="status-dot" id="status-dot">
+    <span id="status-text">Connected</span>
+    <div class="pulse" id="pulse" title="Connected"></div>
+  </div>
 </nav>
 
 <main>
   <!-- STATUS PAGE -->
   <div class="page active" id="page-status">
-    <h2>Index Status</h2>
+    <div class="page-header">
+      <h2>Index Status</h2>
+      <p>Overview of indexed repositories, embeddings, and service health.</p>
+    </div>
     <div class="grid grid-4" id="status-stats"></div>
-    <div style="margin-top:1.5rem">
-      <h3>Languages</h3>
+    <div class="section">
+      <h3>Language Distribution</h3>
       <div id="lang-bar"></div>
       <div id="lang-list" class="lang-list"></div>
     </div>
-    <div style="margin-top:1.5rem">
+    <div class="section">
       <h3>Service Health</h3>
-      <div class="grid grid-3" id="health-cards"></div>
+      <div class="metrics-grid" id="metrics-cards"></div>
+      <details style="margin-top:0.75rem">
+        <summary style="cursor:pointer;font-size:0.8rem;color:var(--dim);padding:0.5rem 0">Raw Prometheus output</summary>
+        <div class="card" style="margin-top:0.5rem"><pre id="metrics-raw" style="font-family:var(--mono);font-size:0.75rem;color:var(--dim);white-space:pre-wrap;max-height:300px;overflow-y:auto"></pre></div>
+      </details>
     </div>
   </div>
 
   <!-- SEARCH PAGE -->
   <div class="page" id="page-search">
-    <h2>Search</h2>
+    <div class="page-header">
+      <h2>Search</h2>
+      <p>Hybrid semantic + keyword search across all indexed code and documentation.</p>
+    </div>
     <div class="search-box">
       <input type="text" id="search-q" placeholder="Search code, docs, symbols..." autofocus>
       <select id="search-mode">
@@ -160,8 +237,8 @@ td.mono{font-family:var(--mono)}
         <option value="semantic">Semantic</option>
         <option value="keyword">Keyword</option>
       </select>
-      <input type="number" id="search-limit" value="20" min="1" max="100" style="width:60px" title="Max results">
-      <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.8rem;color:var(--dim);cursor:pointer;white-space:nowrap">
+      <input type="number" id="search-limit" value="20" min="1" max="100" title="Max results">
+      <label>
         <input type="checkbox" id="search-archive" style="accent-color:var(--accent)"> Include archive
       </label>
       <button onclick="doSearch()">Search</button>
@@ -171,7 +248,10 @@ td.mono{font-family:var(--mono)}
 
   <!-- REPOS PAGE -->
   <div class="page" id="page-repos">
-    <h2>Repositories</h2>
+    <div class="page-header">
+      <h2>Repositories</h2>
+      <p>All indexed repositories with file counts and language breakdowns.</p>
+    </div>
     <div id="repos-list"></div>
     <div id="repo-files-section" style="display:none;margin-top:1.5rem">
       <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem">
@@ -189,7 +269,10 @@ td.mono{font-family:var(--mono)}
 
   <!-- BEADS PAGE -->
   <div class="page" id="page-beads">
-    <h2>Beads Search</h2>
+    <div class="page-header">
+      <h2>Beads Search</h2>
+      <p>Search issue tracker across all indexed beads databases.</p>
+    </div>
     <div class="search-box">
       <input type="text" id="beads-q" placeholder="Search beads by title, description...">
       <select id="beads-status">
@@ -205,9 +288,12 @@ td.mono{font-family:var(--mono)}
 
   <!-- FEEDBACK PAGE -->
   <div class="page" id="page-feedback">
-    <h2>Injection Feedback</h2>
+    <div class="page-header">
+      <h2>Injection Feedback</h2>
+      <p>Agent feedback on context injections — track what's useful vs noise.</p>
+    </div>
     <div class="grid grid-4" id="feedback-stats"></div>
-    <div style="margin-top:1.5rem">
+    <div class="section">
       <div class="search-box">
         <select id="feedback-rating" onchange="loadFeedbackList()">
           <option value="">All ratings</option>
@@ -224,11 +310,14 @@ td.mono{font-family:var(--mono)}
 
   <!-- HOTSPOTS PAGE -->
   <div class="page" id="page-hotspots">
-    <h2>Code Hotspots</h2>
-    <p style="color:var(--dim);margin-bottom:1rem;font-size:0.85rem">Files with highest churn + complexity. Candidates for refactoring.</p>
+    <div class="page-header">
+      <h2>Code Hotspots</h2>
+      <p>Files with highest churn + complexity. Candidates for refactoring.</p>
+    </div>
     <div id="hotspots-table"></div>
   </div>
 </main>
+<div class="footer">bobbin &middot; code intelligence</div>
 
 <script>
 const API = '';  // same origin
@@ -270,6 +359,38 @@ function timeAgo(ts) {
   return Math.floor(d/86400) + 'd ago';
 }
 
+// Parse Prometheus text into key-value pairs
+function parseMetrics(text) {
+  const metrics = {};
+  for (const line of text.split('\n')) {
+    if (line.startsWith('#') || !line.trim()) continue;
+    const match = line.match(/^(\w+)(?:\{[^}]*\})?\s+(.+)$/);
+    if (match) {
+      const [, name, value] = match;
+      if (!metrics[name]) metrics[name] = [];
+      metrics[name].push(parseFloat(value));
+    }
+  }
+  return metrics;
+}
+
+// Format metric values nicely
+function fmtMetric(val) {
+  if (val >= 1e9) return (val/1e9).toFixed(1) + 'B';
+  if (val >= 1e6) return (val/1e6).toFixed(1) + 'M';
+  if (val >= 1e3) return (val/1e3).toFixed(1) + 'K';
+  if (val % 1 !== 0) return val.toFixed(2);
+  return val.toString();
+}
+
+// Format uptime duration
+function fmtDuration(secs) {
+  if (secs < 60) return Math.floor(secs) + 's';
+  if (secs < 3600) return Math.floor(secs/60) + 'm';
+  if (secs < 86400) return Math.floor(secs/3600) + 'h ' + Math.floor((secs%3600)/60) + 'm';
+  return Math.floor(secs/86400) + 'd ' + Math.floor((secs%86400)/3600) + 'h';
+}
+
 // Load status page
 async function loadStatus() {
   try {
@@ -279,41 +400,68 @@ async function loadStatus() {
     ]);
     _sources = status.sources || null;
     const ix = status.index;
+    const repoCount = ix.languages ? new Set(ix.languages.flatMap(l => l.repos || [])).size || ix.languages.length : 0;
     document.getElementById('status-stats').innerHTML = `
-      <div class="card"><div class="card-header">Files Indexed</div><div class="stat-value accent">${ix.total_files.toLocaleString()}</div></div>
-      <div class="card"><div class="card-header">Chunks</div><div class="stat-value green">${ix.total_chunks.toLocaleString()}</div></div>
-      <div class="card"><div class="card-header">Embeddings</div><div class="stat-value">${ix.total_embeddings.toLocaleString()}</div></div>
-      <div class="card"><div class="card-header">Last Indexed</div><div class="stat-value amber" style="font-size:1rem">${timeAgo(ix.last_indexed)}</div></div>
+      <div class="card">
+        <div class="card-header">Files Indexed</div>
+        <div class="stat-value accent">${ix.total_files.toLocaleString()}</div>
+        <div class="stat-label">across ${repoCount || 'all'} repos</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Chunks</div>
+        <div class="stat-value green">${ix.total_chunks.toLocaleString()}</div>
+        <div class="stat-label">code segments</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Embeddings</div>
+        <div class="stat-value">${ix.total_embeddings.toLocaleString()}</div>
+        <div class="stat-label">vector representations</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Last Indexed</div>
+        <div class="stat-value amber" style="font-size:1.1rem">${timeAgo(ix.last_indexed)}</div>
+        <div class="stat-label">${ix.last_indexed ? new Date(ix.last_indexed * 1000).toLocaleString() : 'never'}</div>
+      </div>
     `;
     // Language breakdown
     const langs = ix.languages.sort((a,b) => b.chunk_count - a.chunk_count);
     const total = langs.reduce((s,l) => s + l.chunk_count, 0);
     document.getElementById('lang-bar').innerHTML = '<div class="lang-bar">' +
-      langs.map(l => `<div class="lang-segment" style="width:${(l.chunk_count/total*100).toFixed(1)}%;background:${langColor(l.language)}" title="${l.language}: ${l.chunk_count} chunks"></div>`).join('') +
+      langs.map(l => `<div class="lang-segment" style="width:${(l.chunk_count/total*100).toFixed(1)}%;background:${langColor(l.language)}" title="${l.language}: ${l.chunk_count} chunks (${(l.chunk_count/total*100).toFixed(1)}%)"></div>`).join('') +
       '</div>';
     document.getElementById('lang-list').innerHTML = langs.map(l =>
-      `<div class="lang-item"><div class="lang-dot" style="background:${langColor(l.language)}"></div>${l.language} <span style="color:var(--dim)">${l.file_count} files / ${l.chunk_count} chunks</span></div>`
+      `<div class="lang-item"><div class="lang-dot" style="background:${langColor(l.language)}"></div>${l.language} <span style="color:var(--dim)">${l.file_count} files &middot; ${l.chunk_count} chunks &middot; ${(l.chunk_count/total*100).toFixed(1)}%</span></div>`
     ).join('');
-    // Parse Prometheus metrics into health cards
-    const metrics = {};
-    metricsText.split('\n').forEach(line => {
-      if (line.startsWith('#') || !line.trim()) return;
-      const match = line.match(/^(\w+)\s+([\d.e+-]+)/);
-      if (match) metrics[match[1]] = parseFloat(match[2]);
-    });
-    const health = document.getElementById('health-cards');
-    const uptime = metrics.bobbin_uptime_seconds;
-    const uptimeStr = uptime ? (uptime > 86400 ? Math.floor(uptime/86400) + 'd' : uptime > 3600 ? Math.floor(uptime/3600) + 'h' : Math.floor(uptime/60) + 'm') : '?';
-    const searchCount = metrics.bobbin_search_total || 0;
-    const hookCount = metrics.bobbin_hook_queries_total || 0;
-    health.innerHTML = `
-      <div class="card"><div class="card-header">Service</div><div class="stat-value green">Online</div><div style="color:var(--dim);font-size:0.8rem">Uptime: ${uptimeStr}</div></div>
-      <div class="card"><div class="card-header">Searches</div><div class="stat-value accent">${searchCount.toLocaleString()}</div><div style="color:var(--dim);font-size:0.8rem">Total queries served</div></div>
-      <div class="card"><div class="card-header">Hook Injections</div><div class="stat-value">${hookCount.toLocaleString()}</div><div style="color:var(--dim);font-size:0.8rem">Context injections</div></div>
-    `;
+    // Parse and display key metrics as cards
+    const m = parseMetrics(metricsText);
+    let cardsHtml = '';
+    const metricDefs = [
+      {key:'bobbin_uptime_seconds', label:'Uptime', fmt: v => fmtDuration(v), cls:'ok'},
+      {key:'bobbin_index_repos_total', label:'Repos', fmt: v => fmtMetric(v), cls:''},
+      {key:'bobbin_index_files_total', label:'Indexed Files', fmt: v => fmtMetric(v), cls:''},
+      {key:'bobbin_index_chunks_total', label:'Indexed Chunks', fmt: v => fmtMetric(v), cls:''},
+      {key:'bobbin_search_requests_total', label:'Total Searches', fmt: v => fmtMetric(v), cls:''},
+      {key:'bobbin_search_latency_seconds', label:'Search Latency', fmt: v => (v*1000).toFixed(0) + 'ms', cls: v => v > 1 ? 'warn' : 'ok'},
+      {key:'bobbin_embedding_latency_seconds', label:'Embed Latency', fmt: v => (v*1000).toFixed(0) + 'ms', cls: v => v > 2 ? 'warn' : 'ok'},
+      {key:'bobbin_webhook_pushes_total', label:'Webhook Pushes', fmt: v => fmtMetric(v), cls:''},
+      {key:'bobbin_context_requests_total', label:'Context Requests', fmt: v => fmtMetric(v), cls:''},
+      {key:'bobbin_hook_queries_total', label:'Hook Injections', fmt: v => fmtMetric(v), cls:''},
+      {key:'bobbin_reindex_duration_seconds', label:'Reindex Time', fmt: v => fmtDuration(v), cls:''},
+    ];
+    for (const def of metricDefs) {
+      const vals = m[def.key];
+      if (!vals || vals.length === 0) continue;
+      const v = vals[vals.length - 1];
+      const cls = typeof def.cls === 'function' ? def.cls(v) : def.cls;
+      cardsHtml += `<div class="metric-card"><div class="metric-label">${def.label}</div><div class="metric-value${cls ? ' '+cls : ''}">${def.fmt(v)}</div></div>`;
+    }
+    document.getElementById('metrics-cards').innerHTML = cardsHtml || '<div class="empty">No metrics available</div>';
+    document.getElementById('metrics-raw').textContent = metricsText;
     document.getElementById('pulse').style.background = 'var(--green)';
+    document.getElementById('status-text').textContent = 'Connected';
   } catch(e) {
     document.getElementById('pulse').style.background = 'var(--red)';
+    document.getElementById('status-text').textContent = 'Offline';
     document.getElementById('status-stats').innerHTML = '<div class="card"><div class="stat-value" style="color:var(--red)">Offline</div><div style="color:var(--dim);margin-top:0.5rem">' + e.message + '</div></div>';
   }
 }
@@ -379,7 +527,7 @@ async function doSearch() {
     }
     // Normalize scores relative to top result
     const maxScore = results.length > 0 ? Math.max(...results.map(r => r.score)) : 1;
-    let html = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${results.length} results (${mode} mode)${archiveResults.length > 0 ? ` + ${archiveResults.length} archive` : ''}</div>`;
+    let html = `<div class="results-summary">${results.length} result${results.length !== 1 ? 's' : ''} &middot; ${mode} mode${archiveResults.length > 0 ? ` &middot; ${archiveResults.length} archive` : ''}</div>`;
     html += results.map(res => {
       const rel = relPath(res.file_path);
       const link = repoLink(res.file_path, res.start_line);
@@ -390,7 +538,7 @@ async function doSearch() {
             ${link ? `<a class="result-path" href="${link}" target="_blank">${esc(rel)}</a>` : `<span class="result-path">${esc(rel)}</span>`}
             <span class="result-type">${res.chunk_type || ''}</span>
             <span class="result-lines">L${res.start_line}-${res.end_line}</span>
-            <span class="result-score">${pct}%</span>
+            <span class="result-score"><div class="score-bar"><div class="score-fill" style="width:${pct}%"></div></div>${pct}%</span>
           </div>
           ${res.name ? `<div class="result-name">${esc(res.name)}</div>` : ''}
           ${res.content_preview ? `<div class="result-preview">${esc(res.content_preview)}</div>` : ''}
@@ -521,7 +669,7 @@ async function doBeadsSearch() {
       el.innerHTML = '<div class="empty">No beads found</div>';
       return;
     }
-    el.innerHTML = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${data.count} results</div>` +
+    el.innerHTML = `<div class="results-summary">${data.count} result${data.count !== 1 ? 's' : ''}</div>` +
       data.results.map(b => `
         <div class="bead">
           <div>
