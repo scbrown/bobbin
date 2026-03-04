@@ -112,6 +112,10 @@ struct InjectContextArgs {
     /// Include documentation files in injection output (overrides config)
     #[arg(long)]
     show_docs: Option<bool>,
+
+    /// Injection output format: standard, minimal, verbose, or xml (overrides config)
+    #[arg(long)]
+    format_mode: Option<String>,
 }
 
 #[derive(Args)]
@@ -590,6 +594,7 @@ async fn inject_context_remote(
     // Apply CLI overrides
     let min_prompt_length = args.min_prompt_length.unwrap_or(hooks_cfg.min_prompt_length);
     let budget = args.budget.unwrap_or(hooks_cfg.budget);
+    let format_mode = args.format_mode.as_deref().unwrap_or(&hooks_cfg.format_mode);
 
     // 3. Check min prompt length
     let prompt = input.prompt.trim();
@@ -639,7 +644,7 @@ async fn inject_context_remote(
 
             // Generate injection_id and format structured context output
             let injection_id = generate_context_injection_id(prompt);
-            let out = format_context_response(&resp, budget, hooks_cfg.show_docs, &injection_id);
+            let out = format_context_response(&resp, budget, hooks_cfg.show_docs, &injection_id, format_mode);
             print!("{}", out);
 
             // Store injection payload server-side (best-effort, don't block)
@@ -662,7 +667,7 @@ async fn inject_context_remote(
         Err(_) => {
             // Fallback: /context endpoint unavailable, use /search
             let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
-            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, output, Some(&role), session_id).await
+            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, output, Some(&role), session_id, format_mode).await
         }
     }
 }
@@ -673,22 +678,50 @@ fn format_context_response(
     budget: usize,
     show_docs: bool,
     injection_id: &str,
+    format_mode: &str,
 ) -> String {
     use std::fmt::Write;
     let mut out = String::new();
 
     // Header with summary and injection_id for feedback reference
-    let _ = writeln!(
-        out,
-        "Bobbin found {} relevant files ({} direct, {} coupled, {} bridged, {}/{} budget lines) [injection_id: {}]:",
-        resp.summary.total_files,
-        resp.summary.direct_hits,
-        resp.summary.coupled_additions,
-        resp.summary.bridged_additions,
-        resp.summary.total_chunks,
-        budget,
-        injection_id,
-    );
+    match format_mode {
+        "xml" => {
+            let _ = writeln!(
+                out,
+                "<bobbin-context files=\"{}\" direct=\"{}\" coupled=\"{}\" bridged=\"{}\" chunks=\"{}\" budget=\"{}\" injection_id=\"{}\">",
+                resp.summary.total_files,
+                resp.summary.direct_hits,
+                resp.summary.coupled_additions,
+                resp.summary.bridged_additions,
+                resp.summary.total_chunks,
+                budget,
+                injection_id,
+            );
+        }
+        "minimal" => {
+            let _ = writeln!(
+                out,
+                "# Bobbin context ({} files, {}/{} lines) [injection_id: {}]",
+                resp.summary.total_files,
+                resp.summary.total_chunks,
+                budget,
+                injection_id,
+            );
+        }
+        _ => {
+            let _ = writeln!(
+                out,
+                "Bobbin found {} relevant files ({} direct, {} coupled, {} bridged, {}/{} budget lines) [injection_id: {}]:",
+                resp.summary.total_files,
+                resp.summary.direct_hits,
+                resp.summary.coupled_additions,
+                resp.summary.bridged_additions,
+                resp.summary.total_chunks,
+                budget,
+                injection_id,
+            );
+        }
+    }
 
     // Partition files by type
     let is_doc = |path: &str| -> bool {
@@ -702,15 +735,31 @@ fn format_context_response(
     let mut line_count = out.lines().count();
 
     if !source_files.is_empty() {
-        let _ = write!(out, "\n=== Source Files ===\n");
-        line_count += 2;
-        format_remote_file_chunks(&mut out, &source_files, budget, &mut line_count);
+        match format_mode {
+            "xml" => { /* no section header in xml mode */ }
+            "minimal" => { /* no section header in minimal mode */ }
+            _ => {
+                let _ = write!(out, "\n=== Source Files ===\n");
+                line_count += 2;
+            }
+        }
+        format_remote_file_chunks(&mut out, &source_files, budget, &mut line_count, format_mode);
     }
 
     if show_docs && !doc_files.is_empty() {
-        let _ = write!(out, "\n=== Documentation ===\n");
-        line_count += 2;
-        format_remote_file_chunks(&mut out, &doc_files, budget, &mut line_count);
+        match format_mode {
+            "xml" => { /* no section header in xml mode */ }
+            "minimal" => { /* no section header in minimal mode */ }
+            _ => {
+                let _ = write!(out, "\n=== Documentation ===\n");
+                line_count += 2;
+            }
+        }
+        format_remote_file_chunks(&mut out, &doc_files, budget, &mut line_count, format_mode);
+    }
+
+    if format_mode == "xml" {
+        let _ = write!(out, "</bobbin-context>\n");
     }
 
     out
@@ -726,6 +775,7 @@ async fn inject_context_remote_search_fallback(
     output: &OutputConfig,
     role: Option<&str>,
     session_id: Option<&str>,
+    format_mode: &str,
 ) -> Result<()> {
     let resp = client
         .search(prompt, "hybrid", None, 10, None, role)
@@ -754,8 +804,7 @@ async fn inject_context_remote_search_fallback(
     }
 
     let injection_id = generate_context_injection_id(prompt);
-    let mut out = format!("Bobbin found {} relevant chunks (via search fallback) [injection_id: {}]:\n", result_count, injection_id);
-    out.push_str("\n=== Source Files ===\n");
+    let mut out = format_search_fallback_header(result_count, &injection_id, format_mode);
 
     let mut line_count = out.lines().count();
     for result in &resp.results {
@@ -773,20 +822,16 @@ async fn inject_context_remote_search_fallback(
             .as_ref()
             .map(|n| format!(" {}", n))
             .unwrap_or_default();
-        let chunk_section = format!(
-            "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n{}{}\n",
-            result.file_path,
+        let chunk_section = format_search_chunk(
+            &result.file_path,
             result.start_line,
             result.end_line,
-            name,
-            result.chunk_type,
+            &name,
+            &result.chunk_type,
             result.score,
-            result.content_preview,
-            if result.content_preview.ends_with('\n') {
-                ""
-            } else {
-                ""
-            },
+            &result.content_preview,
+            "",
+            format_mode,
         );
 
         let chunk_line_count = chunk_section.lines().count();
@@ -795,6 +840,10 @@ async fn inject_context_remote_search_fallback(
         }
         line_count += chunk_line_count;
         out.push_str(&chunk_section);
+    }
+
+    if format_mode == "xml" {
+        out.push_str("</bobbin-context>\n");
     }
 
     print!("{}", out);
@@ -824,6 +873,7 @@ fn format_remote_file_chunks(
     files: &[&crate::http::client::ContextFileOutput],
     budget: usize,
     line_count: &mut usize,
+    format_mode: &str,
 ) {
     use std::fmt::Write;
 
@@ -852,17 +902,16 @@ fn format_remote_file_chunks(
                 .map(|n| format!(" {}", n))
                 .unwrap_or_default();
             let content_str = chunk.content.as_deref().unwrap_or("");
-            let chunk_section = format!(
-                "\n--- {}:{}-{}{} ({}, score {:.2}){} ---\n{}{}",
-                display_path,
+            let chunk_section = format_search_chunk(
+                &display_path,
                 chunk.start_line,
                 chunk.end_line,
-                name,
-                chunk.chunk_type,
+                &name,
+                &chunk.chunk_type,
                 chunk.score,
-                relevance_info,
                 content_str,
-                if content_str.ends_with('\n') { "" } else { "\n" },
+                &relevance_info,
+                format_mode,
             );
 
             let chunk_line_count = chunk_section.lines().count();
@@ -871,6 +920,92 @@ fn format_remote_file_chunks(
             }
             *line_count += chunk_line_count;
             let _ = write!(out, "{}", chunk_section);
+        }
+    }
+}
+
+/// Format a single chunk according to the injection format mode.
+fn format_search_chunk(
+    path: &str,
+    start_line: u32,
+    end_line: u32,
+    name: &str,
+    chunk_type: &str,
+    score: f32,
+    content: &str,
+    relevance_info: &str,
+    format_mode: &str,
+) -> String {
+    let content_suffix = if content.ends_with('\n') { "" } else { "\n" };
+    match format_mode {
+        "minimal" => {
+            // Clean, minimal format — just path and content, no metadata noise
+            format!(
+                "\n# {} (lines {}-{})\n{}{}",
+                path, start_line, end_line, content, content_suffix,
+            )
+        }
+        "verbose" => {
+            // Standard format + explicit name/type on separate line for clarity
+            let mut s = format!(
+                "\n--- {}:{}-{}{} ({}, score {:.2}){} ---\n",
+                path, start_line, end_line, name, chunk_type, score, relevance_info,
+            );
+            if !name.is_empty() {
+                s.push_str(&format!("  // {}{}\n", chunk_type, name));
+            }
+            s.push_str(content);
+            s.push_str(content_suffix);
+            s
+        }
+        "xml" => {
+            // XML-structured format for LLMs that may parse structure better
+            let name_attr = if name.is_empty() {
+                String::new()
+            } else {
+                format!(" name=\"{}\"", name.trim())
+            };
+            let rel_attr = if relevance_info.is_empty() {
+                String::new()
+            } else {
+                format!(" relevance=\"{}\"", relevance_info.trim().trim_matches(|c| c == '[' || c == ']'))
+            };
+            format!(
+                "<file path=\"{}\" lines=\"{}-{}\" type=\"{}\" score=\"{:.2}\"{}{}>
+{}{}</file>\n",
+                path, start_line, end_line, chunk_type, score, name_attr, rel_attr,
+                content, content_suffix,
+            )
+        }
+        _ => {
+            // "standard" — the current default format
+            format!(
+                "\n--- {}:{}-{}{} ({}, score {:.2}){} ---\n{}{}",
+                path, start_line, end_line, name, chunk_type, score, relevance_info,
+                content, content_suffix,
+            )
+        }
+    }
+}
+
+/// Format the header for search fallback injection.
+fn format_search_fallback_header(result_count: usize, injection_id: &str, format_mode: &str) -> String {
+    match format_mode {
+        "xml" => format!(
+            "<bobbin-context chunks=\"{}\" mode=\"search-fallback\" injection_id=\"{}\">\n",
+            result_count, injection_id,
+        ),
+        "minimal" => format!(
+            "# Bobbin context ({} chunks, search fallback) [injection_id: {}]\n",
+            result_count, injection_id,
+        ),
+        _ => {
+            let mut out = format!(
+                "Bobbin found {} relevant chunks (via search fallback) [injection_id: {}]:\n",
+                result_count, injection_id,
+            );
+            out.push_str("\n=== Source Files ===\n");
+            out
         }
     }
 }
@@ -966,6 +1101,7 @@ fn format_context_for_injection(
     threshold: f32,
     show_docs: bool,
     injection_id: Option<&str>,
+    format_mode: &str,
 ) -> String {
     use crate::types::FileCategory;
     use std::fmt::Write;
@@ -973,28 +1109,61 @@ fn format_context_for_injection(
     let budget = bundle.budget.max_lines;
     let mut out = String::new();
 
-    let header = if let Some(inj_id) = injection_id {
-        format!(
-            "Bobbin found {} relevant files ({} source, {} docs, {}/{} budget lines) [injection_id: {}]:",
-            bundle.summary.total_files,
-            bundle.summary.source_files,
-            bundle.summary.doc_files,
-            bundle.budget.used_lines,
-            bundle.budget.max_lines,
-            inj_id,
-        )
-    } else {
-        format!(
-            "Bobbin found {} relevant files ({} source, {} docs, {}/{} budget lines):",
-            bundle.summary.total_files,
-            bundle.summary.source_files,
-            bundle.summary.doc_files,
-            bundle.budget.used_lines,
-            bundle.budget.max_lines,
-        )
-    };
-    out.push_str(&header);
-    out.push('\n');
+    // Format header based on mode
+    match format_mode {
+        "xml" => {
+            let inj_attr = injection_id
+                .map(|id| format!(" injection_id=\"{}\"", id))
+                .unwrap_or_default();
+            let _ = writeln!(
+                out,
+                "<bobbin-context files=\"{}\" source=\"{}\" docs=\"{}\" lines=\"{}/{}\"{}>\n",
+                bundle.summary.total_files,
+                bundle.summary.source_files,
+                bundle.summary.doc_files,
+                bundle.budget.used_lines,
+                bundle.budget.max_lines,
+                inj_attr,
+            );
+        }
+        "minimal" => {
+            let inj_suffix = injection_id
+                .map(|id| format!(" [injection_id: {}]", id))
+                .unwrap_or_default();
+            let _ = writeln!(
+                out,
+                "# Bobbin context ({} files, {}/{} lines){}",
+                bundle.summary.total_files,
+                bundle.budget.used_lines,
+                bundle.budget.max_lines,
+                inj_suffix,
+            );
+        }
+        _ => {
+            let header = if let Some(inj_id) = injection_id {
+                format!(
+                    "Bobbin found {} relevant files ({} source, {} docs, {}/{} budget lines) [injection_id: {}]:",
+                    bundle.summary.total_files,
+                    bundle.summary.source_files,
+                    bundle.summary.doc_files,
+                    bundle.budget.used_lines,
+                    bundle.budget.max_lines,
+                    inj_id,
+                )
+            } else {
+                format!(
+                    "Bobbin found {} relevant files ({} source, {} docs, {}/{} budget lines):",
+                    bundle.summary.total_files,
+                    bundle.summary.source_files,
+                    bundle.summary.doc_files,
+                    bundle.budget.used_lines,
+                    bundle.budget.max_lines,
+                )
+            };
+            out.push_str(&header);
+            out.push('\n');
+        }
+    }
 
     // Partition files: source/test first, then docs/config
     let source_files: Vec<_> = bundle.files.iter()
@@ -1006,14 +1175,22 @@ fn format_context_for_injection(
 
     // Emit source files section
     if !source_files.is_empty() {
-        let _ = write!(out, "\n=== Source Files ===\n");
-        format_file_chunks(&mut out, &source_files, threshold, budget);
+        if format_mode != "xml" && format_mode != "minimal" {
+            let _ = write!(out, "\n=== Source Files ===\n");
+        }
+        format_file_chunks(&mut out, &source_files, threshold, budget, format_mode);
     }
 
     // Emit documentation section (if show_docs is true)
     if show_docs && !doc_files.is_empty() {
-        let _ = write!(out, "\n=== Documentation ===\n");
-        format_file_chunks(&mut out, &doc_files, threshold, budget);
+        if format_mode != "xml" && format_mode != "minimal" {
+            let _ = write!(out, "\n=== Documentation ===\n");
+        }
+        format_file_chunks(&mut out, &doc_files, threshold, budget, format_mode);
+    }
+
+    if format_mode == "xml" {
+        let _ = write!(out, "</bobbin-context>\n");
     }
 
     // Final enforcement: trim to budget
@@ -1031,6 +1208,7 @@ fn format_file_chunks(
     files: &[&crate::search::context::ContextFile],
     threshold: f32,
     budget: usize,
+    format_mode: &str,
 ) {
     use std::fmt::Write;
 
@@ -1055,24 +1233,22 @@ fn format_file_chunks(
                 .as_ref()
                 .map(|n| format!(" {}", n))
                 .unwrap_or_default();
-            let chunk_section = if let Some(ref content) = chunk.content {
-                format!(
-                    "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n{}{}",
-                    display_path,
-                    chunk.start_line,
-                    chunk.end_line,
-                    name,
-                    chunk.chunk_type,
-                    chunk.score,
-                    content,
-                    if content.ends_with('\n') { "" } else { "\n" },
-                )
-            } else {
-                format!(
-                    "\n--- {}:{}-{}{} ({}, score {:.2}) ---\n",
-                    display_path, chunk.start_line, chunk.end_line, name, chunk.chunk_type, chunk.score,
-                )
-            };
+            let content_str = chunk.content.as_deref().unwrap_or("");
+            let chunk_type_str = serde_json::to_string(&chunk.chunk_type)
+                .unwrap_or_default()
+                .trim_matches('"')
+                .to_string();
+            let chunk_section = format_search_chunk(
+                &display_path,
+                chunk.start_line,
+                chunk.end_line,
+                &name,
+                &chunk_type_str,
+                chunk.score,
+                content_str,
+                "",
+                format_mode,
+            );
 
             // Check if adding this chunk would exceed budget
             let chunk_line_count = chunk_section.lines().count();
@@ -1317,6 +1493,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         "none" => ContentMode::None,
         _ => ContentMode::Preview,
     };
+    let format_mode = args.format_mode.as_deref().unwrap_or(&hooks_cfg.format_mode);
 
     // 3. Check min prompt length
     let prompt = input.prompt.trim();
@@ -1446,7 +1623,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
 
     let show_docs = args.show_docs.unwrap_or(hooks_cfg.show_docs);
     let injection_id = generate_context_injection_id(prompt);
-    let context_text = format_context_for_injection(&bundle, threshold, show_docs, Some(&injection_id));
+    let context_text = format_context_for_injection(&bundle, threshold, show_docs, Some(&injection_id), format_mode);
     print!("{}", context_text);
 
     // Store injection record locally (best-effort)
@@ -2625,7 +2802,7 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
     }
 
     // 8. Format output
-    let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false, None);
+    let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false, None, &config.hooks.format_mode);
     let header = format!(
         "Bobbin found {} relevant chunks for this error (via search fallback):\n\n",
         bundle.summary.total_chunks,
@@ -3357,7 +3534,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
         assert!(result.contains("0 relevant files"));
     }
 
@@ -3398,7 +3575,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.5, true, None);
+        let result = format_context_for_injection(&bundle, 0.5, true, None, "standard");
         assert!(result.contains("src/auth.rs:10-25"));
         assert!(result.contains("authenticate"));
         assert!(result.contains("fn authenticate()"));
@@ -3444,12 +3621,12 @@ mod tests {
         };
 
         // With injection_id
-        let result = format_context_for_injection(&bundle, 0.0, true, Some("inj-abc12345"));
+        let result = format_context_for_injection(&bundle, 0.0, true, Some("inj-abc12345"), "standard");
         assert!(result.contains("[injection_id: inj-abc12345]"));
         assert!(result.contains("1 relevant files"));
 
         // Without injection_id (backward compat)
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
         assert!(!result.contains("injection_id"));
         assert!(result.contains("1 relevant files"));
     }
@@ -3504,7 +3681,7 @@ mod tests {
             },
         };
         // With high threshold, chunk content should be filtered out
-        let result = format_context_for_injection(&bundle, 0.5, true, None);
+        let result = format_context_for_injection(&bundle, 0.5, true, None, "standard");
         assert!(!result.contains("low_score_fn"));
     }
 
@@ -3738,7 +3915,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
         let line_count = result.lines().count();
         // Must not exceed max_lines budget
         assert!(
@@ -3788,7 +3965,7 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
         // Score should be 2 decimal places
         assert!(result.contains("score 0.86"), "Expected 2-decimal score in: {}", result);
     }
@@ -3852,13 +4029,13 @@ mod tests {
         };
 
         // show_docs=true should include both
-        let with_docs = format_context_for_injection(&bundle, 0.0, true, None);
+        let with_docs = format_context_for_injection(&bundle, 0.0, true, None, "standard");
         assert!(with_docs.contains("Source Files"), "Should have source section");
         assert!(with_docs.contains("Documentation"), "Should have doc section");
         assert!(with_docs.contains("README.md"));
 
         // show_docs=false should exclude documentation
-        let without_docs = format_context_for_injection(&bundle, 0.0, false, None);
+        let without_docs = format_context_for_injection(&bundle, 0.0, false, None, "standard");
         assert!(without_docs.contains("Source Files"), "Should have source section");
         assert!(!without_docs.contains("Documentation"), "Should not have doc section");
         assert!(!without_docs.contains("README.md"), "Doc file should be excluded");
@@ -3903,7 +4080,7 @@ mod tests {
             },
         };
         // Budget 0 — should not panic and should produce empty or minimal output
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
         assert!(result.lines().count() <= 1, "Budget 0 should produce at most the header");
     }
 
@@ -3945,10 +4122,119 @@ mod tests {
                 top_semantic_score: 0.0,
             },
         };
-        let result = format_context_for_injection(&bundle, 0.0, true, None);
+        let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
         // Should still have the chunk header with file:lines
         assert!(result.contains("src/a.rs:1-10"));
         assert!(result.contains("fn_a"));
+    }
+
+    // Helper to create a standard test bundle for format mode tests.
+    fn make_format_test_bundle() -> ContextBundle {
+        ContextBundle {
+            query: "auth handler".to_string(),
+            files: vec![ContextFile {
+                path: "src/auth.rs".to_string(),
+                language: "rust".to_string(),
+                relevance: FileRelevance::Direct,
+                category: classify_file("src/auth.rs"),
+                score: 0.85,
+                coupled_to: vec![],
+                repo: None,
+                chunks: vec![ContextChunk {
+                    name: Some("authenticate".to_string()),
+                    chunk_type: ChunkType::Function,
+                    start_line: 10,
+                    end_line: 25,
+                    score: 0.85,
+                    match_type: Some(MatchType::Hybrid),
+                    content: Some("fn authenticate() {\n    // check token\n}".to_string()),
+                }],
+            }],
+            budget: BudgetInfo {
+                max_lines: 150,
+                used_lines: 16,
+            },
+            summary: ContextSummary {
+                total_files: 1,
+                total_chunks: 1,
+                direct_hits: 1,
+                coupled_additions: 0,
+                bridged_additions: 0,
+                source_files: 1,
+                doc_files: 0,
+                top_semantic_score: 0.85,
+            },
+        }
+    }
+
+    #[test]
+    fn test_format_mode_standard() {
+        let bundle = make_format_test_bundle();
+        let result = format_context_for_injection(&bundle, 0.0, true, Some("inj-test1"), "standard");
+        assert!(result.contains("Bobbin found 1 relevant files"));
+        assert!(result.contains("[injection_id: inj-test1]"));
+        assert!(result.contains("=== Source Files ==="));
+        assert!(result.contains("--- src/auth.rs:10-25"));
+        assert!(result.contains("score 0.85"));
+        assert!(result.contains("fn authenticate()"));
+    }
+
+    #[test]
+    fn test_format_mode_minimal() {
+        let bundle = make_format_test_bundle();
+        let result = format_context_for_injection(&bundle, 0.0, true, Some("inj-test2"), "minimal");
+        // Minimal: no section headers, no scores, no types
+        assert!(result.contains("# Bobbin context"));
+        assert!(result.contains("[injection_id: inj-test2]"));
+        assert!(!result.contains("=== Source Files ==="));
+        assert!(!result.contains("score 0.85"));
+        assert!(result.contains("# src/auth.rs (lines 10-25)"));
+        assert!(result.contains("fn authenticate()"));
+    }
+
+    #[test]
+    fn test_format_mode_verbose() {
+        let bundle = make_format_test_bundle();
+        let result = format_context_for_injection(&bundle, 0.0, true, Some("inj-test3"), "verbose");
+        assert!(result.contains("Bobbin found 1 relevant files"));
+        assert!(result.contains("=== Source Files ==="));
+        assert!(result.contains("--- src/auth.rs:10-25"));
+        assert!(result.contains("score 0.85"));
+        // Verbose adds explicit type/name line
+        assert!(result.contains("// function authenticate"));
+        assert!(result.contains("fn authenticate()"));
+    }
+
+    #[test]
+    fn test_format_mode_xml() {
+        let bundle = make_format_test_bundle();
+        let result = format_context_for_injection(&bundle, 0.0, true, Some("inj-test4"), "xml");
+        assert!(result.contains("<bobbin-context"));
+        assert!(result.contains("injection_id=\"inj-test4\""));
+        assert!(result.contains("</bobbin-context>"));
+        assert!(result.contains("<file path=\"src/auth.rs\""));
+        assert!(result.contains("lines=\"10-25\""));
+        assert!(result.contains("score=\"0.85\""));
+        assert!(result.contains("</file>"));
+        assert!(result.contains("fn authenticate()"));
+        // XML mode should NOT have section headers
+        assert!(!result.contains("=== Source Files ==="));
+    }
+
+    #[test]
+    fn test_format_search_chunk_all_modes() {
+        let content = "fn main() {}\n";
+        let standard = format_search_chunk("src/main.rs", 1, 5, " main", "function", 0.9, content, "", "standard");
+        assert!(standard.contains("--- src/main.rs:1-5 main (function, score 0.90) ---"));
+
+        let minimal = format_search_chunk("src/main.rs", 1, 5, " main", "function", 0.9, content, "", "minimal");
+        assert!(minimal.contains("# src/main.rs (lines 1-5)"));
+        assert!(!minimal.contains("score"));
+
+        let xml = format_search_chunk("src/main.rs", 1, 5, " main", "function", 0.9, content, "", "xml");
+        assert!(xml.contains("<file path=\"src/main.rs\""));
+        assert!(xml.contains("name=\"main\""));
+        assert!(xml.contains("</file>"));
     }
 
     #[test]
