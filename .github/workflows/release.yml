@@ -94,12 +94,7 @@ jobs:
           curl -sL "https://github.com/microsoft/onnxruntime/releases/download/${ORT_TAG}/${ORT_TARBALL}" \
             -o /tmp/ort.tgz
           mkdir -p /tmp/ort-extracted
-          tar xzf /tmp/ort.tgz -C /tmp/ort-extracted
-          # Find the lib directory (handles tarballs with or without ./ prefix)
-          ORT_LIB=$(find /tmp/ort-extracted -type d -name lib | head -1)
-          echo "ORT_LIB=${ORT_LIB}" >> "$GITHUB_ENV"
-          echo "Found ORT lib at: ${ORT_LIB}"
-          ls -la "${ORT_LIB}"/
+          tar xzf /tmp/ort.tgz -C /tmp/ort-extracted --strip-components=1
 
       - name: Package
         shell: bash
@@ -109,7 +104,7 @@ jobs:
           cp target/${{ matrix.target }}/release/bobbin "$STAGING/"
 
           # Bundle ONNX Runtime shared library from extracted tarball
-          find "$ORT_LIB" -maxdepth 1 -name "libonnxruntime*" \
+          find /tmp/ort-extracted/lib -maxdepth 1 -name "libonnxruntime*" \
             -not -name "*providers*" -not -type d | while read f; do
             cp "$f" "$STAGING/lib/"
           done

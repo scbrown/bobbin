@@ -778,22 +778,6 @@ fn format_content(content: &str, mode: ContentMode) -> Option<String> {
     }
 }
 
-/// Compute a content fingerprint for deduplication.
-/// Normalizes whitespace and lowercases to catch near-identical chunks
-/// (e.g., daily pensieve snapshots repeating the same boilerplate).
-fn content_fingerprint(content: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    use std::collections::hash_map::DefaultHasher;
-    let normalized: String = content
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase();
-    let mut hasher = DefaultHasher::new();
-    normalized.hash(&mut hasher);
-    hasher.finish()
-}
-
 /// Assemble a context bundle from seed, coupled, and bridged results (pure logic, no I/O)
 fn assemble_bundle(
     query: &str,
@@ -806,7 +790,6 @@ fn assemble_bundle(
     let max_chunk_lines = budget / 2; // Cap individual chunks at 50% of budget
     let mut used_lines: usize = 0;
     let mut seen_chunk_ids: HashSet<String> = HashSet::new();
-    let mut seen_content_hashes: HashSet<u64> = HashSet::new();
 
     // Filter out commit chunks — they're useful for `bobbin log` but shouldn't
     // be injected into context. Commit messages pollute the context budget without
@@ -866,14 +849,6 @@ fn assemble_bundle(
         let mut file_chunks = Vec::new();
         for result in results {
             if seen_chunk_ids.contains(&result.chunk_id) {
-                continue;
-            }
-
-            // Content-based dedup: skip chunks with near-identical text to
-            // already-included chunks. Catches duplicate content across files
-            // (e.g., daily pensieve snapshots repeating the same sections).
-            let content_hash = content_fingerprint(&result.content);
-            if !seen_content_hashes.insert(content_hash) {
                 continue;
             }
 
@@ -970,11 +945,6 @@ fn assemble_bundle(
                 continue;
             }
 
-            let content_hash = content_fingerprint(&chunk.content);
-            if !seen_content_hashes.insert(content_hash) {
-                continue;
-            }
-
             let chunk_lines = (chunk.end_line - chunk.start_line + 1) as usize;
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
@@ -1052,11 +1022,6 @@ fn assemble_bundle(
         let mut file_chunks = Vec::new();
         for chunk in chunks {
             if seen_chunk_ids.contains(&chunk.chunk_id) {
-                continue;
-            }
-
-            let content_hash = content_fingerprint(&chunk.content);
-            if !seen_content_hashes.insert(content_hash) {
                 continue;
             }
 
@@ -1268,55 +1233,6 @@ mod tests {
     }
 
     #[test]
-    fn test_content_dedup_across_files() {
-        // Chunks with different IDs and different files but identical content
-        // should be deduplicated (e.g., daily pensieve snapshots).
-        let config = ContextConfig {
-            budget_lines: 500,
-            depth: 0,
-            max_coupled: 3,
-            coupling_threshold: 0.1,
-            semantic_weight: 0.7,
-            content_mode: ContentMode::Full,
-            search_limit: 20,
-            doc_demotion: 0.5,
-            rrf_k: 60.0,
-            recency_half_life_days: 0.0,
-            recency_weight: 0.0,
-            bridge_mode: BridgeMode::Inject,
-            bridge_boost_factor: 0.3,
-            extra_filter: None,
-            tags_config: None,
-            role: None,
-        };
-
-        let mut seed1 = make_seed("snap-day1", "snapshots/2026-03-01.md", 1, 5, 0.9);
-        seed1.content = "## Session Protocol Notes\n- Always check hook first\n- Then check mail".to_string();
-        let mut seed2 = make_seed("snap-day2", "snapshots/2026-03-02.md", 1, 5, 0.85);
-        seed2.content = "## Session Protocol Notes\n- Always check hook first\n- Then check mail".to_string();
-        let mut seed3 = make_seed("snap-day3", "snapshots/2026-03-03.md", 1, 5, 0.8);
-        seed3.content = "## Session Protocol Notes\n- Always check hook first\n- Then check mail".to_string();
-        let seed4 = make_seed("unique-chunk", "src/auth.rs", 10, 20, 0.7);
-
-        let seeds = vec![seed1, seed2, seed3, seed4];
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
-        // Should keep only 1 of the 3 duplicate snapshot chunks + the unique chunk
-        assert_eq!(bundle.summary.total_chunks, 2);
-    }
-
-    #[test]
-    fn test_content_fingerprint_normalization() {
-        // Whitespace differences should produce same fingerprint
-        let fp1 = content_fingerprint("func init() {\n  cobra.AddCommand()\n}");
-        let fp2 = content_fingerprint("func init() {\n    cobra.AddCommand()\n}");
-        assert_eq!(fp1, fp2);
-
-        // Different content should produce different fingerprints
-        let fp3 = content_fingerprint("func main() { fmt.Println(\"hello\") }");
-        assert_ne!(fp1, fp3);
-    }
-
-    #[test]
     fn test_no_coupled_when_empty() {
         let config = ContextConfig {
             budget_lines: 500,
@@ -1494,7 +1410,7 @@ mod tests {
             indexed_at: None,
             start_line: start,
             end_line: end,
-            content: format!("fn {}() {{ /* {} {} */ }}", id, file, start),
+            content: "fn test() {}".to_string(),
             score,
             match_type: Some(MatchType::Hybrid),
             repo: None,
@@ -1518,7 +1434,7 @@ mod tests {
             chunk_type: ChunkType::Function,
             start_line: start,
             end_line: end,
-            content: format!("fn {}() {{ /* {} {} */ }}", id, file, start),
+            content: "fn test() {}".to_string(),
             coupling_score,
             coupled_to: coupled_to.to_string(),
         }
