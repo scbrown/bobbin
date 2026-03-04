@@ -788,6 +788,23 @@ impl Client {
         Ok(())
     }
 
+    /// Invoke an HTTP command by name with key=value params.
+    /// Returns the raw JSON response from the /cmd/{name} endpoint.
+    pub async fn invoke_command(
+        &self,
+        name: &str,
+        params: &[(&str, String)],
+    ) -> Result<serde_json::Value> {
+        let url = format!("{}/cmd/{}", self.base_url, name);
+        self.get_json(&url, params).await
+    }
+
+    /// List HTTP commands registered on the server.
+    pub async fn list_http_commands(&self) -> Result<serde_json::Value> {
+        let url = format!("{}/cmd", self.base_url);
+        self.get_json(&url, &[]).await
+    }
+
     /// Return the base URL (for display/logging).
     pub fn base_url(&self) -> &str {
         &self.base_url
