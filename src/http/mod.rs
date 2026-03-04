@@ -13,7 +13,6 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 
 use crate::config::{Config, SourcesConfig};
-use crate::tags::TagsConfig;
 
 /// Shared application state for HTTP handlers
 pub struct AppState {
@@ -21,8 +20,8 @@ pub struct AppState {
     pub config: Config,
     /// Source URLs resolved once at startup (auto-detected + manual overrides).
     pub resolved_sources: SourcesConfig,
-    /// Tags config for tag-based scoring effects (loaded once at startup).
-    pub tags_config: TagsConfig,
+    /// Inner router for /cmd dispatch (set once after router construction).
+    pub inner_router: std::sync::OnceLock<axum::Router>,
 }
 
 /// Run the HTTP server on the given port
@@ -37,13 +36,12 @@ pub async fn run_server(repo_root: PathBuf, port: u16) -> Result<()> {
 
     let config = Config::load(&config_path).context("Failed to load config")?;
     let resolved_sources = handlers::resolve_sources(&repo_root, &config.sources);
-    let tags_config = TagsConfig::load_or_default(&TagsConfig::tags_path(&repo_root));
 
     let state = Arc::new(AppState {
         repo_root,
         config,
         resolved_sources,
-        tags_config,
+        inner_router: std::sync::OnceLock::new(),
     });
 
     let app = handlers::router(state);
