@@ -747,8 +747,22 @@ impl Client {
         total_chunks: usize,
         budget_lines: usize,
     ) -> Result<()> {
+        self.store_injection_with_output(injection_id, session_id, agent, query, files, total_chunks, budget_lines, None).await
+    }
+
+    pub async fn store_injection_with_output(
+        &self,
+        injection_id: &str,
+        session_id: Option<&str>,
+        agent: Option<&str>,
+        query: &str,
+        files: &[String],
+        total_chunks: usize,
+        budget_lines: usize,
+        formatted_output: Option<&str>,
+    ) -> Result<()> {
         let url = format!("{}/injections", self.base_url);
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "injection_id": injection_id,
             "session_id": session_id,
             "agent": agent,
@@ -757,6 +771,9 @@ impl Client {
             "total_chunks": total_chunks,
             "budget_lines": budget_lines,
         });
+        if let Some(out) = formatted_output {
+            body["formatted_output"] = serde_json::Value::String(out.to_string());
+        }
         let resp = self
             .http
             .post(&url)

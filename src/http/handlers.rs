@@ -2907,7 +2907,7 @@ pub(super) async fn injection_store(
         return Err(bad_request("injection_id is required".to_string()));
     }
     let store = open_feedback_store(&state).map_err(internal_error)?;
-    store.store_injection(
+    store.store_injection_with_output(
         &input.injection_id,
         input.session_id.as_deref(),
         input.agent.as_deref(),
@@ -2915,6 +2915,7 @@ pub(super) async fn injection_store(
         &input.files,
         input.total_chunks,
         input.budget_lines,
+        input.formatted_output.as_deref(),
     ).map_err(internal_error)?;
     Ok(Json(serde_json::json!({
         "status": "ok",
@@ -2937,6 +2938,8 @@ pub(super) struct InjectionInput {
     total_chunks: usize,
     #[serde(default)]
     budget_lines: usize,
+    #[serde(default)]
+    formatted_output: Option<String>,
 }
 
 /// GET /injections/:id — get injection detail with associated feedback

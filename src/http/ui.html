@@ -863,6 +863,15 @@ async function showInjectionDetail(injectionId) {
           <dt>Budget Lines</dt><dd>${data.budget_lines}</dd>
         </dl>
       </div>`;
+    if (data.formatted_output) {
+      html += `
+        <div class="detail-section">
+          <h4>Injected Context (as agents see it)</h4>
+          <div class="card" style="max-height:400px;overflow-y:auto">
+            <pre style="font-family:var(--mono);font-size:0.75rem;color:var(--dim);white-space:pre-wrap;line-height:1.4;margin:0">${esc(data.formatted_output)}</pre>
+          </div>
+        </div>`;
+    }
     if (data.files && data.files.length > 0) {
       html += `
         <div class="detail-section">
