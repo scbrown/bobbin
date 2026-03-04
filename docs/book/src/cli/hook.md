@@ -92,9 +92,6 @@ bobbin hook inject-context [OPTIONS]
 | `--min-prompt-length <N>` | Minimum prompt length to trigger injection (overrides config) |
 | `--gate-threshold <SCORE>` | Minimum raw semantic similarity to inject at all (overrides config) |
 | `--no-dedup` | Force injection even if results match the previous session |
-| `--format-mode <MODE>` | Injection format: `standard` (default), `minimal`, `verbose`, or `xml` |
-
-Each injection includes a unique `injection_id` (e.g. `[injection_id: inj-01KJ...]`) in the output. Agents can reference this ID when submitting feedback via `bobbin feedback submit` or the `bobbin_feedback_submit` MCP tool.
 
 ### session-context
 

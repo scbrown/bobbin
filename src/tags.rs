@@ -199,6 +199,16 @@ fn builtin_effect(tag: &str) -> Option<ResolvedEffect> {
             boost: -0.8,
             exclude: false,
         }),
+        // Frequently useful files (positive feedback signal)
+        "feedback:hot" => Some(ResolvedEffect {
+            boost: 0.3,
+            exclude: false,
+        }),
+        // Frequently ignored files (negative feedback signal)
+        "feedback:cold" => Some(ResolvedEffect {
+            boost: -0.5,
+            exclude: false,
+        }),
         _ => None,
     }
 }
@@ -1371,5 +1381,19 @@ tags = ["docs"]
                 exclude: false,
             })
         );
+    }
+
+    #[test]
+    fn test_builtin_effect_feedback_hot() {
+        let effect = builtin_effect("feedback:hot").unwrap();
+        assert!((effect.boost - 0.3).abs() < 0.001);
+        assert!(!effect.exclude);
+    }
+
+    #[test]
+    fn test_builtin_effect_feedback_cold() {
+        let effect = builtin_effect("feedback:cold").unwrap();
+        assert!((effect.boost - (-0.5)).abs() < 0.001);
+        assert!(!effect.exclude);
     }
 }

@@ -124,6 +124,17 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         &crate::tags::TagsConfig::tags_path(&repo_root),
     );
 
+    // Load feedback auto-tags (feedback:hot, feedback:cold) from feedback store
+    let feedback_tags = {
+        let feedback_db = Config::feedback_db_path(&repo_root);
+        if feedback_db.exists() {
+            crate::storage::feedback::FeedbackStore::open(&feedback_db)
+                .and_then(|store| store.get_feedback_tags())
+                .unwrap_or_default()
+        } else {
+            HashMap::new()
+        }
+    };
 
     // Source directory: --source overrides the default (which is the bobbin home path)
     let source_root = if let Some(ref source) = args.source {
@@ -420,6 +431,24 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             &content,
             &mut chunks,
         );
+
+        // Merge feedback auto-tags (feedback:hot, feedback:cold) from accumulated usage data
+        if let Some(ftags) = feedback_tags.get(&rel_path) {
+            for chunk in &mut chunks {
+                let mut existing: Vec<&str> = if chunk.tags.is_empty() {
+                    Vec::new()
+                } else {
+                    chunk.tags.split(',').collect()
+                };
+                for ftag in ftags {
+                    if !existing.contains(&ftag.as_str()) {
+                        existing.push(ftag);
+                    }
+                }
+                existing.sort();
+                chunk.tags = existing.join(",");
+            }
+        }
 
         // Compute contextual embeddings for enabled languages
         let t_ctx = Instant::now();

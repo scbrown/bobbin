@@ -11,20 +11,16 @@
 {"issue_id":"bo-3k22","label":"config"}
 {"issue_id":"bo-3k22","label":"enhancement"}
 {"issue_id":"bo-3ofr","label":"hooks"}
-{"issue_id":"bo-3v11","label":"bobbin"}
-{"issue_id":"bo-49il","label":"ux"}
 {"issue_id":"bo-4eq9o","label":"eval metrics"}
 {"issue_id":"bo-4iep","label":"P2"}
 {"issue_id":"bo-4kfv","label":"dx"}
 {"issue_id":"bo-4kfv","label":"indexing"}
-{"issue_id":"bo-5912","label":"bobbin"}
 {"issue_id":"bo-5on35","label":"metrics"}
 {"issue_id":"bo-6dml","label":"api"}
 {"issue_id":"bo-72f","label":"bobbin"}
 {"issue_id":"bo-72f","label":"tooling"}
 {"issue_id":"bo-77sy","label":"ui"}
 {"issue_id":"bo-7v8i","label":"api"}
-{"issue_id":"bo-8s72","label":"bobbin"}
 {"issue_id":"bo-94bk","label":"feature"}
 {"issue_id":"bo-9tas","label":"bug"}
 {"issue_id":"bo-9tas","label":"ui"}
@@ -52,7 +48,6 @@
 {"issue_id":"bo-dmbzm","label":"eval metrics"}
 {"issue_id":"bo-drth","label":"dx"}
 {"issue_id":"bo-drth","label":"relevance"}
-{"issue_id":"bo-fjvu","label":"bobbin"}
 {"issue_id":"bo-fli6","label":"ci"}
 {"issue_id":"bo-fli6","label":"divergence"}
 {"issue_id":"bo-gb5f","label":"indexing"}
@@ -81,12 +76,10 @@
 {"issue_id":"bo-nltau","label":"eval"}
 {"issue_id":"bo-nltau","label":"metrics"}
 {"issue_id":"bo-otup","label":"docs"}
-{"issue_id":"bo-oysa","label":"bobbin"}
 {"issue_id":"bo-pag2","label":"access"}
 {"issue_id":"bo-pag2","label":"dx"}
 {"issue_id":"bo-pjk0","label":"bug"}
 {"issue_id":"bo-qfvz","label":"indexing"}
-{"issue_id":"bo-qq5h","label":"bobbin"}
 {"issue_id":"bo-qxt6","label":"feature"}
 {"issue_id":"bo-rd42","label":"P1"}
 {"issue_id":"bo-rd42.1","label":"docs"}
@@ -105,9 +98,7 @@
 {"issue_id":"bo-rkjk","label":"deploy"}
 {"issue_id":"bo-tkp2","label":"search-quality"}
 {"issue_id":"bo-ujyd","label":"search-quality"}
-{"issue_id":"bo-up3p","label":"bobbin"}
 {"issue_id":"bo-vi4e","label":"indexing"}
-{"issue_id":"bo-w56u","label":"bobbin"}
 {"issue_id":"bo-wbv","label":"bobbin"}
 {"issue_id":"bo-wisp-3gjw5","label":"gt:merge-request"}
 {"issue_id":"bo-wz5x6","label":"eval metrics"}

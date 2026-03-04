@@ -23,7 +23,6 @@ OVERRIDE_MAP: dict[str, tuple[str, str, type]] = {
     "doc_demotion": ("search", "doc_demotion", float),
     "recency_weight": ("search", "recency_weight", float),
     "blame_bridging": ("hooks", "show_docs", bool),
-    "format_mode": ("hooks", "format_mode", str),
 }
 
 ALLOWED_OVERRIDE_KEYS = frozenset(OVERRIDE_MAP.keys())
@@ -301,10 +300,6 @@ def generate_override_settings(
         show_docs = "true" if overrides["blame_bridging"].lower() in ("true", "1", "yes") else "false"
         _rewrite_hook_flag(settings, "--show-docs", show_docs)
 
-    # format_mode: rewrite --format-mode in the hook command
-    if "format_mode" in overrides:
-        _rewrite_hook_flag(settings, "--format-mode", overrides["format_mode"])
-
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(settings, indent=2), encoding="utf-8")
@@ -330,11 +325,9 @@ def _rewrite_hook_flag(settings: dict, flag: str, value: str) -> None:
                     hook["command"] = f"{cmd} {flag} {value}"
 
 
-def _cast_value(key: str, raw: str, vtype: type) -> int | float | bool | str:
+def _cast_value(key: str, raw: str, vtype: type) -> int | float | bool:
     """Cast a raw string value to the expected type."""
     try:
-        if vtype is str:
-            return raw
         if vtype is bool:
             return raw.lower() in ("true", "1", "yes")
         if vtype is int:
@@ -392,10 +385,8 @@ def _set_toml_value(
     return "".join(lines)
 
 
-def _format_toml_value(value: int | float | bool | str) -> str:
+def _format_toml_value(value: int | float | bool) -> str:
     """Format a Python value as a TOML literal."""
-    if isinstance(value, str):
-        return f'"{value}"'
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):

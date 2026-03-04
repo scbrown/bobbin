@@ -54,20 +54,12 @@ pub struct FeedbackStats {
     pub harmful: u64,
 }
 
-/// Full injection detail with associated feedback.
+/// Per-file overlap statistics.
 #[derive(Debug, Serialize)]
-pub struct InjectionDetail {
-    pub injection_id: String,
-    pub timestamp: String,
-    pub session_id: Option<String>,
-    pub agent: Option<String>,
-    pub query: Option<String>,
-    pub files: Vec<String>,
-    pub total_chunks: i64,
-    pub budget_lines: i64,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub formatted_output: String,
-    pub feedback: Vec<FeedbackRecord>,
+pub struct FileOverlapStat {
+    pub file_path: String,
+    pub used_count: u64,
+    pub injected_count: u64,
 }
 
 const VALID_RATINGS: &[&str] = &["useful", "noise", "harmful"];
@@ -113,21 +105,28 @@ impl FeedbackStore {
             CREATE INDEX IF NOT EXISTS idx_feedback_injection ON feedback(injection_id);
             CREATE INDEX IF NOT EXISTS idx_feedback_rating ON feedback(rating);
             CREATE INDEX IF NOT EXISTS idx_feedback_agent ON feedback(agent);
+
+            CREATE TABLE IF NOT EXISTS overlaps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                injection_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                tool_name TEXT NOT NULL,
+                session_id TEXT,
+                timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_overlaps_injection ON overlaps(injection_id);
+            CREATE INDEX IF NOT EXISTS idx_overlaps_file ON overlaps(file_path);
+            CREATE INDEX IF NOT EXISTS idx_overlaps_session ON overlaps(session_id);
+
+            CREATE TABLE IF NOT EXISTS feedback_tags (
+                file_path TEXT NOT NULL,
+                tag TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (file_path, tag)
+            );
         "#,
         )?;
-
-        // Schema migration: add formatted_output column if missing
-        let has_col: bool = self.conn.query_row(
-            "SELECT COUNT(*) > 0 FROM pragma_table_info('injections') WHERE name = 'formatted_output'",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(false);
-        if !has_col {
-            self.conn.execute_batch(
-                "ALTER TABLE injections ADD COLUMN formatted_output TEXT DEFAULT '';"
-            )?;
-        }
-
         Ok(())
     }
 
@@ -142,28 +141,13 @@ impl FeedbackStore {
         total_chunks: usize,
         budget_lines: usize,
     ) -> Result<()> {
-        self.store_injection_with_output(injection_id, session_id, agent, query, files, total_chunks, budget_lines, None)
-    }
-
-    /// Store an injection record with the formatted output text agents see.
-    pub fn store_injection_with_output(
-        &self,
-        injection_id: &str,
-        session_id: Option<&str>,
-        agent: Option<&str>,
-        query: &str,
-        files: &[String],
-        total_chunks: usize,
-        budget_lines: usize,
-        formatted_output: Option<&str>,
-    ) -> Result<()> {
         let files_json = serde_json::to_string(files).unwrap_or_default();
         let now = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.fZ")
             .to_string();
         self.conn.execute(
-            "INSERT OR REPLACE INTO injections (injection_id, timestamp, session_id, agent, query, files_json, total_chunks, budget_lines, formatted_output) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            rusqlite::params![injection_id, now, session_id, agent, query, files_json, total_chunks as i64, budget_lines as i64, formatted_output.unwrap_or("")],
+            "INSERT OR REPLACE INTO injections (injection_id, timestamp, session_id, agent, query, files_json, total_chunks, budget_lines) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![injection_id, now, session_id, agent, query, files_json, total_chunks as i64, budget_lines as i64],
         )?;
         Ok(())
     }
@@ -248,6 +232,78 @@ impl FeedbackStore {
         Ok(records)
     }
 
+    /// Get recent injections for a session (for overlap checking).
+    /// Returns list of (injection_id, files_json) tuples.
+    pub fn get_session_injections(&self, session_id: &str, limit: usize) -> Result<Vec<(String, Vec<String>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT injection_id, files_json FROM injections WHERE session_id = ?1 ORDER BY timestamp DESC LIMIT ?2"
+        )?;
+        let rows = stmt.query_map(rusqlite::params![session_id, limit as i64], |row| {
+            let inj_id: String = row.get(0)?;
+            let files_json: Option<String> = row.get(1)?;
+            Ok((inj_id, files_json))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            let (inj_id, files_json) = row?;
+            let files: Vec<String> = files_json
+                .and_then(|j| serde_json::from_str(&j).ok())
+                .unwrap_or_default();
+            results.push((inj_id, files));
+        }
+        Ok(results)
+    }
+
+    /// Store an overlap record (an injected file was later used by the agent).
+    pub fn store_overlap(
+        &self,
+        injection_id: &str,
+        file_path: &str,
+        tool_name: &str,
+        session_id: Option<&str>,
+    ) -> Result<()> {
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.fZ")
+            .to_string();
+        self.conn.execute(
+            "INSERT INTO overlaps (injection_id, file_path, tool_name, session_id, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![injection_id, file_path, tool_name, session_id, now],
+        )?;
+        Ok(())
+    }
+
+    /// Get per-file overlap counts (for auto-tagging).
+    /// Returns vec of (file_path, used_count, injected_count) sorted by used_count desc.
+    pub fn file_overlap_stats(&self, limit: usize) -> Result<Vec<FileOverlapStat>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT
+                o.file_path,
+                COUNT(DISTINCT o.injection_id) as used_count,
+                (SELECT COUNT(DISTINCT i.injection_id)
+                 FROM injections i
+                 WHERE i.files_json LIKE '%' || o.file_path || '%') as injected_count
+            FROM overlaps o
+            GROUP BY o.file_path
+            ORDER BY used_count DESC
+            LIMIT ?1
+            "#
+        )?;
+        let rows = stmt.query_map(rusqlite::params![limit as i64], |row| {
+            Ok(FileOverlapStat {
+                file_path: row.get(0)?,
+                used_count: row.get(1)?,
+                injected_count: row.get(2)?,
+            })
+        })?;
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
+    }
+
     /// Get aggregated feedback statistics.
     pub fn stats(&self) -> Result<FeedbackStats> {
         let total_injections: u64 = self
@@ -283,42 +339,131 @@ impl FeedbackStore {
         })
     }
 
-    /// Get full injection detail by ID, including associated feedback.
-    pub fn get_injection(&self, injection_id: &str) -> Result<Option<InjectionDetail>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT injection_id, timestamp, session_id, agent, query, files_json, total_chunks, budget_lines, COALESCE(formatted_output, '') FROM injections WHERE injection_id = ?1",
+    /// Compute auto-tag assignments from feedback + overlap signals.
+    /// Returns (hot_files, cold_files) — lists of file paths to tag.
+    ///
+    /// Thresholds:
+    /// - feedback:hot: file appears in >= `hot_threshold` overlaps (agent used it after injection)
+    /// - feedback:cold: file was injected >= `cold_injections` times but appeared in
+    ///   0 overlaps, OR has >= `cold_noise_threshold` noise/harmful feedback
+    pub fn compute_autotags(
+        &self,
+        hot_threshold: u64,
+        cold_injections: u64,
+        cold_noise_threshold: u64,
+    ) -> Result<AutoTagResult> {
+        // Hot files: files with enough overlaps (agent actually used them)
+        let mut hot_stmt = self.conn.prepare(
+            "SELECT file_path, COUNT(DISTINCT injection_id) as used_count \
+             FROM overlaps GROUP BY file_path HAVING used_count >= ?1"
+        )?;
+        let hot_files: Vec<String> = hot_stmt
+            .query_map(rusqlite::params![hot_threshold as i64], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Cold files: injected frequently but never used (no overlaps at all)
+        // We look at files in injections that have no matching overlap records
+        let mut cold_stmt = self.conn.prepare(
+            r#"
+            SELECT DISTINCT jf.file_path
+            FROM (
+                SELECT injection_id, json_each.value as file_path
+                FROM injections, json_each(injections.files_json)
+            ) jf
+            LEFT JOIN overlaps o ON o.file_path = jf.file_path
+            WHERE o.id IS NULL
+            GROUP BY jf.file_path
+            HAVING COUNT(DISTINCT jf.injection_id) >= ?1
+            "#
+        )?;
+        let mut cold_files: Vec<String> = cold_stmt
+            .query_map(rusqlite::params![cold_injections as i64], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Also cold: files with enough noise/harmful feedback
+        let mut noise_stmt = self.conn.prepare(
+            r#"
+            SELECT DISTINCT i.files_json
+            FROM feedback f
+            JOIN injections i ON i.injection_id = f.injection_id
+            WHERE f.rating IN ('noise', 'harmful')
+            GROUP BY f.injection_id
+            HAVING COUNT(*) >= ?1
+            "#
+        )?;
+        let noise_rows: Vec<String> = noise_stmt
+            .query_map(rusqlite::params![cold_noise_threshold as i64], |row| {
+                let json: String = row.get(0)?;
+                Ok(json)
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        for json in &noise_rows {
+            if let Ok(files) = serde_json::from_str::<Vec<String>>(json) {
+                for f in files {
+                    if !cold_files.contains(&f) && !hot_files.contains(&f) {
+                        cold_files.push(f);
+                    }
+                }
+            }
+        }
+
+        Ok(AutoTagResult { hot_files, cold_files })
+    }
+}
+
+/// Result of auto-tag computation.
+#[derive(Debug, Serialize)]
+pub struct AutoTagResult {
+    pub hot_files: Vec<String>,
+    pub cold_files: Vec<String>,
+}
+
+impl FeedbackStore {
+    /// Apply computed auto-tags to the feedback_tags table.
+    /// Clears previous feedback:hot/cold tags and inserts new ones.
+    pub fn apply_autotags(&self, result: &AutoTagResult) -> Result<()> {
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.fZ")
+            .to_string();
+
+        // Clear old feedback tags
+        self.conn.execute(
+            "DELETE FROM feedback_tags WHERE tag IN ('feedback:hot', 'feedback:cold')",
+            [],
         )?;
 
-        let mut rows = stmt.query(rusqlite::params![injection_id])?;
-        let row = match rows.next()? {
-            Some(r) => r,
-            None => return Ok(None),
-        };
+        // Insert new ones
+        let mut stmt = self.conn.prepare(
+            "INSERT OR REPLACE INTO feedback_tags (file_path, tag, updated_at) VALUES (?1, ?2, ?3)"
+        )?;
+        for f in &result.hot_files {
+            stmt.execute(rusqlite::params![f, "feedback:hot", now])?;
+        }
+        for f in &result.cold_files {
+            stmt.execute(rusqlite::params![f, "feedback:cold", now])?;
+        }
+        Ok(())
+    }
 
-        let files_json: Option<String> = row.get(5)?;
-        let files: Vec<String> = files_json
-            .and_then(|j| serde_json::from_str(&j).ok())
-            .unwrap_or_default();
-        let formatted_output: String = row.get(8)?;
-
-        let feedback = self.list_feedback(&FeedbackQuery {
-            injection_id: Some(injection_id.to_string()),
-            limit: Some(50),
-            ..Default::default()
+    /// Get all feedback tags (for merging during indexing).
+    /// Returns a map of file_path -> vec of tags.
+    pub fn get_feedback_tags(&self) -> Result<std::collections::HashMap<String, Vec<String>>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT file_path, tag FROM feedback_tags ORDER BY file_path"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
 
-        Ok(Some(InjectionDetail {
-            injection_id: row.get(0)?,
-            timestamp: row.get(1)?,
-            session_id: row.get(2)?,
-            agent: row.get(3)?,
-            query: row.get(4)?,
-            files,
-            total_chunks: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
-            budget_lines: row.get::<_, Option<i64>>(7)?.unwrap_or(0),
-            formatted_output,
-            feedback,
-        }))
+        let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        for row in rows {
+            let (file_path, tag) = row?;
+            map.entry(file_path).or_default().push(tag);
+        }
+        Ok(map)
     }
 }
 
@@ -461,31 +606,79 @@ mod tests {
     }
 
     #[test]
-    fn test_get_injection_detail() {
+    fn test_overlap_tracking() {
         let (store, _f) = temp_store();
+
+        // Store an injection
         let files = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
-        store
-            .store_injection("inj-detail", Some("sess-1"), Some("aegis/crew/ian"), "how does auth work?", &files, 5, 300)
-            .unwrap();
-        store
-            .store_feedback(&FeedbackInput {
-                injection_id: "inj-detail".to_string(),
-                agent: "aegis/crew/ellie".to_string(),
-                rating: "useful".to_string(),
-                reason: "great context".to_string(),
-            })
-            .unwrap();
+        store.store_injection("inj-1", Some("sess-1"), Some("test"), "query", &files, 3, 300).unwrap();
 
-        let detail = store.get_injection("inj-detail").unwrap().unwrap();
-        assert_eq!(detail.injection_id, "inj-detail");
-        assert_eq!(detail.query.as_deref(), Some("how does auth work?"));
-        assert_eq!(detail.files.len(), 2);
-        assert_eq!(detail.total_chunks, 5);
-        assert_eq!(detail.budget_lines, 300);
-        assert_eq!(detail.feedback.len(), 1);
-        assert_eq!(detail.feedback[0].rating, "useful");
+        // Record overlaps
+        store.store_overlap("inj-1", "src/main.rs", "Edit", Some("sess-1")).unwrap();
+        store.store_overlap("inj-1", "src/main.rs", "Write", Some("sess-1")).unwrap();
 
-        // Non-existent injection returns None
-        assert!(store.get_injection("inj-nope").unwrap().is_none());
+        // Query session injections
+        let session_inj = store.get_session_injections("sess-1", 10).unwrap();
+        assert_eq!(session_inj.len(), 1);
+        assert_eq!(session_inj[0].0, "inj-1");
+        assert_eq!(session_inj[0].1, vec!["src/main.rs", "src/lib.rs"]);
+
+        // Check overlap stats
+        let stats = store.file_overlap_stats(10).unwrap();
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].file_path, "src/main.rs");
+        assert_eq!(stats[0].used_count, 1); // 1 unique injection_id
+    }
+
+    #[test]
+    fn test_session_injections_empty() {
+        let (store, _f) = temp_store();
+        let result = store.get_session_injections("nonexistent", 10).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_compute_autotags_hot() {
+        let (store, _f) = temp_store();
+
+        // Create injection and overlaps
+        let files = vec!["src/hot.rs".to_string()];
+        store.store_injection("inj-1", Some("s1"), None, "q", &files, 1, 100).unwrap();
+        store.store_injection("inj-2", Some("s2"), None, "q", &files, 1, 100).unwrap();
+
+        // 5 overlaps from different injections
+        for i in 1..=5 {
+            let inj = format!("inj-hot-{}", i);
+            store.store_injection(&inj, Some("s"), None, "q", &files, 1, 100).unwrap();
+            store.store_overlap(&inj, "src/hot.rs", "Edit", Some("s")).unwrap();
+        }
+
+        let result = store.compute_autotags(5, 10, 3).unwrap();
+        assert!(result.hot_files.contains(&"src/hot.rs".to_string()));
+    }
+
+    #[test]
+    fn test_apply_and_get_feedback_tags() {
+        let (store, _f) = temp_store();
+        let result = AutoTagResult {
+            hot_files: vec!["src/hot.rs".to_string()],
+            cold_files: vec!["src/cold.rs".to_string()],
+        };
+        store.apply_autotags(&result).unwrap();
+
+        let tags = store.get_feedback_tags().unwrap();
+        assert_eq!(tags.get("src/hot.rs").unwrap(), &vec!["feedback:hot".to_string()]);
+        assert_eq!(tags.get("src/cold.rs").unwrap(), &vec!["feedback:cold".to_string()]);
+
+        // Re-apply with different data should replace
+        let result2 = AutoTagResult {
+            hot_files: vec!["src/new_hot.rs".to_string()],
+            cold_files: vec![],
+        };
+        store.apply_autotags(&result2).unwrap();
+        let tags2 = store.get_feedback_tags().unwrap();
+        assert!(tags2.get("src/hot.rs").is_none()); // old hot removed
+        assert!(tags2.get("src/cold.rs").is_none()); // old cold removed
+        assert_eq!(tags2.get("src/new_hot.rs").unwrap(), &vec!["feedback:hot".to_string()]);
     }
 }

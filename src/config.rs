@@ -330,18 +330,12 @@ pub struct HooksConfig {
     /// When false, doc files are excluded from output but still used for
     /// provenance bridging to discover relevant source files.
     pub show_docs: bool,
-    /// Injection output format: "standard", "minimal", "verbose", or "xml".
-    /// Controls how chunks are presented to agents.
-    #[serde(default = "default_format_mode")]
-    pub format_mode: String,
+    /// Repo name to filter search results to. When set, hook injections
+    /// only return results from this repo, preventing cross-repo bleed.
+    /// Auto-detected from git repo name if not explicitly set.
+    #[serde(default)]
+    pub repo: String,
 }
-
-fn default_format_mode() -> String {
-    "standard".into()
-}
-
-/// Valid format modes for injection output.
-pub const VALID_FORMAT_MODES: &[&str] = &["standard", "minimal", "verbose", "xml"];
 
 impl Default for HooksConfig {
     fn default() -> Self {
@@ -353,7 +347,7 @@ impl Default for HooksConfig {
             gate_threshold: 0.50,
             dedup_enabled: true,
             show_docs: true,
-            format_mode: "standard".into(),
+            repo: String::new(),
         }
     }
 }
