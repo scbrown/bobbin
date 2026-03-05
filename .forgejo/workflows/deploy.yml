@@ -1,0 +1,155 @@
+name: Deploy Bobbin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.forgejo/workflows/deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: deploy
+
+    steps:
+      - name: Setup SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "::error::DEPLOY_SSH_KEY secret is not set"
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H luvu >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H kota >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Build on luvu
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
+
+          # Build in dedicated CI directory (preserves cargo cache across runs)
+          # Source: GitHub (canonical) — Forgejo mirror has divergent CLI code
+          $SSH braino@luvu "
+            set -e
+            . ~/.cargo/env
+            if [ ! -d ~/bobbin-ci/.git ]; then
+              git clone git@github.com:scbrown/bobbin.git ~/bobbin-ci
+            fi
+            cd ~/bobbin-ci
+            # Ensure remote points to GitHub (migration from Forgejo)
+            git remote set-url origin git@github.com:scbrown/bobbin.git
+            git fetch origin main
+            git reset --hard origin/main
+            cargo build --release 2>&1 | tail -20
+            echo '---'
+            ls -lh target/release/bobbin
+          "
+
+      - name: Deploy to luvu
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
+          $SSH braino@luvu "
+            cp ~/bobbin-ci/target/release/bobbin ~/.local/bin/bobbin
+            echo \"luvu: \$(~/.local/bin/bobbin --version)\"
+          "
+
+      - name: Deploy to kota
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
+          SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
+
+          # Pull binary from luvu build to runner
+          $SCP braino@luvu:~/bobbin-ci/target/release/bobbin /tmp/bobbin
+
+          # Stop service before overwriting binary
+          $SSH root@kota "systemctl stop bobbin" || true
+
+          # Deploy binary to install location
+          $SCP /tmp/bobbin root@kota:/usr/local/bin/bobbin
+          $SSH root@kota "chmod +x /usr/local/bin/bobbin"
+
+          # Stage copy for Ansible reproducibility
+          $SSH root@kota "mkdir -p /opt/bobbin"
+          $SCP /tmp/bobbin root@kota:/opt/bobbin/bobbin
+          $SSH root@kota "chmod +x /opt/bobbin/bobbin"
+
+          # Restart service
+          $SSH root@kota "systemctl start bobbin"
+          sleep 3
+
+          rm -f /tmp/bobbin
+
+      - name: Smoke test
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
+          PASSED=0
+          FAILED=0
+
+          # Test 1: luvu binary works
+          VER=$($SSH braino@luvu "~/.local/bin/bobbin --version" 2>&1) || VER="error"
+          if echo "$VER" | grep -q "bobbin"; then
+            echo "  PASS: luvu — $VER"
+            PASSED=$((PASSED + 1))
+          else
+            echo "  FAIL: luvu version — $VER"
+            FAILED=$((FAILED + 1))
+          fi
+
+          # Test 2: kota service active
+          STATUS=$($SSH root@kota "systemctl is-active bobbin" 2>&1) || STATUS="unknown"
+          if [ "$STATUS" = "active" ]; then
+            echo "  PASS: kota service active"
+            PASSED=$((PASSED + 1))
+          else
+            echo "  FAIL: kota service — $STATUS"
+            FAILED=$((FAILED + 1))
+          fi
+
+          # Test 3: kota HTTP health
+          HTTP=$($SSH root@kota "curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/status" 2>&1) || HTTP="000"
+          if [ "$HTTP" = "200" ]; then
+            echo "  PASS: kota HTTP 200"
+            PASSED=$((PASSED + 1))
+          else
+            echo "  FAIL: kota HTTP — $HTTP"
+            FAILED=$((FAILED + 1))
+          fi
+
+          echo ""
+          echo "=== Smoke: ${PASSED} passed, ${FAILED} failed ==="
+          if [ "$FAILED" -gt 0 ]; then exit 1; fi
+
+      - name: Cleanup
+        if: always()
+        run: rm -f /tmp/bobbin
+
+      - name: Notify (Success)
+        if: success()
+        run: |
+          curl -s --connect-timeout 5 --max-time 10 -X POST http://192.168.7.201:8000/webhook \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "status": "SUCCESS",
+              "title": "Bobbin Deploy Complete",
+              "message": "Built and deployed to luvu + kota, smoke tests passed",
+              "ruleUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }' || echo "Webhook failed"
+
+      - name: Notify (Failure)
+        if: failure()
+        run: |
+          curl -s --connect-timeout 5 --max-time 10 -X POST http://192.168.7.201:8000/webhook \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "status": "FAILED",
+              "title": "Bobbin Deploy Failed",
+              "message": "Build or deploy failed — check CI logs",
+              "ruleUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }' || echo "Webhook failed"

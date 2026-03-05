@@ -1,0 +1,39 @@
+name: Doc Lint — broken links and URL quality
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.md'
+  pull_request:
+    paths:
+      - '**/*.md'
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Doc lint
+    runs-on: deploy
+
+    steps:
+      - name: Checkout
+        run: |
+          WORKDIR=$(mktemp -d)
+          cd "$WORKDIR"
+          git clone --depth 1 http://git.lan:3000/${{ github.repository }}.git .
+          echo "WORKDIR=$WORKDIR" >> "$GITHUB_ENV"
+
+      - name: Fetch doc-lint.py from aegis
+        run: |
+          curl -sf http://git.lan:3000/stiwi/aegis/raw/branch/main/scripts/doc-lint.py \
+            -o "$WORKDIR/doc-lint.py"
+          chmod +x "$WORKDIR/doc-lint.py"
+
+      - name: Run doc linter (errors only)
+        run: |
+          cd "$WORKDIR"
+          python3 doc-lint.py . --no-quality --errors-only
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf "$WORKDIR"
