@@ -48,6 +48,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             cargo build --release 2>&1 | tail -20
+            cargo test 2>&1 | tail -30
             echo '---'
             ls -lh target/release/bobbin
           "
