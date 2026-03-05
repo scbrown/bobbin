@@ -52,11 +52,11 @@ fn resolve_group_filter(state: &AppState, group: Option<&str>) -> Result<Option<
 
 /// Build the axum router with all routes
 pub(super) fn router(state: Arc<AppState>) -> axum::Router {
-    use axum::routing::{get, post};
+    use axum::routing::{delete, get, post};
     use tower_http::cors::CorsLayer;
     use tower_http::trace::TraceLayer;
 
-    axum::Router::new()
+    let app = axum::Router::new()
         .route("/", get(ui_page))
         .route("/search", get(search))
         .route("/grep", get(grep))
@@ -86,16 +86,20 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/metrics", get(metrics))
         .route("/webhook/push", post(webhook_push))
         .route("/injections", post(injection_store))
-        .route("/injections", get(injection_list))
+        .route("/injections/{id}", get(injection_detail))
         .route("/feedback", post(feedback_submit))
         .route("/feedback", get(feedback_list))
         .route("/feedback/stats", get(feedback_stats))
-        .route("/overlaps", post(overlap_store))
-        .route("/overlaps/stats", get(overlap_stats))
-        .route("/feedback/autotag", post(feedback_autotag))
+        .route("/cmd", get(list_http_commands).post(register_http_command))
+        .route("/cmd/{name}", get(invoke_http_command).delete(delete_http_command))
+        .with_state(state.clone())
         .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http())
-        .with_state(state)
+        .layer(TraceLayer::new_for_http());
+
+    // Store state-resolved router for /cmd internal dispatch
+    let _ = state.inner_router.set(app.clone());
+
+    app
 }
 
 /// Error response body
@@ -252,6 +256,10 @@ pub(super) async fn search(
         if !tag_list.is_empty() {
             extra_filters.push(build_tag_exclude_filter(&tag_list));
         }
+    }
+    // Apply tag effect exclusions (e.g. auto:init exclude=true from tags.toml)
+    if let Some(effect_filter) = crate::tags::build_effect_exclude_filter(&state.tags_config, params.role.as_deref()) {
+        extra_filters.push(effect_filter);
     }
     let combined_filter = if extra_filters.is_empty() {
         None
@@ -612,6 +620,242 @@ pub(super) async fn list_commands(
     }))
 }
 
+// -- /cmd (HTTP command proxy) --
+
+/// An HTTP command definition — maps a name to an endpoint with param resolution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpCommandDef {
+    pub description: String,
+    pub endpoint: String,
+    #[serde(default)]
+    pub pinned: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub defaults: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub required: Vec<String>,
+}
+
+/// Storage format for HTTP commands (commands.json).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct HttpCommandsFile {
+    #[serde(default = "default_version")]
+    version: u32,
+    #[serde(default)]
+    commands: std::collections::HashMap<String, HttpCommandDef>,
+}
+
+fn default_version() -> u32 { 1 }
+
+/// Known valid endpoints that commands can proxy to.
+const VALID_CMD_ENDPOINTS: &[&str] = &[
+    "/search", "/grep", "/context", "/related", "/refs", "/symbols",
+    "/hotspots", "/impact", "/review", "/similar", "/prime", "/beads",
+    "/archive/search", "/archive/recent", "/repos", "/groups", "/tags",
+    "/suggest", "/status", "/feedback", "/feedback/stats",
+];
+
+fn load_http_commands(repo_root: &std::path::Path) -> std::collections::HashMap<String, HttpCommandDef> {
+    let path = repo_root.join(".bobbin").join("commands.json");
+    if !path.exists() {
+        return std::collections::HashMap::new();
+    }
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return std::collections::HashMap::new();
+    };
+    let Ok(file) = serde_json::from_str::<HttpCommandsFile>(&content) else {
+        return std::collections::HashMap::new();
+    };
+    file.commands
+}
+
+fn save_http_commands(
+    repo_root: &std::path::Path,
+    commands: &std::collections::HashMap<String, HttpCommandDef>,
+) -> Result<(), anyhow::Error> {
+    let path = repo_root.join(".bobbin").join("commands.json");
+    let file = HttpCommandsFile {
+        version: 1,
+        commands: commands.clone(),
+    };
+    let content = serde_json::to_string_pretty(&file)?;
+    std::fs::write(&path, content)?;
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct HttpCommandsListResponse {
+    count: usize,
+    commands: std::collections::HashMap<String, HttpCommandDef>,
+}
+
+/// GET /cmd — list all registered HTTP commands
+pub(super) async fn list_http_commands(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<HttpCommandsListResponse>, (StatusCode, Json<ErrorBody>)> {
+    let commands = load_http_commands(&state.repo_root);
+    Ok(Json(HttpCommandsListResponse {
+        count: commands.len(),
+        commands,
+    }))
+}
+
+/// POST /cmd — register a new HTTP command
+pub(super) async fn register_http_command(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<RegisterCommandInput>,
+) -> Result<(StatusCode, Json<HttpCommandDef>), (StatusCode, Json<ErrorBody>)> {
+    // Validate name: lowercase alphanumeric + hyphens, 2-64 chars
+    let name_re = regex::Regex::new(r"^[a-z0-9][a-z0-9-]{1,63}$").unwrap();
+    if !name_re.is_match(&body.name) {
+        return Err(bad_request("Command name must be 2-64 chars, lowercase alphanumeric + hyphens".into()));
+    }
+
+    // Validate endpoint
+    if !VALID_CMD_ENDPOINTS.contains(&body.def.endpoint.as_str()) {
+        return Err(bad_request(format!(
+            "Unknown endpoint '{}'. Valid: {}",
+            body.def.endpoint,
+            VALID_CMD_ENDPOINTS.join(", "),
+        )));
+    }
+
+    // Validate description
+    if body.def.description.is_empty() || body.def.description.len() > 200 {
+        return Err(bad_request("Description required (1-200 chars)".into()));
+    }
+
+    // Validate required params don't overlap with pinned
+    for req in &body.def.required {
+        if body.def.pinned.contains_key(req) {
+            return Err(bad_request(format!(
+                "Required param '{}' is already pinned (redundant)", req
+            )));
+        }
+    }
+
+    let mut commands = load_http_commands(&state.repo_root);
+    commands.insert(body.name.clone(), body.def.clone());
+    save_http_commands(&state.repo_root, &commands)
+        .map_err(|e| internal_error(e.into()))?;
+
+    Ok((StatusCode::CREATED, Json(body.def)))
+}
+
+#[derive(Deserialize)]
+struct RegisterCommandInput {
+    name: String,
+    #[serde(flatten)]
+    def: HttpCommandDef,
+}
+
+/// DELETE /cmd/{name} — remove a command
+pub(super) async fn delete_http_command(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorBody>)> {
+    let mut commands = load_http_commands(&state.repo_root);
+    if commands.remove(&name).is_none() {
+        return Err(not_found(format!("Command '{}' not found", name)));
+    }
+    save_http_commands(&state.repo_root, &commands)
+        .map_err(|e| internal_error(e.into()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /cmd/{name}?{params} — invoke a command via internal dispatch
+pub(super) async fn invoke_http_command(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    raw_query: axum::extract::RawQuery,
+) -> axum::response::Response {
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    let commands = load_http_commands(&state.repo_root);
+    let Some(cmd) = commands.get(&name) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(ErrorBody { error: format!("Command '{}' not found", name) }),
+        ).into_response();
+    };
+
+    // Parse caller-supplied params
+    let caller_params: std::collections::HashMap<String, String> = raw_query
+        .0
+        .as_deref()
+        .unwrap_or("")
+        .split('&')
+        .filter(|s| !s.is_empty())
+        .filter_map(|pair| {
+            let (k, v) = pair.split_once('=')?;
+            Some((
+                urlencoding::decode(k).unwrap_or_default().into_owned(),
+                urlencoding::decode(v).unwrap_or_default().into_owned(),
+            ))
+        })
+        .collect();
+
+    // Merge: pinned → defaults → caller
+    let mut merged = cmd.defaults.clone();
+    for (k, v) in &caller_params {
+        if !cmd.pinned.contains_key(k) {
+            merged.insert(k.clone(), v.clone());
+        }
+    }
+    for (k, v) in &cmd.pinned {
+        merged.insert(k.clone(), v.clone());
+    }
+
+    // Validate required
+    for req in &cmd.required {
+        if !merged.contains_key(req) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Missing required parameter: {}", req),
+                    "command": name,
+                    "required": cmd.required,
+                })),
+            ).into_response();
+        }
+    }
+
+    // Build query string
+    let query_string: String = merged
+        .iter()
+        .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
+        .collect::<Vec<_>>()
+        .join("&");
+
+    let uri = if query_string.is_empty() {
+        cmd.endpoint.clone()
+    } else {
+        format!("{}?{}", cmd.endpoint, query_string)
+    };
+
+    // Dispatch through inner router
+    let Some(router) = state.inner_router.get() else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorBody { error: "Internal router not initialized".into() }),
+        ).into_response();
+    };
+
+    let req = Request::builder()
+        .uri(&uri)
+        .body(Body::empty())
+        .unwrap();
+
+    match router.clone().oneshot(req).await {
+        Ok(response) => response,
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorBody { error: format!("Internal dispatch error: {}", e) }),
+        ).into_response(),
+    }
+}
+
 // -- /status --
 
 /// Derive a browse URL template from a git remote URL.
@@ -670,7 +914,13 @@ pub(super) fn resolve_sources(
                     if let Some(url) = browse_url_from_remote(&remote) {
                         sources.repos.insert(repo_name, url);
                     }
+                } else {
+                    // Not a git repo (e.g. FUSE-mounted archive) — mark with empty URL
+                    // so the UI knows not to generate a link
+                    sources.repos.insert(repo_name, String::new());
                 }
+            } else {
+                sources.repos.insert(repo_name, String::new());
             }
         }
     }
@@ -730,39 +980,6 @@ pub(super) async fn metrics(
             "bobbin_index_embeddings_total {}\n",
             s.total_embeddings
         ));
-    }
-
-    // Feedback metrics
-    if let Ok(fb_store) = open_feedback_store(&state) {
-        if let Ok(fb_stats) = fb_store.stats() {
-            out.push_str("# HELP bobbin_injections_total Total injection records.\n");
-            out.push_str("# TYPE bobbin_injections_total gauge\n");
-            out.push_str(&format!("bobbin_injections_total {}\n", fb_stats.total_injections));
-            out.push_str("# HELP bobbin_feedback_total Total feedback records by rating.\n");
-            out.push_str("# TYPE bobbin_feedback_total gauge\n");
-            out.push_str(&format!("bobbin_feedback_total{{rating=\"useful\"}} {}\n", fb_stats.useful));
-            out.push_str(&format!("bobbin_feedback_total{{rating=\"noise\"}} {}\n", fb_stats.noise));
-            out.push_str(&format!("bobbin_feedback_total{{rating=\"harmful\"}} {}\n", fb_stats.harmful));
-        }
-
-        if let Ok(overlap_stats) = fb_store.file_overlap_stats(1000) {
-            let total_used: u64 = overlap_stats.iter().map(|s| s.used_count).sum();
-            out.push_str("# HELP bobbin_injection_used_files Files from injections that agents actually used.\n");
-            out.push_str("# TYPE bobbin_injection_used_files gauge\n");
-            out.push_str(&format!("bobbin_injection_used_files {}\n", overlap_stats.len()));
-            out.push_str("# HELP bobbin_injection_used_total Total overlap events (injected file was used).\n");
-            out.push_str("# TYPE bobbin_injection_used_total gauge\n");
-            out.push_str(&format!("bobbin_injection_used_total {}\n", total_used));
-        }
-
-        if let Ok(ftags) = fb_store.get_feedback_tags() {
-            let hot_count = ftags.values().filter(|t| t.contains(&"feedback:hot".to_string())).count();
-            let cold_count = ftags.values().filter(|t| t.contains(&"feedback:cold".to_string())).count();
-            out.push_str("# HELP bobbin_feedback_auto_tagged Files with feedback auto-tags.\n");
-            out.push_str("# TYPE bobbin_feedback_auto_tagged gauge\n");
-            out.push_str(&format!("bobbin_feedback_auto_tagged{{tag=\"hot\"}} {}\n", hot_count));
-            out.push_str(&format!("bobbin_feedback_auto_tagged{{tag=\"cold\"}} {}\n", cold_count));
-        }
     }
 
     (
@@ -1198,7 +1415,7 @@ pub(super) async fn context(
         bridge_boost_factor: 0.3,
         extra_filter,
         tags_config: Some(state.tags_config.clone()),
-        role: None,
+        role: params.role.clone(),
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1836,7 +2053,7 @@ pub(super) async fn review(
         bridge_boost_factor: 0.3,
         extra_filter: None,
         tags_config: Some(state.tags_config.clone()),
-        role: None,
+        role: params.role.clone(),
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2937,7 +3154,7 @@ pub(super) async fn injection_store(
         return Err(bad_request("injection_id is required".to_string()));
     }
     let store = open_feedback_store(&state).map_err(internal_error)?;
-    store.store_injection(
+    store.store_injection_with_output(
         &input.injection_id,
         input.session_id.as_deref(),
         input.agent.as_deref(),
@@ -2945,6 +3162,7 @@ pub(super) async fn injection_store(
         &input.files,
         input.total_chunks,
         input.budget_lines,
+        input.formatted_output.as_deref(),
     ).map_err(internal_error)?;
     Ok(Json(serde_json::json!({
         "status": "ok",
@@ -2967,6 +3185,20 @@ pub(super) struct InjectionInput {
     total_chunks: usize,
     #[serde(default)]
     budget_lines: usize,
+    #[serde(default)]
+    formatted_output: Option<String>,
+}
+
+/// GET /injections/:id — get injection detail with associated feedback
+pub(super) async fn injection_detail(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let store = open_feedback_store(&state).map_err(internal_error)?;
+    match store.get_injection(&id).map_err(internal_error)? {
+        Some(detail) => Ok(Json(serde_json::to_value(detail).unwrap())),
+        None => Err(not_found(format!("injection {} not found", id))),
+    }
 }
 
 /// POST /feedback — submit feedback on an injection
@@ -3019,118 +3251,6 @@ pub(super) async fn feedback_stats(
     let store = open_feedback_store(&state).map_err(internal_error)?;
     let stats = store.stats().map_err(internal_error)?;
     Ok(Json(stats))
-}
-
-// -- Injection list + Overlap endpoints --
-
-#[derive(Deserialize)]
-pub(super) struct InjectionListParams {
-    session_id: Option<String>,
-    limit: Option<usize>,
-}
-
-/// GET /injections — list recent injections for a session
-pub(super) async fn injection_list(
-    State(state): State<Arc<AppState>>,
-    Query(params): Query<InjectionListParams>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
-    let session_id = params.session_id.as_deref().unwrap_or("");
-    if session_id.is_empty() {
-        return Err(bad_request("session_id query parameter is required".to_string()));
-    }
-    let store = open_feedback_store(&state).map_err(internal_error)?;
-    let limit = params.limit.unwrap_or(10).min(50);
-    let injections = store.get_session_injections(session_id, limit).map_err(internal_error)?;
-
-    let items: Vec<serde_json::Value> = injections.into_iter().map(|(inj_id, files)| {
-        serde_json::json!({ "injection_id": inj_id, "files": files })
-    }).collect();
-
-    Ok(Json(serde_json::json!({ "injections": items })))
-}
-
-#[derive(Deserialize)]
-pub(super) struct OverlapInput {
-    injection_id: String,
-    file_path: String,
-    tool_name: String,
-    #[serde(default)]
-    session_id: Option<String>,
-}
-
-/// POST /overlaps — record that an injected file was used by the agent
-pub(super) async fn overlap_store(
-    State(state): State<Arc<AppState>>,
-    Json(input): Json<OverlapInput>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
-    if input.injection_id.is_empty() || input.file_path.is_empty() {
-        return Err(bad_request("injection_id and file_path are required".to_string()));
-    }
-    let store = open_feedback_store(&state).map_err(internal_error)?;
-    store.store_overlap(
-        &input.injection_id,
-        &input.file_path,
-        &input.tool_name,
-        input.session_id.as_deref(),
-    ).map_err(internal_error)?;
-    Ok(Json(serde_json::json!({
-        "status": "ok",
-        "message": format!("Overlap recorded: {} in {}", input.file_path, input.injection_id)
-    })))
-}
-
-/// GET /overlaps/stats — per-file overlap statistics
-pub(super) async fn overlap_stats(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<crate::storage::feedback::FileOverlapStat>>, (StatusCode, Json<ErrorBody>)> {
-    let store = open_feedback_store(&state).map_err(internal_error)?;
-    let stats = store.file_overlap_stats(100).map_err(internal_error)?;
-    Ok(Json(stats))
-}
-
-#[derive(Deserialize)]
-pub(super) struct AutotagParams {
-    /// Min overlaps for feedback:hot (default: 5)
-    #[serde(default = "default_hot")]
-    hot_threshold: u64,
-    /// Min injections with no overlap for feedback:cold (default: 10)
-    #[serde(default = "default_cold_injections")]
-    cold_injections: u64,
-    /// Min noise/harmful feedback for feedback:cold (default: 3)
-    #[serde(default = "default_cold_noise")]
-    cold_noise_threshold: u64,
-    /// Actually apply tags (default: false = dry run)
-    #[serde(default)]
-    apply: bool,
-}
-
-fn default_hot() -> u64 { 5 }
-fn default_cold_injections() -> u64 { 10 }
-fn default_cold_noise() -> u64 { 3 }
-
-/// POST /feedback/autotag — compute and optionally apply feedback:hot/cold tags
-pub(super) async fn feedback_autotag(
-    State(state): State<Arc<AppState>>,
-    Json(params): Json<AutotagParams>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
-    let store = open_feedback_store(&state).map_err(internal_error)?;
-    let result = store.compute_autotags(
-        params.hot_threshold,
-        params.cold_injections,
-        params.cold_noise_threshold,
-    ).map_err(internal_error)?;
-
-    if params.apply {
-        store.apply_autotags(&result).map_err(internal_error)?;
-    }
-
-    Ok(Json(serde_json::json!({
-        "status": if params.apply { "applied" } else { "dry_run" },
-        "hot_files": result.hot_files.len(),
-        "cold_files": result.cold_files.len(),
-        "hot": result.hot_files,
-        "cold": result.cold_files,
-    })))
 }
 
 // -- /suggest --
@@ -3323,6 +3443,10 @@ async fn execute_or_search(
 
 fn bad_request(msg: String) -> (StatusCode, Json<ErrorBody>) {
     (StatusCode::BAD_REQUEST, Json(ErrorBody { error: msg }))
+}
+
+fn not_found(msg: String) -> (StatusCode, Json<ErrorBody>) {
+    (StatusCode::NOT_FOUND, Json(ErrorBody { error: msg }))
 }
 
 async fn open_vector_store(state: &AppState) -> anyhow::Result<VectorStore> {

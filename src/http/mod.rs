@@ -21,7 +21,9 @@ pub struct AppState {
     pub config: Config,
     /// Source URLs resolved once at startup (auto-detected + manual overrides).
     pub resolved_sources: SourcesConfig,
-    /// Tags config for tag-based scoring effects (loaded once at startup).
+    /// Inner router for /cmd dispatch (set once after router construction).
+    pub inner_router: std::sync::OnceLock<axum::Router>,
+    /// Tags configuration for effect-based scoring/exclusion.
     pub tags_config: TagsConfig,
 }
 
@@ -43,6 +45,7 @@ pub async fn run_server(repo_root: PathBuf, port: u16) -> Result<()> {
         repo_root,
         config,
         resolved_sources,
+        inner_router: std::sync::OnceLock::new(),
         tags_config,
     });
 
