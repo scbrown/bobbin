@@ -441,7 +441,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                     chunk.tags.split(',').collect()
                 };
                 for ftag in ftags {
-                    if !existing.contains(&ftag.as_str()) {
+                    let s = ftag.as_str();
+                    if !existing.contains(&s) {
                         existing.push(ftag);
                     }
                 }

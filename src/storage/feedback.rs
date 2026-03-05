@@ -537,6 +537,28 @@ impl FeedbackStore {
             feedback,
         }))
     }
+    /// Get feedback auto-tags (feedback:hot, feedback:cold) keyed by file path.
+    /// Returns empty map if the feedback_tags table doesn't exist yet.
+    pub fn get_feedback_tags(&self) -> Result<std::collections::HashMap<String, Vec<String>>> {
+        let mut map = std::collections::HashMap::new();
+        let has_table: bool = self.conn.query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='feedback_tags'",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_table {
+            return Ok(map);
+        }
+        let mut stmt = self.conn.prepare("SELECT file_path, tag FROM feedback_tags")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (path, tag) = row?;
+            map.entry(path).or_insert_with(Vec::new).push(tag);
+        }
+        Ok(map)
+    }
 }
 
 #[cfg(test)]
