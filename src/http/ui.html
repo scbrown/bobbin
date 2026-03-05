@@ -408,17 +408,24 @@ async function loadStatus() {
 // Strip bobbin index prefix to get repo-relative path
 const INDEX_PREFIX = '/var/lib/bobbin/repos/';
 function relPath(fp) {
-  return fp.startsWith(INDEX_PREFIX) ? fp.slice(INDEX_PREFIX.length) : fp;
+  if (fp.startsWith(INDEX_PREFIX)) return fp.slice(INDEX_PREFIX.length);
+  // Also handle relative "repos/" prefix (some chunks stored without full path)
+  if (fp.startsWith('repos/')) return fp.slice(6);
+  return fp;
 }
 
 // Build a link to the file source using configured URL templates
 // Returns null for repos with empty URL (e.g. archive repos without web UI)
-function repoLink(fp, startLine) {
+// repoHint: optional repo name from search result metadata (avoids inferring from path)
+function repoLink(fp, startLine, repoHint) {
   const rel = relPath(fp);
   const slashIdx = rel.indexOf('/');
   if (slashIdx < 0) return null;
-  const repo = rel.slice(0, slashIdx);
-  const filePath = rel.slice(slashIdx + 1);
+  const inferredRepo = rel.slice(0, slashIdx);
+  // Use explicit repo hint when path doesn't start with a known repo name
+  // (e.g. pensieve records indexed as "records/_plans/..." instead of "pensieve/...")
+  const repo = (repoHint && _sources && _sources.repos && !(inferredRepo in _sources.repos)) ? repoHint : inferredRepo;
+  const filePath = repoHint && repo === repoHint ? rel : rel.slice(slashIdx + 1);
   // Check explicit repo config first (empty string = no link)
   if (_sources && _sources.repos && repo in _sources.repos) {
     if (!_sources.repos[repo]) return null;
@@ -479,7 +486,7 @@ async function doSearch() {
     let html = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${results.length} results (${mode} mode)${archiveResults.length > 0 ? ` + ${archiveResults.length} archive` : ''}</div>`;
     html += results.map(res => {
       const rel = relPath(res.file_path);
-      const link = repoLink(res.file_path, res.start_line);
+      const link = repoLink(res.file_path, res.start_line, res.repo);
       const pct = maxScore > 0 ? Math.round((res.score / maxScore) * 100) : 0;
       return `
         <div class="result">
@@ -582,7 +589,7 @@ function renderFiles(files) {
   el.innerHTML = `<div style="color:var(--dim);font-size:0.8rem;margin-bottom:0.5rem">${files.length} files</div>` +
     files.map(f => {
       const rel = relPath(f.path);
-      const link = repoLink(f.path);
+      const link = repoLink(f.path, null, f.repo);
       return `
       <div class="file-item">
         <div class="lang-dot" style="background:${langColor(f.lang)}"></div>
