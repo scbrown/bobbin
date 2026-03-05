@@ -2,7 +2,12 @@ name: Deploy Bobbin
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.forgejo/workflows/deploy.yml'
   workflow_dispatch:
 
 jobs:
