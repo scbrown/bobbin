@@ -1657,7 +1657,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let embedder = Embedder::from_config(&config.embedding, &model_dir)
         .context("Failed to load embedding model")?;
 
-    // 6. Assemble context (config cascade: calibration.json > config.toml)
+    // 6. Assemble context (config cascade: calibration.json > config.toml > intent adjustments)
     let calibration = crate::cli::calibrate::load_calibration(&repo_root);
     let cal_sw = calibration.as_ref().map(|c| c.best_config.semantic_weight);
     let cal_dd = calibration.as_ref().map(|c| c.best_config.doc_demotion);
@@ -1669,17 +1669,26 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let cal_bm = calibration.as_ref().and_then(|c| c.best_config.bridge_mode);
     let cal_bbf = calibration.as_ref().and_then(|c| c.best_config.bridge_boost_factor);
 
+    // Query intent classification: adjust search parameters based on prompt type
+    let intent = crate::search::intent::classify_intent(prompt);
+    let adj = crate::search::intent::intent_adjustments(intent);
+
+    // Base values from calibration or config
+    let base_sw = cal_sw.unwrap_or(config.search.semantic_weight);
+    let base_dd = cal_dd.unwrap_or(config.search.doc_demotion);
+    let base_rw = cal_rw.unwrap_or(config.search.recency_weight);
+
     let context_config = ContextConfig {
         budget_lines: cal_budget.unwrap_or(budget),
         depth: 1,
         max_coupled: 3,
         coupling_threshold: 0.1,
-        semantic_weight: cal_sw.unwrap_or(config.search.semantic_weight),
+        semantic_weight: (base_sw * adj.semantic_weight_factor).clamp(0.0, 1.0),
         content_mode,
         search_limit: cal_sl.unwrap_or(20),
-        doc_demotion: cal_dd.unwrap_or(config.search.doc_demotion),
+        doc_demotion: (base_dd * adj.doc_demotion_factor).clamp(0.01, 1.0),
         recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
-        recency_weight: cal_rw.unwrap_or(config.search.recency_weight),
+        recency_weight: (base_rw * adj.recency_weight_factor).clamp(0.0, 1.0),
         rrf_k: cal_rrf.unwrap_or(config.search.rrf_k),
         bridge_mode: cal_bm.unwrap_or(BridgeMode::default()),
         bridge_boost_factor: cal_bbf.unwrap_or(0.3),

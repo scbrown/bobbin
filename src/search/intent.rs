@@ -1,0 +1,231 @@
+/// Query intent classification for adjusting search parameters.
+///
+/// Classifies prompts into intents based on keyword signals, then returns
+/// parameter adjustments for context assembly. ZFC compliant: pure keyword
+/// matching, no ML or adaptive behavior.
+use serde::{Deserialize, Serialize};
+
+/// Detected intent of a user prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryIntent {
+    /// Bug fix: error messages, stack traces, "fix", "broken"
+    BugFix,
+    /// Architecture: "how does", "explain", "architecture", "design"
+    Architecture,
+    /// Implementation: "add", "implement", "create", "build"
+    Implementation,
+    /// Configuration: "config", "deploy", "setup", "install"
+    Configuration,
+    /// Navigation: "where is", "find", "locate", "which file"
+    Navigation,
+    /// General: no strong signal detected
+    General,
+}
+
+/// Parameter adjustments based on detected intent.
+#[derive(Debug, Clone)]
+pub struct IntentAdjustments {
+    /// Multiplier for doc_demotion (< 1.0 means docs are less demoted = more visible)
+    pub doc_demotion_factor: f32,
+    /// Multiplier for semantic_weight (> 1.0 means more semantic, < 1.0 more keyword)
+    pub semantic_weight_factor: f32,
+    /// Multiplier for recency_weight (> 1.0 means prefer recent, < 1.0 means less recency bias)
+    pub recency_weight_factor: f32,
+}
+
+impl Default for IntentAdjustments {
+    fn default() -> Self {
+        Self {
+            doc_demotion_factor: 1.0,
+            semantic_weight_factor: 1.0,
+            recency_weight_factor: 1.0,
+        }
+    }
+}
+
+/// Classify a prompt's intent based on keyword signals.
+pub fn classify_intent(prompt: &str) -> QueryIntent {
+    let lower = prompt.to_lowercase();
+    let words: Vec<&str> = lower.split_whitespace().collect();
+
+    // Score each intent by counting matching signals
+    let mut scores = [
+        (QueryIntent::BugFix, 0i32),
+        (QueryIntent::Architecture, 0),
+        (QueryIntent::Implementation, 0),
+        (QueryIntent::Configuration, 0),
+        (QueryIntent::Navigation, 0),
+    ];
+
+    // Helper: check if any word starts with keyword (handles "failing" matching "fail")
+    let has_word = |kw: &str| -> bool {
+        words.iter().any(|w| w.starts_with(kw))
+    };
+
+    // Bug fix signals
+    let bugfix_stems = ["fix", "bug", "broke", "error", "crash", "fail", "wrong", "issue", "debug", "traceback", "panic", "exception", "stack"];
+    let bugfix_phrases = ["doesn't work", "does not work", "not working", "is broken", "stopped working"];
+    for kw in &bugfix_stems {
+        if has_word(kw) { scores[0].1 += 1; }
+    }
+    for phrase in &bugfix_phrases {
+        if lower.contains(phrase) { scores[0].1 += 2; }
+    }
+    if lower.contains("error[") || lower.contains("error:") || lower.contains("exception") {
+        scores[0].1 += 2;
+    }
+
+    // Architecture signals
+    let arch_stems = ["architect", "design", "explain", "overview", "understand", "structur", "diagram", "pattern"];
+    let arch_phrases = ["how does", "how do", "how is", "what is the", "walk me through"];
+    for kw in &arch_stems {
+        if has_word(kw) { scores[1].1 += 1; }
+    }
+    for phrase in &arch_phrases {
+        if lower.contains(phrase) { scores[1].1 += 2; }
+    }
+
+    // Implementation signals (implement/create/build are strong signals worth 2)
+    let impl_strong = ["implement", "creat"];
+    let impl_stems = ["add", "build", "write", "make", "feature", "extend"];
+    let impl_phrases = ["add a", "create a", "build a", "implement a", "write a", "add support"];
+    for kw in &impl_strong {
+        if has_word(kw) { scores[2].1 += 2; }
+    }
+    for kw in &impl_stems {
+        if has_word(kw) { scores[2].1 += 1; }
+    }
+    for phrase in &impl_phrases {
+        if lower.contains(phrase) { scores[2].1 += 2; }
+    }
+
+    // Configuration signals
+    let config_stems = ["config", "deploy", "setup", "install", "env", "environment", "dockerfile", "yaml", "toml", "nginx", "traefik"];
+    let config_phrases = ["set up", "how to configure", "how to deploy", "how to install"];
+    for kw in &config_stems {
+        if has_word(kw) { scores[3].1 += 1; }
+    }
+    for phrase in &config_phrases {
+        if lower.contains(phrase) { scores[3].1 += 2; }
+    }
+
+    // Navigation signals
+    let nav_stems = ["where", "find", "locate", "which", "file", "path", "defin", "declarat"];
+    let nav_phrases = ["where is", "where are", "which file", "find the", "locate the", "defined in"];
+    for kw in &nav_stems {
+        if has_word(kw) { scores[4].1 += 1; }
+    }
+    for phrase in &nav_phrases {
+        if lower.contains(phrase) { scores[4].1 += 2; }
+    }
+
+    // Return highest scoring intent (minimum threshold of 2 to avoid false positives)
+    let best = scores.iter().max_by_key(|(_, s)| *s).unwrap();
+    if best.1 >= 2 {
+        best.0
+    } else {
+        QueryIntent::General
+    }
+}
+
+/// Get parameter adjustments for a detected intent.
+pub fn intent_adjustments(intent: QueryIntent) -> IntentAdjustments {
+    match intent {
+        QueryIntent::BugFix => IntentAdjustments {
+            doc_demotion_factor: 1.5,    // Demote docs more (focus on code)
+            semantic_weight_factor: 0.8,  // Slightly more keyword (error messages are literal)
+            recency_weight_factor: 1.5,   // Prefer recent code (bugs are in recent changes)
+        },
+        QueryIntent::Architecture => IntentAdjustments {
+            doc_demotion_factor: 0.3,    // Docs are very relevant for architecture questions
+            semantic_weight_factor: 1.2,  // More semantic (conceptual queries)
+            recency_weight_factor: 0.5,   // Recency less important for architecture
+        },
+        QueryIntent::Implementation => IntentAdjustments {
+            doc_demotion_factor: 1.2,    // Slightly demote docs (code patterns matter more)
+            semantic_weight_factor: 1.0,  // Balanced
+            recency_weight_factor: 1.0,   // Balanced
+        },
+        QueryIntent::Configuration => IntentAdjustments {
+            doc_demotion_factor: 0.5,    // Config files and docs both relevant
+            semantic_weight_factor: 0.7,  // More keyword (config terms are literal)
+            recency_weight_factor: 0.8,   // Slightly less recency bias
+        },
+        QueryIntent::Navigation => IntentAdjustments {
+            doc_demotion_factor: 1.0,    // Balanced
+            semantic_weight_factor: 0.5,  // More keyword (looking for exact names)
+            recency_weight_factor: 0.3,   // Recency irrelevant for navigation
+        },
+        QueryIntent::General => IntentAdjustments::default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_classify_bugfix() {
+        assert_eq!(classify_intent("fix the auth bug in login.rs"), QueryIntent::BugFix);
+        assert_eq!(classify_intent("error[E0308]: mismatched types"), QueryIntent::BugFix);
+        assert_eq!(classify_intent("the server is broken and crashes on startup"), QueryIntent::BugFix);
+        assert_eq!(classify_intent("debug the failing test"), QueryIntent::BugFix);
+    }
+
+    #[test]
+    fn test_classify_architecture() {
+        assert_eq!(classify_intent("how does the reactor pattern work in this codebase?"), QueryIntent::Architecture);
+        assert_eq!(classify_intent("explain the architecture of the search module"), QueryIntent::Architecture);
+        assert_eq!(classify_intent("what is the design pattern used here?"), QueryIntent::Architecture);
+    }
+
+    #[test]
+    fn test_classify_implementation() {
+        assert_eq!(classify_intent("add a new endpoint for user profiles"), QueryIntent::Implementation);
+        assert_eq!(classify_intent("implement rate limiting for the API"), QueryIntent::Implementation);
+        assert_eq!(classify_intent("create a new config parser"), QueryIntent::Implementation);
+    }
+
+    #[test]
+    fn test_classify_configuration() {
+        assert_eq!(classify_intent("how to configure nginx for this service"), QueryIntent::Configuration);
+        assert_eq!(classify_intent("set up the docker environment"), QueryIntent::Configuration);
+        assert_eq!(classify_intent("update the deploy yaml config"), QueryIntent::Configuration);
+    }
+
+    #[test]
+    fn test_classify_navigation() {
+        assert_eq!(classify_intent("where is the main entry point defined?"), QueryIntent::Navigation);
+        assert_eq!(classify_intent("which file handles authentication?"), QueryIntent::Navigation);
+        assert_eq!(classify_intent("find the database connection code"), QueryIntent::Navigation);
+    }
+
+    #[test]
+    fn test_classify_general() {
+        assert_eq!(classify_intent("hello"), QueryIntent::General);
+        assert_eq!(classify_intent("thanks"), QueryIntent::General);
+        assert_eq!(classify_intent("run the tests"), QueryIntent::General);
+    }
+
+    #[test]
+    fn test_adjustments_bugfix_prefers_code() {
+        let adj = intent_adjustments(QueryIntent::BugFix);
+        assert!(adj.doc_demotion_factor > 1.0); // More demotion = less docs
+        assert!(adj.recency_weight_factor > 1.0); // Prefer recent
+    }
+
+    #[test]
+    fn test_adjustments_architecture_prefers_docs() {
+        let adj = intent_adjustments(QueryIntent::Architecture);
+        assert!(adj.doc_demotion_factor < 1.0); // Less demotion = more docs
+    }
+
+    #[test]
+    fn test_adjustments_general_is_neutral() {
+        let adj = intent_adjustments(QueryIntent::General);
+        assert!((adj.doc_demotion_factor - 1.0).abs() < f32::EPSILON);
+        assert!((adj.semantic_weight_factor - 1.0).abs() < f32::EPSILON);
+        assert!((adj.recency_weight_factor - 1.0).abs() < f32::EPSILON);
+    }
+}

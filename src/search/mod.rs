@@ -1,5 +1,6 @@
 pub mod context;
 pub mod hybrid;
+pub mod intent;
 pub mod keyword;
 pub mod preprocess;
 pub mod query;
