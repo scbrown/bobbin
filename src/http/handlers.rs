@@ -3666,6 +3666,7 @@ fn to_context_file(f: &crate::search::context::ContextFile) -> ContextFileOutput
             FileRelevance::Direct => "direct".to_string(),
             FileRelevance::Coupled => "coupled".to_string(),
             FileRelevance::Bridged => "bridged".to_string(),
+            FileRelevance::Pinned => "pinned".to_string(),
         },
         score: f.score,
         coupled_to: f.coupled_to.clone(),

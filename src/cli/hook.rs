@@ -2584,11 +2584,12 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 crate::search::context::ContextBundle {
                     query: query.clone(),
                     files: vec![],
-                    budget: crate::search::context::BudgetInfo { max_lines: budget, used_lines: 0 },
+                    budget: crate::search::context::BudgetInfo { max_lines: budget, used_lines: 0, pinned_lines: 0 },
                     summary: crate::search::context::ContextSummary {
                         total_files: 0, total_chunks: 0, direct_hits: 0,
                         coupled_additions: 0, bridged_additions: 0,
                         source_files: 0, doc_files: 0, top_semantic_score: 0.0,
+                        pinned_chunks: 0,
                     },
                 }
             }
@@ -3813,6 +3814,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 0,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 0,
@@ -3823,6 +3825,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                pinned_chunks: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
@@ -3854,6 +3857,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 16,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -3864,6 +3868,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                pinned_chunks: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.5, true, None, "standard");
@@ -3898,6 +3903,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 10,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -3908,6 +3914,7 @@ mod tests {
                 source_files: 1,
                 doc_files: 0,
                 top_semantic_score: 0.85,
+                pinned_chunks: 0,
             },
         };
 
@@ -3959,6 +3966,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 5,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -3969,6 +3977,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                pinned_chunks: 0,
             },
         };
         // With high threshold, chunk content should be filtered out
@@ -4194,6 +4203,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 15,
                 used_lines: 21,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -4204,6 +4214,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                pinned_chunks: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
@@ -4244,6 +4255,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 3,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -4254,6 +4266,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                pinned_chunks: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
@@ -4306,6 +4319,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 15,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 2,
@@ -4316,6 +4330,7 @@ mod tests {
                 source_files: 1,
                 doc_files: 1,
                 top_semantic_score: 0.0,
+                pinned_chunks: 0,
             },
         };
 
@@ -4358,6 +4373,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 0,
                 used_lines: 0,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -4368,6 +4384,7 @@ mod tests {
                 source_files: 1,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                pinned_chunks: 0,
             },
         };
         // Budget 0 — should not panic and should produce empty or minimal output
@@ -4401,6 +4418,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 10,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -4411,6 +4429,7 @@ mod tests {
                 source_files: 1,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                pinned_chunks: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
@@ -4444,6 +4463,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 16,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -4454,6 +4474,7 @@ mod tests {
                 source_files: 1,
                 doc_files: 0,
                 top_semantic_score: 0.85,
+                pinned_chunks: 0,
             },
         }
     }
@@ -5219,6 +5240,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 10,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -5229,6 +5251,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
+                pinned_chunks: 0,
             },
         };
 
@@ -5263,6 +5286,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 5,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -5273,6 +5297,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
+                pinned_chunks: 0,
             },
         };
 
@@ -5317,6 +5342,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 10,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -5327,6 +5353,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
+                pinned_chunks: 0,
             },
         };
 
@@ -5345,6 +5372,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 0,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 0,
@@ -5355,6 +5383,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                pinned_chunks: 0,
             },
         };
 
@@ -5392,6 +5421,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 50,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -5402,6 +5432,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
+                pinned_chunks: 0,
             },
         };
 
@@ -5437,6 +5468,7 @@ mod tests {
             budget: BudgetInfo {
                 max_lines: 150,
                 used_lines: 30,
+                pinned_lines: 0,
             },
             summary: ContextSummary {
                 total_files: 1,
@@ -5447,6 +5479,7 @@ mod tests {
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.9,
+                pinned_chunks: 0,
             },
         };
 

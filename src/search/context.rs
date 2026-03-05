@@ -149,6 +149,13 @@ pub struct ContextChunk {
 pub struct BudgetInfo {
     pub max_lines: usize,
     pub used_lines: usize,
+    /// Lines used by pinned chunks (subset of used_lines)
+    #[serde(skip_serializing_if = "is_zero")]
+    pub pinned_lines: usize,
+}
+
+fn is_zero(v: &usize) -> bool {
+    *v == 0
 }
 
 /// Summary statistics for the context bundle
@@ -164,6 +171,9 @@ pub struct ContextSummary {
     /// Raw cosine similarity of the top semantic search result (before RRF normalization).
     /// Used by the gate_threshold check to decide whether to inject context at all.
     pub top_semantic_score: f32,
+    /// Number of pinned chunks injected
+    #[serde(skip_serializing_if = "is_zero")]
+    pub pinned_chunks: usize,
 }
 
 /// How a file was found
@@ -174,6 +184,8 @@ pub enum FileRelevance {
     Coupled,
     /// Found via git blame provenance bridging from a documentation chunk
     Bridged,
+    /// Pinned via tag effect — bypasses relevance threshold
+    Pinned,
 }
 
 /// How a seed chunk was discovered
@@ -230,6 +242,8 @@ struct SeedResult {
     indexed_at: Option<i64>,
     repo: Option<String>,
     tags: String,
+    /// Whether this chunk has a pin tag effect (bypasses threshold, injected first)
+    is_pinned: bool,
 }
 
 /// Internal struct for coupled chunk information
@@ -366,6 +380,7 @@ impl ContextAssembler {
                     indexed_at: None, // External seeds don't carry indexed_at
                     repo: s.repo,
                     tags: s.chunk.tags,
+                    is_pinned: false,
                 }
             })
             .collect();
@@ -674,6 +689,7 @@ impl ContextAssembler {
                         indexed_at: result.indexed_at,
                         repo: result.repo,
                         tags: result.chunk.tags,
+                        is_pinned: false,
                     },
                     rrf_score,
                 ),
@@ -703,6 +719,7 @@ impl ContextAssembler {
                         indexed_at: result.indexed_at,
                         repo: result.repo,
                         tags: result.chunk.tags,
+                        is_pinned: false,
                     },
                     rrf_score,
                 ));
@@ -720,10 +737,17 @@ impl ContextAssembler {
         let repo_affinity_boost = self.config.repo_affinity_boost;
         let mut combined: Vec<_> = scores
             .into_values()
-            .map(|(result, score)| {
+            .map(|(mut result, score)| {
                 let adjusted_score = if let Some(ref tc) = tags_config {
-                    // Tag effects mode: compute product of (1+boost) for all tags
-                    apply_tag_effects(tc, &result.tags, role, score, doc_demotion, &result.file_path, ft_rules)
+                    // Check for pin effect — pinned chunks skip category demotion
+                    if tc.resolve_pin(&result.tags, role).is_some() {
+                        result.is_pinned = true;
+                        // Pinned chunks get raw relevance score (no demotion)
+                        score
+                    } else {
+                        // Tag effects mode: compute product of (1+boost) for all tags
+                        apply_tag_effects(tc, &result.tags, role, score, doc_demotion, &result.file_path, ft_rules)
+                    }
                 } else {
                     // Legacy mode: category-based doc demotion
                     let category = classify_file_with_rules(&result.file_path, ft_rules);
@@ -812,6 +836,8 @@ fn assemble_bundle(
     let budget = config.budget_lines;
     let max_chunk_lines = budget / 2; // Cap individual chunks at 50% of budget
     let mut used_lines: usize = 0;
+    let mut pinned_lines: usize = 0;
+    let mut pinned_chunk_count: usize = 0;
     let mut seen_chunk_ids: HashSet<String> = HashSet::new();
 
     // Filter out commit chunks — they're useful for `bobbin log` but shouldn't
@@ -822,9 +848,105 @@ fn assemble_bundle(
         .filter(|r| r.chunk_type != ChunkType::Commit)
         .collect();
 
-    // Group seed results by file
+    // Partition into pinned and normal results
+    let (pinned_results, normal_results): (Vec<SeedResult>, Vec<SeedResult>) =
+        seed_results.into_iter().partition(|r| r.is_pinned);
+
+    // Calculate budget reserve for pinned chunks.
+    // Use the max budget_reserve from any pin effect in tags config, or default
+    // to 20% of total budget if pin effects don't specify a reserve.
+    let pin_budget_reserve = if pinned_results.is_empty() {
+        0
+    } else if let Some(ref tc) = config.tags_config {
+        let max_reserve = tc.effects.values()
+            .filter(|e| e.pin && e.budget_reserve > 0)
+            .map(|e| e.budget_reserve)
+            .max()
+            .unwrap_or(0);
+        if max_reserve > 0 {
+            max_reserve.min(budget / 2) // Never reserve more than half the budget
+        } else {
+            budget / 5 // Default: 20% of budget for pins
+        }
+    } else {
+        budget / 5
+    };
+
+    let mut context_files: Vec<ContextFile> = Vec::new();
+
+    // Phase 0: Inject pinned chunks first (within reserved budget)
+    if !pinned_results.is_empty() {
+        let mut pinned_files: HashMap<String, Vec<SeedResult>> = HashMap::new();
+        for result in pinned_results {
+            pinned_files
+                .entry(result.file_path.clone())
+                .or_default()
+                .push(result);
+        }
+
+        // Sort pinned files by highest score (rank among pins by raw relevance)
+        let mut pinned_file_list: Vec<(String, Vec<SeedResult>)> =
+            pinned_files.into_iter().collect();
+        pinned_file_list.sort_by(|a, b| {
+            let max_a = a.1.iter().map(|r| r.score).fold(f32::NEG_INFINITY, f32::max);
+            let max_b = b.1.iter().map(|r| r.score).fold(f32::NEG_INFINITY, f32::max);
+            max_b.partial_cmp(&max_a).unwrap()
+        });
+
+        for (file_path, mut results) in pinned_file_list {
+            if used_lines >= pin_budget_reserve {
+                break;
+            }
+            results.sort_by_key(|r| r.start_line);
+
+            let language = results.first().map(|r| r.language.clone()).unwrap_or_default();
+            let file_repo = results.first().and_then(|r| r.repo.clone());
+            let file_score = results.iter().map(|r| r.score).fold(f32::NEG_INFINITY, f32::max);
+
+            let mut file_chunks = Vec::new();
+            for result in results {
+                if seen_chunk_ids.contains(&result.chunk_id) {
+                    continue;
+                }
+                let chunk_lines = (result.end_line - result.start_line + 1) as usize;
+                let capped_lines = chunk_lines.min(max_chunk_lines);
+                if used_lines + capped_lines > pin_budget_reserve {
+                    break;
+                }
+                seen_chunk_ids.insert(result.chunk_id.clone());
+                used_lines += capped_lines;
+                pinned_lines += capped_lines;
+                pinned_chunk_count += 1;
+
+                file_chunks.push(ContextChunk {
+                    name: result.name.clone(),
+                    chunk_type: result.chunk_type,
+                    start_line: result.start_line,
+                    end_line: result.end_line,
+                    score: result.score,
+                    match_type: result.match_type,
+                    content: format_content(&result.content, config.content_mode),
+                });
+            }
+
+            if !file_chunks.is_empty() {
+                context_files.push(ContextFile {
+                    path: file_path.clone(),
+                    language,
+                    relevance: FileRelevance::Pinned,
+                    category: classify_file_with_rules(&file_path, &config.file_type_rules),
+                    score: file_score,
+                    coupled_to: vec![],
+                    chunks: file_chunks,
+                    repo: file_repo,
+                });
+            }
+        }
+    }
+
+    // Group normal seed results by file
     let mut direct_files: HashMap<String, Vec<SeedResult>> = HashMap::new();
-    for result in seed_results {
+    for result in normal_results {
         direct_files
             .entry(result.file_path.clone())
             .or_default()
@@ -848,7 +970,6 @@ fn assemble_bundle(
         max_b.partial_cmp(&max_a).unwrap()
     });
 
-    let mut context_files: Vec<ContextFile> = Vec::new();
     let mut direct_hit_count: usize = 0;
 
     // Add direct hit chunks
@@ -1098,6 +1219,7 @@ fn assemble_bundle(
         budget: BudgetInfo {
             max_lines: budget,
             used_lines,
+            pinned_lines,
         },
         summary: ContextSummary {
             total_files,
@@ -1108,6 +1230,7 @@ fn assemble_bundle(
             source_files,
             doc_files,
             top_semantic_score: 0.0,
+            pinned_chunks: pinned_chunk_count,
         },
     })
 }
@@ -1431,6 +1554,7 @@ mod tests {
                 match_type: Some(MatchType::Semantic),
                 repo: None,
                 tags: String::new(),
+                is_pinned: false,
             },
             make_seed("c1", "a.rs", 1, 5, 0.9),
         ];
@@ -1458,6 +1582,7 @@ mod tests {
             match_type: Some(MatchType::Hybrid),
             repo: None,
             tags: String::new(),
+            is_pinned: false,
         }
     }
 
@@ -1504,5 +1629,149 @@ mod tests {
             let parsed: BridgeMode = s.parse().unwrap();
             assert_eq!(parsed, mode);
         }
+    }
+
+    #[test]
+    fn test_pinned_chunks_injected_first() {
+        use crate::tags::{TagsConfig, TagEffect};
+
+        let mut effects = std::collections::HashMap::new();
+        effects.insert("user:pin".to_string(), TagEffect {
+            pin: true,
+            budget_reserve: 20,
+            ..Default::default()
+        });
+        let tags_config = TagsConfig {
+            effects,
+            ..Default::default()
+        };
+
+        let config = ContextConfig {
+            budget_lines: 100,
+            depth: 0,
+            max_coupled: 3,
+            coupling_threshold: 0.1,
+            semantic_weight: 0.7,
+            content_mode: ContentMode::Full,
+            search_limit: 20,
+            doc_demotion: 0.5,
+            rrf_k: 60.0,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
+            extra_filter: None,
+            tags_config: Some(tags_config),
+            role: None,
+            file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
+        };
+
+        let mut pinned = make_seed("p1", "critical.rs", 1, 5, 0.5);
+        pinned.tags = "user:pin".to_string();
+        pinned.is_pinned = true;
+
+        let normal = make_seed("n1", "normal.rs", 1, 10, 0.9);
+
+        let seeds = vec![normal, pinned];
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+
+        // Pinned file should appear first despite lower score
+        assert_eq!(bundle.files.len(), 2);
+        assert_eq!(bundle.files[0].relevance, FileRelevance::Pinned);
+        assert_eq!(bundle.files[0].path, "critical.rs");
+        assert_eq!(bundle.files[1].relevance, FileRelevance::Direct);
+        assert_eq!(bundle.files[1].path, "normal.rs");
+
+        // Budget tracking
+        assert_eq!(bundle.summary.pinned_chunks, 1);
+        assert!(bundle.budget.pinned_lines > 0);
+    }
+
+    #[test]
+    fn test_pinned_chunks_respect_reserved_budget() {
+        use crate::tags::{TagsConfig, TagEffect};
+
+        let mut effects = std::collections::HashMap::new();
+        effects.insert("user:pin".to_string(), TagEffect {
+            pin: true,
+            budget_reserve: 10,
+            ..Default::default()
+        });
+        let tags_config = TagsConfig {
+            effects,
+            ..Default::default()
+        };
+
+        let config = ContextConfig {
+            budget_lines: 100,
+            depth: 0,
+            max_coupled: 3,
+            coupling_threshold: 0.1,
+            semantic_weight: 0.7,
+            content_mode: ContentMode::Full,
+            search_limit: 20,
+            doc_demotion: 0.5,
+            rrf_k: 60.0,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
+            extra_filter: None,
+            tags_config: Some(tags_config),
+            role: None,
+            file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
+        };
+
+        // Pinned chunk of 15 lines but budget_reserve is 10 — should not fit
+        let mut pinned = make_seed("p1", "big.rs", 1, 15, 0.8);
+        pinned.tags = "user:pin".to_string();
+        pinned.is_pinned = true;
+
+        let seeds = vec![pinned];
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+
+        // 15 lines exceeds 10-line pin budget reserve → not injected
+        assert_eq!(bundle.summary.pinned_chunks, 0);
+        assert_eq!(bundle.budget.pinned_lines, 0);
+    }
+
+    #[test]
+    fn test_no_pins_no_impact() {
+        let config = ContextConfig {
+            budget_lines: 100,
+            depth: 0,
+            max_coupled: 3,
+            coupling_threshold: 0.1,
+            semantic_weight: 0.7,
+            content_mode: ContentMode::Full,
+            search_limit: 20,
+            doc_demotion: 0.5,
+            rrf_k: 60.0,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
+            bridge_mode: BridgeMode::Inject,
+            bridge_boost_factor: 0.3,
+            extra_filter: None,
+            tags_config: None,
+            role: None,
+            file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
+        };
+
+        let seeds = vec![
+            make_seed("c1", "a.rs", 1, 5, 0.9),
+            make_seed("c2", "b.rs", 1, 5, 0.7),
+        ];
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+
+        assert_eq!(bundle.summary.pinned_chunks, 0);
+        assert_eq!(bundle.budget.pinned_lines, 0);
+        assert_eq!(bundle.files.len(), 2);
+        assert!(bundle.files.iter().all(|f| f.relevance == FileRelevance::Direct));
     }
 }

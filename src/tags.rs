@@ -80,7 +80,7 @@ pub struct TagRule {
 
 /// Effect applied when a tag is present on a chunk.
 /// Global effects live in `[effects.<tag>]` in tags.toml.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TagEffect {
     /// Score multiplier: positive = boost, negative = demote
     #[serde(default)]
@@ -88,11 +88,17 @@ pub struct TagEffect {
     /// When true, chunks with this tag are excluded from results entirely
     #[serde(default)]
     pub exclude: bool,
+    /// When true, chunks with this tag bypass relevance threshold and are injected first
+    #[serde(default)]
+    pub pin: bool,
+    /// Lines of budget reserved for pinned chunks (only meaningful when pin=true)
+    #[serde(default)]
+    pub budget_reserve: usize,
 }
 
 /// Role-scoped tag effect from `[[effects_scoped]]` in tags.toml.
 /// Overrides the global effect for matching roles.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ScopedEffect {
     /// Tag this effect applies to
     pub tag: String,
@@ -104,6 +110,12 @@ pub struct ScopedEffect {
     /// When true, chunks with this tag are excluded for matching roles
     #[serde(default)]
     pub exclude: bool,
+    /// When true, chunks with this tag are pinned for matching roles
+    #[serde(default)]
+    pub pin: bool,
+    /// Lines of budget reserved for pinned chunks (only meaningful when pin=true)
+    #[serde(default)]
+    pub budget_reserve: usize,
 }
 
 /// The resolved effect for a specific tag + role combination.
@@ -111,6 +123,8 @@ pub struct ScopedEffect {
 pub struct ResolvedEffect {
     pub boost: f32,
     pub exclude: bool,
+    pub pin: bool,
+    pub budget_reserve: usize,
 }
 
 impl TagsConfig {
@@ -174,6 +188,8 @@ impl TagsConfig {
                 return Some(ResolvedEffect {
                     boost: scoped.boost,
                     exclude: scoped.exclude,
+                    pin: scoped.pin,
+                    budget_reserve: scoped.budget_reserve,
                 });
             }
         }
@@ -181,7 +197,28 @@ impl TagsConfig {
         self.effects.get(tag).map(|e| ResolvedEffect {
             boost: e.boost,
             exclude: e.exclude,
+            pin: e.pin,
+            budget_reserve: e.budget_reserve,
         })
+    }
+
+    /// Check if a chunk's tags result in a pin effect for the given role.
+    /// Returns the maximum budget_reserve across all matching pin effects.
+    pub fn resolve_pin(&self, tags_str: &str, role: Option<&str>) -> Option<usize> {
+        if tags_str.is_empty() {
+            return None;
+        }
+        let mut max_reserve: usize = 0;
+        let mut is_pinned = false;
+        for tag in tags_str.split(',') {
+            if let Some(effect) = self.resolve_effect(tag, role) {
+                if effect.pin {
+                    is_pinned = true;
+                    max_reserve = max_reserve.max(effect.budget_reserve);
+                }
+            }
+        }
+        if is_pinned { Some(max_reserve) } else { None }
     }
 }
 
@@ -721,6 +758,7 @@ mod tests {
                     TagEffect {
                         boost: -0.8,
                         exclude: false,
+                        ..Default::default()
                     },
                 );
                 m.insert(
@@ -728,6 +766,7 @@ mod tests {
                     TagEffect {
                         boost: 0.0,
                         exclude: true,
+                        ..Default::default()
                     },
                 );
                 m
@@ -737,6 +776,7 @@ mod tests {
                 role: "external/*".to_string(),
                 boost: 0.0,
                 exclude: true,
+                ..Default::default()
             }],
             ..Default::default()
         };
@@ -786,6 +826,7 @@ boost = -0.8
                     TagEffect {
                         boost: -0.8,
                         exclude: false,
+                        ..Default::default()
                     },
                 );
                 m
@@ -798,7 +839,9 @@ boost = -0.8
             resolved,
             Some(ResolvedEffect {
                 boost: -0.8,
-                exclude: false
+                exclude: false,
+                pin: false,
+                budget_reserve: 0,
             })
         );
 
@@ -816,6 +859,7 @@ boost = -0.8
                     TagEffect {
                         boost: 0.0,
                         exclude: false,
+                        ..Default::default()
                     },
                 );
                 m
@@ -825,6 +869,7 @@ boost = -0.8
                 role: "external/*".to_string(),
                 boost: 0.0,
                 exclude: true,
+                ..Default::default()
             }],
             ..Default::default()
         };
@@ -835,7 +880,9 @@ boost = -0.8
             resolved,
             Some(ResolvedEffect {
                 boost: 0.0,
-                exclude: true
+                exclude: true,
+                pin: false,
+                budget_reserve: 0,
             })
         );
 
@@ -845,7 +892,9 @@ boost = -0.8
             resolved,
             Some(ResolvedEffect {
                 boost: 0.0,
-                exclude: false
+                exclude: false,
+                pin: false,
+                budget_reserve: 0,
             })
         );
     }
@@ -859,12 +908,14 @@ boost = -0.8
                     role: "aegis/*".to_string(),
                     boost: -0.3,
                     exclude: false,
+                    ..Default::default()
                 },
                 ScopedEffect {
                     tag: "test".to_string(),
                     role: "aegis/crew/sentinel".to_string(),
                     boost: 0.3,
                     exclude: false,
+                    ..Default::default()
                 },
             ],
             ..Default::default()
@@ -876,7 +927,9 @@ boost = -0.8
             resolved,
             Some(ResolvedEffect {
                 boost: 0.3,
-                exclude: false
+                exclude: false,
+                pin: false,
+                budget_reserve: 0,
             })
         );
 
@@ -886,7 +939,9 @@ boost = -0.8
             resolved,
             Some(ResolvedEffect {
                 boost: -0.3,
-                exclude: false
+                exclude: false,
+                pin: false,
+                budget_reserve: 0,
             })
         );
     }
@@ -938,6 +993,7 @@ boost = -0.8
                     TagEffect {
                         boost: 0.0,
                         exclude: true,
+                        ..Default::default()
                     },
                 );
                 m.insert(
@@ -945,6 +1001,7 @@ boost = -0.8
                     TagEffect {
                         boost: -0.8,
                         exclude: false,
+                        ..Default::default()
                     },
                 );
                 m
@@ -967,6 +1024,7 @@ boost = -0.8
                 role: "external/*".to_string(),
                 boost: 0.0,
                 exclude: true,
+                ..Default::default()
             }],
             ..Default::default()
         };
@@ -991,6 +1049,7 @@ boost = -0.8
                     TagEffect {
                         boost: 0.0,
                         exclude: true, // globally excluded
+                        ..Default::default()
                     },
                 );
                 m
@@ -1000,6 +1059,7 @@ boost = -0.8
                 role: "aegis/*".to_string(),
                 boost: 0.0,
                 exclude: false, // but NOT excluded for aegis
+                ..Default::default()
             }],
             ..Default::default()
         };
@@ -1312,5 +1372,68 @@ tags = ["docs"]
         }];
         resolve_tags_for_chunks(&config, "src/lib.rs", None, "", &mut chunks);
         assert!(!chunks[0].tags.contains("auto:init"), "Rust init() should NOT get auto:init tag");
+    }
+
+    #[test]
+    fn test_resolve_pin_basic() {
+        let config = TagsConfig {
+            effects: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("user:critical".to_string(), TagEffect {
+                    pin: true,
+                    budget_reserve: 50,
+                    ..Default::default()
+                });
+                m.insert("user:boost-only".to_string(), TagEffect {
+                    boost: 0.3,
+                    ..Default::default()
+                });
+                m
+            },
+            ..Default::default()
+        };
+
+        // Pinned tag → returns budget_reserve
+        assert_eq!(config.resolve_pin("user:critical", None), Some(50));
+
+        // Non-pin tag → None
+        assert_eq!(config.resolve_pin("user:boost-only", None), None);
+
+        // Empty tags → None
+        assert_eq!(config.resolve_pin("", None), None);
+
+        // Unknown tag → None
+        assert_eq!(config.resolve_pin("user:unknown", None), None);
+
+        // Mixed tags with one pin → returns max reserve
+        assert_eq!(config.resolve_pin("user:boost-only,user:critical", None), Some(50));
+    }
+
+    #[test]
+    fn test_resolve_pin_scoped() {
+        let config = TagsConfig {
+            effects: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("user:guardrails".to_string(), TagEffect {
+                    pin: true,
+                    budget_reserve: 30,
+                    ..Default::default()
+                });
+                m
+            },
+            effects_scoped: vec![ScopedEffect {
+                tag: "user:guardrails".to_string(),
+                role: "external/*".to_string(),
+                pin: false, // not pinned for external roles
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        // Aegis role: falls back to global → pinned
+        assert_eq!(config.resolve_pin("user:guardrails", Some("aegis/crew/ellie")), Some(30));
+
+        // External role: scoped override → not pinned
+        assert_eq!(config.resolve_pin("user:guardrails", Some("external/user1")), None);
     }
 }

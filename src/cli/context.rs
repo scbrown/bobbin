@@ -262,6 +262,9 @@ fn print_human_output(bundle: &ContextBundle) {
             FileRelevance::Bridged => {
                 format!("bridged via doc provenance, score: {:.4}", file.score)
             }
+            FileRelevance::Pinned => {
+                format!("pinned, score: {:.4}", file.score)
+            }
         };
 
         println!(

@@ -282,6 +282,9 @@ fn print_human_output(bundle: &ContextBundle, diff_files: &[DiffFile], descripti
                         file.score
                     )
                 }
+                FileRelevance::Pinned => {
+                    format!("pinned, score: {:.4}", file.score)
+                }
             }
         };
 
