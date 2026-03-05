@@ -311,6 +311,7 @@ pub fn convention_tags(file_path: &str) -> Vec<String> {
         FileCategory::Test => tags.push("auto:test".to_string()),
         FileCategory::Documentation => tags.push("auto:docs".to_string()),
         FileCategory::Config => tags.push("auto:config".to_string()),
+        FileCategory::Custom(ref name) => tags.push(format!("auto:{}", name)),
         FileCategory::Source => {}
     }
 

@@ -6,7 +6,7 @@ use crate::index::Embedder;
 use crate::index::git::GitAnalyzer;
 use crate::search::hybrid::apply_recency_boost;
 use crate::storage::{MetadataStore, VectorStore};
-use crate::types::{Chunk, ChunkType, FileCategory, MatchType, classify_file};
+use crate::types::{Chunk, ChunkType, FileCategory, MatchType, classify_file, classify_file_with_rules};
 
 /// How bridging (doc→source, commit→source) affects search results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,6 +83,9 @@ pub struct ContextConfig {
     pub tags_config: Option<crate::tags::TagsConfig>,
     /// Role for resolving scoped tag effects (e.g. "aegis/crew/sentinel").
     pub role: Option<String>,
+    /// Configurable file type classification rules (from `[[file_types]]` config).
+    /// First match wins; unmatched files fall through to built-in heuristics.
+    pub file_type_rules: Vec<crate::config::FileTypeRule>,
 }
 
 /// How much content to include in output
@@ -265,6 +268,11 @@ impl ContextAssembler {
         self.config = config;
     }
 
+    /// Classify a file path using config rules, falling back to built-in heuristics.
+    fn classify(&self, path: &str) -> FileCategory {
+        classify_file_with_rules(path, &self.config.file_type_rules)
+    }
+
     /// Assemble a context bundle for the given query using hybrid search.
     ///
     /// This is the standard entry point: runs hybrid search to find seeds,
@@ -427,7 +435,7 @@ impl ContextAssembler {
         // --- Commit→source bridging: extract file lists from commit chunk content ---
         for chunk in commit_chunks {
             for file_path in parse_commit_files(&chunk.content) {
-                let category = classify_file(&file_path);
+                let category = self.classify(&file_path);
                 if category == FileCategory::Source || category == FileCategory::Test {
                     bridge_files.insert(resolve_path(file_path));
                 }
@@ -437,7 +445,7 @@ impl ContextAssembler {
         // --- Doc→source bridging: git blame → commits → source files ---
         if let Some(git) = &self.git_analyzer {
             for seed in seeds {
-                let category = classify_file(&seed.file_path);
+                let category = self.classify(&seed.file_path);
                 if category != FileCategory::Documentation {
                     continue;
                 }
@@ -459,7 +467,7 @@ impl ContextAssembler {
                     };
 
                     for file_path in commit_files {
-                        let file_category = classify_file(&file_path);
+                        let file_category = self.classify(&file_path);
                         if file_category == FileCategory::Source || file_category == FileCategory::Test {
                             bridge_files.insert(resolve_path(file_path));
                         }
@@ -702,19 +710,17 @@ impl ContextAssembler {
         let recency_w = self.config.recency_weight;
         let tags_config = &self.config.tags_config;
         let role = self.config.role.as_deref();
+        let ft_rules = &self.config.file_type_rules;
         let mut combined: Vec<_> = scores
             .into_values()
             .map(|(result, score)| {
                 let adjusted_score = if let Some(ref tc) = tags_config {
                     // Tag effects mode: compute product of (1+boost) for all tags
-                    apply_tag_effects(tc, &result.tags, role, score, doc_demotion, &result.file_path)
+                    apply_tag_effects(tc, &result.tags, role, score, doc_demotion, &result.file_path, ft_rules)
                 } else {
                     // Legacy mode: category-based doc demotion
-                    let category = classify_file(&result.file_path);
-                    match category {
-                        FileCategory::Documentation | FileCategory::Config => score * doc_demotion,
-                        _ => score,
-                    }
+                    let category = classify_file_with_rules(&result.file_path, ft_rules);
+                    if category.is_doc_like() { score * doc_demotion } else { score }
                 };
                 let final_score = apply_recency_boost(adjusted_score, result.indexed_at, recency_hl, recency_w);
                 (result, final_score)
@@ -879,7 +885,7 @@ fn assemble_bundle(
                 path: file_path.clone(),
                 language,
                 relevance: FileRelevance::Direct,
-                category: classify_file(&file_path),
+                category: classify_file_with_rules(&file_path, &config.file_type_rules),
                 score: file_score,
                 coupled_to: vec![],
                 chunks: file_chunks,
@@ -975,7 +981,7 @@ fn assemble_bundle(
                 path: file_path.clone(),
                 language,
                 relevance: FileRelevance::Coupled,
-                category: classify_file(&file_path),
+                category: classify_file_with_rules(&file_path, &config.file_type_rules),
                 score: file_score,
                 coupled_to,
                 chunks: file_chunks,
@@ -1055,7 +1061,7 @@ fn assemble_bundle(
                 path: file_path.clone(),
                 language,
                 relevance: FileRelevance::Bridged,
-                category: classify_file(&file_path),
+                category: classify_file_with_rules(&file_path, &config.file_type_rules),
                 score: file_score,
                 coupled_to,
                 chunks: file_chunks,
@@ -1099,13 +1105,15 @@ fn apply_tag_effects(
     score: f32,
     doc_demotion: f32,
     file_path: &str,
+    file_type_rules: &[crate::config::FileTypeRule],
 ) -> f32 {
     if tags_str.is_empty() {
         // Untagged: fall back to category-based demotion
-        let category = classify_file(file_path);
-        return match category {
-            FileCategory::Documentation | FileCategory::Config => score * doc_demotion,
-            _ => score,
+        let category = classify_file_with_rules(file_path, file_type_rules);
+        return if category.is_doc_like() {
+            score * doc_demotion
+        } else {
+            score
         };
     }
 
@@ -1130,11 +1138,8 @@ fn apply_tag_effects(
         score * clamped
     } else {
         // Tags present but no effects configured: fall back to category demotion
-        let category = classify_file(file_path);
-        match category {
-            FileCategory::Documentation | FileCategory::Config => score * doc_demotion,
-            _ => score,
-        }
+        let category = classify_file_with_rules(file_path, file_type_rules);
+        if category.is_doc_like() { score * doc_demotion } else { score }
     }
 }
 
@@ -1188,6 +1193,7 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
+        file_type_rules: vec![],
         };
 
         let seeds = vec![
@@ -1221,6 +1227,7 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
+        file_type_rules: vec![],
         };
 
         let seeds = vec![
@@ -1251,6 +1258,7 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
+        file_type_rules: vec![],
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1278,6 +1286,7 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
+        file_type_rules: vec![],
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1309,6 +1318,7 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
+        file_type_rules: vec![],
         };
 
         let seeds = vec![
@@ -1341,6 +1351,7 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
+        file_type_rules: vec![],
         };
 
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)
@@ -1370,6 +1381,7 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
+        file_type_rules: vec![],
         };
 
         // Mix of commit and function seeds — commits should be excluded

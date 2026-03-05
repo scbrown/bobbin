@@ -157,6 +157,7 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
         extra_filter: None,
         tags_config: None,
         role: None,
+        file_type_rules: vec![],
     };
 
     // Build description of the diff for the query field

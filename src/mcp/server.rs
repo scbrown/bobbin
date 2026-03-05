@@ -624,6 +624,7 @@ impl BobbinMcpServer {
             extra_filter,
             tags_config: None,
             role: None,
+            file_type_rules: config.file_types.clone(),
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1087,6 +1088,7 @@ impl BobbinMcpServer {
             extra_filter: None,
             tags_config: None,
             role: None,
+            file_type_rules: config.file_types.clone(),
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

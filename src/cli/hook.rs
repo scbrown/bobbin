@@ -1176,12 +1176,12 @@ fn format_context_for_injection(
         }
     }
 
-    // Partition files: source/test first, then docs/config
+    // Partition files: source/test/custom first, then docs/config
     let source_files: Vec<_> = bundle.files.iter()
-        .filter(|f| f.category == FileCategory::Source || f.category == FileCategory::Test)
+        .filter(|f| !f.category.is_doc_like())
         .collect();
     let doc_files: Vec<_> = bundle.files.iter()
-        .filter(|f| f.category == FileCategory::Documentation || f.category == FileCategory::Config)
+        .filter(|f| f.category.is_doc_like())
         .collect();
 
     // Emit source files section
@@ -1686,6 +1686,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         extra_filter: None,
         tags_config: None,
         role: None,
+        file_type_rules: config.file_types.clone(),
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2540,6 +2541,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             extra_filter: None,
             tags_config: None,
             role: None,
+            file_type_rules: config.file_types.clone(),
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2993,6 +2995,7 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         extra_filter: None,
         tags_config: None,
         role: None,
+        file_type_rules: config.file_types.clone(),
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

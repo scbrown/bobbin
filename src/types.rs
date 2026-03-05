@@ -156,14 +156,41 @@ pub struct ImportDependency {
     pub resolved: bool,
 }
 
-/// Classification of a file by its role in the project
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Classification of a file by its role in the project.
+///
+/// The four built-in categories cover common cases. Custom categories can be
+/// defined via `[[file_types]]` config rules for project-specific needs
+/// (e.g., "generated", "vendor", "schema", "migration").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileCategory {
     Source,
     Test,
     Documentation,
     Config,
+    /// User-defined category from `[[file_types]]` config
+    #[serde(untagged)]
+    Custom(String),
+}
+
+impl FileCategory {
+    /// Parse a category name string into a FileCategory.
+    /// Recognizes built-in names; anything else becomes Custom.
+    pub fn from_name(name: &str) -> Self {
+        match name.to_lowercase().as_str() {
+            "source" => FileCategory::Source,
+            "test" => FileCategory::Test,
+            "documentation" | "doc" | "docs" => FileCategory::Documentation,
+            "config" | "configuration" => FileCategory::Config,
+            _ => FileCategory::Custom(name.to_string()),
+        }
+    }
+
+    /// Whether this category is treated as "documentation-like" for demotion purposes.
+    /// Custom categories are NOT demoted by default — only Documentation and Config.
+    pub fn is_doc_like(&self) -> bool {
+        matches!(self, FileCategory::Documentation | FileCategory::Config)
+    }
 }
 
 impl std::fmt::Display for FileCategory {
@@ -173,8 +200,29 @@ impl std::fmt::Display for FileCategory {
             FileCategory::Test => write!(f, "test"),
             FileCategory::Documentation => write!(f, "documentation"),
             FileCategory::Config => write!(f, "config"),
+            FileCategory::Custom(name) => write!(f, "{}", name),
         }
     }
+}
+
+/// Classify a file using configurable rules, falling back to built-in heuristics.
+///
+/// Rules are evaluated in order; first matching glob wins.
+/// If no rule matches, falls back to `classify_file()` built-in heuristics.
+pub fn classify_file_with_rules(path: &str, rules: &[crate::config::FileTypeRule]) -> FileCategory {
+    if !rules.is_empty() {
+        let lower = path.to_lowercase();
+        for rule in rules {
+            for pattern in &rule.patterns {
+                if let Ok(matcher) = glob::Pattern::new(&pattern.to_lowercase()) {
+                    if matcher.matches(&lower) {
+                        return FileCategory::from_name(&rule.name);
+                    }
+                }
+            }
+        }
+    }
+    classify_file(path)
 }
 
 /// Classify a file path into a category based on path heuristics.
@@ -426,5 +474,92 @@ mod tests {
         assert_eq!(format!("{}", FileCategory::Test), "test");
         assert_eq!(format!("{}", FileCategory::Documentation), "documentation");
         assert_eq!(format!("{}", FileCategory::Config), "config");
+        assert_eq!(format!("{}", FileCategory::Custom("generated".into())), "generated");
+    }
+
+    #[test]
+    fn test_from_name() {
+        assert_eq!(FileCategory::from_name("source"), FileCategory::Source);
+        assert_eq!(FileCategory::from_name("test"), FileCategory::Test);
+        assert_eq!(FileCategory::from_name("documentation"), FileCategory::Documentation);
+        assert_eq!(FileCategory::from_name("doc"), FileCategory::Documentation);
+        assert_eq!(FileCategory::from_name("docs"), FileCategory::Documentation);
+        assert_eq!(FileCategory::from_name("config"), FileCategory::Config);
+        assert_eq!(FileCategory::from_name("configuration"), FileCategory::Config);
+        assert_eq!(FileCategory::from_name("generated"), FileCategory::Custom("generated".into()));
+        assert_eq!(FileCategory::from_name("vendor"), FileCategory::Custom("vendor".into()));
+    }
+
+    #[test]
+    fn test_is_doc_like() {
+        assert!(FileCategory::Documentation.is_doc_like());
+        assert!(FileCategory::Config.is_doc_like());
+        assert!(!FileCategory::Source.is_doc_like());
+        assert!(!FileCategory::Test.is_doc_like());
+        assert!(!FileCategory::Custom("generated".into()).is_doc_like());
+    }
+
+    #[test]
+    fn test_classify_with_rules_override() {
+        use crate::config::FileTypeRule;
+        let rules = vec![
+            FileTypeRule {
+                name: "generated".into(),
+                patterns: vec!["*.pb.go".into(), "*.generated.ts".into()],
+            },
+            FileTypeRule {
+                name: "config".into(),
+                patterns: vec!["deploy/*.yaml".into()],
+            },
+        ];
+        // Config rules match
+        assert_eq!(
+            classify_file_with_rules("proto/service.pb.go", &rules),
+            FileCategory::Custom("generated".into())
+        );
+        assert_eq!(
+            classify_file_with_rules("api/types.generated.ts", &rules),
+            FileCategory::Custom("generated".into())
+        );
+        assert_eq!(
+            classify_file_with_rules("deploy/staging.yaml", &rules),
+            FileCategory::Config
+        );
+        // No rule match — falls back to built-in heuristics
+        assert_eq!(
+            classify_file_with_rules("src/main.rs", &rules),
+            FileCategory::Source
+        );
+        assert_eq!(
+            classify_file_with_rules("tests/test_foo.py", &rules),
+            FileCategory::Test
+        );
+    }
+
+    #[test]
+    fn test_classify_with_empty_rules_uses_builtin() {
+        assert_eq!(classify_file_with_rules("src/main.rs", &[]), FileCategory::Source);
+        assert_eq!(classify_file_with_rules("README.md", &[]), FileCategory::Documentation);
+        assert_eq!(classify_file_with_rules("Cargo.toml", &[]), FileCategory::Config);
+    }
+
+    #[test]
+    fn test_classify_rules_first_match_wins() {
+        use crate::config::FileTypeRule;
+        let rules = vec![
+            FileTypeRule {
+                name: "vendor".into(),
+                patterns: vec!["vendor/**".into()],
+            },
+            FileTypeRule {
+                name: "test".into(),
+                patterns: vec!["vendor/test/**".into()],
+            },
+        ];
+        // First rule wins even though second also matches
+        assert_eq!(
+            classify_file_with_rules("vendor/test/helper.go", &rules),
+            FileCategory::Custom("vendor".into())
+        );
     }
 }

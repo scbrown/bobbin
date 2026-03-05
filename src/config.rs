@@ -18,6 +18,7 @@ pub struct Config {
     pub access: AccessConfig,
     pub sources: SourcesConfig,
     pub groups: Vec<GroupConfig>,
+    pub file_types: Vec<FileTypeRule>,
 }
 
 /// Configuration for remote server (thin-client mode)
@@ -604,6 +605,42 @@ pub struct GroupConfig {
     pub name: String,
     /// Repository names in this group
     pub repos: Vec<String>,
+}
+
+/// Configurable file type classification rule.
+///
+/// Maps glob patterns to a file category name. Rules are evaluated in order;
+/// first match wins. Files not matched by any rule fall through to the
+/// built-in `classify_file()` heuristics.
+///
+/// Example config:
+/// ```toml
+/// [[file_types]]
+/// name = "config"
+/// patterns = ["*.toml", "*.yaml", "*.yml", ".env*", "Dockerfile*"]
+///
+/// [[file_types]]
+/// name = "test"
+/// patterns = ["tests/**", "*_test.go", "test_*.py"]
+///
+/// [[file_types]]
+/// name = "documentation"
+/// patterns = ["docs/**/*.md", "README*", "CHANGELOG*"]
+///
+/// [[file_types]]
+/// name = "generated"
+/// patterns = ["*.pb.go", "*.generated.ts", "migrations/*.sql"]
+/// ```
+///
+/// Built-in category names: "source", "test", "documentation", "config".
+/// Custom names (e.g., "generated", "vendor", "schema") are also supported
+/// and will be stored/displayed as-is.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileTypeRule {
+    /// Category name (e.g., "source", "test", "documentation", "config", or custom)
+    pub name: String,
+    /// Glob patterns that match this category (matched against repo-relative paths)
+    pub patterns: Vec<String>,
 }
 
 impl Config {
@@ -1247,5 +1284,44 @@ budget = 300
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!(config.hooks.keyword_repos.is_empty());
+    }
+
+    #[test]
+    fn test_file_types_config_parse() {
+        let toml_str = r#"
+[[file_types]]
+name = "generated"
+patterns = ["*.pb.go", "*.generated.ts"]
+
+[[file_types]]
+name = "config"
+patterns = ["deploy/*.yaml", "*.toml"]
+
+[[file_types]]
+name = "vendor"
+patterns = ["vendor/**"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.file_types.len(), 3);
+        assert_eq!(config.file_types[0].name, "generated");
+        assert_eq!(config.file_types[0].patterns, vec!["*.pb.go", "*.generated.ts"]);
+        assert_eq!(config.file_types[1].name, "config");
+        assert_eq!(config.file_types[2].name, "vendor");
+    }
+
+    #[test]
+    fn test_file_types_default_empty() {
+        let config = Config::default();
+        assert!(config.file_types.is_empty());
+    }
+
+    #[test]
+    fn test_legacy_config_without_file_types() {
+        let toml_str = r#"
+[embedding]
+model = "all-MiniLM-L6-v2"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.file_types.is_empty());
     }
 }
