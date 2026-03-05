@@ -2,12 +2,7 @@ name: Deploy Bobbin
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.forgejo/workflows/deploy.yml'
+    tags: ['v*']
   workflow_dispatch:
 
 jobs:
@@ -69,20 +64,16 @@ jobs:
           # Pull binary from luvu build to runner
           $SCP braino@luvu:~/bobbin-ci/target/release/bobbin /tmp/bobbin
 
-          # Stop service before overwriting binary
-          $SSH root@kota "systemctl stop bobbin" || true
-
-          # Deploy binary to install location
-          $SCP /tmp/bobbin root@kota:/usr/local/bin/bobbin
-          $SSH root@kota "chmod +x /usr/local/bin/bobbin"
-
-          # Stage copy for Ansible reproducibility
-          $SSH root@kota "mkdir -p /opt/bobbin"
-          $SCP /tmp/bobbin root@kota:/opt/bobbin/bobbin
-          $SSH root@kota "chmod +x /opt/bobbin/bobbin"
-
-          # Restart service
-          $SSH root@kota "systemctl start bobbin"
+          # Zero-downtime deploy: copy to staging path, then atomic mv + restart
+          # This minimizes the window where the binary is unavailable
+          $SCP /tmp/bobbin root@kota:/usr/local/bin/bobbin.new
+          $SSH root@kota "
+            chmod +x /usr/local/bin/bobbin.new
+            mv /usr/local/bin/bobbin.new /usr/local/bin/bobbin
+            mkdir -p /opt/bobbin
+            cp /usr/local/bin/bobbin /opt/bobbin/bobbin
+            systemctl restart bobbin
+          "
           sleep 3
 
           rm -f /tmp/bobbin

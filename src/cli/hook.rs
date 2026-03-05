@@ -1347,6 +1347,124 @@ fn compute_session_id(bundle: &crate::search::context::ContextBundle, threshold:
     hex::encode(&hash[..8]) // 8 bytes = 16 hex chars
 }
 
+// ---------------------------------------------------------------------------
+// Session Ledger: tracks chunks injected across turns for progressive reducing
+// ---------------------------------------------------------------------------
+
+/// A record of a chunk that was injected in a previous turn.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LedgerEntry {
+    chunk_key: String,
+    injection_id: String,
+    turn: u64,
+}
+
+/// Session-level ledger tracking all chunks injected so far.
+/// Stored as JSONL at `.bobbin/session/<cc_session_id>/ledger.jsonl`.
+struct SessionLedger {
+    entries: HashSet<String>, // chunk_keys for fast lookup
+    turn: u64,
+    path: Option<PathBuf>,
+}
+
+impl SessionLedger {
+    /// Load ledger for a Claude Code session. Returns empty ledger if session_id
+    /// is empty or file doesn't exist.
+    fn load(repo_root: &Path, cc_session_id: &str) -> Self {
+        if cc_session_id.is_empty() {
+            return Self { entries: HashSet::new(), turn: 0, path: None };
+        }
+        let dir = repo_root.join(".bobbin").join("session").join(cc_session_id);
+        let path = dir.join("ledger.jsonl");
+
+        let mut entries = HashSet::new();
+        let mut max_turn = 0u64;
+
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                for line in content.lines() {
+                    if let Ok(entry) = serde_json::from_str::<LedgerEntry>(line) {
+                        if entry.turn > max_turn {
+                            max_turn = entry.turn;
+                        }
+                        entries.insert(entry.chunk_key);
+                    }
+                }
+            }
+        }
+
+        Self { entries, turn: max_turn, path: Some(path) }
+    }
+
+    /// Check if a chunk was already injected in a previous turn.
+    fn contains(&self, chunk_key: &str) -> bool {
+        self.entries.contains(chunk_key)
+    }
+
+    /// Record newly injected chunks. Appends to the JSONL file.
+    fn record(&mut self, chunk_keys: &[String], injection_id: &str) {
+        let new_turn = self.turn + 1;
+        self.turn = new_turn;
+
+        if let Some(path) = &self.path {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            // Append new entries
+            let mut lines = String::new();
+            for key in chunk_keys {
+                if let Ok(json) = serde_json::to_string(&LedgerEntry {
+                    chunk_key: key.clone(),
+                    injection_id: injection_id.to_string(),
+                    turn: new_turn,
+                }) {
+                    lines.push_str(&json);
+                    lines.push('\n');
+                }
+                self.entries.insert(key.clone());
+            }
+            if !lines.is_empty() {
+                use std::io::Write;
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                {
+                    let _ = f.write_all(lines.as_bytes());
+                }
+            }
+        } else {
+            // In-memory only (no session_id)
+            for key in chunk_keys {
+                self.entries.insert(key.clone());
+            }
+        }
+    }
+
+    /// Clear the ledger (used on compaction reset).
+    fn clear(repo_root: &Path, cc_session_id: &str) {
+        if cc_session_id.is_empty() {
+            return;
+        }
+        let path = repo_root
+            .join(".bobbin")
+            .join("session")
+            .join(cc_session_id)
+            .join("ledger.jsonl");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Number of unique chunks tracked.
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+/// Build a chunk key from file path and chunk line range.
+fn chunk_key(file_path: &str, start_line: u32, end_line: u32) -> String {
+    format!("{}:{}:{}", file_path, start_line, end_line)
+}
+
 /// Generate `.bobbin/hot-topics.md` from injection frequency data.
 fn generate_hot_topics(state: &HookState, output_path: &Path) -> Result<()> {
     use std::fmt::Write;
@@ -1606,10 +1724,35 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let mut bundle = bundle;
     bundle.files.retain(|f| access_filter.is_allowed(crate::access::RepoFilter::repo_from_path(&f.path)));
 
-    // 8. Session dedup: skip if results haven't changed
+    // 8. Session reducing: filter out chunks already injected in this session
+    let reducing_enabled = hooks_cfg.reducing_enabled && !input.session_id.is_empty();
     let dedup_enabled = !args.no_dedup && hooks_cfg.dedup_enabled;
     let dedup_session_id = compute_session_id(&bundle, threshold);
-    let mut state = if dedup_enabled {
+
+    let mut ledger = if reducing_enabled {
+        SessionLedger::load(&repo_root, &input.session_id)
+    } else {
+        SessionLedger { entries: HashSet::new(), turn: 0, path: None }
+    };
+
+    // Count total chunks before reducing (for metrics)
+    let total_chunks_before: usize = bundle.files.iter()
+        .flat_map(|f| f.chunks.iter())
+        .filter(|c| c.score >= threshold)
+        .count();
+    let previously_injected = if reducing_enabled { ledger.len() } else { 0 };
+
+    if reducing_enabled && ledger.len() > 0 {
+        // Filter out chunks already in the ledger
+        for file in &mut bundle.files {
+            file.chunks.retain(|c| {
+                let key = chunk_key(&file.path, c.start_line, c.end_line);
+                !ledger.contains(&key)
+            });
+        }
+        bundle.files.retain(|f| !f.chunks.is_empty());
+    } else if dedup_enabled && !reducing_enabled {
+        // Fallback: binary dedup when reducing is disabled
         let s = load_hook_state(&repo_root);
         if s.last_session_id == dedup_session_id && !dedup_session_id.is_empty() {
             eprintln!("bobbin: skipped (session unchanged)");
@@ -1622,28 +1765,51 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             ));
             return Ok(());
         }
-        s
-    } else {
-        load_hook_state(&repo_root)
-    };
+    }
 
-    // 9. Output context (only if we found something)
-    if bundle.files.is_empty() {
+    // Count new chunks after reducing
+    let new_chunks: usize = bundle.files.iter()
+        .flat_map(|f| f.chunks.iter())
+        .filter(|c| c.score >= threshold)
+        .count();
+    let reduced_count = total_chunks_before.saturating_sub(new_chunks);
+
+    // 9. Output context (only if we have new chunks)
+    if bundle.files.is_empty() || new_chunks == 0 {
+        if reducing_enabled && reduced_count > 0 {
+            eprintln!("bobbin: skipped (all {} chunks previously injected)", reduced_count);
+            crate::metrics::emit(&repo_root, &crate::metrics::event(
+                &metrics_source,
+                "hook_reducing_skip",
+                "hook inject-context",
+                hook_start.elapsed().as_millis() as u64,
+                serde_json::json!({
+                    "query": prompt,
+                    "total_chunks": total_chunks_before,
+                    "previously_injected": reduced_count,
+                }),
+            ));
+        }
         return Ok(());
     }
 
     let show_docs = args.show_docs.unwrap_or(hooks_cfg.show_docs);
     let injection_id = generate_context_injection_id(prompt);
     let context_text = format_context_for_injection(&bundle, threshold, show_docs, Some(&injection_id), format_mode);
+
+    // If reducing is active and we filtered some chunks, show delta stats
+    if reducing_enabled && reduced_count > 0 {
+        eprintln!(
+            "bobbin: injecting {} new chunks ({} previously injected, turn {})",
+            new_chunks, reduced_count, ledger.turn + 1
+        );
+    }
+
     print!("{}", context_text);
 
     // Store injection record locally (best-effort)
     if let Ok(fb_store) = crate::storage::feedback::FeedbackStore::open(&Config::feedback_db_path(&repo_root)) {
         let files_json: Vec<String> = bundle.files.iter().map(|f| f.path.clone()).collect();
-        let total_chunks: usize = bundle.files.iter()
-            .flat_map(|f| f.chunks.iter())
-            .filter(|c| c.score >= threshold)
-            .count();
         let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
         let _ = fb_store.store_injection_with_output(
             &injection_id,
@@ -1651,14 +1817,15 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             None,
             prompt,
             &files_json,
-            total_chunks,
+            new_chunks,
             bundle.budget.max_lines,
             Some(&context_text),
         );
     }
 
-    // 10. Update hook state
-    let chunk_keys: Vec<String> = bundle
+    // 10. Update hook state + session ledger
+    let mut state = load_hook_state(&repo_root);
+    let all_chunk_keys: Vec<String> = bundle
         .files
         .iter()
         .flat_map(|f| {
@@ -1668,7 +1835,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
                 .map(move |c| (f.path.clone(), c))
         })
         .map(|(path, c)| {
-            let key = format!("{}:{}:{}", path, c.start_line, c.end_line);
+            let key = chunk_key(&path, c.start_line, c.end_line);
             let freq = state.chunk_frequencies.entry(key.clone()).or_insert(ChunkFrequency {
                 count: 0,
                 file: path.clone(),
@@ -1680,13 +1847,18 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         })
         .collect();
 
+    // Record in session ledger for progressive reducing
+    if reducing_enabled {
+        ledger.record(&all_chunk_keys, &injection_id);
+    }
+
     state.last_session_id = dedup_session_id;
-    state.last_injected_chunks = chunk_keys;
+    state.last_injected_chunks = all_chunk_keys;
     state.last_injection_time = chrono::Utc::now().to_rfc3339();
     state.injection_count += 1;
     save_hook_state(&repo_root, &state);
 
-    // 10b. Emit hook_injection metric
+    // 10b. Emit hook_injection metric (with reducing stats)
     let injected_files: Vec<&str> = bundle.files.iter().map(|f| f.path.as_str()).collect();
     crate::metrics::emit(&repo_root, &crate::metrics::event(
         &metrics_source,
@@ -1696,12 +1868,20 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         serde_json::json!({
             "query": prompt,
             "files_returned": injected_files,
-            "chunks_returned": bundle.summary.total_chunks,
+            "chunks_returned": new_chunks,
             "top_score": bundle.summary.top_semantic_score,
             "budget_lines_used": bundle.budget.used_lines,
             "source_files": bundle.summary.source_files,
             "doc_files": bundle.summary.doc_files,
             "bridged_additions": bundle.summary.bridged_additions,
+            "reducing": {
+                "enabled": reducing_enabled,
+                "total_before": total_chunks_before,
+                "new_chunks": new_chunks,
+                "previously_injected": reduced_count,
+                "ledger_size": ledger.len(),
+                "turn": ledger.turn,
+            },
         }),
     ));
 
@@ -2984,6 +3164,12 @@ async fn run_session_context_inner(args: SessionContextArgs) -> Result<()> {
             .canonicalize()
             .context("Invalid cwd path")?
     };
+
+    // 3b. Reset session reducing ledger on compaction — agent lost prior context
+    if !input.session_id.is_empty() {
+        SessionLedger::clear(&cwd, &input.session_id);
+        eprintln!("bobbin: reset reducing ledger (compaction)");
+    }
 
     // Load config (use defaults if not initialized)
     let config = Config::load(&Config::config_path(&cwd)).unwrap_or_default();
@@ -5237,6 +5423,115 @@ mod tests {
         let id_all = compute_session_id(&bundle_all, 0.0);
         let id_ten = compute_session_id(&bundle_ten, 0.0);
         assert_eq!(id_all, id_ten, "Top-10 truncation should produce same ID");
+    }
+
+    // --- Session ledger (reducing) tests ---
+
+    #[test]
+    fn test_session_ledger_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ledger = SessionLedger::load(tmp.path(), "test-session-1");
+        assert_eq!(ledger.len(), 0);
+        assert_eq!(ledger.turn, 0);
+        assert!(!ledger.contains("src/foo.rs:10:20"));
+    }
+
+    #[test]
+    fn test_session_ledger_record_and_query() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut ledger = SessionLedger::load(tmp.path(), "test-session-2");
+
+        let keys = vec![
+            "src/foo.rs:10:20".to_string(),
+            "src/bar.rs:5:15".to_string(),
+        ];
+        ledger.record(&keys, "inj-abc123");
+
+        assert!(ledger.contains("src/foo.rs:10:20"));
+        assert!(ledger.contains("src/bar.rs:5:15"));
+        assert!(!ledger.contains("src/baz.rs:1:10"));
+        assert_eq!(ledger.len(), 2);
+        assert_eq!(ledger.turn, 1);
+    }
+
+    #[test]
+    fn test_session_ledger_persistence() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Record in one ledger instance
+        {
+            let mut ledger = SessionLedger::load(tmp.path(), "test-session-3");
+            ledger.record(&["src/a.rs:1:10".to_string()], "inj-001");
+            assert_eq!(ledger.turn, 1);
+        }
+
+        // Reload — entries should persist
+        {
+            let ledger = SessionLedger::load(tmp.path(), "test-session-3");
+            assert!(ledger.contains("src/a.rs:1:10"));
+            assert_eq!(ledger.len(), 1);
+            assert_eq!(ledger.turn, 1);
+        }
+    }
+
+    #[test]
+    fn test_session_ledger_multi_turn() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut ledger = SessionLedger::load(tmp.path(), "test-session-4");
+
+        // Turn 1
+        ledger.record(&["src/a.rs:1:10".to_string(), "src/b.rs:1:10".to_string()], "inj-001");
+        assert_eq!(ledger.turn, 1);
+        assert_eq!(ledger.len(), 2);
+
+        // Turn 2 — new chunks plus overlap
+        ledger.record(&["src/c.rs:1:10".to_string()], "inj-002");
+        assert_eq!(ledger.turn, 2);
+        assert_eq!(ledger.len(), 3);
+
+        // All three chunks present
+        assert!(ledger.contains("src/a.rs:1:10"));
+        assert!(ledger.contains("src/b.rs:1:10"));
+        assert!(ledger.contains("src/c.rs:1:10"));
+    }
+
+    #[test]
+    fn test_session_ledger_clear() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Record some data
+        {
+            let mut ledger = SessionLedger::load(tmp.path(), "test-session-5");
+            ledger.record(&["src/a.rs:1:10".to_string()], "inj-001");
+        }
+
+        // Clear it
+        SessionLedger::clear(tmp.path(), "test-session-5");
+
+        // Reload — should be empty
+        {
+            let ledger = SessionLedger::load(tmp.path(), "test-session-5");
+            assert_eq!(ledger.len(), 0);
+            assert_eq!(ledger.turn, 0);
+        }
+    }
+
+    #[test]
+    fn test_session_ledger_empty_session_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut ledger = SessionLedger::load(tmp.path(), "");
+        assert!(ledger.path.is_none());
+
+        // Should work in-memory without crashing
+        ledger.record(&["src/a.rs:1:10".to_string()], "inj-001");
+        assert!(ledger.contains("src/a.rs:1:10"));
+        assert_eq!(ledger.len(), 1);
+    }
+
+    #[test]
+    fn test_chunk_key_format() {
+        assert_eq!(chunk_key("src/foo.rs", 10, 20), "src/foo.rs:10:20");
+        assert_eq!(chunk_key("/var/lib/repos/x/main.go", 1, 100), "/var/lib/repos/x/main.go:1:100");
     }
 
     // --- Hot topics tests ---

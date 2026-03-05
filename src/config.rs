@@ -343,6 +343,10 @@ pub struct HooksConfig {
     /// Controls how chunks are presented to agents.
     #[serde(default = "default_format_mode")]
     pub format_mode: String,
+    /// Enable session-level progressive reducing: track injected chunks across
+    /// turns and only inject new/changed chunks (delta injection).
+    #[serde(default = "default_true")]
+    pub reducing_enabled: bool,
     /// Keyword-triggered repo scoping rules. When a query matches keywords,
     /// search is scoped to the matched repos instead of all repos.
     #[serde(default)]
@@ -364,6 +368,10 @@ fn default_format_mode() -> String {
     "standard".into()
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// Valid format modes for injection output.
 pub const VALID_FORMAT_MODES: &[&str] = &["standard", "minimal", "verbose", "xml"];
 
@@ -378,6 +386,7 @@ impl Default for HooksConfig {
             dedup_enabled: true,
             show_docs: true,
             format_mode: "standard".into(),
+            reducing_enabled: true,
             keyword_repos: vec![],
         }
     }
