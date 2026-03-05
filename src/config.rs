@@ -343,6 +343,21 @@ pub struct HooksConfig {
     /// Controls how chunks are presented to agents.
     #[serde(default = "default_format_mode")]
     pub format_mode: String,
+    /// Keyword-triggered repo scoping rules. When a query matches keywords,
+    /// search is scoped to the matched repos instead of all repos.
+    #[serde(default)]
+    pub keyword_repos: Vec<KeywordRepoRule>,
+}
+
+/// A rule that maps query keywords to repository names.
+/// When any keyword matches (case-insensitive substring), the matched repos
+/// are added to the search scope.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeywordRepoRule {
+    /// Keywords to match against the query (case-insensitive substring match)
+    pub keywords: Vec<String>,
+    /// Repository names to include when keywords match
+    pub repos: Vec<String>,
 }
 
 fn default_format_mode() -> String {
@@ -363,7 +378,30 @@ impl Default for HooksConfig {
             dedup_enabled: true,
             show_docs: true,
             format_mode: "standard".into(),
+            keyword_repos: vec![],
         }
+    }
+}
+
+impl HooksConfig {
+    /// Resolve keyword-triggered repos from a query string.
+    /// Returns a deduplicated list of repo names matched by any keyword rule.
+    pub fn resolve_keyword_repos(&self, query: &str) -> Vec<String> {
+        if self.keyword_repos.is_empty() {
+            return vec![];
+        }
+        let query_lower = query.to_lowercase();
+        let mut repos: Vec<String> = Vec::new();
+        for rule in &self.keyword_repos {
+            if rule.keywords.iter().any(|kw| query_lower.contains(&kw.to_lowercase())) {
+                for repo in &rule.repos {
+                    if !repos.contains(repo) {
+                        repos.push(repo.clone());
+                    }
+                }
+            }
+        }
+        repos
     }
 }
 
@@ -1081,5 +1119,124 @@ repos = []
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.group_filter("empty"), None);
+    }
+
+    #[test]
+    fn test_keyword_repos_config_parse() {
+        let toml_str = r#"
+[hooks]
+
+[[hooks.keyword_repos]]
+keywords = ["ansible", "playbook"]
+repos = ["goldblum"]
+
+[[hooks.keyword_repos]]
+keywords = ["beads", "bd "]
+repos = ["beads"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.hooks.keyword_repos.len(), 2);
+        assert_eq!(config.hooks.keyword_repos[0].keywords, vec!["ansible", "playbook"]);
+        assert_eq!(config.hooks.keyword_repos[0].repos, vec!["goldblum"]);
+    }
+
+    #[test]
+    fn test_keyword_repos_resolve_match() {
+        let toml_str = r#"
+[hooks]
+
+[[hooks.keyword_repos]]
+keywords = ["ansible", "playbook"]
+repos = ["goldblum"]
+
+[[hooks.keyword_repos]]
+keywords = ["beads", "bd "]
+repos = ["beads"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let repos = config.hooks.resolve_keyword_repos("deploy the ansible playbook");
+        assert_eq!(repos, vec!["goldblum"]);
+    }
+
+    #[test]
+    fn test_keyword_repos_resolve_multiple() {
+        let toml_str = r#"
+[hooks]
+
+[[hooks.keyword_repos]]
+keywords = ["ansible"]
+repos = ["goldblum"]
+
+[[hooks.keyword_repos]]
+keywords = ["beads"]
+repos = ["beads"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let repos = config.hooks.resolve_keyword_repos("check ansible and beads status");
+        assert_eq!(repos, vec!["goldblum", "beads"]);
+    }
+
+    #[test]
+    fn test_keyword_repos_resolve_case_insensitive() {
+        let toml_str = r#"
+[hooks]
+
+[[hooks.keyword_repos]]
+keywords = ["Ansible"]
+repos = ["goldblum"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let repos = config.hooks.resolve_keyword_repos("ANSIBLE playbook");
+        assert_eq!(repos, vec!["goldblum"]);
+    }
+
+    #[test]
+    fn test_keyword_repos_resolve_no_match() {
+        let toml_str = r#"
+[hooks]
+
+[[hooks.keyword_repos]]
+keywords = ["ansible"]
+repos = ["goldblum"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let repos = config.hooks.resolve_keyword_repos("fix the bobbin build");
+        assert!(repos.is_empty());
+    }
+
+    #[test]
+    fn test_keyword_repos_dedup() {
+        let toml_str = r#"
+[hooks]
+
+[[hooks.keyword_repos]]
+keywords = ["ansible"]
+repos = ["goldblum"]
+
+[[hooks.keyword_repos]]
+keywords = ["iac"]
+repos = ["goldblum"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let repos = config.hooks.resolve_keyword_repos("ansible iac deployment");
+        assert_eq!(repos, vec!["goldblum"]);
+    }
+
+    #[test]
+    fn test_keyword_repos_default_empty() {
+        let config = Config::default();
+        assert!(config.hooks.keyword_repos.is_empty());
+        assert!(config.hooks.resolve_keyword_repos("anything").is_empty());
+    }
+
+    #[test]
+    fn test_legacy_config_without_keyword_repos() {
+        let toml_str = r#"
+[hooks]
+threshold = 0.5
+budget = 300
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.hooks.keyword_repos.is_empty());
     }
 }

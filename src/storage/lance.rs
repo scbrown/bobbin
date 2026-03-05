@@ -591,9 +591,21 @@ impl VectorStore {
 
     /// Combine repo and extra filter into a single SQL WHERE clause.
     fn combine_filters(repo: Option<&str>, filter: Option<&str>) -> Option<String> {
-        match (repo, filter) {
-            (Some(r), Some(f)) => Some(format!("repo = '{}' AND ({})", r.replace('\'', "''"), f)),
-            (Some(r), None) => Some(format!("repo = '{}'", r.replace('\'', "''"))),
+        let repo_clause = repo.map(|r| {
+            if r.contains(',') {
+                // Multi-repo: repo IN ('a', 'b', 'c')
+                let escaped: Vec<String> = r
+                    .split(',')
+                    .map(|s| format!("'{}'", s.trim().replace('\'', "''")))
+                    .collect();
+                format!("repo IN ({})", escaped.join(", "))
+            } else {
+                format!("repo = '{}'", r.replace('\'', "''"))
+            }
+        });
+        match (repo_clause, filter) {
+            (Some(r), Some(f)) => Some(format!("{} AND ({})", r, f)),
+            (Some(r), None) => Some(r),
             (None, Some(f)) => Some(f.to_string()),
             (None, None) => None,
         }

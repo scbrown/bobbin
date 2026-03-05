@@ -608,6 +608,16 @@ async fn inject_context_remote(
     //    not forwarding the endpoint).
     let client = Client::new(server_url);
     let role = crate::access::RepoFilter::resolve_role(None);
+
+    // Keyword-triggered repo scoping: when query matches configured keywords,
+    // scope search to matched repos instead of searching all repos.
+    let keyword_repos = hooks_cfg.resolve_keyword_repos(prompt);
+    let repo_filter = if keyword_repos.is_empty() {
+        None
+    } else {
+        Some(keyword_repos.join(","))
+    };
+
     let context_result = client
         .context(
             prompt,
@@ -616,7 +626,7 @@ async fn inject_context_remote(
             Some(3),    // max_coupled: 3 coupled files per seed
             Some(20),   // search_limit: 20 initial results
             Some(0.1),  // coupling_threshold
-            None,       // repo filter
+            repo_filter.as_deref(),
             Some(&role),
         )
         .await;
@@ -667,7 +677,7 @@ async fn inject_context_remote(
         Err(_) => {
             // Fallback: /context endpoint unavailable, use /search
             let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
-            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, output, Some(&role), session_id, format_mode).await
+            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, output, Some(&role), session_id, format_mode, repo_filter.as_deref()).await
         }
     }
 }
@@ -776,9 +786,10 @@ async fn inject_context_remote_search_fallback(
     role: Option<&str>,
     session_id: Option<&str>,
     format_mode: &str,
+    repo_filter: Option<&str>,
 ) -> Result<()> {
     let resp = client
-        .search(prompt, "hybrid", None, 10, None, role)
+        .search(prompt, "hybrid", repo_filter, 10, None, role)
         .await
         .context("Remote search failed")?;
 
