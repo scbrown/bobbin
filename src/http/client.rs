@@ -747,8 +747,22 @@ impl Client {
         total_chunks: usize,
         budget_lines: usize,
     ) -> Result<()> {
+        self.store_injection_with_output(injection_id, session_id, agent, query, files, total_chunks, budget_lines, None).await
+    }
+
+    pub async fn store_injection_with_output(
+        &self,
+        injection_id: &str,
+        session_id: Option<&str>,
+        agent: Option<&str>,
+        query: &str,
+        files: &[String],
+        total_chunks: usize,
+        budget_lines: usize,
+        formatted_output: Option<&str>,
+    ) -> Result<()> {
         let url = format!("{}/injections", self.base_url);
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "injection_id": injection_id,
             "session_id": session_id,
             "agent": agent,
@@ -757,6 +771,9 @@ impl Client {
             "total_chunks": total_chunks,
             "budget_lines": budget_lines,
         });
+        if let Some(out) = formatted_output {
+            body["formatted_output"] = serde_json::Value::String(out.to_string());
+        }
         let resp = self
             .http
             .post(&url)
@@ -771,55 +788,21 @@ impl Client {
         Ok(())
     }
 
-    /// Get recent injections for a session (for overlap checking).
-    pub async fn get_session_injections(
+    /// Invoke an HTTP command by name with key=value params.
+    /// Returns the raw JSON response from the /cmd/{name} endpoint.
+    pub async fn invoke_command(
         &self,
-        session_id: &str,
-        limit: usize,
-    ) -> Result<Vec<(String, Vec<String>)>> {
-        let url = format!("{}/injections", self.base_url);
-        let params = vec![
-            ("session_id", session_id.to_string()),
-            ("limit", limit.to_string()),
-        ];
-        let resp: serde_json::Value = self.get_json(&url, &params).await?;
-        let injections = resp.get("injections")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter().filter_map(|item| {
-                    let inj_id = item.get("injection_id")?.as_str()?.to_string();
-                    let files: Vec<String> = item.get("files")
-                        .and_then(|v| v.as_array())
-                        .map(|a| a.iter().filter_map(|f| f.as_str().map(String::from)).collect())
-                        .unwrap_or_default();
-                    Some((inj_id, files))
-                }).collect()
-            })
-            .unwrap_or_default();
-        Ok(injections)
+        name: &str,
+        params: &[(&str, String)],
+    ) -> Result<serde_json::Value> {
+        let url = format!("{}/cmd/{}", self.base_url, name);
+        self.get_json(&url, params).await
     }
 
-    /// Store an overlap record (an injected file was used).
-    pub async fn store_overlap(
-        &self,
-        injection_id: &str,
-        file_path: &str,
-        tool_name: &str,
-        session_id: Option<&str>,
-    ) -> Result<()> {
-        let url = format!("{}/overlaps", self.base_url);
-        let body = serde_json::json!({
-            "injection_id": injection_id,
-            "file_path": file_path,
-            "tool_name": tool_name,
-            "session_id": session_id,
-        });
-        let resp = self.http.post(&url).json(&body).send().await
-            .context("Failed to store overlap")?;
-        if !resp.status().is_success() {
-            anyhow::bail!("Failed to store overlap: HTTP {}", resp.status());
-        }
-        Ok(())
+    /// List HTTP commands registered on the server.
+    pub async fn list_http_commands(&self) -> Result<serde_json::Value> {
+        let url = format!("{}/cmd", self.base_url);
+        self.get_json(&url, &[]).await
     }
 
     /// Return the base URL (for display/logging).

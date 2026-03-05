@@ -140,6 +140,10 @@ enum Commands {
 
     /// Execute or manage user-defined convenience commands
     Run(run::RunArgs),
+
+    /// Catch-all for dynamic commands (from commands.toml or HTTP /cmd)
+    #[command(external_subcommand)]
+    External(Vec<String>),
 }
 
 impl Commands {
@@ -171,6 +175,15 @@ impl Commands {
             Commands::Prime(_) => "prime",
             Commands::Tag(_) => "tag",
             Commands::Run(_) => "run",
+            Commands::External(ref args) => {
+                // Leak a string so we can return &'static str
+                // (only called once per invocation, acceptable)
+                if let Some(name) = args.first() {
+                    Box::leak(name.clone().into_boxed_str())
+                } else {
+                    "external"
+                }
+            }
         }
     }
 }
@@ -192,6 +205,7 @@ impl Cli {
         let start = std::time::Instant::now();
 
         // Resolve `run` commands: either a management op (done) or a re-dispatch
+        // Resolve `external` commands: try local commands.toml, then HTTP /cmd
         let (command, output) = match self.command {
             Commands::Run(args) => match run::resolve(args, &output)? {
                 run::RunResult::Done => return Ok(()),
@@ -208,6 +222,9 @@ impl Cli {
                     (resolved.command, resolved_output)
                 }
             },
+            Commands::External(ref args) => {
+                return dispatch_external(args, &output).await;
+            }
             cmd => (cmd, output),
         };
 
@@ -272,7 +289,94 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
         Commands::Tag(args) => tag::run(args, output).await,
         // Run commands are resolved before dispatch, so this is unreachable
         Commands::Run(_) => anyhow::bail!("Nested run commands are not supported"),
+        // External commands are resolved before dispatch, so this is unreachable
+        Commands::External(_) => anyhow::bail!("External command dispatch failed"),
     }
+}
+
+/// Dispatch an external (dynamic) subcommand.
+///
+/// Resolution order:
+/// 1. Check local commands.toml (same as `bobbin run <name>`)
+/// 2. Check HTTP commands on the server (`/cmd/<name>`)
+/// 3. Error with helpful message
+async fn dispatch_external(args: &[String], output: &OutputConfig) -> Result<()> {
+    let name = args.first().ok_or_else(|| anyhow::anyhow!("No command specified"))?;
+
+    // Parse remaining args as key=value params for HTTP commands
+    let kv_params: Vec<(&str, String)> = args[1..]
+        .iter()
+        .filter_map(|arg| {
+            let (k, v) = arg.split_once('=')?;
+            Some((k, v.to_string()))
+        })
+        .collect();
+
+    // 1. Try local commands.toml
+    if let Some(repo_root) = find_bobbin_root() {
+        let commands = crate::commands::load_commands(&repo_root).unwrap_or_default();
+        if let Some(def) = commands.get(name.as_str()) {
+            // Re-dispatch through normal clap path (same as `bobbin run`)
+            let mut full_args = vec!["bobbin".to_string()];
+            if output.json {
+                full_args.push("--json".to_string());
+            }
+            if output.quiet {
+                full_args.push("--quiet".to_string());
+            }
+            if output.verbose {
+                full_args.push("--verbose".to_string());
+            }
+            if let Some(ref server) = output.server {
+                full_args.push("--server".to_string());
+                full_args.push(server.clone());
+            }
+            full_args.push(def.command.clone());
+            full_args.extend(def.args.iter().cloned());
+            // Extra args from the user (non key=value args)
+            for arg in &args[1..] {
+                if !arg.contains('=') {
+                    full_args.push(arg.clone());
+                }
+            }
+
+            let resolved = Cli::try_parse_from(&full_args)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            let resolved_output = OutputConfig {
+                json: resolved.json,
+                quiet: resolved.quiet,
+                verbose: resolved.verbose,
+                server: resolved.server,
+                role: crate::access::RepoFilter::resolve_role(resolved.role.as_deref()),
+            };
+            return dispatch_command(resolved.command, resolved_output).await;
+        }
+    }
+
+    // 2. Try HTTP command on server
+    let server_url = output.server.as_ref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Unknown command '{}'. Not found in local commands.toml and no server configured.\n\
+             Hint: set BOBBIN_SERVER or use --server to enable HTTP commands.",
+            name
+        )
+    })?;
+
+    let client = crate::http::client::Client::new(server_url);
+
+    // Collect key=value params (already parsed above, but we need owned refs)
+    let params: Vec<(&str, String)> = kv_params;
+
+    let result = client.invoke_command(name, &params).await?;
+
+    // Pretty-print the JSON response
+    if output.json {
+        println!("{}", serde_json::to_string(&result)?);
+    } else {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    }
+
+    Ok(())
 }
 
 /// Resolve the effective server URL from multiple sources.

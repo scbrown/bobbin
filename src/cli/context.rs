@@ -183,9 +183,6 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         Some(tag_filters.join(" AND "))
     };
 
-    let tags_config = crate::tags::TagsConfig::load_or_default(
-        &crate::tags::TagsConfig::tags_path(&repo_root),
-    );
     let context_config = ContextConfig {
         budget_lines: args.budget,
         depth: args.depth,
@@ -201,7 +198,7 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         bridge_mode: BridgeMode::default(),
         bridge_boost_factor: 0.3,
         extra_filter,
-        tags_config: Some(tags_config),
+        tags_config: None,
         role: None,
     };
 

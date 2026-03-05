@@ -191,6 +191,54 @@ bobbin serve /path/to/repo  # Serve a specific repository
 
 See [AI Agent Integration](../README.md#ai-agent-integration) for MCP configuration examples.
 
+## `bobbin feedback <SUBCOMMAND>`
+
+Submit and review quality feedback on bobbin context injections. Every injection includes an `injection_id` (e.g. `inj-01KJ...`) — use this to reference which injection you're rating.
+
+```bash
+bobbin feedback submit --injection inj-abc123 --rating useful --reason "foo.rs was the exact file"
+bobbin feedback list --limit 20 --rating noise
+bobbin feedback show inj-abc123
+bobbin feedback stats
+```
+
+### feedback submit
+
+Submit a quality rating for an injection.
+
+| Flag | Description |
+|------|-------------|
+| `--injection <ID>` | Injection ID to rate (required) |
+| `--rating <RATING>` | Rating: `useful`, `noise`, or `harmful` (required) |
+| `--reason <TEXT>` | Free-text explanation |
+| `--chunks <IDS>` | Comma-separated chunk IDs referenced |
+
+### feedback list
+
+List recent feedback records.
+
+| Flag | Description |
+|------|-------------|
+| `--limit <N>` | Maximum results (default: 20) |
+| `--rating <RATING>` | Filter by rating |
+| `--agent <NAME>` | Filter by agent |
+
+### feedback show
+
+Show feedback and injection details for a specific injection ID.
+
+```bash
+bobbin feedback show inj-abc123
+```
+
+### feedback stats
+
+Show aggregated feedback statistics: injection count, feedback coverage, rating distribution.
+
+```bash
+bobbin feedback stats
+```
+
 ## Supported Languages
 
 Bobbin uses Tree-sitter for structure-aware parsing, and pulldown-cmark for Markdown:
