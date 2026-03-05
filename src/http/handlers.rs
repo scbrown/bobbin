@@ -90,6 +90,7 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/feedback", post(feedback_submit))
         .route("/feedback", get(feedback_list))
         .route("/feedback/stats", get(feedback_stats))
+        .route("/feedback/lineage", post(lineage_store).get(lineage_list))
         .route("/cmd", get(list_http_commands).post(register_http_command))
         .route("/cmd/{name}", get(invoke_http_command).delete(delete_http_command))
         .with_state(state.clone())
@@ -3251,6 +3252,61 @@ pub(super) async fn feedback_stats(
     let store = open_feedback_store(&state).map_err(internal_error)?;
     let stats = store.stats().map_err(internal_error)?;
     Ok(Json(stats))
+}
+
+// -- /feedback/lineage --
+
+/// POST /feedback/lineage — record a lineage action that resolves feedback
+pub(super) async fn lineage_store(
+    State(state): State<Arc<AppState>>,
+    Json(input): Json<crate::storage::feedback::LineageInput>,
+) -> Result<(StatusCode, Json<crate::storage::feedback::LineageRecord>), (StatusCode, Json<ErrorBody>)> {
+    let store = open_feedback_store(&state).map_err(internal_error)?;
+    let id = store.store_lineage(&input).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorBody {
+                error: e.to_string(),
+            }),
+        )
+    })?;
+    let records = store
+        .list_lineage(&crate::storage::feedback::LineageQuery {
+            feedback_id: None,
+            bead: None,
+            commit_hash: None,
+            limit: Some(1),
+        })
+        .map_err(internal_error)?;
+    let record = records.into_iter().find(|r| r.id == id).ok_or_else(|| {
+        internal_error(anyhow::anyhow!("Failed to retrieve created lineage record"))
+    })?;
+    Ok((StatusCode::CREATED, Json(record)))
+}
+
+#[derive(Deserialize)]
+struct LineageListParams {
+    feedback_id: Option<i64>,
+    bead: Option<String>,
+    #[serde(alias = "commit")]
+    commit_hash: Option<String>,
+    limit: Option<usize>,
+}
+
+/// GET /feedback/lineage — list lineage records with optional filters
+pub(super) async fn lineage_list(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<LineageListParams>,
+) -> Result<Json<Vec<crate::storage::feedback::LineageRecord>>, (StatusCode, Json<ErrorBody>)> {
+    let store = open_feedback_store(&state).map_err(internal_error)?;
+    let query = crate::storage::feedback::LineageQuery {
+        feedback_id: params.feedback_id,
+        bead: params.bead,
+        commit_hash: params.commit_hash,
+        limit: params.limit,
+    };
+    let records = store.list_lineage(&query).map_err(internal_error)?;
+    Ok(Json(records))
 }
 
 // -- /suggest --
