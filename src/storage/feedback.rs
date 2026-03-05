@@ -537,6 +537,25 @@ impl FeedbackStore {
             feedback,
         }))
     }
+    /// Get injection IDs from a session that have no feedback yet.
+    pub fn unrated_injections_for_session(&self, session_id: &str) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT i.injection_id FROM injections i
+             LEFT JOIN feedback f ON i.injection_id = f.injection_id
+             WHERE i.session_id = ?1 AND f.id IS NULL
+             ORDER BY i.timestamp DESC
+             LIMIT 10",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![session_id], |row| {
+            row.get::<_, String>(0)
+        })?;
+        let mut ids = Vec::new();
+        for row in rows {
+            ids.push(row?);
+        }
+        Ok(ids)
+    }
+
     /// Get feedback auto-tags (feedback:hot, feedback:cold) keyed by file path.
     /// Returns empty map if the feedback_tags table doesn't exist yet.
     pub fn get_feedback_tags(&self) -> Result<std::collections::HashMap<String, Vec<String>>> {

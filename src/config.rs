@@ -356,6 +356,10 @@ pub struct HooksConfig {
     /// Default: 2.0. Set to 1.0 to disable.
     #[serde(default = "default_repo_affinity_boost")]
     pub repo_affinity_boost: f32,
+    /// Prompt agents to rate injections every N injections (0 = disabled).
+    /// Default: 5.
+    #[serde(default = "default_feedback_prompt_interval")]
+    pub feedback_prompt_interval: u64,
 }
 
 /// A rule that maps query keywords to repository names.
@@ -375,6 +379,10 @@ fn default_format_mode() -> String {
 
 fn default_repo_affinity_boost() -> f32 {
     2.0
+}
+
+fn default_feedback_prompt_interval() -> u64 {
+    5
 }
 
 fn default_true() -> bool {
@@ -398,6 +406,7 @@ impl Default for HooksConfig {
             reducing_enabled: true,
             keyword_repos: vec![],
             repo_affinity_boost: 2.0,
+            feedback_prompt_interval: 5,
         }
     }
 }

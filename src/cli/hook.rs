@@ -1832,7 +1832,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     print!("{}", context_text);
 
     // Store injection record locally (best-effort)
-    if let Ok(fb_store) = crate::storage::feedback::FeedbackStore::open(&Config::feedback_db_path(&repo_root)) {
+    let feedback_db_path = Config::feedback_db_path(&repo_root);
+    if let Ok(fb_store) = crate::storage::feedback::FeedbackStore::open(&feedback_db_path) {
         let files_json: Vec<String> = bundle.files.iter().map(|f| f.path.clone()).collect();
         let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
         let _ = fb_store.store_injection_with_output(
@@ -1845,6 +1846,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             bundle.budget.max_lines,
             Some(&context_text),
         );
+
     }
 
     // 10. Update hook state + session ledger
@@ -1882,7 +1884,24 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     state.injection_count += 1;
     save_hook_state(&repo_root, &state);
 
-    // 10b. Emit hook_injection metric (with reducing stats)
+    // 10b. Feedback prompt: periodically remind about unrated injections
+    let prompt_interval = hooks_cfg.feedback_prompt_interval;
+    if prompt_interval > 0 && state.injection_count % prompt_interval == 0 && !input.session_id.is_empty() {
+        if let Ok(fb_store) = crate::storage::feedback::FeedbackStore::open(&feedback_db_path) {
+            if let Ok(unrated) = fb_store.unrated_injections_for_session(&input.session_id) {
+                if !unrated.is_empty() {
+                    let sample: Vec<&str> = unrated.iter().take(3).map(|s| s.as_str()).collect();
+                    eprintln!(
+                        "bobbin: {} unrated injections this session. Rate with: bobbin feedback submit --injection {} --rating <useful|noise|harmful>",
+                        unrated.len(),
+                        sample.join(" or ")
+                    );
+                }
+            }
+        }
+    }
+
+    // 10c. Emit hook_injection metric (with reducing stats)
     let injected_files: Vec<&str> = bundle.files.iter().map(|f| f.path.as_str()).collect();
     crate::metrics::emit(&repo_root, &crate::metrics::event(
         &metrics_source,
