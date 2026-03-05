@@ -2492,3 +2492,50 @@ pub async fn run_server(repo_root: PathBuf) -> Result<()> {
 
     Ok(())
 }
+
+/// Run the MCP server over Streamable HTTP transport (network-accessible).
+pub async fn run_http_server(repo_root: PathBuf, port: u16) -> Result<()> {
+    use rmcp::transport::{
+        StreamableHttpServerConfig,
+        streamable_http_server::{
+            session::local::LocalSessionManager,
+            tower::StreamableHttpService,
+        },
+    };
+    use std::sync::Arc;
+    use tokio_util::sync::CancellationToken;
+
+    // Validate config before binding
+    let _ = BobbinMcpServer::new(repo_root.clone())?;
+
+    let ct = CancellationToken::new();
+
+    let root = repo_root.clone();
+    let service: StreamableHttpService<BobbinMcpServer, LocalSessionManager> =
+        StreamableHttpService::new(
+            move || {
+                BobbinMcpServer::new(root.clone())
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            },
+            Arc::new(LocalSessionManager::default()),
+            StreamableHttpServerConfig {
+                stateful_mode: true,
+                sse_keep_alive: Some(std::time::Duration::from_secs(15)),
+                cancellation_token: ct.child_token(),
+            },
+        );
+
+    let router = axum::Router::new().nest_service("/mcp", service);
+    let addr = format!("0.0.0.0:{}", port);
+    eprintln!("Bobbin MCP server listening on http://{}/mcp", addr);
+
+    let tcp_listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(tcp_listener, router)
+        .with_graceful_shutdown(async move {
+            tokio::signal::ctrl_c().await.ok();
+            ct.cancel();
+        })
+        .await?;
+
+    Ok(())
+}
