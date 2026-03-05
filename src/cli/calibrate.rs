@@ -610,6 +610,8 @@ async fn run_probes(
         tags_config: None,
         role: None,
         file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
     };
     let mut assembler = ContextAssembler::new(embedder, vs, ms, initial_config);
 
@@ -640,6 +642,8 @@ async fn run_probes(
             tags_config: None,
             role: None,
             file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
         });
 
         let mut total_precision = 0.0_f32;

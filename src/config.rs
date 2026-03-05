@@ -352,6 +352,10 @@ pub struct HooksConfig {
     /// search is scoped to the matched repos instead of all repos.
     #[serde(default)]
     pub keyword_repos: Vec<KeywordRepoRule>,
+    /// Score multiplier for files from the agent's current repo (soft affinity).
+    /// Default: 2.0. Set to 1.0 to disable.
+    #[serde(default = "default_repo_affinity_boost")]
+    pub repo_affinity_boost: f32,
 }
 
 /// A rule that maps query keywords to repository names.
@@ -367,6 +371,10 @@ pub struct KeywordRepoRule {
 
 fn default_format_mode() -> String {
     "standard".into()
+}
+
+fn default_repo_affinity_boost() -> f32 {
+    2.0
 }
 
 fn default_true() -> bool {
@@ -389,6 +397,7 @@ impl Default for HooksConfig {
             format_mode: "standard".into(),
             reducing_enabled: true,
             keyword_repos: vec![],
+            repo_affinity_boost: 2.0,
         }
     }
 }

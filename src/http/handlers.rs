@@ -1418,6 +1418,8 @@ pub(super) async fn context(
         tags_config: Some(state.tags_config.clone()),
         role: params.role.clone(),
         file_type_rules: state.config.file_types.clone(),
+        repo_affinity: None,
+        repo_affinity_boost: 2.0,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2057,6 +2059,8 @@ pub(super) async fn review(
         tags_config: Some(state.tags_config.clone()),
         role: params.role.clone(),
         file_type_rules: state.config.file_types.clone(),
+        repo_affinity: None,
+        repo_affinity_boost: 2.0,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

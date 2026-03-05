@@ -12,6 +12,18 @@ use super::OutputConfig;
 use crate::config::Config;
 use crate::storage::{MetadataStore, VectorStore};
 
+/// Detect the git repo name from a directory by walking up to find `.git`.
+/// Returns the directory name containing `.git` (e.g. "aegis" for /home/user/gt/aegis/crew/ian/).
+fn detect_repo_name(dir: &Path) -> Option<String> {
+    let mut current = dir;
+    loop {
+        if current.join(".git").exists() {
+            return current.file_name()?.to_str().map(|s| s.to_string());
+        }
+        current = current.parent()?;
+    }
+}
+
 #[derive(Args)]
 pub struct HookArgs {
     #[command(subcommand)]
@@ -1696,6 +1708,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         tags_config: None,
         role: None,
         file_type_rules: config.file_types.clone(),
+        repo_affinity: detect_repo_name(&cwd),
+        repo_affinity_boost: config.hooks.repo_affinity_boost,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2551,6 +2565,8 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             tags_config: None,
             role: None,
             file_type_rules: config.file_types.clone(),
+            repo_affinity: detect_repo_name(&cwd),
+            repo_affinity_boost: config.hooks.repo_affinity_boost,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -3005,6 +3021,8 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         tags_config: None,
         role: None,
         file_type_rules: config.file_types.clone(),
+        repo_affinity: detect_repo_name(&cwd),
+        repo_affinity_boost: config.hooks.repo_affinity_boost,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

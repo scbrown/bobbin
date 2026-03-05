@@ -201,6 +201,8 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         tags_config: None,
         role: None,
         file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

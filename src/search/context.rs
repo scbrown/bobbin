@@ -86,6 +86,11 @@ pub struct ContextConfig {
     /// Configurable file type classification rules (from `[[file_types]]` config).
     /// First match wins; unmatched files fall through to built-in heuristics.
     pub file_type_rules: Vec<crate::config::FileTypeRule>,
+    /// Repo name to boost in scoring (soft affinity from agent's cwd).
+    /// Results from this repo get score multiplied by `repo_affinity_boost`.
+    pub repo_affinity: Option<String>,
+    /// Score multiplier for files matching `repo_affinity`. Default: 2.0.
+    pub repo_affinity_boost: f32,
 }
 
 /// How much content to include in output
@@ -711,6 +716,8 @@ impl ContextAssembler {
         let tags_config = &self.config.tags_config;
         let role = self.config.role.as_deref();
         let ft_rules = &self.config.file_type_rules;
+        let repo_affinity = self.config.repo_affinity.as_deref();
+        let repo_affinity_boost = self.config.repo_affinity_boost;
         let mut combined: Vec<_> = scores
             .into_values()
             .map(|(result, score)| {
@@ -722,7 +729,17 @@ impl ContextAssembler {
                     let category = classify_file_with_rules(&result.file_path, ft_rules);
                     if category.is_doc_like() { score * doc_demotion } else { score }
                 };
-                let final_score = apply_recency_boost(adjusted_score, result.indexed_at, recency_hl, recency_w);
+                let after_recency = apply_recency_boost(adjusted_score, result.indexed_at, recency_hl, recency_w);
+                // Repo affinity: soft boost for files from the agent's current repo
+                let final_score = if let Some(affinity) = repo_affinity {
+                    if result.repo.as_deref() == Some(affinity) {
+                        after_recency * repo_affinity_boost
+                    } else {
+                        after_recency
+                    }
+                } else {
+                    after_recency
+                };
                 (result, final_score)
             })
             .collect();
@@ -1193,7 +1210,9 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
-        file_type_rules: vec![],
+            file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
         };
 
         let seeds = vec![
@@ -1227,7 +1246,9 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
-        file_type_rules: vec![],
+            file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
         };
 
         let seeds = vec![
@@ -1258,7 +1279,9 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
-        file_type_rules: vec![],
+            file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1286,7 +1309,9 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
-        file_type_rules: vec![],
+            file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1318,7 +1343,9 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
-        file_type_rules: vec![],
+            file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
         };
 
         let seeds = vec![
@@ -1351,7 +1378,9 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
-        file_type_rules: vec![],
+            file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
         };
 
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)
@@ -1381,7 +1410,9 @@ mod tests {
             extra_filter: None,
             tags_config: None,
             role: None,
-        file_type_rules: vec![],
+            file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
         };
 
         // Mix of commit and function seeds — commits should be excluded

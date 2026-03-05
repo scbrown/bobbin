@@ -625,6 +625,8 @@ impl BobbinMcpServer {
             tags_config: None,
             role: None,
             file_type_rules: config.file_types.clone(),
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1089,6 +1091,8 @@ impl BobbinMcpServer {
             tags_config: None,
             role: None,
             file_type_rules: config.file_types.clone(),
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

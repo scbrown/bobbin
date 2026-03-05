@@ -158,6 +158,8 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
         tags_config: None,
         role: None,
         file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
     };
 
     // Build description of the diff for the query field
