@@ -1,6 +1,6 @@
 [package]
 name = "bobbin"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Bobbin Team"]
 description = "Local-first context injection engine for AI coding agents"
@@ -100,7 +100,9 @@ schemars = "1.0"
 
 # HTTP Server
 axum = "0.8"
+tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
+urlencoding = "2"
 
 [dev-dependencies]
 tempfile = "3"
