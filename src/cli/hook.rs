@@ -2709,6 +2709,21 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         return Ok(());
     }
 
+    // Fast-path: Read tool directory navigation injection
+    // When Read fails on EISDIR or file-not-found, inject tree output
+    if input.tool_name == "Read" {
+        if let Some(output) = try_directory_navigation(&input) {
+            let response = HookResponse {
+                hook_specific_output: HookSpecificOutput {
+                    hook_event_name: "PostToolUseFailure".to_string(),
+                    additional_context: output,
+                },
+            };
+            println!("{}", serde_json::to_string(&response)?);
+            return Ok(());
+        }
+    }
+
     // 2. Resolve bobbin root and config
     let cwd = if input.cwd.is_empty() {
         std::env::current_dir().context("Failed to get cwd")?
@@ -2845,6 +2860,55 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
     );
 
     Ok(())
+}
+
+/// Fast-path directory navigation: when Read fails on a directory or missing file,
+/// run `tree` and return the output. Returns None if not applicable.
+fn try_directory_navigation(input: &PostToolUseFailureInput) -> Option<String> {
+    let file_path = input.tool_input.get("file_path").and_then(|v| v.as_str())?;
+    let error = &input.error;
+
+    // Skip paths in /tmp or other irrelevant locations
+    if file_path.starts_with("/tmp") || file_path.starts_with("/proc") || file_path.starts_with("/sys") {
+        return None;
+    }
+
+    let (tree_path, header) = if error.contains("EISDIR") || error.contains("Is a directory") {
+        // Read on directory: show its contents
+        (file_path.to_string(), format!("{} is a directory. Contents:", file_path))
+    } else if error.contains("does not exist") || error.contains("ENOENT") || error.contains("No such file") {
+        // File not found: show parent directory
+        let parent = std::path::Path::new(file_path).parent()?;
+        if !parent.exists() {
+            return None;
+        }
+        (parent.to_string_lossy().to_string(), format!("File not found. Nearby files in {}:", parent.display()))
+    } else {
+        return None;
+    };
+
+    // Run tree with depth limit
+    let output = std::process::Command::new("tree")
+        .args(["-L", "2", "--noreport", &tree_path])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let tree_text = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = tree_text.lines().collect();
+
+    // Cap at 20 lines
+    let truncated = if lines.len() > 20 {
+        let shown: Vec<&str> = lines[..20].to_vec();
+        format!("{}\n... and {} more entries", shown.join("\n"), lines.len() - 20)
+    } else {
+        lines.join("\n")
+    };
+
+    Some(format!("{}\n```\n{}\n```", header, truncated))
 }
 
 async fn run_session_context(args: SessionContextArgs, _output: OutputConfig) -> Result<()> {
