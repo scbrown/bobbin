@@ -125,6 +125,16 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
+    // Seed default search commands
+    let quiet_output = OutputConfig {
+        json: false,
+        quiet: true,
+        verbose: false,
+        server: None,
+        role: output.role.clone(),
+    };
+    let _ = super::run::init_defaults(&repo_root, &quiet_output);
+
     if output.json {
         let json_output = InitOutput {
             status: "initialized".to_string(),
@@ -146,6 +156,7 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
         println!("\nNext steps:");
         println!("  {} to build the index", "bobbin index".cyan());
         println!("  {} to search code", "bobbin search <query>".cyan());
+        println!("  {} to see available shortcuts", "bobbin run --list".cyan());
     }
 
     Ok(())

@@ -27,6 +27,10 @@ pub struct RunArgs {
     #[arg(long)]
     show: Option<String>,
 
+    /// Initialize default search commands (intent-search, find-code, etc.)
+    #[arg(long)]
+    init: bool,
+
     /// Description for the command being saved (use with --save)
     #[arg(long, short = 'd')]
     description: Option<String>,
@@ -84,6 +88,11 @@ pub fn resolve(args: RunArgs, output: &OutputConfig) -> Result<RunResult> {
         return Ok(RunResult::Done);
     }
 
+    if args.init {
+        init_defaults(&repo_root, output)?;
+        return Ok(RunResult::Done);
+    }
+
     if let Some(name) = &args.show {
         show_command(&repo_root, name, output)?;
         return Ok(RunResult::Done);
@@ -110,6 +119,7 @@ pub fn resolve(args: RunArgs, output: &OutputConfig) -> Result<RunResult> {
         "No command specified. Usage:\n  \
          bobbin run <name>              Execute a saved command\n  \
          bobbin run --list              List all saved commands\n  \
+         bobbin run --init              Initialize default commands\n  \
          bobbin run --save NAME -- CMD  Save a new command\n  \
          bobbin run --show NAME         Show command definition\n  \
          bobbin run --remove NAME       Remove a command"
@@ -302,6 +312,127 @@ fn remove_command(repo_root: &std::path::Path, name: &str, output: &OutputConfig
     Ok(())
 }
 
+/// Initialize default search commands in `.bobbin/commands.toml`.
+/// Only adds commands that don't already exist (won't overwrite user customizations).
+pub fn init_defaults(repo_root: &std::path::Path, output: &OutputConfig) -> Result<()> {
+    let mut commands = commands::load_commands(repo_root)?;
+    let mut added = 0;
+
+    let defaults: Vec<(&str, CommandDef)> = vec![
+        (
+            "find-code",
+            CommandDef {
+                description: Some("Search for code (functions, structs, classes)".into()),
+                command: "search".into(),
+                args: vec!["--type".into(), "function".into()],
+            },
+        ),
+        (
+            "find-config",
+            CommandDef {
+                description: Some("Search config files (toml, yaml, json)".into()),
+                command: "grep".into(),
+                args: vec!["--type".into(), "other".into()],
+            },
+        ),
+        (
+            "find-docs",
+            CommandDef {
+                description: Some("Search documentation sections".into()),
+                command: "search".into(),
+                args: vec!["--type".into(), "section".into()],
+            },
+        ),
+        (
+            "find-structs",
+            CommandDef {
+                description: Some("Search for struct/type definitions".into()),
+                command: "search".into(),
+                args: vec!["--type".into(), "struct".into()],
+            },
+        ),
+        (
+            "recent-changes",
+            CommandDef {
+                description: Some("Show most-changed files (hotspots)".into()),
+                command: "hotspots".into(),
+                args: vec!["--limit".into(), "15".into()],
+            },
+        ),
+        (
+            "what-changed",
+            CommandDef {
+                description: Some("Search commit history semantically".into()),
+                command: "log".into(),
+                args: vec![],
+            },
+        ),
+    ];
+
+    for (name, def) in defaults {
+        if !commands.contains_key(name) {
+            commands.insert(name.to_string(), def);
+            added += 1;
+        }
+    }
+
+    if added > 0 {
+        commands::save_commands(repo_root, &commands)?;
+    }
+
+    if output.json {
+        let entries: Vec<CommandListEntry> = commands
+            .iter()
+            .map(|(name, def)| CommandListEntry {
+                name: name.clone(),
+                description: def.description.clone(),
+                command: def.command.clone(),
+                args: def.args.clone(),
+                expands_to: expand_command(def),
+            })
+            .collect();
+
+        let list_output = CommandListOutput {
+            count: entries.len(),
+            commands: entries,
+        };
+        println!("{}", serde_json::to_string_pretty(&list_output)?);
+    } else if !output.quiet {
+        if added > 0 {
+            println!(
+                "{} Initialized {} default command{} ({} total)",
+                "✓".green(),
+                added,
+                if added == 1 { "" } else { "s" },
+                commands.len()
+            );
+            println!();
+            for (name, def) in &commands {
+                let desc = def
+                    .description
+                    .as_deref()
+                    .map(|d| format!(" — {}", d.dimmed()))
+                    .unwrap_or_default();
+                println!("  {}{}", name.bold(), desc);
+                println!("    {}", expand_command(def).dimmed());
+                println!();
+            }
+            println!(
+                "{}",
+                "Run any command: bobbin <name> <query>".dimmed()
+            );
+        } else {
+            println!(
+                "{} All default commands already exist ({} total)",
+                "✓".green(),
+                commands.len()
+            );
+        }
+    }
+
+    Ok(())
+}
+
 /// Build the full CLI argument vector for a saved command, suitable for
 /// re-parsing through `Cli::try_parse_from`.
 fn build_command_args(
@@ -364,7 +495,7 @@ fn validate_subcommand(name: &str) -> Result<()> {
     const VALID_COMMANDS: &[&str] = &[
         "init", "index", "search", "context", "deps", "grep", "refs", "related", "history",
         "log", "hotspots", "impact", "review", "similar", "status", "serve", "benchmark",
-        "watch", "completions", "hook", "tour", "prime",
+        "watch", "completions", "hook", "tour", "prime", "feedback",
     ];
 
     if VALID_COMMANDS.contains(&name) {

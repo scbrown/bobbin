@@ -333,9 +333,17 @@ async fn dispatch_external(args: &[String], output: &OutputConfig) -> Result<()>
             }
             full_args.push(def.command.clone());
             full_args.extend(def.args.iter().cloned());
-            // Extra args from the user (non key=value args)
+            // Pass through user args, translating key=value to --key value
             for arg in &args[1..] {
-                if !arg.contains('=') {
+                if let Some((key, value)) = arg.split_once('=') {
+                    // "q=term" is the common shorthand for the positional query
+                    if key == "q" {
+                        full_args.push(value.to_string());
+                    } else {
+                        full_args.push(format!("--{}", key));
+                        full_args.push(value.to_string());
+                    }
+                } else {
                     full_args.push(arg.clone());
                 }
             }
