@@ -69,7 +69,7 @@ rusqlite = { version = "0.33", features = ["bundled"] }
 mysql_async = { version = "0.34", default-features = false, features = ["default-rustls"] }
 
 # ONNX runtime for embeddings
-ort = { version = "2.0.0-rc.11", default-features = false, features = ["std", "ndarray", "load-dynamic"] }
+ort = { version = "=2.0.0-rc.11", default-features = false, features = ["std", "ndarray", "load-dynamic"] }
 ndarray = "0.17"
 tokenizers = "0.21"
 
