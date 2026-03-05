@@ -1,0 +1,241 @@
+# Bobbin tags configuration — aegis-e1fbyd tagging sweep
+# Deployed: 2026-03-05
+
+# ============================================================
+# EFFECTS — how tags influence search scoring
+# ============================================================
+
+[effects."auto:init"]
+# Go init() functions are CLI flag setup boilerplate
+exclude = true
+
+[effects."auto:test"]
+# Test functions are rarely useful as injected context
+boost = -0.4
+
+[effects."auto:docs"]
+# Documentation is sometimes useful, slight demotion
+boost = -0.1
+
+[effects."role:claude-md"]
+# Agent instruction files — usually already in system prompt
+# Demote to avoid redundant injection
+boost = -0.3
+
+[effects."role:agents-md"]
+boost = -0.3
+
+[effects."type:design"]
+# Design docs are high-value when relevant
+boost = 0.2
+
+[effects."type:guardrails"]
+# Guardrails should surface when agents work in that domain
+boost = 0.1
+
+[effects."type:config"]
+# Config files — useful for setup tasks
+boost = 0.0
+
+[effects."type:entrypoint"]
+# Main entrypoints — good starting points for understanding
+boost = 0.1
+
+[effects."domain:iac"]
+# Infrastructure-as-code — high value for ops tasks
+boost = 0.15
+
+[effects."criticality:high"]
+# Critical files get a boost
+boost = 0.2
+
+[effects."feedback:hot"]
+# Files confirmed useful by agent feedback
+boost = 0.3
+
+[effects."feedback:cold"]
+# Files confirmed noisy by agent feedback
+boost = -0.5
+
+# ============================================================
+# RULES — pattern-based tag assignment
+# ============================================================
+
+# --- Agent instruction files (all repos) ---
+[[rules]]
+pattern = "**/CLAUDE.md"
+tags = ["role:claude-md"]
+
+[[rules]]
+pattern = "**/AGENTS.md"
+tags = ["role:agents-md"]
+
+[[rules]]
+pattern = "**/GEMINI.md"
+tags = ["role:agents-md"]
+
+# --- Design docs ---
+[[rules]]
+pattern = "**/design/**/*.md"
+tags = ["type:design"]
+
+[[rules]]
+pattern = "**/designs/**/*.md"
+tags = ["type:design"]
+
+[[rules]]
+pattern = "**/docs/plans/**/*.md"
+tags = ["type:design"]
+
+# --- Guardrails and escalation ---
+[[rules]]
+pattern = "**/guardrails.md"
+tags = ["type:guardrails", "criticality:high"]
+
+[[rules]]
+pattern = "**/escalation.md"
+tags = ["type:guardrails"]
+
+# --- Config files ---
+[[rules]]
+pattern = "**/.bobbin/config.toml"
+tags = ["type:config"]
+
+[[rules]]
+pattern = "**/settings*.json"
+tags = ["type:config"]
+
+[[rules]]
+pattern = "**/.env*"
+tags = ["type:config"]
+
+# --- Entrypoints ---
+[[rules]]
+pattern = "**/main.go"
+tags = ["type:entrypoint"]
+
+[[rules]]
+pattern = "**/main.rs"
+tags = ["type:entrypoint"]
+
+[[rules]]
+pattern = "**/src/lib.rs"
+tags = ["type:entrypoint"]
+
+[[rules]]
+pattern = "**/src/index.ts"
+tags = ["type:entrypoint"]
+
+# --- IaC (goldblum ansible) ---
+[[rules]]
+pattern = "**/ansible/roles/*/tasks/main.yml"
+tags = ["domain:iac", "criticality:high"]
+repo = "goldblum"
+
+[[rules]]
+pattern = "**/ansible/roles/*/defaults/main.yml"
+tags = ["domain:iac", "type:config"]
+repo = "goldblum"
+
+[[rules]]
+pattern = "**/ansible/roles/*/handlers/main.yml"
+tags = ["domain:iac"]
+repo = "goldblum"
+
+[[rules]]
+pattern = "**/.forgejo/workflows/*.yml"
+tags = ["domain:ci"]
+
+[[rules]]
+pattern = "**/.github/workflows/*.yml"
+tags = ["domain:ci"]
+
+# --- Bobbin-specific critical files ---
+[[rules]]
+pattern = "**/src/cli/hook.rs"
+tags = ["criticality:high"]
+repo = "bobbin"
+
+[[rules]]
+pattern = "**/src/search/context.rs"
+tags = ["criticality:high"]
+repo = "bobbin"
+
+[[rules]]
+pattern = "**/src/storage/feedback.rs"
+tags = ["criticality:high"]
+repo = "bobbin"
+
+[[rules]]
+pattern = "**/src/tags.rs"
+tags = ["criticality:high"]
+repo = "bobbin"
+
+# --- Gastown critical files ---
+[[rules]]
+pattern = "**/internal/cmd/mail.go"
+tags = ["domain:comms", "criticality:high"]
+repo = "gastown"
+
+[[rules]]
+pattern = "**/internal/cmd/hook.go"
+tags = ["criticality:high"]
+repo = "gastown"
+
+[[rules]]
+pattern = "**/internal/cmd/mol.go"
+tags = ["criticality:high"]
+repo = "gastown"
+
+# --- Beads critical files ---
+[[rules]]
+pattern = "**/cmd/bd/main.go"
+tags = ["type:entrypoint", "criticality:high"]
+repo = "beads"
+
+# --- Orchestrator ---
+[[rules]]
+pattern = "**/src/*.py"
+tags = ["criticality:high"]
+repo = "orchestrator"
+
+# --- Homelab MCP ---
+[[rules]]
+pattern = "**/src/*.py"
+tags = ["criticality:high"]
+repo = "homelab-mcp"
+
+# --- Aegis strategic docs ---
+[[rules]]
+pattern = "**/docs/stiwi-directives/**"
+tags = ["type:directive", "criticality:high"]
+repo = "aegis"
+
+[[rules]]
+pattern = "**/docs/strategy/**"
+tags = ["type:design"]
+repo = "aegis"
+
+# --- Pensieve snapshots (memory) ---
+[[rules]]
+pattern = "**/snapshots/**/*.md"
+tags = ["type:memory"]
+repo = "pensieve"
+
+[[rules]]
+pattern = "**/records/**/*.md"
+tags = ["type:record"]
+repo = "pensieve"
+
+# --- API schemas ---
+[[rules]]
+pattern = "**/openapi*.yaml"
+tags = ["type:api-schema"]
+
+[[rules]]
+pattern = "**/openapi*.json"
+tags = ["type:api-schema"]
+
+[[rules]]
+pattern = "**/schema*.json"
+tags = ["type:api-schema"]
