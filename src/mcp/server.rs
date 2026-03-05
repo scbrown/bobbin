@@ -2004,6 +2004,211 @@ impl BobbinMcpServer {
 
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
+
+    /// Search archive records (HLA chat logs, Pensieve agent memory)
+    #[tool(description = "Search archive records using natural language. Archives include HLA (IRC/Telegram chat logs) and Pensieve (agent memory/snapshots). Filter by source ('hla' or 'pensieve'), name/channel, and date range. Best for: 'recent deploy discussions', 'what did goldblum decide about auth?', 'telegram messages about cert renewal'.")]
+    async fn archive_search(
+        &self,
+        Parameters(req): Parameters<ArchiveSearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let limit = req.limit.unwrap_or(10);
+        let mode = req.mode.as_deref().unwrap_or("hybrid");
+
+        let config_path = Config::config_path(&self.repo_root);
+        let config = Config::load(&config_path)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        if !config.archive.enabled || config.archive.sources.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "No archive sources configured. Archive search requires [[archive.sources]] in config.toml.",
+            )]));
+        }
+
+        let archive_languages: Vec<String> = config.archive.sources.iter().map(|s| s.name.clone()).collect();
+
+        let mut vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let model_dir = Config::model_cache_dir()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let embedder = Embedder::from_config(&config.embedding, &model_dir)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Build language filter for archive chunks only
+        let lang_filter = if archive_languages.len() == 1 {
+            format!("language = '{}'", archive_languages[0].replace('\'', "''"))
+        } else {
+            let quoted: Vec<String> = archive_languages.iter()
+                .map(|l| format!("'{}'", l.replace('\'', "''")))
+                .collect();
+            format!("language IN ({})", quoted.join(", "))
+        };
+
+        let results = match mode {
+            "keyword" => vector_store
+                .search_fts_filtered(&req.query, limit * 2, None, Some(&lang_filter))
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?,
+            "semantic" => {
+                let mut search = SemanticSearch::new(embedder, vector_store);
+                search
+                    .search_filtered(&req.query, limit * 2, None, Some(&lang_filter))
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            }
+            _ => {
+                let mut search = HybridSearch::new(embedder, vector_store, config.search.semantic_weight);
+                search
+                    .search_filtered(&req.query, limit * 2, None, Some(&lang_filter))
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            }
+        };
+
+        // Post-filter
+        let mut filtered: Vec<_> = results.into_iter()
+            .filter(|r| archive_languages.contains(&r.chunk.language))
+            .collect();
+
+        // Source filter
+        if let Some(ref source) = req.source {
+            filtered.retain(|r| &r.chunk.language == source);
+        }
+
+        // Date filters
+        if let Some(ref after) = req.after {
+            filtered.retain(|r| {
+                extract_archive_date(&r.chunk.file_path)
+                    .is_some_and(|d| d.as_str() >= after.as_str())
+            });
+        }
+        if let Some(ref before) = req.before {
+            filtered.retain(|r| {
+                extract_archive_date(&r.chunk.file_path)
+                    .is_some_and(|d| d.as_str() <= before.as_str())
+            });
+        }
+
+        // Name/channel filter
+        if let Some(ref name_filter) = req.filter {
+            filtered.retain(|r| {
+                r.chunk.name.as_ref()
+                    .is_some_and(|n| n.starts_with(&format!("{}/", name_filter)))
+            });
+        }
+
+        filtered.truncate(limit);
+
+        if filtered.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                format!("No archive results for '{}'. Try broader terms or different source/date filters.", req.query),
+            )]));
+        }
+
+        let mut text = format!("Archive search: {} results for '{}'\n\n", filtered.len(), req.query);
+        for r in &filtered {
+            let date = extract_archive_date(&r.chunk.file_path).unwrap_or_default();
+            let source = &r.chunk.language;
+            let id = r.chunk.name.as_deref().unwrap_or("-");
+            text.push_str(&format!("--- {} ({}, {}) score={:.3} ---\n", id, source, date, r.score));
+            text.push_str(&Self::truncate_content(&r.chunk.content, 500));
+            text.push_str("\n\n");
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(text)]))
+    }
+
+    /// List recent archive records
+    #[tool(description = "List recent archive records by date. Returns records from HLA (chat logs) or Pensieve (agent memory) after a specified date. Best for: 'what happened in chat today?', 'recent agent decisions', 'show me today's Pensieve entries'.")]
+    async fn archive_recent(
+        &self,
+        Parameters(req): Parameters<ArchiveRecentRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let limit = req.limit.unwrap_or(20);
+
+        let config_path = Config::config_path(&self.repo_root);
+        let config = Config::load(&config_path)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        if !config.archive.enabled || config.archive.sources.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "No archive sources configured.",
+            )]));
+        }
+
+        // Use FTS to find recent records by scanning archive chunks
+        let archive_languages: Vec<String> = config.archive.sources.iter().map(|s| s.name.clone()).collect();
+
+        let mut vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Build filter: archive language + date path prefix
+        let lang_filter = if archive_languages.len() == 1 {
+            format!("language = '{}'", archive_languages[0].replace('\'', "''"))
+        } else {
+            let quoted: Vec<String> = archive_languages.iter()
+                .map(|l| format!("'{}'", l.replace('\'', "''")))
+                .collect();
+            format!("language IN ({})", quoted.join(", "))
+        };
+
+        // Use a broad search to get archive chunks, then filter by date
+        let results = vector_store
+            .search_fts_filtered("*", limit * 5, None, Some(&lang_filter))
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let mut filtered: Vec<_> = results.into_iter()
+            .filter(|r| archive_languages.contains(&r.chunk.language))
+            .filter(|r| {
+                extract_archive_date(&r.chunk.file_path)
+                    .is_some_and(|d| d.as_str() >= req.after.as_str())
+            })
+            .collect();
+
+        // Source filter
+        if let Some(ref source) = req.source {
+            filtered.retain(|r| &r.chunk.language == source);
+        }
+
+        // Sort by date (from file path)
+        filtered.sort_by(|a, b| {
+            let da = extract_archive_date(&a.chunk.file_path).unwrap_or_default();
+            let db = extract_archive_date(&b.chunk.file_path).unwrap_or_default();
+            da.cmp(&db)
+        });
+
+        filtered.truncate(limit);
+
+        if filtered.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                format!("No archive records found after {}.", req.after),
+            )]));
+        }
+
+        let mut text = format!("Archive recent: {} records after {}\n\n", filtered.len(), req.after);
+        for r in &filtered {
+            let date = extract_archive_date(&r.chunk.file_path).unwrap_or_default();
+            let source = &r.chunk.language;
+            let id = r.chunk.name.as_deref().unwrap_or("-");
+            text.push_str(&format!("--- {} ({}, {}) ---\n", id, source, date));
+            text.push_str(&Self::truncate_content(&r.chunk.content, 500));
+            text.push_str("\n\n");
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(text)]))
+    }
+}
+
+/// Extract date from archive path like "hla:2026/03/05/file.md" → "2026-03-05"
+fn extract_archive_date(path: &str) -> Option<String> {
+    let after_prefix = path.split_once(':').map(|(_, rest)| rest)?;
+    let parts: Vec<&str> = after_prefix.splitn(4, '/').collect();
+    if parts.len() >= 3 && parts[0].len() == 4 && parts[1].len() == 2 && parts[2].len() == 2 {
+        Some(format!("{}-{}-{}", parts[0], parts[1], parts[2]))
+    } else {
+        None
+    }
 }
 
 /// Extract a field value from bead content like "Status: open | Priority: P2 | ..."

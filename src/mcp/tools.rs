@@ -842,6 +842,56 @@ pub struct CommitResultItem {
     pub score: f32,
 }
 
+// -- Archive tool types --
+
+/// Request for searching archive records (HLA chat logs, Pensieve agent memory)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ArchiveSearchRequest {
+    /// Natural language search query
+    #[schemars(description = "Natural language query to search archive records (e.g. 'deploy failures', 'cert renewal')")]
+    pub query: String,
+
+    /// Archive source filter (e.g. "hla" for chat logs, "pensieve" for agent memory)
+    #[schemars(description = "Filter by archive source: 'hla' (IRC/Telegram chat logs) or 'pensieve' (agent memory records). Omit to search all sources.")]
+    pub source: Option<String>,
+
+    /// Filter by name/channel (e.g., channel name for HLA, agent name for Pensieve)
+    #[schemars(description = "Filter by name field value (e.g. 'telegram' for HLA channel, 'goldblum' for Pensieve agent)")]
+    pub filter: Option<String>,
+
+    /// Only include records after this date (YYYY-MM-DD)
+    #[schemars(description = "Only include records after this date (YYYY-MM-DD format)")]
+    pub after: Option<String>,
+
+    /// Only include records before this date (YYYY-MM-DD)
+    #[schemars(description = "Only include records before this date (YYYY-MM-DD format)")]
+    pub before: Option<String>,
+
+    /// Maximum number of results (default: 10)
+    #[schemars(description = "Maximum number of results to return (default: 10)")]
+    pub limit: Option<usize>,
+
+    /// Search mode: hybrid (default), semantic, or keyword
+    #[schemars(description = "Search mode: 'hybrid' (default), 'semantic', or 'keyword'")]
+    pub mode: Option<String>,
+}
+
+/// Request for listing recent archive records
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ArchiveRecentRequest {
+    /// Only include records after this date (YYYY-MM-DD). Required.
+    #[schemars(description = "Only include records after this date (YYYY-MM-DD format). Required.")]
+    pub after: String,
+
+    /// Archive source filter (e.g. "hla" for chat logs, "pensieve" for agent memory)
+    #[schemars(description = "Filter by archive source: 'hla' (IRC/Telegram chat logs) or 'pensieve' (agent memory records). Omit to list from all sources.")]
+    pub source: Option<String>,
+
+    /// Maximum number of results (default: 20)
+    #[schemars(description = "Maximum number of results to return (default: 20)")]
+    pub limit: Option<usize>,
+}
+
 // -- Feedback tool types --
 
 /// Request for submitting feedback on a bobbin context injection
