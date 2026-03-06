@@ -11,8 +11,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use tokio::sync::OnceCell;
 
 use crate::config::{Config, SourcesConfig};
+use crate::index::embedder::Embedder;
 use crate::tags::TagsConfig;
 
 /// Shared application state for HTTP handlers
@@ -25,6 +27,21 @@ pub struct AppState {
     pub inner_router: std::sync::OnceLock<axum::Router>,
     /// Tags configuration for effect-based scoring/exclusion.
     pub tags_config: TagsConfig,
+    /// Cached Embedder — ONNX model loaded once, reused across requests.
+    /// Previously, every request loaded the model from disk (~90MB).
+    pub embedder: OnceCell<Embedder>,
+}
+
+impl AppState {
+    /// Get or initialize the cached Embedder.
+    pub async fn get_embedder(&self) -> Result<&Embedder> {
+        self.embedder
+            .get_or_try_init(|| async {
+                let model_dir = Config::model_cache_dir()?;
+                Embedder::from_config(&self.config.embedding, &model_dir)
+            })
+            .await
+    }
 }
 
 /// Run the HTTP server on the given port
@@ -47,6 +64,7 @@ pub async fn run_server(repo_root: PathBuf, port: u16) -> Result<()> {
         resolved_sources,
         inner_router: std::sync::OnceLock::new(),
         tags_config,
+        embedder: OnceCell::new(),
     });
 
     let app = handlers::router(state);

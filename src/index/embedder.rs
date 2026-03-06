@@ -4,7 +4,7 @@ use ort::ep::{ExecutionProvider, CUDA};
 use ort::session::Session;
 use ort::value::Tensor;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokenizers::Tokenizer;
 
 use std::time::Instant;
@@ -130,13 +130,15 @@ impl ModelConfig {
 // ── Embedder (unified facade) ────────────────────────────────────────
 
 /// Generates embeddings using either local ONNX models or OpenAI-compatible APIs.
+#[derive(Clone)]
 pub struct Embedder {
     backend: EmbedderBackend,
 }
 
+#[derive(Clone)]
 enum EmbedderBackend {
-    Onnx(OnnxEmbedder),
-    Api(ApiEmbedder),
+    Onnx(Arc<OnnxEmbedder>),
+    Api(Arc<ApiEmbedder>),
 }
 
 impl Embedder {
@@ -144,7 +146,7 @@ impl Embedder {
     pub fn load(cache_dir: &Path, model_name: &str) -> Result<Self> {
         let onnx = OnnxEmbedder::load_builtin(cache_dir, model_name, false)?;
         Ok(Self {
-            backend: EmbedderBackend::Onnx(onnx),
+            backend: EmbedderBackend::Onnx(Arc::new(onnx)),
         })
     }
 
@@ -165,7 +167,7 @@ impl Embedder {
                     OnnxEmbedder::load_builtin(cache_dir, &config.model, use_gpu)?
                 };
                 Ok(Self {
-                    backend: EmbedderBackend::Onnx(onnx),
+                    backend: EmbedderBackend::Onnx(Arc::new(onnx)),
                 })
             }
             EmbeddingBackend::OpenaiApi => {
@@ -183,23 +185,23 @@ impl Embedder {
                     dimensions,
                 );
                 Ok(Self {
-                    backend: EmbedderBackend::Api(api),
+                    backend: EmbedderBackend::Api(Arc::new(api)),
                 })
             }
         }
     }
 
     /// Generate embeddings for a batch of texts
-    pub async fn embed_batch(&mut self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-        match &mut self.backend {
+    pub async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+        match &self.backend {
             EmbedderBackend::Onnx(onnx) => onnx.embed_batch(texts).map(|(vecs, _)| vecs),
             EmbedderBackend::Api(api) => api.embed_batch(texts).await,
         }
     }
 
     /// Generate embeddings with sub-phase timing breakdown
-    pub async fn embed_batch_timed(&mut self, texts: &[&str]) -> Result<(Vec<Vec<f32>>, EmbedTiming)> {
-        match &mut self.backend {
+    pub async fn embed_batch_timed(&self, texts: &[&str]) -> Result<(Vec<Vec<f32>>, EmbedTiming)> {
+        match &self.backend {
             EmbedderBackend::Onnx(onnx) => onnx.embed_batch(texts),
             EmbedderBackend::Api(api) => {
                 let vecs = api.embed_batch(texts).await?;
@@ -209,7 +211,7 @@ impl Embedder {
     }
 
     /// Generate embedding for a single text
-    pub async fn embed(&mut self, text: &str) -> Result<Vec<f32>> {
+    pub async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         self.embed_batch(&[text])
             .await?
             .into_iter()
@@ -218,8 +220,8 @@ impl Embedder {
     }
 
     /// Synchronous embed for backward compatibility (ONNX only)
-    pub fn embed_sync(&mut self, text: &str) -> Result<Vec<f32>> {
-        match &mut self.backend {
+    pub fn embed_sync(&self, text: &str) -> Result<Vec<f32>> {
+        match &self.backend {
             EmbedderBackend::Onnx(onnx) => onnx
                 .embed_batch(&[text])
                 .map(|(vecs, _)| vecs)?
@@ -233,8 +235,8 @@ impl Embedder {
     }
 
     /// Synchronous embed_batch for backward compatibility (ONNX only)
-    pub fn embed_batch_sync(&mut self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-        match &mut self.backend {
+    pub fn embed_batch_sync(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+        match &self.backend {
             EmbedderBackend::Onnx(onnx) => onnx.embed_batch(texts).map(|(vecs, _)| vecs),
             EmbedderBackend::Api(_) => {
                 anyhow::bail!(
@@ -283,7 +285,7 @@ pub type SharedEmbedder = Arc<Embedder>;
 // ── ONNX Backend ─────────────────────────────────────────────────────
 
 struct OnnxEmbedder {
-    session: Session,
+    session: Mutex<Session>,
     tokenizer: Tokenizer,
     model_name: String,
     dim: usize,
@@ -399,7 +401,7 @@ impl OnnxEmbedder {
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}", e))?;
 
         Ok(Self {
-            session,
+            session: Mutex::new(session),
             tokenizer,
             model_name: name.to_string(),
             dim,
@@ -408,7 +410,7 @@ impl OnnxEmbedder {
         })
     }
 
-    fn embed_batch(&mut self, texts: &[&str]) -> Result<(Vec<Vec<f32>>, EmbedTiming)> {
+    fn embed_batch(&self, texts: &[&str]) -> Result<(Vec<Vec<f32>>, EmbedTiming)> {
         let mut timing = EmbedTiming::default();
 
         if texts.is_empty() {
@@ -458,8 +460,8 @@ impl OnnxEmbedder {
         timing.tokenize_ms = t_tok.elapsed().as_millis();
 
         let t_inf = Instant::now();
-        let outputs = self
-            .session
+        let mut session = self.session.lock().map_err(|e| anyhow::anyhow!("Session lock poisoned: {}", e))?;
+        let outputs = session
             .run(ort::inputs![
                 "input_ids" => input_ids_tensor,
                 "attention_mask" => attention_mask_tensor,

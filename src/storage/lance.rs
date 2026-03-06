@@ -12,6 +12,7 @@ use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::table::{CompactionOptions, Duration, OptimizeAction};
 use lancedb::{connect, Connection, Table};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::types::{
@@ -53,7 +54,7 @@ pub struct VectorStore {
     /// Embedding dimension used by this store
     embedding_dim: i32,
     /// Whether FTS index has been created for this session
-    fts_indexed: bool,
+    fts_indexed: AtomicBool,
 }
 
 impl VectorStore {
@@ -166,7 +167,7 @@ impl VectorStore {
             table,
             deps_table,
             embedding_dim,
-            fts_indexed: false,
+            fts_indexed: AtomicBool::new(false),
         })
     }
 
@@ -364,7 +365,7 @@ impl VectorStore {
         }
 
         // Invalidate FTS index since data changed
-        self.fts_indexed = false;
+        self.fts_indexed.store(false, Ordering::Relaxed);
 
         Ok(())
     }
@@ -426,7 +427,7 @@ impl VectorStore {
             }
         }
 
-        self.fts_indexed = false;
+        self.fts_indexed.store(false, Ordering::Relaxed);
         Ok(())
     }
 
@@ -438,8 +439,8 @@ impl VectorStore {
     /// Uses `replace(false)` to skip rebuilding if the index already exists on
     /// disk. This makes repeated calls (e.g., from hooks) fast since the FTS
     /// index persists across processes.
-    pub async fn ensure_fts_index(&mut self) -> Result<()> {
-        if self.fts_indexed {
+    pub async fn ensure_fts_index(&self) -> Result<()> {
+        if self.fts_indexed.load(Ordering::Relaxed) {
             return Ok(());
         }
 
@@ -468,7 +469,7 @@ impl VectorStore {
             }
         }
 
-        self.fts_indexed = true;
+        self.fts_indexed.store(true, Ordering::Relaxed);
         Ok(())
     }
 
@@ -552,12 +553,12 @@ impl VectorStore {
 
     /// Full-text search on content and chunk_name.
     /// Optionally filter by repo name.
-    pub async fn search_fts(&mut self, query: &str, limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
+    pub async fn search_fts(&self, query: &str, limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
         self.search_fts_filtered(query, limit, repo, None).await
     }
 
     /// Full-text search with an additional SQL filter.
-    pub async fn search_fts_filtered(&mut self, query: &str, limit: usize, repo: Option<&str>, filter: Option<&str>) -> Result<Vec<SearchResult>> {
+    pub async fn search_fts_filtered(&self, query: &str, limit: usize, repo: Option<&str>, filter: Option<&str>) -> Result<Vec<SearchResult>> {
         // Ensure FTS index exists (must be called before borrowing self.table)
         self.ensure_fts_index().await?;
 

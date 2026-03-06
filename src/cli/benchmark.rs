@@ -105,7 +105,7 @@ pub async fn run(args: BenchmarkArgs, output: OutputConfig) -> Result<()> {
 
         // Measure load time
         let load_start = Instant::now();
-        let mut embed = match Embedder::load(&model_dir, model_name) {
+        let embed = match Embedder::load(&model_dir, model_name) {
             Ok(e) => e,
             Err(e) => {
                 if !output.quiet && !output.json {

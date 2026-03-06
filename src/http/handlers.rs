@@ -15,7 +15,7 @@ use crate::analysis::impact::{ImpactAnalyzer, ImpactConfig, ImpactMode, ImpactSi
 use crate::analysis::refs::RefAnalyzer;
 use crate::analysis::similar::{SimilarTarget, SimilarityAnalyzer};
 use crate::config::Config;
-use crate::index::{Embedder, GitAnalyzer};
+use crate::index::GitAnalyzer;
 use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig, FileRelevance};
 use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{FeedbackStore, MetadataStore, VectorStore};
@@ -1376,9 +1376,7 @@ pub(super) async fn context(
 
     let metadata_store = open_metadata_store(&state).map_err(internal_error)?;
 
-    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
-    let embedder =
-        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+    let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
 
     // Build tag filter for context pipeline
     let mut tag_filters: Vec<String> = Vec::new();
@@ -1914,9 +1912,7 @@ pub(super) async fn impact(
 
     let metadata_store = open_metadata_store(&state).map_err(internal_error)?;
     let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
-    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
-    let embedder =
-        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+    let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
 
     let mut analyzer = ImpactAnalyzer::new(metadata_store, vector_store, embedder);
     let results = analyzer
@@ -2004,9 +2000,7 @@ pub(super) async fn review(
     }
 
     let metadata_store = open_metadata_store(&state).map_err(internal_error)?;
-    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
-    let embedder =
-        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+    let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
 
     let diff_spec = parse_diff_spec(params.diff.as_deref());
     let diff_description = describe_diff_spec(&diff_spec);
@@ -2189,9 +2183,7 @@ pub(super) async fn similar(
         }));
     }
 
-    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
-    let embedder =
-        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+    let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
 
     let mut analyzer = SimilarityAnalyzer::new(embedder, vector_store);
     let repo_filter = params.repo.as_deref();
@@ -2431,9 +2423,7 @@ pub(super) async fn archive_search(
     }
 
     let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
-    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
-    let embedder =
-        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+    let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
 
     // Build a SQL filter to search only archive-language chunks directly in LanceDB,
     // instead of overfetching all chunks and filtering in Rust.
@@ -2866,9 +2856,7 @@ pub(super) async fn search_beads(
 
     let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
 
-    let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
-    let embedder =
-        Embedder::from_config(&state.config.embedding, &model_dir).map_err(internal_error)?;
+    let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
 
     let mut search =
         HybridSearch::new(embedder, vector_store, state.config.search.semantic_weight);
@@ -3429,9 +3417,7 @@ async fn execute_single_search(
             .map_err(|e| internal_error(e.into())),
 
         "semantic" | "hybrid" => {
-            let model_dir = Config::model_cache_dir().map_err(|e| internal_error(e.into()))?;
-            let embedder = Embedder::load(&model_dir, &state.config.embedding.model)
-                .map_err(|e| internal_error(e.into()))?;
+            let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
 
             if mode == "semantic" {
                 let mut search = SemanticSearch::new(embedder, vector_store);
@@ -3856,8 +3842,10 @@ async fn run_incremental_index(
     let lance_path = Config::lance_path(&repo_root);
     let mut vector_store = VectorStore::open(&lance_path).await?;
 
+
+
     let model_dir = Config::model_cache_dir()?;
-    let mut embedder = Embedder::load(&model_dir, &config.embedding.model)?;
+    let embedder = Embedder::load(&model_dir, &config.embedding.model)?;
     let mut parser = Parser::new()?;
 
     // Collect files

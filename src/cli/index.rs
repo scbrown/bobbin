@@ -205,7 +205,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     metadata_store.set_meta("embedding_model", current_model)?;
 
-    let mut embed = Embedder::from_config(&config.embedding, &model_dir)
+    let embed = Embedder::from_config(&config.embedding, &model_dir)
         .context("Failed to load embedding model")?;
     let mut parser = Parser::new().context("Failed to initialize parser")?;
 
@@ -474,7 +474,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             let (indexed, chunks_count) = process_batch(
                 &mut pending_results,
                 &mut vector_store,
-                &mut embed,
+                &embed,
                 repo_name,
                 &mut profile,
                 &existing_files,
@@ -511,7 +511,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         let (indexed, chunks_count) = process_batch(
             &mut pending_results,
             &mut vector_store,
-            &mut embed,
+            &embed,
             repo_name,
             &mut profile,
             &existing_files,
@@ -1211,7 +1211,7 @@ fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
 async fn process_batch(
     results: &mut Vec<FileIndexResult>,
     vector_store: &mut VectorStore,
-    embed: &mut Embedder,
+    embed: &Embedder,
     repo: &str,
     profile: &mut ProfileStats,
     existing_files: &HashSet<String>,

@@ -98,7 +98,7 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
     let lance_path = Config::lance_path(&repo_root);
     let metadata_store = MetadataStore::open(&db_path)?;
     let mut vector_store = VectorStore::open(&lance_path).await?;
-    let mut embed = Embedder::load(&model_dir, &config.embedding.model)?;
+    let embed = Embedder::load(&model_dir, &config.embedding.model)?;
     let mut parser = Parser::new()?;
 
     // Precompile include/exclude patterns
@@ -245,7 +245,7 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
                             repo_name,
                             &mut vector_store,
                             &metadata_store,
-                            &mut embed,
+                            &embed,
                             &mut parser,
                             &output,
                         )
@@ -323,7 +323,7 @@ async fn reindex_files(
     repo_name: &str,
     vector_store: &mut VectorStore,
     metadata_store: &MetadataStore,
-    embed: &mut Embedder,
+    embed: &Embedder,
     parser: &mut Parser,
     output: &OutputConfig,
 ) -> Result<ReindexStats> {
