@@ -627,6 +627,8 @@ impl BobbinMcpServer {
             file_type_rules: config.file_types.clone(),
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1094,6 +1096,8 @@ impl BobbinMcpServer {
             file_type_rules: config.file_types.clone(),
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

@@ -1710,6 +1710,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         file_type_rules: config.file_types.clone(),
         repo_affinity: detect_repo_name(&cwd),
         repo_affinity_boost: config.hooks.repo_affinity_boost,
+        max_bridged_files: 3,
+        max_bridged_chunks_per_file: 2,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2586,6 +2588,8 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             file_type_rules: config.file_types.clone(),
             repo_affinity: detect_repo_name(&cwd),
             repo_affinity_boost: config.hooks.repo_affinity_boost,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -3043,6 +3047,8 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         file_type_rules: config.file_types.clone(),
         repo_affinity: detect_repo_name(&cwd),
         repo_affinity_boost: config.hooks.repo_affinity_boost,
+        max_bridged_files: 3,
+        max_bridged_chunks_per_file: 2,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

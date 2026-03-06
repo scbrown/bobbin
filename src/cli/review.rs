@@ -160,6 +160,8 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
         file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
     };
 
     // Build description of the diff for the query field

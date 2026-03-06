@@ -91,6 +91,12 @@ pub struct ContextConfig {
     pub repo_affinity: Option<String>,
     /// Score multiplier for files matching `repo_affinity`. Default: 2.0.
     pub repo_affinity_boost: f32,
+    /// Maximum number of bridged files to fetch chunks for. Default: 3.
+    /// Prevents bridge explosion from doc→source blame chains.
+    pub max_bridged_files: usize,
+    /// Maximum chunks per bridged file. Default: 2.
+    /// Only the first N chunks (sorted by start_line) are kept per file.
+    pub max_bridged_chunks_per_file: usize,
 }
 
 /// How much content to include in output
@@ -514,7 +520,14 @@ impl ContextAssembler {
         // Use the best seed score as a proxy for bridged chunk scoring
         let best_seed_score = seeds.iter().map(|s| s.score).fold(0.0_f32, f32::max);
 
+        let max_files = self.config.max_bridged_files;
+        let max_chunks_per_file = self.config.max_bridged_chunks_per_file;
+        let mut files_fetched: usize = 0;
+
         for file_path in bridge_files {
+            if files_fetched >= max_files {
+                break;
+            }
             if seed_files.contains(file_path.as_str()) {
                 continue;
             }
@@ -524,7 +537,9 @@ impl ContextAssembler {
                 Err(_) => continue,
             };
 
-            for chunk in chunks {
+            files_fetched += 1;
+
+            for chunk in chunks.into_iter().take(max_chunks_per_file) {
                 bridged_chunks.push(CoupledChunkInfo {
                     chunk_id: chunk.id.clone(),
                     file_path: chunk.file_path.clone(),
@@ -1151,10 +1166,12 @@ fn assemble_bundle(
     });
 
     let mut bridged_addition_count: usize = 0;
+    let bridged_budget = budget / 5; // Cap bridged content at 20% of total budget
+    let mut bridged_lines: usize = 0;
 
     // Add bridged chunks (source files discovered via doc provenance)
     for (file_path, mut chunks, sources) in bridged_file_list {
-        if used_lines >= budget {
+        if used_lines >= budget || bridged_lines >= bridged_budget {
             break;
         }
 
@@ -1172,12 +1189,13 @@ fn assemble_bundle(
             let chunk_lines = (chunk.end_line - chunk.start_line + 1) as usize;
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
-            if used_lines + capped_lines > budget {
+            if used_lines + capped_lines > budget || bridged_lines + capped_lines > bridged_budget {
                 break;
             }
 
             seen_chunk_ids.insert(chunk.chunk_id.clone());
             used_lines += capped_lines;
+            bridged_lines += capped_lines;
             bridged_addition_count += 1;
 
             file_chunks.push(ContextChunk {
@@ -1336,6 +1354,8 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         let seeds = vec![
@@ -1372,6 +1392,8 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         let seeds = vec![
@@ -1405,6 +1427,8 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1435,6 +1459,8 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1469,6 +1495,8 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         let seeds = vec![
@@ -1504,6 +1532,8 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)
@@ -1536,6 +1566,8 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         // Mix of commit and function seeds — commits should be excluded
@@ -1666,6 +1698,8 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         let mut pinned = make_seed("p1", "critical.rs", 1, 5, 0.5);
@@ -1724,6 +1758,8 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         // Pinned chunk of 15 lines but budget_reserve is 10 — should not fit
@@ -1761,6 +1797,8 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
         };
 
         let seeds = vec![
