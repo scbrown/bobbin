@@ -64,13 +64,13 @@ Related to src/auth/middleware.rs:
 
 🔍 **Hybrid Search** — Semantic + keyword results fused via [Reciprocal Rank Fusion](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf). Ask in natural language or grep by pattern.
 
-🌳 **Structure-Aware Parsing** — Tree-sitter extracts functions, classes, structs, traits, and more from 7 languages. Markdown parsed into sections, tables, and code blocks.
+🌳 **Structure-Aware Parsing** — Tree-sitter extracts functions, classes, structs, traits, and more from 8 languages. Markdown parsed into sections, tables, and code blocks.
 
 🔗 **Git Temporal Coupling** — Analyzes commit history to find files that change together. `bobbin related src/auth.rs` reveals hidden dependencies no import graph can see.
 
 📦 **Task-Aware Context** — `bobbin context "fix the login bug"` builds a budget-controlled bundle from search results + coupled files. Feed it straight to an AI agent.
 
-🤖 **MCP Server** — `bobbin serve` exposes 12 tools to Claude Code, Cursor, and any MCP-compatible agent.
+🤖 **MCP Server** — `bobbin serve` exposes 24 tools to Claude Code, Cursor, and any MCP-compatible agent.
 
 🌐 **Multi-Repo** — Index multiple repositories into one database. Search across all or filter by name.
 
@@ -78,7 +78,9 @@ Related to src/auth/middleware.rs:
 
 🚀 **GPU Accelerated** — Automatic CUDA detection for 10-25x faster indexing on NVIDIA GPUs. Index 57K chunks in under 5 minutes. Falls back to CPU seamlessly.
 
-🪝 **Claude Code Hooks** — Automatic context injection on every prompt via `UserPromptSubmit` hook. Session primer via `SessionStart` hook. Smart gating skips injection when context is irrelevant.
+🪝 **Claude Code Hooks** — Automatic context injection on every prompt via `UserPromptSubmit` hook. Session primer via `SessionStart` hook. Reactive context via `PostToolUse` hook (inject related files when code is edited). Smart gating skips injection when context is irrelevant.
+
+🔄 **Feedback Loop** — Agents rate injections as useful/noise/harmful. Lineage tracking ties feedback to fixes (commits, beads, config changes). Metrics close the loop between search quality and real-world impact.
 
 ## Quick Start
 
@@ -143,7 +145,7 @@ Add to your Claude Code or Cursor MCP config:
 }
 ```
 
-Exposes 12 tools: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `impact`, `review`, `similar`, and `prime`.
+Exposes 24 tools including: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `impact`, `review`, `similar`, `prime`, `search_beads`, `dependencies`, `file_history`, `status`, `commit_search`, `feedback_submit`, `feedback_list`, `feedback_stats`, `feedback_lineage_store`, `feedback_lineage_list`, `archive_search`, and `archive_recent`.
 
 ### Claude Code Hooks
 
@@ -182,6 +184,8 @@ The `inject-context` hook embeds your prompt, searches the index, and injects th
 | Go         | Tree-sitter   | functions, methods, type declarations |
 | Java       | Tree-sitter   | methods, constructors, classes, interfaces, enums |
 | C++        | Tree-sitter   | functions, classes, structs, enums |
+| C          | Tree-sitter   | functions, structs, enums |
+| JavaScript | Line-based    | detected and indexed, line-based chunking |
 | Markdown   | pulldown-cmark| sections, tables, code blocks, YAML frontmatter |
 
 Other file types use line-based chunking with overlap.

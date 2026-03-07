@@ -32,8 +32,13 @@ All commands support these global flags:
 | [`bobbin related`](related.md) | Find files related to a given file |
 | [`bobbin history`](history.md) | Show commit history and churn statistics |
 | [`bobbin hotspots`](hotspots.md) | Identify high-churn/complexity code |
+| [`bobbin impact`](impact.md) | Predict which files are affected by a change |
+| [`bobbin review`](review.md) | Assemble review context from a git diff |
+| [`bobbin similar`](similar.md) | Find semantically similar code or detect duplicates |
 | [`bobbin status`](status.md) | Show index statistics |
 | [`bobbin serve`](serve.md) | Start MCP server for AI agent integration |
+| [`bobbin tour`](tour.md) | Interactive tour of bobbin features |
+| [`bobbin prime`](prime.md) | Generate LLM-friendly overview with live stats |
 | [`bobbin benchmark`](benchmark.md) | Run embedding benchmarks |
 | [`bobbin watch`](watch.md) | Watch mode for automatic re-indexing |
 | [`bobbin completions`](completions.md) | Generate shell completions |
