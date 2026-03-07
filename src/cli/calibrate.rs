@@ -521,6 +521,10 @@ fn cache_path(repo_root: &std::path::Path) -> PathBuf {
     Config::data_dir(repo_root).join("calibration_cache.json")
 }
 
+fn progress_path(repo_root: &std::path::Path) -> PathBuf {
+    Config::data_dir(repo_root).join("calibration_progress.jsonl")
+}
+
 fn save_calibration(repo_root: &std::path::Path, result: &CalibrationResult) -> Result<()> {
     let path = calibration_path(repo_root);
     let json = serde_json::to_string_pretty(result)?;
@@ -585,6 +589,7 @@ async fn run_probes(
     coupling_depth: Option<usize>,
     repo_root: &std::path::Path,
     pb: Option<&ProgressBar>,
+    progress_file: Option<&std::path::Path>,
 ) -> Result<Vec<GridResult>> {
     // Open stores and embedder once for all probes
     let vs = VectorStore::open(lance_path).await?;
@@ -683,7 +688,7 @@ async fn run_probes(
         }
 
         let n = valid_probes.max(1) as f32;
-        grid_results.push(GridResult {
+        let result = GridResult {
             semantic_weight: point.semantic_weight,
             doc_demotion: point.doc_demotion,
             rrf_k: point.rrf_k,
@@ -697,7 +702,16 @@ async fn run_probes(
             precision: total_precision / n,
             recall: total_recall / n,
             f1: total_f1 / n,
-        });
+        };
+
+        if let Some(path) = progress_file {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                let _ = writeln!(f, "{}", serde_json::to_string(&result).unwrap_or_default());
+            }
+        }
+
+        grid_results.push(result);
     }
 
     Ok(grid_results)
@@ -996,6 +1010,7 @@ async fn run_core_sweep(
         None
     };
 
+    let prog = progress_path(repo_root);
     let results = run_probes(
         &grid,
         commits,
@@ -1006,6 +1021,7 @@ async fn run_core_sweep(
         None,
         repo_root,
         pb.as_ref(),
+        Some(&prog),
     )
     .await?;
 
@@ -1086,6 +1102,7 @@ async fn run_bridge_sweep(
         None
     };
 
+    let prog = progress_path(repo_root);
     let results = run_probes(
         &grid,
         commits,
@@ -1096,6 +1113,7 @@ async fn run_bridge_sweep(
         None,
         repo_root,
         pb.as_ref(),
+        Some(&prog),
     )
     .await?;
 
@@ -1248,6 +1266,7 @@ async fn run_full_sweep(
         reindex_coupling(git, db_path, depth, config.git.coupling_threshold)?;
 
         // Run probes with this coupling depth
+        let prog = progress_path(repo_root);
         let depth_results = run_probes(
             &grid,
             commits,
@@ -1258,6 +1277,7 @@ async fn run_full_sweep(
             Some(depth),
             repo_root,
             pb.as_ref(),
+            Some(&prog),
         )
         .await?;
 
