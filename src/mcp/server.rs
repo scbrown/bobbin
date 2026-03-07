@@ -2014,7 +2014,130 @@ impl BobbinMcpServer {
             stats.harmful
         );
 
+        // Append lineage stats if any exist
+        if stats.lineage_records > 0 || stats.actioned > 0 {
+            let text = format!(
+                "{}\nLineage: {} records\n  actioned: {}\n  unactioned: {}",
+                text, stats.lineage_records, stats.actioned, stats.unactioned
+            );
+            return Ok(CallToolResult::success(vec![Content::text(text)]));
+        }
+
         Ok(CallToolResult::success(vec![Content::text(text)]))
+    }
+
+    /// Record a lineage action linking feedback to a fix (commit, bead, config change)
+    #[tool(description = "Record a lineage action that ties bobbin feedback to a concrete fix. Links one or more feedback records (by ID) to a commit, bead, or config change. This closes the feedback loop — proving that feedback led to action. Use after fixing an issue that feedback identified. Action types: 'code_fix', 'config_change', 'tag_effect', 'access_rule', 'exclusion_rule'.")]
+    async fn feedback_lineage_store(
+        &self,
+        Parameters(req): Parameters<FeedbackLineageStoreRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        if req.feedback_ids.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "Error: feedback_ids must not be empty. Get IDs from bobbin_feedback_list.",
+            )]));
+        }
+
+        let valid_actions = ["access_rule", "tag_effect", "config_change", "code_fix", "exclusion_rule"];
+        if !valid_actions.contains(&req.action_type.as_str()) {
+            return Ok(CallToolResult::success(vec![Content::text(format!(
+                "Error: action_type must be one of: {}",
+                valid_actions.join(", ")
+            ))]));
+        }
+
+        let agent = req.agent.unwrap_or_else(|| {
+            std::env::var("GT_ROLE")
+                .or_else(|_| std::env::var("BD_ACTOR"))
+                .unwrap_or_else(|_| "unknown".to_string())
+        });
+
+        let input = crate::storage::feedback::LineageInput {
+            feedback_ids: req.feedback_ids.clone(),
+            action_type: req.action_type.clone(),
+            bead: req.bead.clone(),
+            commit_hash: req.commit_hash.clone(),
+            description: req.description.clone(),
+            agent: Some(agent),
+        };
+
+        let store = self
+            .open_feedback_store()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let lineage_id = store
+            .store_lineage(&input)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let mut summary = format!(
+            "Lineage #{} recorded: {} linking {} feedback record(s)",
+            lineage_id,
+            req.action_type,
+            req.feedback_ids.len()
+        );
+        if let Some(ref bead) = req.bead {
+            summary.push_str(&format!(" | bead: {}", bead));
+        }
+        if let Some(ref commit) = req.commit_hash {
+            summary.push_str(&format!(" | commit: {}", commit));
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(summary)]))
+    }
+
+    /// List lineage records showing how feedback was acted on
+    #[tool(description = "List lineage records showing how bobbin feedback was acted on. Each record links feedback IDs to a concrete action (code fix, config change, etc.) with optional bead and commit references. Filter by feedback_id, bead, or commit_hash. Use to audit the feedback-to-fix pipeline and verify that feedback is being closed.")]
+    async fn feedback_lineage_list(
+        &self,
+        Parameters(req): Parameters<FeedbackLineageListRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self
+            .open_feedback_store()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let query = crate::storage::feedback::LineageQuery {
+            feedback_id: req.feedback_id,
+            bead: req.bead,
+            commit_hash: req.commit_hash,
+            limit: req.limit,
+        };
+
+        let records = store
+            .list_lineage(&query)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        if records.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "No lineage records found.",
+            )]));
+        }
+
+        let mut lines = vec![format!("Lineage records ({}):", records.len())];
+        for r in &records {
+            let ts = if r.timestamp.len() > 19 {
+                &r.timestamp[..19]
+            } else {
+                &r.timestamp
+            };
+            let mut line = format!(
+                "#{} [{}] {} | {} | feedback: {:?}",
+                r.id, ts, r.action_type, r.description, r.feedback_ids
+            );
+            if let Some(ref bead) = r.bead {
+                line.push_str(&format!(" | bead: {}", bead));
+            }
+            if let Some(ref commit) = r.commit_hash {
+                line.push_str(&format!(" | commit: {}", commit));
+            }
+            if let Some(ref agent) = r.agent {
+                line.push_str(&format!(" | by: {}", agent));
+            }
+            lines.push(line);
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(
+            lines.join("\n"),
+        )]))
     }
 
     /// Search archive records (HLA chat logs, Pensieve agent memory)

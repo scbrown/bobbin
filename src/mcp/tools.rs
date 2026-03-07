@@ -934,3 +934,51 @@ pub struct FeedbackListRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct FeedbackStatsRequest {}
 
+/// Request for recording a lineage action that ties feedback to a fix
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct FeedbackLineageStoreRequest {
+    /// Feedback record IDs this action resolves (from feedback_list output)
+    #[schemars(description = "Feedback record IDs this action resolves. Get IDs from bobbin_feedback_list output.")]
+    pub feedback_ids: Vec<i64>,
+
+    /// Type of action taken: access_rule, tag_effect, config_change, code_fix, or exclusion_rule
+    #[schemars(description = "Type of action: 'code_fix' (bug fix or feature), 'config_change' (bobbin config tuning), 'tag_effect' (tag/annotation change), 'access_rule' (access control change), or 'exclusion_rule' (file exclusion)")]
+    pub action_type: String,
+
+    /// Associated bead ID (e.g., "aegis-abc123")
+    #[schemars(description = "Bead ID this action is associated with (e.g. 'aegis-abc123'). Optional.")]
+    pub bead: Option<String>,
+
+    /// Git commit hash
+    #[schemars(description = "Git commit hash for the fix. Optional.")]
+    pub commit_hash: Option<String>,
+
+    /// Human-readable description of what was done
+    #[schemars(description = "What was done to address the feedback (e.g. 'Added exclusion rule for generated files')")]
+    pub description: String,
+
+    /// Agent identity (auto-detected from GT_ROLE or BD_ACTOR env vars if empty)
+    #[schemars(description = "Agent identity (auto-detected from environment if omitted)")]
+    pub agent: Option<String>,
+}
+
+/// Request for listing lineage records
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct FeedbackLineageListRequest {
+    /// Filter by feedback record ID
+    #[schemars(description = "Filter lineage records linked to a specific feedback ID")]
+    pub feedback_id: Option<i64>,
+
+    /// Filter by bead ID
+    #[schemars(description = "Filter by bead ID (e.g. 'aegis-abc123')")]
+    pub bead: Option<String>,
+
+    /// Filter by commit hash
+    #[schemars(description = "Filter by git commit hash")]
+    pub commit_hash: Option<String>,
+
+    /// Max results (default: 20, max: 50)
+    #[schemars(description = "Maximum number of results (default: 20, max: 50)")]
+    pub limit: Option<usize>,
+}
+
