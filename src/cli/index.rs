@@ -697,16 +697,30 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                         let commit_chunks: Vec<Chunk> = commit_entries
                             .iter()
                             .map(|entry| {
-                                // Build rich content: message + metadata + files
+                                // Build rich content: message + metadata + trailers + files
                                 let files_str = if entry.files.is_empty() {
                                     String::new()
                                 } else {
                                     format!("\n\nFiles changed:\n{}", entry.files.join("\n"))
                                 };
+                                let trailers_str = if entry.trailers.is_empty() {
+                                    String::new()
+                                } else {
+                                    let lines: Vec<String> = entry.trailers.iter()
+                                        .map(|(k, v)| format!("{}: {}", k, v))
+                                        .collect();
+                                    format!("\n\nTrailers:\n{}", lines.join("\n"))
+                                };
                                 let content = format!(
-                                    "{}\n\nAuthor: {}\nDate: {}{}",
-                                    entry.message, entry.author, entry.date, files_str
+                                    "{}\n\nAuthor: {}\nDate: {}{}{}",
+                                    entry.message, entry.author, entry.date, trailers_str, files_str
                                 );
+
+                                // Store trailer keys as tags for structured filtering
+                                let tags = entry.trailers.iter()
+                                    .map(|(k, v)| format!("{}={}", k.to_lowercase().replace(' ', "-"), v))
+                                    .collect::<Vec<_>>()
+                                    .join(",");
 
                                 Chunk {
                                     id: format!("commit:{}", entry.hash),
@@ -717,7 +731,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                                     end_line: 0,
                                     content,
                                     language: "git".to_string(),
-                                    tags: String::new(),
+                                    tags,
                                 }
                             })
                             .collect();

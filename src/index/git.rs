@@ -26,6 +26,8 @@ pub struct CommitEntry {
     pub message: String,
     pub files: Vec<String>,
     pub timestamp: i64,
+    /// Git trailers (e.g. Co-Authored-By, Bead-ID)
+    pub trailers: Vec<(String, String)>,
 }
 
 /// A single line from git blame output, mapping a line to its originating commit
@@ -321,10 +323,14 @@ impl GitAnalyzer {
         depth: usize,
         since_commit: Option<&str>,
     ) -> Result<Vec<CommitEntry>> {
-        // Format: ENTRY<sep>hash<sep>timestamp<sep>author<sep>subject
+        // Format: ENTRY<sep>hash<sep>timestamp<sep>author<sep>subject<sep>trailers
         // followed by list of files (--name-only)
+        // Trailers are separated by RS (\x1e) via %(trailers) format
         let sep = "\x1f"; // unit separator
-        let format_str = format!("ENTRY{}%H{}%ct{}%an{}%s", sep, sep, sep, sep);
+        let format_str = format!(
+            "ENTRY{}%H{}%ct{}%an{}%s{}%(trailers:separator=%x1e,unfold)",
+            sep, sep, sep, sep, sep
+        );
 
         let mut args = vec![
             "log".to_string(),
@@ -543,7 +549,7 @@ fn parse_file_history(log: &str) -> Vec<FileHistoryEntry> {
 /// Parse commit log output into CommitEntry structs
 fn parse_commit_log(log: &str, sep: &str) -> Vec<CommitEntry> {
     let mut entries = Vec::new();
-    let mut current: Option<(String, i64, String, String)> = None;
+    let mut current: Option<(String, i64, String, String, Vec<(String, String)>)> = None;
     let mut current_files: Vec<String> = Vec::new();
 
     let entry_prefix = format!("ENTRY{}", sep);
@@ -556,7 +562,7 @@ fn parse_commit_log(log: &str, sep: &str) -> Vec<CommitEntry> {
 
         if line.starts_with(&entry_prefix) {
             // Save previous entry if any
-            if let Some((hash, timestamp, author, message)) = current.take() {
+            if let Some((hash, timestamp, author, message, trailers)) = current.take() {
                 entries.push(CommitEntry {
                     hash,
                     author,
@@ -564,17 +570,23 @@ fn parse_commit_log(log: &str, sep: &str) -> Vec<CommitEntry> {
                     message,
                     files: std::mem::take(&mut current_files),
                     timestamp,
+                    trailers,
                 });
             }
 
-            // Parse: ENTRY<sep>hash<sep>timestamp<sep>author<sep>subject
-            let parts: Vec<&str> = line.splitn(5, sep).collect();
+            // Parse: ENTRY<sep>hash<sep>timestamp<sep>author<sep>subject<sep>trailers
+            let parts: Vec<&str> = line.splitn(6, sep).collect();
             if parts.len() >= 5 {
                 let hash = parts[1].to_string();
                 let timestamp = parts[2].parse::<i64>().unwrap_or(0);
                 let author = parts[3].to_string();
                 let message = parts[4].to_string();
-                current = Some((hash, timestamp, author, message));
+                let trailers = if parts.len() >= 6 && !parts[5].is_empty() {
+                    parse_trailers(parts[5])
+                } else {
+                    Vec::new()
+                };
+                current = Some((hash, timestamp, author, message, trailers));
             }
         } else {
             // This is a file path
@@ -583,7 +595,7 @@ fn parse_commit_log(log: &str, sep: &str) -> Vec<CommitEntry> {
     }
 
     // Don't forget the last entry
-    if let Some((hash, timestamp, author, message)) = current.take() {
+    if let Some((hash, timestamp, author, message, trailers)) = current.take() {
         entries.push(CommitEntry {
             hash,
             author,
@@ -591,10 +603,25 @@ fn parse_commit_log(log: &str, sep: &str) -> Vec<CommitEntry> {
             message,
             files: current_files,
             timestamp,
+            trailers,
         });
     }
 
     entries
+}
+
+/// Parse trailers from a RS-separated string (from git %(trailers:separator=%x1e,unfold))
+/// Each trailer is "Key: Value". Returns vec of (key, value) pairs.
+fn parse_trailers(raw: &str) -> Vec<(String, String)> {
+    raw.split('\x1e')
+        .filter_map(|t| {
+            let t = t.trim();
+            let colon = t.find(':')?;
+            let key = t[..colon].trim().to_string();
+            let value = t[colon + 1..].trim().to_string();
+            if key.is_empty() { None } else { Some((key, value)) }
+        })
+        .collect()
 }
 
 /// Format unix timestamp as YYYY-MM-DD
@@ -977,6 +1004,37 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].hash, "abc123");
         assert!(entries[0].files.is_empty());
+    }
+
+    #[test]
+    fn test_parse_commit_log_with_trailers() {
+        let sep = "\x1f";
+        let trailers = "Co-Authored-By: Alice <alice@test.com>\x1eBead-ID: aegis-xyz";
+        let log = format!(
+            "ENTRY{s}abc123{s}1704067200{s}Bob{s}Fix bug{s}{t}\nfile1.rs",
+            s = sep,
+            t = trailers
+        );
+        let entries = parse_commit_log(&log, sep);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].trailers.len(), 2);
+        assert_eq!(entries[0].trailers[0].0, "Co-Authored-By");
+        assert_eq!(entries[0].trailers[0].1, "Alice <alice@test.com>");
+        assert_eq!(entries[0].trailers[1].0, "Bead-ID");
+        assert_eq!(entries[0].trailers[1].1, "aegis-xyz");
+    }
+
+    #[test]
+    fn test_parse_trailers() {
+        let raw = "Co-Authored-By: Claude <noreply@anthropic.com>\x1eBead-ID: bo-123";
+        let trailers = parse_trailers(raw);
+        assert_eq!(trailers.len(), 2);
+        assert_eq!(trailers[0], ("Co-Authored-By".to_string(), "Claude <noreply@anthropic.com>".to_string()));
+        assert_eq!(trailers[1], ("Bead-ID".to_string(), "bo-123".to_string()));
+
+        // Empty input
+        assert!(parse_trailers("").is_empty());
     }
 
     /// Helper: create a temp git repo and return the path
