@@ -395,6 +395,27 @@ impl FeedbackStore {
             anyhow::bail!("feedback_ids must not be empty");
         }
 
+        // Validate that all feedback IDs exist before creating the lineage record.
+        // Without this, INSERT OR IGNORE silently drops rows that violate the FK
+        // constraint, leading to lineage records with no linked feedback.
+        let mut missing = Vec::new();
+        for &fid in &input.feedback_ids {
+            let exists: bool = self.conn.query_row(
+                "SELECT COUNT(*) > 0 FROM feedback WHERE id = ?1",
+                rusqlite::params![fid],
+                |row| row.get(0),
+            ).unwrap_or(false);
+            if !exists {
+                missing.push(fid);
+            }
+        }
+        if !missing.is_empty() {
+            anyhow::bail!(
+                "Feedback IDs not found: {:?}. Use bobbin_feedback_list to find valid IDs.",
+                missing
+            );
+        }
+
         let now = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.fZ")
             .to_string();
@@ -407,7 +428,7 @@ impl FeedbackStore {
 
         for &fid in &input.feedback_ids {
             self.conn.execute(
-                "INSERT OR IGNORE INTO lineage_feedback (lineage_id, feedback_id) VALUES (?1, ?2)",
+                "INSERT INTO lineage_feedback (lineage_id, feedback_id) VALUES (?1, ?2)",
                 rusqlite::params![lineage_id, fid],
             )?;
         }
@@ -871,5 +892,35 @@ mod tests {
             agent: None,
         });
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_lineage_rejects_nonexistent_feedback_ids() {
+        let (store, _f) = temp_store();
+        let fid = store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-1".to_string(),
+                agent: "test".to_string(),
+                rating: "noise".to_string(),
+                reason: "test".to_string(),
+            })
+            .unwrap();
+
+        // Mix of valid and invalid feedback IDs should be rejected
+        let result = store.store_lineage(&LineageInput {
+            feedback_ids: vec![fid, 9999],
+            action_type: "code_fix".to_string(),
+            bead: None,
+            commit_hash: None,
+            description: "test".to_string(),
+            agent: None,
+        });
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("9999"), "Error should mention the missing ID: {}", err_msg);
+
+        // Verify no lineage record was created (transaction-like behavior)
+        let records = store.list_lineage(&LineageQuery::default()).unwrap();
+        assert_eq!(records.len(), 0, "No lineage should be created when feedback IDs are invalid");
     }
 }
