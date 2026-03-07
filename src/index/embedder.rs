@@ -11,24 +11,38 @@ use std::time::Instant;
 
 use crate::config::{EmbeddingBackend, EmbeddingConfig};
 
-/// Probe well-known locations for a CUDA-enabled libonnxruntime.so and set
-/// ORT_DYLIB_PATH + LD_LIBRARY_PATH so the `load-dynamic` ort crate picks it up.
-/// Safe to call multiple times — no-ops if ORT_DYLIB_PATH is already set.
-pub(crate) fn auto_resolve_gpu_dylib() {
-    // If ORT_DYLIB_PATH is already set to a CUDA-capable lib, nothing to do.
+/// Probe well-known locations for libonnxruntime.so and set ORT_DYLIB_PATH
+/// so the `load-dynamic` ort crate picks it up. When `prefer_gpu` is true,
+/// prefers a CUDA-enabled build; otherwise accepts any build (CPU or GPU).
+///
+/// Safe to call multiple times — no-ops if ORT_DYLIB_PATH is already set
+/// to a valid library.
+pub(crate) fn auto_resolve_ort_dylib(prefer_gpu: bool) {
+    // If ORT_DYLIB_PATH is already set and points to an existing file, respect it.
+    // Exception: if GPU is requested and the existing path is CPU-only, override.
     if let Ok(existing) = std::env::var("ORT_DYLIB_PATH") {
-        let existing_dir = Path::new(&existing).parent().unwrap_or(Path::new(""));
-        if existing_dir.join("libonnxruntime_providers_cuda.so").exists() {
-            return;
+        if Path::new(&existing).exists() {
+            if !prefer_gpu {
+                return; // Any existing lib is fine for CPU mode.
+            }
+            let existing_dir = Path::new(&existing).parent().unwrap_or(Path::new(""));
+            if existing_dir.join("libonnxruntime_providers_cuda.so").exists() {
+                return; // GPU-capable, all good.
+            }
+            // Existing path is CPU-only but GPU requested — try to find GPU build below.
         }
-        // Existing path is CPU-only (e.g., from Python onnxruntime) — override it.
     }
 
+    // Search paths ordered by specificity: GPU-specific dirs first, then general.
     const SEARCH_PATHS: &[&str] = &[
         "/usr/local/lib/onnxruntime-gpu/libonnxruntime.so",
-        "/usr/local/lib/libonnxruntime.so",
         "/opt/onnxruntime-gpu/lib/libonnxruntime.so",
+        "/usr/local/lib/libonnxruntime.so",
+        "/usr/lib/libonnxruntime.so",
+        "/usr/lib/x86_64-linux-gnu/libonnxruntime.so",
     ];
+
+    let mut best_cpu: Option<&str> = None;
 
     for candidate in SEARCH_PATHS {
         let p = Path::new(candidate);
@@ -36,35 +50,58 @@ pub(crate) fn auto_resolve_gpu_dylib() {
             continue;
         }
         let dir = p.parent().unwrap();
-        let cuda_provider = dir.join("libonnxruntime_providers_cuda.so");
-        if !cuda_provider.exists() {
-            continue;
+        let has_cuda = dir.join("libonnxruntime_providers_cuda.so").exists();
+
+        if prefer_gpu && has_cuda {
+            set_ort_env(candidate, dir);
+            eprintln!("auto-detected GPU ONNX Runtime at {}", candidate);
+            return;
         }
-        // SAFETY: called before any ort Session is created.
-        unsafe {
-            std::env::set_var("ORT_DYLIB_PATH", candidate);
+        if best_cpu.is_none() {
+            best_cpu = Some(candidate);
         }
-        // Ensure the provider .so can find its own deps via LD_LIBRARY_PATH
-        let mut ld_path = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
-        let dir_str = dir.to_string_lossy();
-        if !ld_path.contains(dir_str.as_ref()) {
-            if !ld_path.is_empty() {
-                ld_path.push(':');
-            }
-            ld_path.push_str(&dir_str);
-            for cuda_dir in &["/usr/local/cuda/lib64", "/usr/local/cuda-12/lib64"] {
-                if Path::new(cuda_dir).exists() && !ld_path.contains(cuda_dir) {
-                    ld_path.push(':');
-                    ld_path.push_str(cuda_dir);
-                }
-            }
-            unsafe {
-                std::env::set_var("LD_LIBRARY_PATH", &ld_path);
-            }
-        }
-        eprintln!("auto-detected GPU ONNX Runtime at {}", candidate);
-        return;
     }
+
+    // Fallback: use the first CPU-capable library found.
+    if let Some(cpu_path) = best_cpu {
+        let dir = Path::new(cpu_path).parent().unwrap();
+        set_ort_env(cpu_path, dir);
+        if prefer_gpu {
+            eprintln!("warning: GPU requested but no CUDA ONNX Runtime found, using CPU at {}", cpu_path);
+        } else {
+            eprintln!("auto-detected ONNX Runtime at {}", cpu_path);
+        }
+    }
+}
+
+/// Set ORT_DYLIB_PATH and extend LD_LIBRARY_PATH for a given library.
+fn set_ort_env(lib_path: &str, dir: &Path) {
+    // SAFETY: called before any ort Session is created.
+    unsafe {
+        std::env::set_var("ORT_DYLIB_PATH", lib_path);
+    }
+    let mut ld_path = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
+    let dir_str = dir.to_string_lossy();
+    if !ld_path.contains(dir_str.as_ref()) {
+        if !ld_path.is_empty() {
+            ld_path.push(':');
+        }
+        ld_path.push_str(&dir_str);
+        for cuda_dir in &["/usr/local/cuda/lib64", "/usr/local/cuda-12/lib64"] {
+            if Path::new(cuda_dir).exists() && !ld_path.contains(cuda_dir) {
+                ld_path.push(':');
+                ld_path.push_str(cuda_dir);
+            }
+        }
+        unsafe {
+            std::env::set_var("LD_LIBRARY_PATH", &ld_path);
+        }
+    }
+}
+
+/// Legacy alias for backward compatibility.
+pub(crate) fn auto_resolve_gpu_dylib() {
+    auto_resolve_ort_dylib(true);
 }
 
 /// Sub-phase timing breakdown for embedding operations.
@@ -356,14 +393,23 @@ impl OnnxEmbedder {
                 (cpus / 2).max(2)
             });
 
-        // Auto-resolve GPU-capable ONNX Runtime library if not already set.
+        // Auto-resolve ONNX Runtime library at well-known system paths.
         // The `load-dynamic` ort feature reads ORT_DYLIB_PATH at first use.
-        if use_gpu {
-            auto_resolve_gpu_dylib();
-        }
+        auto_resolve_ort_dylib(use_gpu);
 
         let mut builder = Session::builder()
-            .map_err(|e| anyhow::anyhow!("Failed to create ONNX session builder: {}", e))?;
+            .map_err(|e| {
+                let hint = if std::env::var("ORT_DYLIB_PATH").is_err() {
+                    "\n\nHint: ONNX Runtime library not found. Install it:\n  \
+                     apt install libonnxruntime-dev   # Debian/Ubuntu\n  \
+                     brew install onnxruntime          # macOS\n  \
+                     pip install onnxruntime           # Python (sets up shared lib)\n\n\
+                     Or set ORT_DYLIB_PATH=/path/to/libonnxruntime.so"
+                } else {
+                    ""
+                };
+                anyhow::anyhow!("Failed to create ONNX session builder: {}{}", e, hint)
+            })?;
 
         // Register CUDA execution provider if GPU requested.
         // with_execution_providers silently falls back to CPU if CUDA is unavailable.
