@@ -360,6 +360,11 @@ pub struct HooksConfig {
     /// Default: 5.
     #[serde(default = "default_feedback_prompt_interval")]
     pub feedback_prompt_interval: u64,
+    /// Prompt prefixes that skip injection entirely (case-insensitive).
+    /// Use for operational commands that never need context (e.g., "git push",
+    /// "bd ready", "gt hook"). Matched as prefix of trimmed prompt.
+    #[serde(default)]
+    pub skip_prefixes: Vec<String>,
 }
 
 /// A rule that maps query keywords to repository names.
@@ -407,6 +412,7 @@ impl Default for HooksConfig {
             keyword_repos: vec![],
             repo_affinity_boost: 2.0,
             feedback_prompt_interval: 5,
+            skip_prefixes: vec![],
         }
     }
 }

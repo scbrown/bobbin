@@ -614,6 +614,12 @@ async fn inject_context_remote(
         return Ok(());
     }
 
+    // 3b. Check skip prefixes (operational commands that never need context)
+    let prompt_lower = prompt.to_lowercase();
+    if hooks_cfg.skip_prefixes.iter().any(|p| prompt_lower.starts_with(&p.to_lowercase())) {
+        return Ok(());
+    }
+
     // 4. Assemble context via remote server (uses full ContextAssembler on server
     //    side, including coupling expansion and provenance bridging).
     //    Falls back to /search if /context returns 404 (e.g., Traefik proxy
@@ -1642,6 +1648,12 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     // 3. Check min prompt length
     let prompt = input.prompt.trim();
     if prompt.len() < min_prompt_length {
+        return Ok(());
+    }
+
+    // 3b. Check skip prefixes (operational commands that never need context)
+    let prompt_lower = prompt.to_lowercase();
+    if hooks_cfg.skip_prefixes.iter().any(|p| prompt_lower.starts_with(&p.to_lowercase())) {
         return Ok(());
     }
 
