@@ -24,6 +24,35 @@ fn detect_repo_name(dir: &Path) -> Option<String> {
     }
 }
 
+/// Detect automated messages that don't benefit from semantic search.
+/// Auto-patrol nudges, reactor alerts, and similar machine-generated messages
+/// produce noise injections (matching docs about "escalation", "patrol", etc.)
+/// rather than useful context for the agent's actual work.
+fn is_automated_message(prompt: &str) -> bool {
+    // Check first 500 chars for efficiency (patterns appear early in messages)
+    let check = if prompt.len() > 500 { &prompt[..500] } else { prompt };
+
+    // Auto-patrol nudge patterns (from crew-patrol.sh / gt nudge)
+    if check.contains("Auto-patrol: pick up") || check.contains("PATROL LOOP") {
+        return true;
+    }
+    if check.contains("RANGER PATROL:") || check.contains("PATROL:") {
+        return true;
+    }
+
+    // Reactor alert patterns
+    if check.contains("[reactor]") && (check.contains("ESCALATION:") || check.contains("P1 bead:") || check.contains("P0 bead:")) {
+        return true;
+    }
+
+    // Repeated automated work nudges (pattern: same message duplicated many times)
+    if check.contains("WORK: You are") && check.contains("Keep working until context") {
+        return true;
+    }
+
+    false
+}
+
 #[derive(Args)]
 pub struct HookArgs {
     #[command(subcommand)]
@@ -617,6 +646,12 @@ async fn inject_context_remote(
     // 3b. Check skip prefixes (operational commands that never need context)
     let prompt_lower = prompt.to_lowercase();
     if hooks_cfg.skip_prefixes.iter().any(|p| prompt_lower.starts_with(&p.to_lowercase())) {
+        return Ok(());
+    }
+
+    // 3c. Skip injection for automated messages (patrol nudges, reactor alerts, etc.)
+    if is_automated_message(prompt) {
+        eprintln!("bobbin: skipped (automated message detected)");
         return Ok(());
     }
 
@@ -1654,6 +1689,14 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     // 3b. Check skip prefixes (operational commands that never need context)
     let prompt_lower = prompt.to_lowercase();
     if hooks_cfg.skip_prefixes.iter().any(|p| prompt_lower.starts_with(&p.to_lowercase())) {
+        return Ok(());
+    }
+
+    // 3c. Skip injection for automated messages (patrol nudges, reactor alerts, etc.)
+    // These are machine-generated and don't benefit from semantic search — they just
+    // produce noise injections matching docs about "escalation", "patrol", etc.
+    if is_automated_message(prompt) {
+        eprintln!("bobbin: skipped (automated message detected)");
         return Ok(());
     }
 
@@ -5896,5 +5939,29 @@ mod tests {
         assert!(!is_source_code_file("styles.css"));
         assert!(!is_source_code_file("Makefile"));
         assert!(!is_source_code_file("data.yaml"));
+    }
+
+    #[test]
+    fn test_is_automated_message() {
+        // Patrol nudges
+        assert!(is_automated_message("Auto-patrol: pick up aegis-abc123 (Some task). Run: bd show aegis-abc123"));
+        assert!(is_automated_message("PATROL LOOP — you must keep working until context is below 20%."));
+        assert!(is_automated_message("RANGER PATROL: You are a ranger. Patrol your domain."));
+        assert!(is_automated_message("PATROL: Run gt hook, gt mail inbox, bd ready."));
+
+        // Reactor alerts
+        assert!(is_automated_message("[reactor] ⚠️ ESCALATION: E2ESmokeTestFailing — luvu | Paging: aegis/crew/wu"));
+        assert!(is_automated_message("[reactor] 🟠 P1 bead: aegis-sc86f0 Skills Framework Phase 1"));
+        assert!(is_automated_message("[reactor] 🟠 P0 bead: aegis-thmbt2 Claude token expires"));
+
+        // Repeated work nudges
+        assert!(is_automated_message("WORK: You are stryder (Bobbin Ranger). Check gt hook and gt mail inbox. Keep working until context below 25%, then /handoff."));
+
+        // Normal messages should NOT be filtered
+        assert!(!is_automated_message("Fix the bug in bobbin search"));
+        assert!(!is_automated_message("How do I deploy bobbin to kota?"));
+        assert!(!is_automated_message("bd show aegis-abc123"));
+        assert!(!is_automated_message("Run the tests and check for failures"));
+        assert!(!is_automated_message("")); // Empty string
     }
 }
