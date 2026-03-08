@@ -643,6 +643,8 @@ async fn inject_context_remote(
         )
         .await;
 
+    let gate = args.gate_threshold.unwrap_or(hooks_cfg.gate_threshold);
+
     match context_result {
         Ok(resp) => {
             if resp.files.is_empty() {
@@ -654,11 +656,11 @@ async fn inject_context_remote(
                 .flat_map(|f| f.chunks.iter())
                 .map(|c| c.score)
                 .fold(0.0_f32, f32::max);
-            if top_score < 0.005 {
+            if top_score < gate {
                 if output.verbose {
                     eprintln!(
-                        "bobbin: skipped (score={:.3} < gate=0.005)",
-                        top_score,
+                        "bobbin: skipped (score={:.3} < gate={:.3})",
+                        top_score, gate,
                     );
                 }
                 return Ok(());
@@ -689,7 +691,7 @@ async fn inject_context_remote(
         Err(_) => {
             // Fallback: /context endpoint unavailable, use /search
             let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
-            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, output, Some(&role), session_id, format_mode, repo_filter.as_deref()).await
+            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, gate, output, Some(&role), session_id, format_mode, repo_filter.as_deref()).await
         }
     }
 }
@@ -794,6 +796,7 @@ async fn inject_context_remote_search_fallback(
     prompt: &str,
     budget: usize,
     show_docs: bool,
+    gate: f32,
     output: &OutputConfig,
     role: Option<&str>,
     session_id: Option<&str>,
@@ -811,17 +814,17 @@ async fn inject_context_remote_search_fallback(
 
     // Gate check
     let top_score = resp.results.first().map(|r| r.score).unwrap_or(0.0);
-    if top_score < 0.005 {
+    if top_score < gate {
         if output.verbose {
             eprintln!(
-                "bobbin: skipped (score={:.3} < gate=0.005)",
-                top_score,
+                "bobbin: skipped (score={:.3} < gate={:.3})",
+                top_score, gate,
             );
         }
         return Ok(());
     }
 
-    let result_count = resp.results.iter().filter(|r| r.score >= 0.005).count();
+    let result_count = resp.results.iter().filter(|r| r.score >= gate).count();
     if result_count == 0 {
         return Ok(());
     }
@@ -831,7 +834,7 @@ async fn inject_context_remote_search_fallback(
 
     let mut line_count = out.lines().count();
     for result in &resp.results {
-        if result.score < 0.005 {
+        if result.score < gate {
             continue;
         }
 
