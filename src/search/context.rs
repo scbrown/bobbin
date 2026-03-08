@@ -858,9 +858,13 @@ fn assemble_bundle(
     // Filter out commit chunks — they're useful for `bobbin log` but shouldn't
     // be injected into context. Commit messages pollute the context budget without
     // providing actionable code.
+    // Also filter out archive chunks (pensieve/HLA/fieldnotes) — these belong in
+    // the dedicated archive search endpoint, not in general code context injection.
+    const ARCHIVE_LANGUAGES: &[&str] = &["hla", "pensieve", "fieldnotes"];
     let seed_results: Vec<SeedResult> = seed_results
         .into_iter()
         .filter(|r| r.chunk_type != ChunkType::Commit)
+        .filter(|r| !ARCHIVE_LANGUAGES.contains(&r.language.as_str()))
         .collect();
 
     // Partition into pinned and normal results
