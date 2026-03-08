@@ -1290,6 +1290,8 @@ struct ContextParams {
     tag: Option<String>,
     /// Exclude chunks with these tags (comma-separated)
     exclude_tag: Option<String>,
+    /// Repo affinity: boost results from this repo (agent's current repo)
+    repo_affinity: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1342,6 +1344,9 @@ struct ContextSummaryOutput {
     bridged_additions: usize,
     source_files: usize,
     doc_files: usize,
+    /// Raw cosine similarity of the top semantic result (before RRF).
+    /// Used by clients for gate_threshold checks.
+    top_semantic_score: f32,
 }
 
 pub(super) async fn context(
@@ -1370,6 +1375,7 @@ pub(super) async fn context(
                 bridged_additions: 0,
                 source_files: 0,
                 doc_files: 0,
+                top_semantic_score: 0.0,
             },
         }));
     }
@@ -1416,10 +1422,10 @@ pub(super) async fn context(
         tags_config: Some(state.tags_config.clone()),
         role: params.role.clone(),
         file_type_rules: state.config.file_types.clone(),
-        repo_affinity: None,
+        repo_affinity: params.repo_affinity.clone(),
         repo_affinity_boost: 2.0,
-        max_bridged_files: 3,
-        max_bridged_chunks_per_file: 2,
+        max_bridged_files: 2,
+        max_bridged_chunks_per_file: 1,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2025,6 +2031,7 @@ pub(super) async fn review(
                 bridged_additions: 0,
                 source_files: 0,
                 doc_files: 0,
+                top_semantic_score: 0.0,
             },
         }));
     }
@@ -3690,6 +3697,7 @@ fn to_context_summary(s: &crate::search::context::ContextSummary) -> ContextSumm
         bridged_additions: s.bridged_additions,
         source_files: s.source_files,
         doc_files: s.doc_files,
+        top_semantic_score: s.top_semantic_score,
     }
 }
 

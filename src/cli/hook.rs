@@ -671,6 +671,9 @@ async fn inject_context_remote(
         Some(keyword_repos.join(","))
     };
 
+    // Repo affinity: boost results from the agent's current repo
+    let repo_affinity = detect_repo_name(&cwd);
+
     let context_result = client
         .context(
             prompt,
@@ -681,6 +684,7 @@ async fn inject_context_remote(
             Some(0.1),  // coupling_threshold
             repo_filter.as_deref(),
             Some(&role),
+            repo_affinity.as_deref(),
         )
         .await;
 
@@ -692,11 +696,16 @@ async fn inject_context_remote(
                 return Ok(());
             }
 
-            // Gate check: skip if top score is too low
-            let top_score = resp.files.iter()
-                .flat_map(|f| f.chunks.iter())
-                .map(|c| c.score)
-                .fold(0.0_f32, f32::max);
+            // Gate check: use raw cosine score from server (not RRF-normalized chunk scores)
+            let top_score = if resp.summary.top_semantic_score > 0.0 {
+                resp.summary.top_semantic_score
+            } else {
+                // Fallback for older servers that don't return top_semantic_score
+                resp.files.iter()
+                    .flat_map(|f| f.chunks.iter())
+                    .map(|c| c.score)
+                    .fold(0.0_f32, f32::max)
+            };
             if top_score < gate {
                 if output.verbose {
                     eprintln!(
@@ -1768,8 +1777,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         file_type_rules: config.file_types.clone(),
         repo_affinity: detect_repo_name(&cwd),
         repo_affinity_boost: config.hooks.repo_affinity_boost,
-        max_bridged_files: 3,
-        max_bridged_chunks_per_file: 2,
+        max_bridged_files: 2,
+        max_bridged_chunks_per_file: 1,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -3105,8 +3114,8 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         file_type_rules: config.file_types.clone(),
         repo_affinity: detect_repo_name(&cwd),
         repo_affinity_boost: config.hooks.repo_affinity_boost,
-        max_bridged_files: 3,
-        max_bridged_chunks_per_file: 2,
+        max_bridged_files: 2,
+        max_bridged_chunks_per_file: 1,
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

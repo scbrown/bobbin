@@ -154,6 +154,10 @@ pub struct ContextSummaryOutput {
     pub bridged_additions: usize,
     pub source_files: usize,
     pub doc_files: usize,
+    /// Raw cosine similarity of the top semantic result (before RRF).
+    /// Missing from older servers, defaults to 0.0.
+    #[serde(default)]
+    pub top_semantic_score: f32,
 }
 
 /// Response from the /read endpoint
@@ -467,6 +471,7 @@ impl Client {
         coupling_threshold: Option<f32>,
         repo: Option<&str>,
         role: Option<&str>,
+        repo_affinity: Option<&str>,
     ) -> Result<ContextResponse> {
         let url = format!("{}/context", self.base_url);
         let mut params: Vec<(&str, String)> = vec![("q", query.to_string())];
@@ -490,6 +495,9 @@ impl Client {
         }
         if let Some(r) = role {
             params.push(("role", r.to_string()));
+        }
+        if let Some(ra) = repo_affinity {
+            params.push(("repo_affinity", ra.to_string()));
         }
         self.get_json(&url, &params).await
     }
