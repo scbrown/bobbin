@@ -861,10 +861,17 @@ fn assemble_bundle(
     // Also filter out archive chunks (pensieve/HLA/fieldnotes) — these belong in
     // the dedicated archive search endpoint, not in general code context injection.
     const ARCHIVE_LANGUAGES: &[&str] = &["hla", "pensieve", "fieldnotes", "archive"];
+    // Archive-only repos: these repos contain only archive records (agent memory,
+    // chat logs). Their .md files get indexed by the regular file indexer as
+    // "markdown" and bypass the language filter above. Filter them by repo name.
+    const ARCHIVE_REPOS: &[&str] = &["pensieve", "hla-records"];
     let seed_results: Vec<SeedResult> = seed_results
         .into_iter()
         .filter(|r| r.chunk_type != ChunkType::Commit)
         .filter(|r| !ARCHIVE_LANGUAGES.contains(&r.language.as_str()))
+        .filter(|r| {
+            !r.repo.as_ref().is_some_and(|repo| ARCHIVE_REPOS.contains(&repo.as_str()))
+        })
         .collect();
 
     // Partition into pinned and normal results

@@ -68,6 +68,16 @@ fn is_automated_message(prompt: &str) -> bool {
         return true;
     }
 
+    // Session start hook output (system boilerplate injected at conversation start)
+    if check.contains("SessionStart:startup hook") || check.contains("[GAS TOWN]") && check.contains("session:") {
+        return true;
+    }
+
+    // Reactor alert nudges (always have "[reactor] P" followed by priority + "bead:")
+    if check.contains("[reactor] P") && check.contains("bead:") {
+        return true;
+    }
+
     false
 }
 
