@@ -2496,6 +2496,19 @@ pub(super) async fn archive_search(
         });
     }
 
+    // Content-based dedup: HLA and pensieve often capture the same message
+    // multiple times with different IDs. Keep the highest-scoring version.
+    {
+        let mut seen_content = std::collections::HashSet::new();
+        filtered.retain(|r| {
+            // Normalize: trim and lowercase for dedup comparison
+            let key = r.chunk.content.trim().to_lowercase();
+            // Use first 200 chars as dedup key (sufficient for uniqueness)
+            let dedup_key = if key.len() > 200 { &key[..200] } else { &key };
+            seen_content.insert(dedup_key.to_string())
+        });
+    }
+
     filtered.truncate(limit);
     let total = filtered.len();
 
