@@ -18,6 +18,7 @@
 - [Hotspots](guides/hotspots.md)
 - [Deps & Refs](guides/deps-refs.md)
 - [Multi-Repo](guides/multi-repo.md)
+- [Tags & Effects](guides/tags.md)
 - [Watch & Automation](guides/watch-automation.md)
 - [Hooks](guides/hooks.md)
 
