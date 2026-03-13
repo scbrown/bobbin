@@ -2432,17 +2432,10 @@ pub(super) async fn archive_search(
     let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
     let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
 
-    // Build a SQL filter to search only archive-language chunks directly in LanceDB,
-    // instead of overfetching all chunks and filtering in Rust.
-    let lang_filter = if archive_languages.len() == 1 {
-        format!("language = '{}'", archive_languages[0].replace('\'', "''"))
-    } else {
-        let quoted: Vec<String> = archive_languages
-            .iter()
-            .map(|l| format!("'{}'", l.replace('\'', "''")))
-            .collect();
-        format!("language IN ({})", quoted.join(", "))
-    };
+    // Build a SQL filter to search only archive-language chunks directly in LanceDB.
+    // The indexer uses language='archive' for all archive records (HLA, pensieve, etc.)
+    // regardless of source name, so we filter on that.
+    let lang_filter = "language = 'archive'".to_string();
     let lang_filter_ref = lang_filter.as_str();
 
     // Search with language filter pushed into LanceDB query

@@ -50,6 +50,24 @@ fn is_automated_message(prompt: &str) -> bool {
         return true;
     }
 
+    // Startup/handoff messages — these contain system boilerplate, not domain queries
+    if check.contains("HANDOFF COMPLETE") && check.contains("You are the NEW session") {
+        return true;
+    }
+    if check.contains("STARTUP PROTOCOL") && check.contains("gt hook") {
+        return true;
+    }
+
+    // Marshal/dog automated checks
+    if check.contains("Marshal check:") && check.contains("You appear idle") {
+        return true;
+    }
+
+    // Queued nudge wrappers (system envelope, not user intent)
+    if check.contains("QUEUED NUDGE") && check.contains("background notification") {
+        return true;
+    }
+
     false
 }
 
@@ -637,6 +655,11 @@ async fn inject_context_remote(
     let budget = args.budget.unwrap_or(hooks_cfg.budget);
     let format_mode = args.format_mode.as_deref().unwrap_or(&hooks_cfg.format_mode);
 
+    // Resolve repo root and metrics source early (needed for metrics in all paths)
+    let repo_root = find_bobbin_root(&cwd).unwrap_or_else(|| cwd.clone());
+    let metrics_source = crate::metrics::resolve_source(None, Some(&input.session_id));
+    let hook_start = std::time::Instant::now();
+
     // 3. Check min prompt length
     let prompt = input.prompt.trim();
     if prompt.len() < min_prompt_length {
@@ -721,6 +744,17 @@ async fn inject_context_remote(
                         top_score, gate,
                     );
                 }
+                crate::metrics::emit(&repo_root, &crate::metrics::event(
+                    &metrics_source,
+                    "hook_gate_skip",
+                    "hook inject-context-remote",
+                    hook_start.elapsed().as_millis() as u64,
+                    serde_json::json!({
+                        "query": &prompt[..prompt.len().min(200)],
+                        "top_score": top_score,
+                        "gate_threshold": gate,
+                    }),
+                ));
                 return Ok(());
             }
 
@@ -752,6 +786,15 @@ async fn inject_context_remote(
                 resp_files.retain(|f| !f.chunks.is_empty());
                 if resp_files.is_empty() {
                     eprintln!("bobbin: all chunks already injected this session, skipping");
+                    crate::metrics::emit(&repo_root, &crate::metrics::event(
+                        &metrics_source,
+                        "hook_reducing_skip",
+                        "hook inject-context-remote",
+                        hook_start.elapsed().as_millis() as u64,
+                        serde_json::json!({
+                            "query": &prompt[..prompt.len().min(200)],
+                        }),
+                    ));
                     return Ok(());
                 }
             }
@@ -789,9 +832,25 @@ async fn inject_context_remote(
                 ledger.record(&chunk_keys, &injection_id);
             }
 
-            // Store injection payload server-side (best-effort, don't block)
+            // Emit injection metric
             let files_json: Vec<String> = resp.files.iter().map(|f| f.path.clone()).collect();
             let total_chunks: usize = resp.files.iter().map(|f| f.chunks.len()).sum();
+            crate::metrics::emit(&repo_root, &crate::metrics::event(
+                &metrics_source,
+                "hook_injection",
+                "hook inject-context-remote",
+                hook_start.elapsed().as_millis() as u64,
+                serde_json::json!({
+                    "query": &prompt[..prompt.len().min(200)],
+                    "top_score": top_score,
+                    "gate_threshold": gate,
+                    "files_returned": &files_json,
+                    "chunks_returned": total_chunks,
+                    "injection_id": &injection_id,
+                }),
+            ));
+
+            // Store injection payload server-side (best-effort, don't block)
             let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
             let _ = client.store_injection_with_output(
                 &injection_id,
@@ -6041,6 +6100,16 @@ mod tests {
 
         // Repeated work nudges
         assert!(is_automated_message("WORK: You are stryder (Bobbin Ranger). Check gt hook and gt mail inbox. Keep working until context below 25%, then /handoff."));
+
+        // Startup/handoff messages
+        assert!(is_automated_message("╔══════╗\n║  ✅ HANDOFF COMPLETE - You are the NEW session  ║\n╚══════╝\nYour predecessor handed off to you."));
+        assert!(is_automated_message("**STARTUP PROTOCOL**: Please:\n1. Run `gt hook` — What's hooked?"));
+
+        // Marshal/dog checks
+        assert!(is_automated_message("[from dog] Marshal check: You appear idle (7+ days no commits). Check bd ready."));
+
+        // Queued nudge wrappers
+        assert!(is_automated_message("QUEUED NUDGE (1 message(s)):\n\n  [from dog] check status\n\nThis is a background notification. Continue current work."));
 
         // Normal messages should NOT be filtered
         assert!(!is_automated_message("Fix the bug in bobbin search"));
