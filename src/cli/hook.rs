@@ -716,10 +716,70 @@ async fn inject_context_remote(
                 return Ok(());
             }
 
+            // Session dedup: filter out chunks already injected in this session
+            let repo_root = find_bobbin_root(&cwd).unwrap_or_else(|| cwd.clone());
+            let mut ledger = SessionLedger::load(&repo_root, &input.session_id);
+            let reducing_enabled = hooks_cfg.reducing_enabled && !input.session_id.is_empty();
+
+            // Destructure to avoid partial-move issues
+            let crate::http::client::ContextResponse { query: resp_query, budget: resp_budget, files: mut resp_files, summary: resp_summary } = resp;
+
+            if reducing_enabled {
+                // Filter chunks already seen, remove empty files
+                for file in resp_files.iter_mut() {
+                    let original_len = file.chunks.len();
+                    file.chunks.retain(|c| {
+                        let key = chunk_key(&file.path, c.start_line, c.end_line);
+                        !ledger.contains(&key)
+                    });
+                    if file.chunks.len() < original_len {
+                        eprintln!(
+                            "bobbin: dedup removed {}/{} chunks from {}",
+                            original_len - file.chunks.len(),
+                            original_len,
+                            file.path,
+                        );
+                    }
+                }
+                resp_files.retain(|f| !f.chunks.is_empty());
+                if resp_files.is_empty() {
+                    eprintln!("bobbin: all chunks already injected this session, skipping");
+                    return Ok(());
+                }
+            }
+
+            // Rebuild response with updated counts
+            let total_chunks: usize = resp_files.iter().map(|f| f.chunks.len()).sum();
+            let resp = crate::http::client::ContextResponse {
+                query: resp_query,
+                budget: resp_budget,
+                files: resp_files,
+                summary: crate::http::client::ContextSummaryOutput {
+                    total_files: 0, // set below
+                    total_chunks,
+                    ..resp_summary
+                },
+            };
+            let resp = crate::http::client::ContextResponse {
+                summary: crate::http::client::ContextSummaryOutput {
+                    total_files: resp.files.len(),
+                    ..resp.summary
+                },
+                ..resp
+            };
+
             // Generate injection_id and format structured context output
             let injection_id = generate_context_injection_id(prompt);
             let out = format_context_response(&resp, budget, hooks_cfg.show_docs, &injection_id, format_mode);
             print!("{}", out);
+
+            // Record injected chunks in session ledger
+            if reducing_enabled {
+                let chunk_keys: Vec<String> = resp.files.iter()
+                    .flat_map(|f| f.chunks.iter().map(|c| chunk_key(&f.path, c.start_line, c.end_line)))
+                    .collect();
+                ledger.record(&chunk_keys, &injection_id);
+            }
 
             // Store injection payload server-side (best-effort, don't block)
             let files_json: Vec<String> = resp.files.iter().map(|f| f.path.clone()).collect();
