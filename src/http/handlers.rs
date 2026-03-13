@@ -2505,9 +2505,14 @@ pub(super) async fn archive_search(
         .filter(|r| all_langs.contains(&r.chunk.language))
         .collect();
 
-    // Apply source filter (e.g., source=hla to only get HLA results)
+    // Apply source filter (e.g., source=hla to only get HLA results).
+    // Check both the language field (old format: language='hla') and the
+    // file_path prefix (new format: language='archive', path='hla:...')
     if let Some(ref source) = params.source {
-        filtered.retain(|r| &r.chunk.language == source);
+        let prefix = format!("{}:", source);
+        filtered.retain(|r| {
+            &r.chunk.language == source || r.chunk.file_path.starts_with(&prefix)
+        });
     }
 
     // Apply date filters on file_path ({source}:YYYY/MM/DD/...)
