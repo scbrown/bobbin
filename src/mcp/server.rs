@@ -2306,11 +2306,11 @@ impl BobbinMcpServer {
             filtered.retain(|r| &r.chunk.language == source);
         }
 
-        // Sort by date (from file path)
+        // Sort by date descending (newest first) for "recent" queries
         filtered.sort_by(|a, b| {
             let da = extract_archive_date(&a.chunk.file_path).unwrap_or_default();
             let db = extract_archive_date(&b.chunk.file_path).unwrap_or_default();
-            da.cmp(&db)
+            db.cmp(&da)
         });
 
         filtered.truncate(limit);

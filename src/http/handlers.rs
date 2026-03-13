@@ -2664,8 +2664,8 @@ pub(super) async fn archive_recent(
         }
     }
 
-    // Sort by source-prefixed path for consistent chronological ordering
-    records.sort_by(|a, b| a.3.cmp(&b.3));
+    // Sort by path descending (newest first) — paths are date-partitioned (YYYY/MM/DD)
+    records.sort_by(|a, b| b.3.cmp(&a.3));
     records.truncate(limit);
 
     let total = records.len();
