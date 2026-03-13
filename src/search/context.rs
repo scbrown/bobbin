@@ -860,7 +860,7 @@ fn assemble_bundle(
     // providing actionable code.
     // Also filter out archive chunks (pensieve/HLA/fieldnotes) — these belong in
     // the dedicated archive search endpoint, not in general code context injection.
-    const ARCHIVE_LANGUAGES: &[&str] = &["hla", "pensieve", "fieldnotes"];
+    const ARCHIVE_LANGUAGES: &[&str] = &["hla", "pensieve", "fieldnotes", "archive"];
     let seed_results: Vec<SeedResult> = seed_results
         .into_iter()
         .filter(|r| r.chunk_type != ChunkType::Commit)
