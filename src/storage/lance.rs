@@ -523,6 +523,10 @@ impl VectorStore {
 
     /// Search with an additional SQL filter (e.g., "language IN ('hla', 'pensieve')").
     pub async fn search_filtered(&self, query_embedding: &[f32], limit: usize, repo: Option<&str>, filter: Option<&str>) -> Result<Vec<SearchResult>> {
+        if limit == 0 {
+            return Ok(vec![]);
+        }
+
         let table = match &self.table {
             Some(t) => t,
             None => return Ok(vec![]),
@@ -559,6 +563,10 @@ impl VectorStore {
 
     /// Full-text search with an additional SQL filter.
     pub async fn search_fts_filtered(&self, query: &str, limit: usize, repo: Option<&str>, filter: Option<&str>) -> Result<Vec<SearchResult>> {
+        if limit == 0 {
+            return Ok(vec![]);
+        }
+
         // Ensure FTS index exists (must be called before borrowing self.table)
         self.ensure_fts_index().await?;
 
