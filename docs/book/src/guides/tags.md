@@ -157,8 +157,13 @@ After modifying `tags.toml`:
    sudo systemctl restart bobbin
    ```
 
-Tag effects are applied during context assembly, so restarting the server
-picks up both new effect weights and new tag assignments from the reindex.
+Tag effects are applied during context assembly (`/context` endpoint), so
+restarting the server picks up both new effect weights and new tag assignments
+from the reindex.
+
+> **Note:** The `/search` endpoint returns raw relevance scores without tag
+> effects. To verify that tag boosts/demotions are working, test with the
+> `/context` endpoint or the `bobbin context` CLI command.
 
 ## Debugging Tags
 
