@@ -2433,9 +2433,21 @@ pub(super) async fn archive_search(
     let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
 
     // Build a SQL filter to search only archive-language chunks directly in LanceDB.
-    // The indexer uses language='archive' for all archive records (HLA, pensieve, etc.)
-    // regardless of source name, so we filter on that.
-    let lang_filter = "language = 'archive'".to_string();
+    // Archive records may be indexed as language='archive' (new format) or as their
+    // source name (e.g., 'hla', 'pensieve') for backward compatibility.
+    let mut all_langs = archive_languages.clone();
+    if !all_langs.contains(&"archive".to_string()) {
+        all_langs.push("archive".to_string());
+    }
+    let lang_filter = if all_langs.len() == 1 {
+        format!("language = '{}'", all_langs[0].replace('\'', "''"))
+    } else {
+        let quoted: Vec<String> = all_langs
+            .iter()
+            .map(|l| format!("'{}'", l.replace('\'', "''")))
+            .collect();
+        format!("language IN ({})", quoted.join(", "))
+    };
     let lang_filter_ref = lang_filter.as_str();
 
     // Search with language filter pushed into LanceDB query
@@ -2464,7 +2476,7 @@ pub(super) async fn archive_search(
     // Post-filter by language (redundant safety check — LanceDB filter should handle this)
     let mut filtered: Vec<SearchResult> = search_results
         .into_iter()
-        .filter(|r| archive_languages.contains(&r.chunk.language))
+        .filter(|r| all_langs.contains(&r.chunk.language))
         .collect();
 
     // Apply source filter (e.g., source=hla to only get HLA results)
