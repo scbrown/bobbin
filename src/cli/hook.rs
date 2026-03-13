@@ -645,7 +645,15 @@ async fn inject_context_remote(
 
     // 3b. Check skip prefixes (operational commands that never need context)
     let prompt_lower = prompt.to_lowercase();
-    if hooks_cfg.skip_prefixes.iter().any(|p| prompt_lower.starts_with(&p.to_lowercase())) {
+    if hooks_cfg.skip_prefixes.iter().any(|p| {
+        let pl = p.to_lowercase();
+        // Short entries (no trailing space, ≤5 chars) are exact matches, not prefixes
+        if pl.len() <= 5 && !pl.ends_with(' ') {
+            prompt_lower == pl
+        } else {
+            prompt_lower.starts_with(&pl)
+        }
+    }) {
         return Ok(());
     }
 
@@ -1757,7 +1765,15 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
 
     // 3b. Check skip prefixes (operational commands that never need context)
     let prompt_lower = prompt.to_lowercase();
-    if hooks_cfg.skip_prefixes.iter().any(|p| prompt_lower.starts_with(&p.to_lowercase())) {
+    if hooks_cfg.skip_prefixes.iter().any(|p| {
+        let pl = p.to_lowercase();
+        // Short entries (no trailing space, ≤5 chars) are exact matches, not prefixes
+        if pl.len() <= 5 && !pl.ends_with(' ') {
+            prompt_lower == pl
+        } else {
+            prompt_lower.starts_with(&pl)
+        }
+    }) {
         return Ok(());
     }
 
