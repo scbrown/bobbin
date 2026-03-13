@@ -131,6 +131,7 @@ See [Indexing Documentation](../guides/documentation.md) for a full walkthrough.
 | `[embedding.context]` | Contextual embedding enrichment | [Embedding Settings](embedding.md) |
 | `[search]` | Search defaults and hybrid weighting | [Search Settings](search.md) |
 | `[git]` | Temporal coupling analysis from git history | See below |
+| `[hooks]` | Claude Code hook integration and injection tuning | [Hooks Configuration](hooks.md) |
 
 ## `[git]` Settings
 
