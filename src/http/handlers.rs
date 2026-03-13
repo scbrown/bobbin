@@ -179,6 +179,7 @@ pub(super) async fn search(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<SearchResponse>, (StatusCode, Json<ErrorBody>)> {
+    let start = std::time::Instant::now();
     let limit = params.limit.unwrap_or(10);
     let mode = params.mode.as_deref().unwrap_or("hybrid");
 
@@ -336,6 +337,17 @@ pub(super) async fn search(
     } else {
         results.into_iter().take(limit).collect()
     };
+
+    let elapsed = start.elapsed();
+    tracing::info!(
+        query = %params.q,
+        repo = params.repo.as_deref().unwrap_or("-"),
+        role = params.role.as_deref().unwrap_or("-"),
+        mode = mode,
+        results = filtered.len(),
+        duration_ms = elapsed.as_millis() as u64,
+        "search"
+    );
 
     Ok(Json(SearchResponse {
         query: params.q,
@@ -1353,6 +1365,7 @@ pub(super) async fn context(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ContextParams>,
 ) -> Result<Json<ContextResponse>, (StatusCode, Json<ErrorBody>)> {
+    let start = std::time::Instant::now();
     let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
 
     let stats = vector_store
@@ -1454,6 +1467,19 @@ pub(super) async fn context(
             group_repos.iter().any(|g| g == repo)
         });
     }
+
+    let file_count = bundle.files.len();
+    let elapsed = start.elapsed();
+    tracing::info!(
+        query = %bundle.query,
+        repo = params.repo.as_deref().unwrap_or("-"),
+        role = params.role.as_deref().unwrap_or("-"),
+        files = file_count,
+        budget_used = bundle.budget.used_lines,
+        budget_max = bundle.budget.max_lines,
+        duration_ms = elapsed.as_millis() as u64,
+        "context"
+    );
 
     Ok(Json(ContextResponse {
         query: bundle.query,
