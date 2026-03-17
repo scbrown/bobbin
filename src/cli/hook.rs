@@ -139,6 +139,16 @@ fn is_automated_message(prompt: &str) -> bool {
         return true;
     }
 
+    // "IMPORTANT: After completing" task continuation reminders
+    if check.contains("IMPORTANT: After completing your current task") {
+        return true;
+    }
+
+    // Molecule/convoy status checks (orchestration, not domain work)
+    if check.contains("gt mol status") && check.contains("gt hook") {
+        return true;
+    }
+
     // Very short prompts that are just confirmations (< 15 chars, no technical terms)
     if trimmed.len() < 15
         && !trimmed.contains('_')
