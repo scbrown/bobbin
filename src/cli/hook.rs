@@ -24,77 +24,40 @@ fn detect_repo_name(dir: &Path) -> Option<String> {
     }
 }
 
-/// Strip `<system-reminder>...</system-reminder>` blocks from prompt text.
-/// These blocks contain system boilerplate (hook output, nudge metadata, task
-/// reminders) that pollutes semantic search with irrelevant terms.
+/// Strip XML tag blocks from prompt text that pollute semantic search.
+/// System boilerplate, tool schemas, previous injections, and tool call output
+/// all add noise to embedding queries without providing useful search signal.
 fn strip_system_tags(text: &str) -> String {
+    let result = text.to_string();
+    // System boilerplate (hook output, nudge metadata, task reminders)
+    let result = strip_xml_block(&result, "system-reminder");
+    let result = strip_xml_block(&result, "task-notification");
+    // Tool name lists and schemas (large JSON blobs)
+    let result = strip_xml_block(&result, "available-deferred-tools");
+    let result = strip_xml_block(&result, "functions");
+    // Previous bobbin injection output re-submitted in prompts
+    let result = strip_xml_block(&result, "bobbin-context");
+    // Tool call/result output from Claude (XML tool use blocks)
+    let result = strip_xml_block(&result, "function_calls");
+    let result = strip_xml_block(&result, "function_results");
+    let result = strip_xml_block(&result, "antml:function_calls");
+    let result = strip_xml_block(&result, "antml:invoke");
+    // Example blocks from system prompts
+    let result = strip_xml_block(&result, "example");
+    let result = strip_xml_block(&result, "example_agent_descriptions");
+    result
+}
+
+/// Strip all occurrences of `<tag>...</tag>` from text.
+fn strip_xml_block(text: &str, tag: &str) -> String {
+    let open = format!("<{}", tag);
+    let close = format!("</{}>", tag);
     let mut result = String::with_capacity(text.len());
     let mut remaining = text;
-    // Strip <system-reminder>...</system-reminder> blocks
-    while let Some(start) = remaining.find("<system-reminder>") {
+    while let Some(start) = remaining.find(&open) {
         result.push_str(&remaining[..start]);
-        if let Some(end) = remaining[start..].find("</system-reminder>") {
-            remaining = &remaining[start + end + "</system-reminder>".len()..];
-        } else {
-            remaining = "";
-            break;
-        }
-    }
-    result.push_str(remaining);
-    // Also strip <task-notification>...</task-notification> blocks
-    // (background task status with IDs, output paths — noise for search)
-    let text = result;
-    let mut result = String::with_capacity(text.len());
-    let mut remaining = text.as_str();
-    while let Some(start) = remaining.find("<task-notification>") {
-        result.push_str(&remaining[..start]);
-        if let Some(end) = remaining[start..].find("</task-notification>") {
-            remaining = &remaining[start + end + "</task-notification>".len()..];
-        } else {
-            remaining = "";
-            break;
-        }
-    }
-    result.push_str(remaining);
-    // Strip <available-deferred-tools>...</available-deferred-tools> blocks
-    // (long tool name lists pollute search with MCP tool names)
-    let text = result;
-    let mut result = String::with_capacity(text.len());
-    let mut remaining = text.as_str();
-    while let Some(start) = remaining.find("<available-deferred-tools>") {
-        result.push_str(&remaining[..start]);
-        if let Some(end) = remaining[start..].find("</available-deferred-tools>") {
-            remaining = &remaining[start + end + "</available-deferred-tools>".len()..];
-        } else {
-            remaining = "";
-            break;
-        }
-    }
-    result.push_str(remaining);
-    // Strip <functions>...</functions> blocks (tool schemas from Claude Code
-    // that sometimes appear in prompts — large JSON blobs pollute search)
-    let text = result;
-    let mut result = String::with_capacity(text.len());
-    let mut remaining = text.as_str();
-    while let Some(start) = remaining.find("<functions>") {
-        result.push_str(&remaining[..start]);
-        if let Some(end) = remaining[start..].find("</functions>") {
-            remaining = &remaining[start + end + "</functions>".len()..];
-        } else {
-            remaining = "";
-            break;
-        }
-    }
-    result.push_str(remaining);
-    // Strip <bobbin-context>...</bobbin-context> blocks (previous injection
-    // output that may be re-submitted in the next prompt)
-    let text = result;
-    let mut result = String::with_capacity(text.len());
-    let mut remaining = text.as_str();
-    while let Some(start) = remaining.find("<bobbin-context") {
-        result.push_str(&remaining[..start]);
-        if let Some(end) = remaining[start..].find("</bobbin-context>") {
-            remaining = &remaining[start + end + "</bobbin-context>".len()..];
+        if let Some(end) = remaining[start..].find(&close) {
+            remaining = &remaining[start + end + close.len()..];
         } else {
             remaining = "";
             break;
