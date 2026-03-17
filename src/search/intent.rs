@@ -97,9 +97,11 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
     }
 
     // Implementation signals (implement/create/build are strong signals worth 2)
-    let impl_strong = ["implement", "creat"];
-    let impl_stems = ["add", "build", "write", "make", "feature", "extend"];
-    let impl_phrases = ["add a", "create a", "build a", "implement a", "write a", "add support"];
+    let impl_strong = ["implement", "creat", "add"];
+    let impl_stems = ["build", "write", "make", "feature", "extend"];
+    let impl_phrases = ["add a", "create a", "build a", "implement a", "write a", "add support",
+                        "add the", "add new", "add an", "build the", "build new",
+                        "create the", "create new", "write the", "write new"];
     for kw in &impl_strong {
         if has_word(kw) { scores[2].1 += 2; }
     }
@@ -283,6 +285,8 @@ mod tests {
         assert_eq!(classify_intent("add a new endpoint for user profiles"), QueryIntent::Implementation);
         assert_eq!(classify_intent("implement rate limiting for the API"), QueryIntent::Implementation);
         assert_eq!(classify_intent("create a new config parser"), QueryIntent::Implementation);
+        assert_eq!(classify_intent("add rate limiting to the API endpoint"), QueryIntent::Implementation);
+        assert_eq!(classify_intent("add logging to the auth module"), QueryIntent::Implementation);
     }
 
     #[test]
