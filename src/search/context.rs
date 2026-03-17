@@ -996,6 +996,20 @@ fn assemble_bundle(
         {
             return true;
         }
+        // Lock files and generated output — never useful as code context
+        if matches!(filename, "Cargo.lock" | "package-lock.json" | "yarn.lock"
+            | "pnpm-lock.yaml" | "go.sum" | "Gemfile.lock" | "poetry.lock"
+            | "composer.lock" | "Pipfile.lock")
+        {
+            return true;
+        }
+        // Vendored/generated directories — third-party code wastes context
+        if lower.contains("/vendor/") || lower.contains("/node_modules/")
+            || lower.contains("/third_party/") || lower.contains("/dist/")
+            || lower.contains("/build/") || lower.contains("/target/")
+        {
+            return true;
+        }
         false
     };
 

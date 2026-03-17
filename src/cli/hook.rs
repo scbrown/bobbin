@@ -1142,6 +1142,31 @@ async fn inject_context_remote(
                     if design_files.iter().any(|d| filename.eq_ignore_ascii_case(d)) {
                         return false;
                     }
+                    // Skip test file patterns (catches test files outside /test/ dirs)
+                    let fname_lower = filename.to_lowercase();
+                    if fname_lower.ends_with("_test.go") || fname_lower.ends_with("_test.rs")
+                        || fname_lower.ends_with(".test.ts") || fname_lower.ends_with(".test.js")
+                        || fname_lower.ends_with(".spec.ts") || fname_lower.ends_with(".spec.js")
+                        || fname_lower.starts_with("test_")
+                        || matches!(filename, "Dockerfile" | "docker-compose.yml" | "docker-compose.yaml"
+                            | "Makefile" | "Justfile" | "Taskfile.yml")
+                    {
+                        return false;
+                    }
+                    // Skip lock files and generated output
+                    if matches!(filename, "Cargo.lock" | "package-lock.json" | "yarn.lock"
+                        | "pnpm-lock.yaml" | "go.sum" | "Gemfile.lock" | "poetry.lock"
+                        | "composer.lock" | "Pipfile.lock")
+                    {
+                        return false;
+                    }
+                    // Skip vendored/generated directories
+                    if path_lower.contains("/vendor/") || path_lower.contains("/node_modules/")
+                        || path_lower.contains("/third_party/") || path_lower.contains("/dist/")
+                        || path_lower.contains("/build/") || path_lower.contains("/target/")
+                    {
+                        return false;
+                    }
                     true
                 });
                 let removed = before - resp_files.len();
@@ -1155,6 +1180,7 @@ async fn inject_context_remote(
             // repos (e.g. gastown Go code in bobbin context). The penalty scales by
             // intent — Architecture/Config queries get a smaller penalty (cross-repo
             // docs are sometimes relevant), while General/BugFix get a larger one.
+            // Language mismatch adds an extra penalty (e.g. Go results in a Rust repo).
             {
                 use crate::search::intent::QueryIntent;
                 let cross_repo_penalty = match intent {
@@ -1165,23 +1191,54 @@ async fn inject_context_remote(
                     QueryIntent::Operational => 0.12, // Operational rarely needs cross-repo
                 };
                 if let Some(ref affinity) = repo_affinity {
+                    // Detect dominant language from affinity-repo results
+                    let affinity_lang: Option<String> = {
+                        let mut lang_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+                        for f in resp_files.iter() {
+                            let is_aff = f.repo.as_deref() == Some(affinity.as_str())
+                                || f.path.contains(affinity.as_str());
+                            if is_aff && !f.language.is_empty() && f.language != "markdown" {
+                                *lang_counts.entry(&f.language).or_insert(0) += 1;
+                            }
+                        }
+                        lang_counts.into_iter()
+                            .max_by_key(|(_, count)| *count)
+                            .filter(|(_, count)| *count >= 2) // Need at least 2 files to establish dominance
+                            .map(|(lang, _)| lang.to_string())
+                    };
+
                     let before = resp_files.len();
                     let non_affinity_gate = gate + cross_repo_penalty;
+                    // Language mismatch adds 0.05 extra penalty on top of cross-repo penalty
+                    let lang_mismatch_penalty: f32 = 0.05;
                     resp_files.retain(|f| {
                         let is_affinity = f.repo.as_deref() == Some(affinity.as_str())
                             || f.path.contains(affinity.as_str());
                         if is_affinity {
                             true // Always keep affinity results
                         } else {
-                            // Non-affinity must have at least one chunk above the higher gate
-                            f.chunks.iter().any(|c| c.score >= non_affinity_gate)
+                            // Check for language mismatch
+                            let effective_gate = if let Some(ref aff_lang) = affinity_lang {
+                                if !f.language.is_empty()
+                                    && f.language != "markdown"
+                                    && f.language != *aff_lang
+                                {
+                                    non_affinity_gate + lang_mismatch_penalty
+                                } else {
+                                    non_affinity_gate
+                                }
+                            } else {
+                                non_affinity_gate
+                            };
+                            // Non-affinity must have at least one chunk above the effective gate
+                            f.chunks.iter().any(|c| c.score >= effective_gate)
                         }
                     });
                     let removed = before - resp_files.len();
                     if removed > 0 {
                         eprintln!(
-                            "bobbin: cross-repo gate filtered {} non-affinity files (gate={:.3}, intent={:?})",
-                            removed, non_affinity_gate, intent,
+                            "bobbin: cross-repo gate filtered {} non-affinity files (gate={:.3}, lang={:?}, intent={:?})",
+                            removed, non_affinity_gate, affinity_lang, intent,
                         );
                     }
                 }
@@ -2458,7 +2515,35 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
                 return false;
             }
             let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
-            !design_files.iter().any(|d| filename.eq_ignore_ascii_case(d))
+            if design_files.iter().any(|d| filename.eq_ignore_ascii_case(d)) {
+                return false;
+            }
+            // Skip test file patterns (catches test files outside /test/ dirs)
+            let fname_lower = filename.to_lowercase();
+            if fname_lower.ends_with("_test.go") || fname_lower.ends_with("_test.rs")
+                || fname_lower.ends_with(".test.ts") || fname_lower.ends_with(".test.js")
+                || fname_lower.ends_with(".spec.ts") || fname_lower.ends_with(".spec.js")
+                || fname_lower.starts_with("test_")
+                || matches!(filename, "Dockerfile" | "docker-compose.yml" | "docker-compose.yaml"
+                    | "Makefile" | "Justfile" | "Taskfile.yml")
+            {
+                return false;
+            }
+            // Skip lock files and generated output
+            if matches!(filename, "Cargo.lock" | "package-lock.json" | "yarn.lock"
+                | "pnpm-lock.yaml" | "go.sum" | "Gemfile.lock" | "poetry.lock"
+                | "composer.lock" | "Pipfile.lock")
+            {
+                return false;
+            }
+            // Skip vendored/generated directories
+            if path_lower.contains("/vendor/") || path_lower.contains("/node_modules/")
+                || path_lower.contains("/third_party/") || path_lower.contains("/dist/")
+                || path_lower.contains("/build/") || path_lower.contains("/target/")
+            {
+                return false;
+            }
+            true
         });
         let removed = before - bundle.files.len();
         if removed > 0 {
@@ -2468,6 +2553,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
 
     // 7e. Cross-repo non-affinity gate: non-affinity results need a higher
     // score to survive. Mirrors the remote mode gate logic.
+    // Language mismatch adds an extra penalty (e.g. Go results in a Rust repo).
     {
         use crate::search::intent::QueryIntent;
         let repo_affinity = detect_repo_name(&cwd);
@@ -2479,23 +2565,51 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             QueryIntent::Operational => 0.12,
         };
         if let Some(ref affinity) = repo_affinity {
+            // Detect dominant language from affinity-repo results
+            let affinity_lang: Option<String> = {
+                let mut lang_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+                for f in bundle.files.iter() {
+                    let is_aff = f.repo.as_deref() == Some(affinity.as_str())
+                        || f.path.contains(affinity.as_str());
+                    if is_aff && !f.language.is_empty() && f.language != "markdown" {
+                        *lang_counts.entry(&f.language).or_insert(0) += 1;
+                    }
+                }
+                lang_counts.into_iter()
+                    .max_by_key(|(_, count)| *count)
+                    .filter(|(_, count)| *count >= 2)
+                    .map(|(lang, _)| lang.to_string())
+            };
+
             let before = bundle.files.len();
             let non_affinity_gate = gate + cross_repo_penalty;
+            let lang_mismatch_penalty: f32 = 0.05;
             bundle.files.retain(|f| {
                 let is_affinity = f.repo.as_deref() == Some(affinity.as_str())
                     || f.path.contains(affinity.as_str());
                 if is_affinity {
                     true
                 } else {
-                    // Non-affinity must have at least one chunk above the higher gate
-                    f.chunks.iter().any(|c| c.score >= non_affinity_gate)
+                    let effective_gate = if let Some(ref aff_lang) = affinity_lang {
+                        if !f.language.is_empty()
+                            && f.language != "markdown"
+                            && f.language != *aff_lang
+                        {
+                            non_affinity_gate + lang_mismatch_penalty
+                        } else {
+                            non_affinity_gate
+                        }
+                    } else {
+                        non_affinity_gate
+                    };
+                    f.chunks.iter().any(|c| c.score >= effective_gate)
                 }
             });
             let removed = before - bundle.files.len();
             if removed > 0 {
                 eprintln!(
-                    "bobbin: cross-repo gate filtered {} non-affinity files (gate={:.3}, intent={:?})",
-                    removed, non_affinity_gate, intent,
+                    "bobbin: cross-repo gate filtered {} non-affinity files (gate={:.3}, lang={:?}, intent={:?})",
+                    removed, non_affinity_gate, affinity_lang, intent,
                 );
             }
         }
