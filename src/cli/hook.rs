@@ -1044,7 +1044,7 @@ async fn inject_context_remote(
                 let before = resp_files.len();
                 let design_dirs = [
                     "/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/",
-                    "/docs/tasks/", "/docs/plans/",
+                    "/docs/tasks/", "/docs/plans/", "/crew/", "/polecats/",
                 ];
                 let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md"];
                 resp_files.retain(|f| {

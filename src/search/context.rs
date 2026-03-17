@@ -1078,14 +1078,16 @@ fn assemble_bundle(
         let lower = path.to_lowercase();
         if lower.contains("/_plans/") || lower.contains("/_design/")
             || lower.contains("/_roadmap/") || lower.contains("/_specs/")
-            || lower.contains("/audit/")
+            || lower.contains("/audit/") || lower.contains("/crew/")
+            || lower.contains("/polecats/") || lower.contains("/docs/tasks/")
+            || lower.contains("/docs/plans/")
             || lower.ends_with("/roadmap.md") || lower.ends_with("/changelog.md")
         {
             return true;
         }
-        // CLAUDE.md/AGENTS.md already in agent context
+        // CLAUDE.md/AGENTS.md and static product docs already in agent context
         let filename = path.rsplit('/').next().unwrap_or(path);
-        if filename == "CLAUDE.md" || filename == "AGENTS.md" || filename == "@AGENTS.md" {
+        if matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "VISION.md" | "PRD.md") {
             return true;
         }
         false
