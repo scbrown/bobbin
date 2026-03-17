@@ -845,6 +845,10 @@ async fn inject_context_remote(
         None
     };
 
+    // Intent-aware coupling threshold: Navigation/Operational queries need
+    // tighter coupling to avoid noise; Architecture queries benefit from looser.
+    let coupling_threshold = intent_adj.coupling_threshold.unwrap_or(0.15);
+
     let context_result = client
         .context_with_weights(
             search_query,
@@ -852,7 +856,7 @@ async fn inject_context_remote(
             Some(1),    // depth: 1 level of coupling expansion
             Some(2),    // max_coupled: 2 coupled files per seed (was 3, tightened to reduce noise)
             Some(15),   // search_limit: 15 initial results (was 20, tightened for precision)
-            Some(0.15), // coupling_threshold (was 0.1, raised to require stronger coupling signal)
+            Some(coupling_threshold),
             repo_filter.as_deref(),
             Some(&role),
             repo_affinity.as_deref(),
@@ -2191,7 +2195,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         budget_lines: cal_budget.unwrap_or(budget),
         depth: 1,
         max_coupled: 3,
-        coupling_threshold: 0.1,
+        coupling_threshold: adj.coupling_threshold.unwrap_or(0.1),
         semantic_weight: (base_sw * adj.semantic_weight_factor).clamp(0.0, 1.0),
         content_mode,
         search_limit: cal_sl.unwrap_or(20),
