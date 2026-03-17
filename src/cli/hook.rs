@@ -71,6 +71,36 @@ fn strip_system_tags(text: &str) -> String {
         }
     }
     result.push_str(remaining);
+    // Strip <functions>...</functions> blocks (tool schemas from Claude Code
+    // that sometimes appear in prompts — large JSON blobs pollute search)
+    let text = result;
+    let mut result = String::with_capacity(text.len());
+    let mut remaining = text.as_str();
+    while let Some(start) = remaining.find("<functions>") {
+        result.push_str(&remaining[..start]);
+        if let Some(end) = remaining[start..].find("</functions>") {
+            remaining = &remaining[start + end + "</functions>".len()..];
+        } else {
+            remaining = "";
+            break;
+        }
+    }
+    result.push_str(remaining);
+    // Strip <bobbin-context>...</bobbin-context> blocks (previous injection
+    // output that may be re-submitted in the next prompt)
+    let text = result;
+    let mut result = String::with_capacity(text.len());
+    let mut remaining = text.as_str();
+    while let Some(start) = remaining.find("<bobbin-context") {
+        result.push_str(&remaining[..start]);
+        if let Some(end) = remaining[start..].find("</bobbin-context>") {
+            remaining = &remaining[start + end + "</bobbin-context>".len()..];
+        } else {
+            remaining = "";
+            break;
+        }
+    }
+    result.push_str(remaining);
     result
 }
 
