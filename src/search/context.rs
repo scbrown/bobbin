@@ -932,6 +932,44 @@ fn assemble_bundle(
         }
     };
 
+    // Noise path filter: design docs, agent scaffolding, and static product docs.
+    // Defined here (before seed partitioning) so it applies to ALL results, not
+    // just coupled/bridged chunks. This prevents design docs, CLAUDE.md, memory
+    // files, etc. from consuming seed budget when they're already in agent context.
+    let is_noise_path = |path: &str, lang: &str, _repo: &Option<String>| -> bool {
+        // Archive language filter
+        if ARCHIVE_LANGUAGES.contains(&lang) {
+            return true;
+        }
+        // Design doc paths (static planning docs overwhelm code context)
+        let lower = path.to_lowercase();
+        if lower.contains("/_plans/") || lower.contains("/_design/")
+            || lower.contains("/_roadmap/") || lower.contains("/_specs/")
+            || lower.contains("/audit/") || lower.contains("/crew/")
+            || lower.contains("/polecats/") || lower.contains("/docs/tasks/")
+            || lower.contains("/docs/plans/") || lower.contains("/docs/runbooks/")
+            || lower.contains("/memory/") || lower.contains("/.beads/")
+            || lower.contains("/session-notes/") || lower.contains("/sessions/")
+            || lower.ends_with("/roadmap.md") || lower.ends_with("/changelog.md")
+        {
+            return true;
+        }
+        // CLAUDE.md/AGENTS.md and static product docs already in agent context
+        let filename = path.rsplit('/').next().unwrap_or(path);
+        if matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "VISION.md" | "PRD.md"
+            | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md") {
+            return true;
+        }
+        false
+    };
+
+    // Apply noise path filter to seed results — prevents design docs, agent
+    // scaffolding, and boilerplate from consuming budget as direct hits
+    let seed_results: Vec<SeedResult> = seed_results
+        .into_iter()
+        .filter(|r| !is_noise_path(&r.file_path, &r.language, &r.repo))
+        .collect();
+
     // Partition into pinned and normal results
     let (pinned_results, normal_results): (Vec<SeedResult>, Vec<SeedResult>) =
         seed_results.into_iter().partition(|r| r.is_pinned);
@@ -1116,32 +1154,7 @@ fn assemble_bundle(
         }
     }
 
-    // Filter coupled/bridged chunks through the same filters as seeds:
-    // no archive content, no archive-only repos, no design docs.
-    let is_noise_path = |path: &str, lang: &str, _repo: &Option<String>| -> bool {
-        // Archive language filter
-        if ARCHIVE_LANGUAGES.contains(&lang) {
-            return true;
-        }
-        // Design doc paths (static planning docs overwhelm code context)
-        let lower = path.to_lowercase();
-        if lower.contains("/_plans/") || lower.contains("/_design/")
-            || lower.contains("/_roadmap/") || lower.contains("/_specs/")
-            || lower.contains("/audit/") || lower.contains("/crew/")
-            || lower.contains("/polecats/") || lower.contains("/docs/tasks/")
-            || lower.contains("/docs/plans/")
-            || lower.ends_with("/roadmap.md") || lower.ends_with("/changelog.md")
-        {
-            return true;
-        }
-        // CLAUDE.md/AGENTS.md and static product docs already in agent context
-        let filename = path.rsplit('/').next().unwrap_or(path);
-        if matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "VISION.md" | "PRD.md") {
-            return true;
-        }
-        false
-    };
-
+    // Apply the same noise path filter to coupled/bridged chunks
     let coupled_chunks: Vec<CoupledChunkInfo> = coupled_chunks
         .into_iter()
         .filter(|c| !is_noise_path(&c.file_path, &c.language, &None))

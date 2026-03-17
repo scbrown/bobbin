@@ -1039,12 +1039,13 @@ async fn inject_context_remote(
             }
 
             // Filter out files already in agent context (CLAUDE.md, AGENTS.md, etc.)
-            // These are injected into every Claude Code session automatically.
+            // and static project docs that waste injection budget.
             {
                 let before = resp_files.len();
                 resp_files.retain(|f| {
                     let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
-                    !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "CLAUDE.local.md")
+                    !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "CLAUDE.local.md"
+                        | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md")
                 });
                 let removed = before - resp_files.len();
                 if removed > 0 {
@@ -1059,7 +1060,9 @@ async fn inject_context_remote(
                 let before = resp_files.len();
                 let design_dirs = [
                     "/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/",
-                    "/docs/tasks/", "/docs/plans/", "/crew/", "/polecats/",
+                    "/docs/tasks/", "/docs/plans/", "/docs/runbooks/",
+                    "/crew/", "/polecats/",
+                    "/memory/", "/.beads/", "/session-notes/", "/sessions/",
                 ];
                 let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md"];
                 resp_files.retain(|f| {
