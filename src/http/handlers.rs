@@ -2490,10 +2490,24 @@ pub(super) async fn archive_search(
     if !all_langs.contains(&"archive".to_string()) {
         all_langs.push("archive".to_string());
     }
-    let lang_filter = if all_langs.len() == 1 {
-        format!("language = '{}'", all_langs[0].replace('\'', "''"))
+
+    // When source filter is active, narrow the SQL language filter to just that source
+    // (plus "archive" for dual-indexed records). This prevents the search limit from
+    // being consumed by results from other sources before post-filtering.
+    let search_langs = if let Some(ref source) = params.source {
+        let mut langs = vec![source.clone()];
+        if !langs.contains(&"archive".to_string()) {
+            langs.push("archive".to_string());
+        }
+        langs
     } else {
-        let quoted: Vec<String> = all_langs
+        all_langs.clone()
+    };
+
+    let lang_filter = if search_langs.len() == 1 {
+        format!("language = '{}'", search_langs[0].replace('\'', "''"))
+    } else {
+        let quoted: Vec<String> = search_langs
             .iter()
             .map(|l| format!("'{}'", l.replace('\'', "''")))
             .collect();
