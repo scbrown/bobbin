@@ -132,7 +132,7 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
 
     // Operational signals: tool execution, git/cargo/test commands, status checks,
     // agent workflow queries (beads, hooks, mail, handoff)
-    let op_stems = ["commit", "push", "pull", "merge", "rebase", "stash", "checkout"];
+    let op_stems = ["commit", "push", "pull", "merge", "rebase", "stash", "checkout", "check", "status", "close"];
     let op_phrases = [
         "run the test", "run test", "cargo test", "cargo build", "cargo check",
         "go test", "npm test", "npm run", "make test", "make build",
@@ -153,6 +153,8 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
         "assigned to me", "my beads", "my issues", "my tasks",
         "beads assigned", "open beads", "in progress beads",
         "close this bead", "close the bead", "update the bead",
+        "close your beads", "close beads", "check the status",
+        "check status", "check your", "check on",
     ];
     // Strong signal: prompt IS a command (very short, starts with tool name)
     let cmd_prefixes = ["git ", "cargo ", "go ", "npm ", "make ", "bd ", "gt ", "docker "];
@@ -218,11 +220,11 @@ pub fn intent_adjustments(intent: QueryIntent) -> IntentAdjustments {
             doc_demotion_factor: 2.0,    // Strongly demote docs
             semantic_weight_factor: 0.5,  // Keyword-heavy (command names are literal)
             recency_weight_factor: 0.5,   // Recency irrelevant
-            gate_boost: 0.15,            // Raise gate from 0.55 → 0.70 (blocks 0.58-0.60 operational noise)
+            gate_boost: 0.15,            // Raise gate from 0.50 → 0.65 (blocks operational noise)
             coupling_threshold: Some(0.30), // Very tight: operational queries rarely need coupling
         },
         QueryIntent::General => IntentAdjustments {
-            gate_boost: 0.03,            // Slight gate raise (0.55 → 0.58) to filter marginal matches
+            gate_boost: 0.05,            // Raise gate (0.50 → 0.55) to filter marginal matches
             ..IntentAdjustments::default()
         },
     }
@@ -296,6 +298,14 @@ mod tests {
     }
 
     #[test]
+    fn test_classify_operational_status_check() {
+        // "check" + "status" stems should be Operational
+        assert_eq!(classify_intent("check the patrol status and queue"), QueryIntent::Operational);
+        assert_eq!(classify_intent("close your beads when done"), QueryIntent::Operational);
+        assert_eq!(classify_intent("check on the deployment"), QueryIntent::Operational);
+    }
+
+    #[test]
     fn test_classify_general() {
         assert_eq!(classify_intent("hello"), QueryIntent::General);
         assert_eq!(classify_intent("thanks"), QueryIntent::General);
@@ -328,6 +338,6 @@ mod tests {
         assert!((adj.semantic_weight_factor - 1.0).abs() < f32::EPSILON);
         assert!((adj.recency_weight_factor - 1.0).abs() < f32::EPSILON);
         assert!(adj.gate_boost > 0.0, "General intent should have slight gate boost");
-        assert!(adj.gate_boost < 0.05, "General gate boost should be small");
+        assert!(adj.gate_boost <= 0.05, "General gate boost should be small");
     }
 }

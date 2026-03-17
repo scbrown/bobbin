@@ -404,7 +404,7 @@ impl Default for HooksConfig {
             budget: 300,
             content_mode: "full".into(),
             min_prompt_length: 20,
-            gate_threshold: 0.65,
+            gate_threshold: 0.50,
             dedup_enabled: true,
             show_docs: true,
             format_mode: "standard".into(),
@@ -1004,7 +1004,7 @@ semantic_weight = 0.8
         assert_eq!(config.hooks.budget, 300);
         assert_eq!(config.hooks.content_mode, "full");
         assert_eq!(config.hooks.min_prompt_length, 20);
-        assert!((config.hooks.gate_threshold - 0.65).abs() < f32::EPSILON);
+        assert!((config.hooks.gate_threshold - 0.50).abs() < f32::EPSILON);
         assert!(config.hooks.dedup_enabled);
     }
 
@@ -1038,7 +1038,7 @@ batch_size = 32
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!((config.hooks.threshold - 0.5).abs() < f32::EPSILON);
         assert_eq!(config.hooks.budget, 300);
-        assert!((config.hooks.gate_threshold - 0.65).abs() < f32::EPSILON);
+        assert!((config.hooks.gate_threshold - 0.50).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -1050,7 +1050,7 @@ threshold = 0.5
 budget = 300
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
-        assert!((config.hooks.gate_threshold - 0.65).abs() < f32::EPSILON);
+        assert!((config.hooks.gate_threshold - 0.50).abs() < f32::EPSILON);
         assert!(config.hooks.dedup_enabled);
     }
 

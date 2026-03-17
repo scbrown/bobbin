@@ -812,7 +812,20 @@ async fn inject_context_remote(
         clean_prompt.trim()
     };
 
-    // 3e. Query intent classification: adjust gate threshold for operational queries
+    // 3e. Truncate long prompts for search quality — embedding models lose focus
+    // on very long inputs. Keep last 500 chars (most recent/relevant content).
+    let search_query = if search_query.len() > 500 {
+        // Find a word boundary near the cutpoint to avoid splitting mid-word
+        let cutoff = search_query.len() - 500;
+        match search_query[cutoff..].find(' ') {
+            Some(pos) => &search_query[cutoff + pos + 1..],
+            None => &search_query[cutoff..],
+        }
+    } else {
+        search_query
+    };
+
+    // 3f. Query intent classification: adjust gate threshold for operational queries
     let intent = crate::search::intent::classify_intent(search_query);
     let intent_adj = crate::search::intent::intent_adjustments(intent);
 
@@ -2158,6 +2171,24 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         return Ok(());
     }
 
+    // 3d. Strip system tags and truncate prompt for search quality
+    let clean_prompt = strip_system_tags(prompt);
+    let search_query = if clean_prompt.trim().is_empty() {
+        eprintln!("bobbin: skipped (prompt is only system tags)");
+        return Ok(());
+    } else {
+        clean_prompt.trim()
+    };
+    let search_query = if search_query.len() > 500 {
+        let cutoff = search_query.len() - 500;
+        match search_query[cutoff..].find(' ') {
+            Some(pos) => &search_query[cutoff + pos + 1..],
+            None => &search_query[cutoff..],
+        }
+    } else {
+        search_query
+    };
+
     // 4. Open stores
     let lance_path = Config::lance_path(&repo_root);
     let db_path = Config::db_path(&repo_root);
@@ -2198,7 +2229,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let cal_bbf = calibration.as_ref().and_then(|c| c.best_config.bridge_boost_factor);
 
     // Query intent classification: adjust search parameters based on prompt type
-    let intent = crate::search::intent::classify_intent(prompt);
+    let intent = crate::search::intent::classify_intent(search_query);
     let adj = crate::search::intent::intent_adjustments(intent);
 
     // Base values from calibration or config
@@ -2235,7 +2266,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         assembler = assembler.with_git_analyzer(git);
     }
     let bundle = assembler
-        .assemble(prompt, None)
+        .assemble(search_query, None)
         .await
         .context("Context assembly failed")?;
 
