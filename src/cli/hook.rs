@@ -1042,11 +1042,14 @@ async fn inject_context_remote(
             // These are reference material, not active code context.
             {
                 let before = resp_files.len();
-                let design_dirs = ["/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/"];
-                let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md"];
+                let design_dirs = [
+                    "/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/",
+                    "/docs/tasks/", "/docs/plans/",
+                ];
+                let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md"];
                 resp_files.retain(|f| {
                     let path_lower = f.path.to_lowercase();
-                    // Skip if path contains a design directory
+                    // Skip if path contains a design/planning directory
                     if design_dirs.iter().any(|d| path_lower.contains(d)) {
                         return false;
                     }
@@ -2307,8 +2310,11 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
 
     // 7d. Filter out design doc and audit directories
     {
-        let design_dirs = ["/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/"];
-        let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md"];
+        let design_dirs = [
+            "/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/",
+            "/docs/tasks/", "/docs/plans/", "/docs/design/",
+        ];
+        let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md"];
         bundle.files.retain(|f| {
             let path_lower = f.path.to_lowercase();
             if design_dirs.iter().any(|d| path_lower.contains(d)) {
