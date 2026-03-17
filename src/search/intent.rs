@@ -200,7 +200,10 @@ pub fn intent_adjustments(intent: QueryIntent) -> IntentAdjustments {
             recency_weight_factor: 0.5,   // Recency irrelevant
             gate_boost: 0.15,            // Raise gate from 0.55 → 0.70 (blocks 0.58-0.60 operational noise)
         },
-        QueryIntent::General => IntentAdjustments::default(),
+        QueryIntent::General => IntentAdjustments {
+            gate_boost: 0.03,            // Slight gate raise (0.55 → 0.58) to filter marginal matches
+            ..IntentAdjustments::default()
+        },
     }
 }
 
@@ -281,10 +284,12 @@ mod tests {
     }
 
     #[test]
-    fn test_adjustments_general_is_neutral() {
+    fn test_adjustments_general_has_slight_gate_boost() {
         let adj = intent_adjustments(QueryIntent::General);
         assert!((adj.doc_demotion_factor - 1.0).abs() < f32::EPSILON);
         assert!((adj.semantic_weight_factor - 1.0).abs() < f32::EPSILON);
         assert!((adj.recency_weight_factor - 1.0).abs() < f32::EPSILON);
+        assert!(adj.gate_boost > 0.0, "General intent should have slight gate boost");
+        assert!(adj.gate_boost < 0.05, "General gate boost should be small");
     }
 }

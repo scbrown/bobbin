@@ -966,6 +966,59 @@ async fn inject_context_remote(
                 }
             }
 
+            // Filter out design doc directories — static planning/design docs
+            // produce high noise (e.g. 463 _plans/ docs overwhelming real results).
+            // These are reference material, not active code context.
+            {
+                let before = resp_files.len();
+                let design_dirs = ["/_plans/", "/_design/", "/_roadmap/", "/_specs/"];
+                let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md"];
+                resp_files.retain(|f| {
+                    let path_lower = f.path.to_lowercase();
+                    // Skip if path contains a design directory
+                    if design_dirs.iter().any(|d| path_lower.contains(d)) {
+                        return false;
+                    }
+                    // Skip known design doc filenames
+                    let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
+                    if design_files.iter().any(|d| filename.eq_ignore_ascii_case(d)) {
+                        return false;
+                    }
+                    true
+                });
+                let removed = before - resp_files.len();
+                if removed > 0 {
+                    eprintln!("bobbin: filtered {} design doc files (_plans/, ROADMAP.md, etc.)", removed);
+                }
+            }
+
+            // Cross-repo non-affinity penalty: for General intent, non-affinity
+            // results need a higher score to survive. This prevents leakage of
+            // unrelated code from other repos (e.g. gastown Go code in bobbin context).
+            if intent == crate::search::intent::QueryIntent::General {
+                if let Some(ref affinity) = repo_affinity {
+                    let before = resp_files.len();
+                    let non_affinity_gate = gate + 0.08; // Raise bar by 0.08 for cross-repo
+                    resp_files.retain(|f| {
+                        let is_affinity = f.repo.as_deref() == Some(affinity.as_str())
+                            || f.path.contains(affinity.as_str());
+                        if is_affinity {
+                            true // Always keep affinity results
+                        } else {
+                            // Non-affinity must have at least one chunk above the higher gate
+                            f.chunks.iter().any(|c| c.score >= non_affinity_gate)
+                        }
+                    });
+                    let removed = before - resp_files.len();
+                    if removed > 0 {
+                        eprintln!(
+                            "bobbin: cross-repo gate filtered {} non-affinity files (gate={:.3})",
+                            removed, non_affinity_gate,
+                        );
+                    }
+                }
+            }
+
             // Rebuild response with updated counts
             let total_chunks: usize = resp_files.iter().map(|f| f.chunks.len()).sum();
             let resp = crate::http::client::ContextResponse {
