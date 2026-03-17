@@ -24,6 +24,26 @@ fn detect_repo_name(dir: &Path) -> Option<String> {
     }
 }
 
+/// Strip `<system-reminder>...</system-reminder>` blocks from prompt text.
+/// These blocks contain system boilerplate (hook output, nudge metadata, task
+/// reminders) that pollutes semantic search with irrelevant terms.
+fn strip_system_tags(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut remaining = text;
+    while let Some(start) = remaining.find("<system-reminder>") {
+        result.push_str(&remaining[..start]);
+        if let Some(end) = remaining[start..].find("</system-reminder>") {
+            remaining = &remaining[start + end + "</system-reminder>".len()..];
+        } else {
+            // Unclosed tag — skip everything from here
+            remaining = "";
+            break;
+        }
+    }
+    result.push_str(remaining);
+    result
+}
+
 /// Detect automated messages that don't benefit from semantic search.
 /// Auto-patrol nudges, reactor alerts, and similar machine-generated messages
 /// produce noise injections (matching docs about "escalation", "patrol", etc.)
@@ -726,8 +746,20 @@ async fn inject_context_remote(
         return Ok(());
     }
 
-    // 3d. Query intent classification: adjust gate threshold for operational queries
-    let intent = crate::search::intent::classify_intent(prompt);
+    // 3d. Clean prompt: strip <system-reminder>...</system-reminder> blocks that contain
+    // system boilerplate (hook output, nudge metadata, task reminders). These pollute
+    // semantic search with irrelevant terms like "patrol", "hook", "system", "reminder".
+    let clean_prompt = strip_system_tags(prompt);
+    let search_query = if clean_prompt.trim().is_empty() {
+        // If stripping tags removed everything, the prompt was purely system content
+        eprintln!("bobbin: skipped (prompt is only system tags)");
+        return Ok(());
+    } else {
+        clean_prompt.trim()
+    };
+
+    // 3e. Query intent classification: adjust gate threshold for operational queries
+    let intent = crate::search::intent::classify_intent(search_query);
     let intent_adj = crate::search::intent::intent_adjustments(intent);
 
     // 4. Assemble context via remote server (uses full ContextAssembler on server
@@ -739,7 +771,7 @@ async fn inject_context_remote(
 
     // Keyword-triggered repo scoping: when query matches configured keywords,
     // scope search to matched repos instead of searching all repos.
-    let keyword_repos = hooks_cfg.resolve_keyword_repos(prompt);
+    let keyword_repos = hooks_cfg.resolve_keyword_repos(search_query);
     let repo_filter = if keyword_repos.is_empty() {
         None
     } else {
@@ -776,7 +808,7 @@ async fn inject_context_remote(
 
     let context_result = client
         .context_with_weights(
-            prompt,
+            search_query,
             Some(budget),
             Some(1),    // depth: 1 level of coupling expansion
             Some(3),    // max_coupled: 3 coupled files per seed
@@ -1008,7 +1040,7 @@ async fn inject_context_remote(
         Err(_) => {
             // Fallback: /context endpoint unavailable, use /search
             let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
-            inject_context_remote_search_fallback(&client, prompt, budget, hooks_cfg.show_docs, gate, output, Some(&role), session_id, format_mode, repo_filter.as_deref()).await
+            inject_context_remote_search_fallback(&client, search_query, budget, hooks_cfg.show_docs, gate, output, Some(&role), session_id, format_mode, repo_filter.as_deref()).await
         }
     }
 }
