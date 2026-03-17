@@ -2272,11 +2272,11 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let context_config = ContextConfig {
         budget_lines: cal_budget.unwrap_or(budget),
         depth: 1,
-        max_coupled: 3,
+        max_coupled: 2,    // Tightened from 3 to reduce coupled noise (matches remote mode)
         coupling_threshold: adj.coupling_threshold.unwrap_or(0.1),
         semantic_weight: (base_sw * adj.semantic_weight_factor).clamp(0.0, 1.0),
         content_mode,
-        search_limit: cal_sl.unwrap_or(20),
+        search_limit: cal_sl.unwrap_or(12), // Tightened from 20 for precision (matches remote mode)
         doc_demotion: (base_dd * adj.doc_demotion_factor).clamp(0.01, 1.0),
         recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
         recency_weight: (base_rw * adj.recency_weight_factor).clamp(0.0, 1.0),
