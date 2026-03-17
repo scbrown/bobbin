@@ -30,12 +30,27 @@ fn detect_repo_name(dir: &Path) -> Option<String> {
 fn strip_system_tags(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut remaining = text;
+    // Strip <system-reminder>...</system-reminder> blocks
     while let Some(start) = remaining.find("<system-reminder>") {
         result.push_str(&remaining[..start]);
         if let Some(end) = remaining[start..].find("</system-reminder>") {
             remaining = &remaining[start + end + "</system-reminder>".len()..];
         } else {
-            // Unclosed tag — skip everything from here
+            remaining = "";
+            break;
+        }
+    }
+    result.push_str(remaining);
+    // Also strip <task-notification>...</task-notification> blocks
+    // (background task status with IDs, output paths — noise for search)
+    let text = result;
+    let mut result = String::with_capacity(text.len());
+    let mut remaining = text.as_str();
+    while let Some(start) = remaining.find("<task-notification>") {
+        result.push_str(&remaining[..start]);
+        if let Some(end) = remaining[start..].find("</task-notification>") {
+            remaining = &remaining[start + end + "</task-notification>".len()..];
+        } else {
             remaining = "";
             break;
         }
@@ -6404,6 +6419,25 @@ mod tests {
         assert!(!is_source_code_file("styles.css"));
         assert!(!is_source_code_file("Makefile"));
         assert!(!is_source_code_file("data.yaml"));
+    }
+
+    #[test]
+    fn test_strip_system_tags() {
+        // System reminder blocks
+        assert_eq!(
+            strip_system_tags("Hello <system-reminder>noise</system-reminder> world"),
+            "Hello  world"
+        );
+        // Task notification blocks
+        assert_eq!(
+            strip_system_tags("Query <task-notification>task-id: abc</task-notification> here"),
+            "Query  here"
+        );
+        // Both types together
+        let input = "<system-reminder>sys</system-reminder>real content<task-notification>task</task-notification>";
+        assert_eq!(strip_system_tags(input), "real content");
+        // No tags
+        assert_eq!(strip_system_tags("plain text"), "plain text");
     }
 
     #[test]
