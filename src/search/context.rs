@@ -517,7 +517,8 @@ impl ContextAssembler {
         // Files already in seeds — don't inject duplicates
         let seed_files: HashSet<&str> = seeds.iter().map(|s| s.file_path.as_str()).collect();
 
-        // Use the best seed score as a proxy for bridged chunk scoring
+        // Use the best seed score as a proxy for bridged chunk scoring.
+        // Scale down to 0.35x (was 0.5x) — bridged files are speculative.
         let best_seed_score = seeds.iter().map(|s| s.score).fold(0.0_f32, f32::max);
 
         let max_files = self.config.max_bridged_files;
@@ -549,7 +550,7 @@ impl ContextAssembler {
                     start_line: chunk.start_line,
                     end_line: chunk.end_line,
                     content: chunk.content.clone(),
-                    coupling_score: best_seed_score * 0.5, // Bridged files get half the best seed score
+                    coupling_score: best_seed_score * 0.35, // Bridged files get 35% of best seed (speculative)
                     coupled_to: "bridge".to_string(),
                 });
             }
@@ -598,7 +599,10 @@ impl ContextAssembler {
                         .get_chunks_for_file(other_file, repo)
                         .await?;
 
-                    for chunk in chunks {
+                    // Limit chunks per coupled file to prevent flooding from
+                    // large files. Keep first 2 chunks (sorted by start_line).
+                    let max_coupled_chunks = 2;
+                    for chunk in chunks.into_iter().take(max_coupled_chunks) {
                         coupled_chunks.push(CoupledChunkInfo {
                             chunk_id: chunk.id.clone(),
                             file_path: chunk.file_path.clone(),
@@ -637,11 +641,13 @@ impl ContextAssembler {
             .search_filtered(&query_embedding, fetch_limit, repo, self.config.extra_filter.as_deref())
             .await?;
 
-        // Capture commit chunks before filtering (for commit→source bridging)
+        // Capture top commit chunks before filtering (for commit→source bridging).
+        // Limit to top 3 commits to prevent bridge explosion from many loose matches.
+        let max_commit_chunks = 3;
         let mut commit_chunks: Vec<Chunk> = Vec::new();
         if self.config.bridge_mode != BridgeMode::Off {
             for r in &all_semantic {
-                if r.chunk.chunk_type == ChunkType::Commit {
+                if r.chunk.chunk_type == ChunkType::Commit && commit_chunks.len() < max_commit_chunks {
                     commit_chunks.push(r.chunk.clone());
                 }
             }
@@ -659,10 +665,13 @@ impl ContextAssembler {
             .await
             .unwrap_or_default();
 
-        // Capture commit chunks from keyword results too (deduplicate by id)
+        // Capture commit chunks from keyword results too (deduplicate by id, respect cap)
         if self.config.bridge_mode != BridgeMode::Off {
             let seen: HashSet<String> = commit_chunks.iter().map(|c| c.id.clone()).collect();
             for r in &all_keyword {
+                if commit_chunks.len() >= max_commit_chunks {
+                    break;
+                }
                 if r.chunk.chunk_type == ChunkType::Commit && !seen.contains(&r.chunk.id) {
                     commit_chunks.push(r.chunk.clone());
                 }
@@ -1057,6 +1066,38 @@ fn assemble_bundle(
             });
         }
     }
+
+    // Filter coupled/bridged chunks through the same filters as seeds:
+    // no archive content, no archive-only repos, no design docs.
+    let is_noise_path = |path: &str, lang: &str, _repo: &Option<String>| -> bool {
+        // Archive language filter
+        if ARCHIVE_LANGUAGES.contains(&lang) {
+            return true;
+        }
+        // Design doc paths (static planning docs overwhelm code context)
+        let lower = path.to_lowercase();
+        if lower.contains("/_plans/") || lower.contains("/_design/")
+            || lower.contains("/_roadmap/") || lower.contains("/_specs/")
+            || lower.ends_with("/roadmap.md") || lower.ends_with("/changelog.md")
+        {
+            return true;
+        }
+        // CLAUDE.md/AGENTS.md already in agent context
+        let filename = path.rsplit('/').next().unwrap_or(path);
+        if filename == "CLAUDE.md" || filename == "AGENTS.md" || filename == "@AGENTS.md" {
+            return true;
+        }
+        false
+    };
+
+    let coupled_chunks: Vec<CoupledChunkInfo> = coupled_chunks
+        .into_iter()
+        .filter(|c| !is_noise_path(&c.file_path, &c.language, &None))
+        .collect();
+    let bridged_chunks: Vec<CoupledChunkInfo> = bridged_chunks
+        .into_iter()
+        .filter(|c| !is_noise_path(&c.file_path, &c.language, &None))
+        .collect();
 
     // Group coupled chunks by file
     let mut coupled_files: HashMap<String, (Vec<CoupledChunkInfo>, HashSet<String>)> =
