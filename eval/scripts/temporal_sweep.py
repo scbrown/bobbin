@@ -112,19 +112,13 @@ def extract_query(task: dict) -> str:
 
 def run_bobbin_context(
     workspace: Path, query: str, bobbin: str,
-    *, recency_weight: float | None = None,
-    recency_half_life: float | None = None,
 ) -> dict[str, Any]:
     """Run bobbin context and return parsed JSON.
 
-    Override params are passed as CLI flags (--recency-weight etc).
-    Non-overridden params use config.toml / calibration.json defaults.
+    Uses config.toml / calibration.json values. Modify config.toml before
+    calling to override parameters.
     """
     cmd = [bobbin, "context", "--json"]
-    if recency_weight is not None:
-        cmd.extend(["--recency-weight", str(recency_weight)])
-    if recency_half_life is not None:
-        cmd.extend(["--recency-half-life", str(recency_half_life)])
     cmd.append(query)
     t0 = time.monotonic()
     try:
@@ -259,7 +253,6 @@ def setup_workspace(
 def probe_tasks(
     workspace: Path, tasks: list[dict], bobbin: str,
     sweep_param: str, sweep_value: float,
-    *, recency_weight: float | None = None,
 ) -> list[ProbeResult]:
     """Run context probes for all tasks at the current config state."""
     ws_prefix = str(workspace) + "/"
@@ -287,8 +280,7 @@ def probe_tasks(
             continue
 
         query = extract_query(task)
-        data = run_bobbin_context(workspace, query, bobbin,
-                                  recency_weight=recency_weight)
+        data = run_bobbin_context(workspace, query, bobbin)
 
         if "error" in data:
             logger.warning("  %s: error: %s", task["id"], data["error"])
@@ -386,7 +378,7 @@ def run_coupling_depth_sweep(
 def run_recency_weight_sweep(
     tasks_by_repo: dict[str, list[dict]], bobbin: str,
 ) -> SweepResults:
-    """Sweep recency_weight via --recency-weight CLI flag (no re-indexing)."""
+    """Sweep recency_weight via config.toml modification (no re-indexing)."""
     results = SweepResults(
         sweep_type="recency_weight",
         sweep_values=RECENCY_WEIGHTS,
@@ -407,8 +399,15 @@ def run_recency_weight_sweep(
             for weight in RECENCY_WEIGHTS:
                 logger.info("  recency_weight=%.1f", weight)
 
-                probes = probe_tasks(ws, tasks, bobbin, "recency_weight", weight,
-                                     recency_weight=weight)
+                # Set recency_weight in config.toml (no CLI flag available)
+                modify_config_toml(ws, "search", "recency_weight", weight)
+
+                # Remove calibration.json to avoid it overriding config
+                cal_path = ws / ".bobbin" / "calibration.json"
+                if cal_path.exists():
+                    cal_path.unlink()
+
+                probes = probe_tasks(ws, tasks, bobbin, "recency_weight", weight)
                 results.probes.extend(probes)
 
     results.finished_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
