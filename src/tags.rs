@@ -384,7 +384,12 @@ pub fn resolve_tags(config: &TagsConfig, file_path: &str, repo: Option<&str>) ->
             }
         }
         if let Ok(pat) = Pattern::new(&rule.pattern) {
-            if pat.matches(file_path) {
+            // Try matching the path directly, and also with a dummy prefix
+            // so that `**/foo` patterns match root-relative paths like `foo/bar.md`.
+            // Without this, `**/snapshots/**/*.md` fails on `snapshots/ian/2026.md`
+            // because `**/` requires at least one path component before the match.
+            let prefixed = format!("_/{}", file_path);
+            if pat.matches(file_path) || pat.matches(&prefixed) {
                 tags.extend(rule.tags.iter().cloned());
             }
         }
@@ -741,6 +746,45 @@ mod tests {
         );
         // No repo
         assert_eq!(resolve_tags(&config, "guide.md", None), "auto:docs");
+    }
+
+    #[test]
+    fn test_resolve_tags_globstar_root_relative() {
+        // Regression test: `**/snapshots/**/*.md` must match `snapshots/ian/2026.md`
+        // even though the path has no leading directory component.
+        let config = TagsConfig {
+            rules: vec![
+                TagRule {
+                    pattern: "**/snapshots/**/*.md".to_string(),
+                    tags: vec!["type:memory".to_string()],
+                    repo: None,
+                },
+                TagRule {
+                    pattern: "**/CHANGELOG.md".to_string(),
+                    tags: vec!["type:changelog".to_string()],
+                    repo: None,
+                },
+            ],
+            ..Default::default()
+        };
+
+        // Root-relative path (no leading dir) — must match via prefixed fallback
+        assert_eq!(
+            resolve_tags(&config, "snapshots/ian/2026-03-12.md", None),
+            "auto:docs,type:memory"
+        );
+        // Root-level file
+        assert_eq!(
+            resolve_tags(&config, "CHANGELOG.md", None),
+            "auto:docs,type:changelog"
+        );
+        // Nested path — should also match (direct match)
+        assert_eq!(
+            resolve_tags(&config, "foo/snapshots/ian/2026-03-12.md", None),
+            "auto:docs,type:memory"
+        );
+        // Non-matching path
+        assert_eq!(resolve_tags(&config, "src/main.rs", None), "");
     }
 
     #[test]
