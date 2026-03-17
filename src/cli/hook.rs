@@ -795,17 +795,26 @@ async fn inject_context_remote(
         return Ok(());
     }
 
-    // 3b. Check skip prefixes (operational commands that never need context)
+    // 3b. Check skip prefixes (operational commands that never need context).
+    // Built-in prefixes always apply; user-configured prefixes extend them.
     let prompt_lower = prompt.to_lowercase();
-    if hooks_cfg.skip_prefixes.iter().any(|p| {
-        let pl = p.to_lowercase();
-        // Short entries (no trailing space, ≤5 chars) are exact matches, not prefixes
+    const BUILTIN_SKIP_PREFIXES: &[&str] = &[
+        "git ", "git push", "git pull", "git status", "git diff", "git log",
+        "git commit", "git add", "git stash", "git rebase", "git merge",
+        "bd ", "gt ", "cargo ", "go test", "go build", "go run",
+        "npm ", "make ", "docker ", "kubectl ",
+        "/", // Slash commands (Claude Code skills)
+    ];
+    let matches_prefix = |pl: &str| -> bool {
         if pl.len() <= 5 && !pl.ends_with(' ') {
             prompt_lower == pl
         } else {
-            prompt_lower.starts_with(&pl)
+            prompt_lower.starts_with(pl)
         }
-    }) {
+    };
+    if BUILTIN_SKIP_PREFIXES.iter().any(|p| matches_prefix(p))
+        || hooks_cfg.skip_prefixes.iter().any(|p| matches_prefix(&p.to_lowercase()))
+    {
         return Ok(());
     }
 
@@ -2170,17 +2179,26 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         return Ok(());
     }
 
-    // 3b. Check skip prefixes (operational commands that never need context)
+    // 3b. Check skip prefixes (operational commands that never need context).
+    // Built-in prefixes always apply; user-configured prefixes extend them.
     let prompt_lower = prompt.to_lowercase();
-    if hooks_cfg.skip_prefixes.iter().any(|p| {
-        let pl = p.to_lowercase();
-        // Short entries (no trailing space, ≤5 chars) are exact matches, not prefixes
+    const BUILTIN_SKIP_PREFIXES_LOCAL: &[&str] = &[
+        "git ", "git push", "git pull", "git status", "git diff", "git log",
+        "git commit", "git add", "git stash", "git rebase", "git merge",
+        "bd ", "gt ", "cargo ", "go test", "go build", "go run",
+        "npm ", "make ", "docker ", "kubectl ",
+        "/", // Slash commands (Claude Code skills)
+    ];
+    let matches_prefix = |pl: &str| -> bool {
         if pl.len() <= 5 && !pl.ends_with(' ') {
             prompt_lower == pl
         } else {
-            prompt_lower.starts_with(&pl)
+            prompt_lower.starts_with(pl)
         }
-    }) {
+    };
+    if BUILTIN_SKIP_PREFIXES_LOCAL.iter().any(|p| matches_prefix(p))
+        || hooks_cfg.skip_prefixes.iter().any(|p| matches_prefix(&p.to_lowercase()))
+    {
         return Ok(());
     }
 
