@@ -711,6 +711,10 @@ async fn inject_context_remote(
         return Ok(());
     }
 
+    // 3d. Query intent classification: adjust gate threshold for operational queries
+    let intent = crate::search::intent::classify_intent(prompt);
+    let intent_adj = crate::search::intent::intent_adjustments(intent);
+
     // 4. Assemble context via remote server (uses full ContextAssembler on server
     //    side, including coupling expansion and provenance bridging).
     //    Falls back to /search if /context returns 404 (e.g., Traefik proxy
@@ -744,7 +748,9 @@ async fn inject_context_remote(
         )
         .await;
 
-    let gate = args.gate_threshold.unwrap_or(hooks_cfg.gate_threshold);
+    // Apply intent-based gate boost (operational queries get a higher bar)
+    let base_gate = args.gate_threshold.unwrap_or(hooks_cfg.gate_threshold);
+    let gate = base_gate + intent_adj.gate_boost;
 
     match context_result {
         Ok(resp) => {
@@ -765,8 +771,8 @@ async fn inject_context_remote(
             if top_score < gate {
                 if output.verbose {
                     eprintln!(
-                        "bobbin: skipped (score={:.3} < gate={:.3})",
-                        top_score, gate,
+                        "bobbin: skipped (score={:.3} < gate={:.3}, intent={:?})",
+                        top_score, gate, intent,
                     );
                 }
                 crate::metrics::emit(&repo_root, &crate::metrics::event(
@@ -778,6 +784,8 @@ async fn inject_context_remote(
                         "query": &prompt[..prompt.len().min(200)],
                         "top_score": top_score,
                         "gate_threshold": gate,
+                        "intent": format!("{:?}", intent),
+                        "gate_boost": intent_adj.gate_boost,
                     }),
                 ));
                 return Ok(());
@@ -821,6 +829,51 @@ async fn inject_context_remote(
                         }),
                     ));
                     return Ok(());
+                }
+            }
+
+            // Cross-repo filename dedup: when the same filename appears from multiple
+            // repos, keep only the one from the agent's repo (or highest scoring).
+            // This prevents e.g. testing.md from 5 repos all appearing in results.
+            {
+                let mut seen_filenames: HashMap<String, usize> = HashMap::new();
+                let mut to_remove = Vec::new();
+                for (idx, file) in resp_files.iter().enumerate() {
+                    let filename = file.path.rsplit('/').next().unwrap_or(&file.path).to_string();
+                    if let Some(&prev_idx) = seen_filenames.get(&filename) {
+                        // Duplicate filename — keep the one from agent's repo, or higher score
+                        let prev = &resp_files[prev_idx];
+                        let prev_is_affinity = repo_affinity.as_ref().map_or(false, |ra| {
+                            prev.repo.as_deref() == Some(ra.as_str()) || prev.path.contains(ra.as_str())
+                        });
+                        let curr_is_affinity = repo_affinity.as_ref().map_or(false, |ra| {
+                            file.repo.as_deref() == Some(ra.as_str()) || file.path.contains(ra.as_str())
+                        });
+                        if curr_is_affinity && !prev_is_affinity {
+                            // Current is from agent's repo, remove previous
+                            to_remove.push(prev_idx);
+                            seen_filenames.insert(filename, idx);
+                        } else if !curr_is_affinity && prev_is_affinity {
+                            // Previous is from agent's repo, remove current
+                            to_remove.push(idx);
+                        } else if file.score > prev.score {
+                            // Same affinity status, keep higher score
+                            to_remove.push(prev_idx);
+                            seen_filenames.insert(filename, idx);
+                        } else {
+                            to_remove.push(idx);
+                        }
+                    } else {
+                        seen_filenames.insert(filename, idx);
+                    }
+                }
+                if !to_remove.is_empty() {
+                    eprintln!("bobbin: cross-repo dedup removed {} duplicate filenames", to_remove.len());
+                    to_remove.sort_unstable();
+                    to_remove.dedup();
+                    for idx in to_remove.into_iter().rev() {
+                        resp_files.remove(idx);
+                    }
                 }
             }
 
@@ -1951,7 +2004,9 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         .context("Context assembly failed")?;
 
     // 7. Gate check: skip entire injection if top semantic score is too low
-    let gate = args.gate_threshold.unwrap_or(hooks_cfg.gate_threshold);
+    //    Intent-based gate boost applied (operational queries get higher bar)
+    let base_gate = args.gate_threshold.unwrap_or(hooks_cfg.gate_threshold);
+    let gate = base_gate + adj.gate_boost;
     if bundle.summary.top_semantic_score < gate {
         eprintln!(
             "bobbin: skipped (semantic={:.2} < gate={:.2})",

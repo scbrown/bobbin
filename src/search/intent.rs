@@ -19,6 +19,8 @@ pub enum QueryIntent {
     Configuration,
     /// Navigation: "where is", "find", "locate", "which file"
     Navigation,
+    /// Operational: tool execution, git commands, test runs — no code context needed
+    Operational,
     /// General: no strong signal detected
     General,
 }
@@ -32,6 +34,8 @@ pub struct IntentAdjustments {
     pub semantic_weight_factor: f32,
     /// Multiplier for recency_weight (> 1.0 means prefer recent, < 1.0 means less recency bias)
     pub recency_weight_factor: f32,
+    /// Additive boost to gate threshold (0.0 means no change, positive raises the bar)
+    pub gate_boost: f32,
 }
 
 impl Default for IntentAdjustments {
@@ -40,6 +44,7 @@ impl Default for IntentAdjustments {
             doc_demotion_factor: 1.0,
             semantic_weight_factor: 1.0,
             recency_weight_factor: 1.0,
+            gate_boost: 0.0,
         }
     }
 }
@@ -56,6 +61,7 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
         (QueryIntent::Implementation, 0),
         (QueryIntent::Configuration, 0),
         (QueryIntent::Navigation, 0),
+        (QueryIntent::Operational, 0),
     ];
 
     // Helper: check if any word starts with keyword (handles "failing" matching "fail")
@@ -120,6 +126,32 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
         if lower.contains(phrase) { scores[4].1 += 2; }
     }
 
+    // Operational signals: tool execution, git/cargo/test commands, status checks
+    let op_stems = ["commit", "push", "pull", "merge", "rebase", "stash", "checkout"];
+    let op_phrases = [
+        "run the test", "run test", "cargo test", "cargo build", "cargo check",
+        "go test", "npm test", "npm run", "make test", "make build",
+        "git push", "git pull", "git commit", "git merge", "git rebase",
+        "git stash", "git checkout", "git status", "git diff", "git log",
+        "bd close", "bd ready", "bd list", "bd show", "bd update",
+        "gt hook", "gt mail", "gt handoff", "gt sling", "gt nudge",
+        "check status", "check the status", "check if tests pass",
+        "push the code", "push this", "commit this", "commit the",
+        "land this", "ship it", "merge this",
+    ];
+    // Strong signal: prompt IS a command (very short, starts with tool name)
+    let cmd_prefixes = ["git ", "cargo ", "go ", "npm ", "make ", "bd ", "gt ", "docker "];
+    for phrase in &op_phrases {
+        if lower.contains(phrase) { scores[5].1 += 2; }
+    }
+    for kw in &op_stems {
+        if has_word(kw) { scores[5].1 += 1; }
+    }
+    // If the entire prompt looks like a shell command, strong operational signal
+    for prefix in &cmd_prefixes {
+        if lower.starts_with(prefix) && words.len() <= 6 { scores[5].1 += 3; }
+    }
+
     // Return highest scoring intent (minimum threshold of 2 to avoid false positives)
     let best = scores.iter().max_by_key(|(_, s)| *s).unwrap();
     if best.1 >= 2 {
@@ -136,26 +168,37 @@ pub fn intent_adjustments(intent: QueryIntent) -> IntentAdjustments {
             doc_demotion_factor: 1.5,    // Demote docs more (focus on code)
             semantic_weight_factor: 0.8,  // Slightly more keyword (error messages are literal)
             recency_weight_factor: 1.5,   // Prefer recent code (bugs are in recent changes)
+            gate_boost: 0.0,
         },
         QueryIntent::Architecture => IntentAdjustments {
             doc_demotion_factor: 0.3,    // Docs are very relevant for architecture questions
             semantic_weight_factor: 1.2,  // More semantic (conceptual queries)
             recency_weight_factor: 0.5,   // Recency less important for architecture
+            gate_boost: 0.0,
         },
         QueryIntent::Implementation => IntentAdjustments {
             doc_demotion_factor: 1.2,    // Slightly demote docs (code patterns matter more)
             semantic_weight_factor: 1.0,  // Balanced
             recency_weight_factor: 1.0,   // Balanced
+            gate_boost: 0.0,
         },
         QueryIntent::Configuration => IntentAdjustments {
             doc_demotion_factor: 0.5,    // Config files and docs both relevant
             semantic_weight_factor: 0.7,  // More keyword (config terms are literal)
             recency_weight_factor: 0.8,   // Slightly less recency bias
+            gate_boost: 0.0,
         },
         QueryIntent::Navigation => IntentAdjustments {
             doc_demotion_factor: 1.0,    // Balanced
             semantic_weight_factor: 0.5,  // More keyword (looking for exact names)
             recency_weight_factor: 0.3,   // Recency irrelevant for navigation
+            gate_boost: 0.0,
+        },
+        QueryIntent::Operational => IntentAdjustments {
+            doc_demotion_factor: 2.0,    // Strongly demote docs
+            semantic_weight_factor: 0.5,  // Keyword-heavy (command names are literal)
+            recency_weight_factor: 0.5,   // Recency irrelevant
+            gate_boost: 0.15,            // Raise gate from 0.55 → 0.70 (blocks 0.58-0.60 operational noise)
         },
         QueryIntent::General => IntentAdjustments::default(),
     }
@@ -202,10 +245,26 @@ mod tests {
     }
 
     #[test]
+    fn test_classify_operational() {
+        assert_eq!(classify_intent("git push"), QueryIntent::Operational);
+        assert_eq!(classify_intent("cargo test"), QueryIntent::Operational);
+        assert_eq!(classify_intent("run the tests"), QueryIntent::Operational);
+        assert_eq!(classify_intent("commit this and push"), QueryIntent::Operational);
+        assert_eq!(classify_intent("bd close aegis-abc"), QueryIntent::Operational);
+        assert_eq!(classify_intent("check if tests pass"), QueryIntent::Operational);
+    }
+
+    #[test]
     fn test_classify_general() {
         assert_eq!(classify_intent("hello"), QueryIntent::General);
         assert_eq!(classify_intent("thanks"), QueryIntent::General);
-        assert_eq!(classify_intent("run the tests"), QueryIntent::General);
+    }
+
+    #[test]
+    fn test_adjustments_operational_raises_gate() {
+        let adj = intent_adjustments(QueryIntent::Operational);
+        assert!(adj.gate_boost > 0.0); // Raises the gate threshold
+        assert!(adj.doc_demotion_factor > 1.0); // Demotes docs
     }
 
     #[test]
