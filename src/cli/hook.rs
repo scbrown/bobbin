@@ -124,7 +124,13 @@ fn is_automated_message(prompt: &str) -> bool {
         || trimmed == "Continue." || trimmed == "OK" || trimmed == "ok"
         || trimmed == "Go ahead." || trimmed == "Proceed."
         || trimmed.starts_with("Tool loaded")
+        || trimmed.starts_with("Human: Tool loaded")
     {
+        return true;
+    }
+
+    // Crew role assignment / WORK directives (automated dispatching)
+    if check.contains("Your differentiated work:") && check.contains("Keep working until") {
         return true;
     }
 
@@ -834,9 +840,9 @@ async fn inject_context_remote(
             search_query,
             Some(budget),
             Some(1),    // depth: 1 level of coupling expansion
-            Some(3),    // max_coupled: 3 coupled files per seed
-            Some(20),   // search_limit: 20 initial results
-            Some(0.1),  // coupling_threshold
+            Some(2),    // max_coupled: 2 coupled files per seed (was 3, tightened to reduce noise)
+            Some(15),   // search_limit: 15 initial results (was 20, tightened for precision)
+            Some(0.15), // coupling_threshold (was 0.1, raised to require stronger coupling signal)
             repo_filter.as_deref(),
             Some(&role),
             repo_affinity.as_deref(),
@@ -1015,13 +1021,23 @@ async fn inject_context_remote(
                 }
             }
 
-            // Cross-repo non-affinity penalty: for General intent, non-affinity
-            // results need a higher score to survive. This prevents leakage of
-            // unrelated code from other repos (e.g. gastown Go code in bobbin context).
-            if intent == crate::search::intent::QueryIntent::General {
+            // Cross-repo non-affinity penalty: non-affinity results need a higher
+            // score to survive. This prevents leakage of unrelated code from other
+            // repos (e.g. gastown Go code in bobbin context). The penalty scales by
+            // intent — Architecture/Config queries get a smaller penalty (cross-repo
+            // docs are sometimes relevant), while General/BugFix get a larger one.
+            {
+                use crate::search::intent::QueryIntent;
+                let cross_repo_penalty = match intent {
+                    QueryIntent::Architecture | QueryIntent::Configuration => 0.04,
+                    QueryIntent::Navigation => 0.06,
+                    QueryIntent::Implementation | QueryIntent::BugFix => 0.08,
+                    QueryIntent::General => 0.08,
+                    QueryIntent::Operational => 0.12, // Operational rarely needs cross-repo
+                };
                 if let Some(ref affinity) = repo_affinity {
                     let before = resp_files.len();
-                    let non_affinity_gate = gate + 0.08; // Raise bar by 0.08 for cross-repo
+                    let non_affinity_gate = gate + cross_repo_penalty;
                     resp_files.retain(|f| {
                         let is_affinity = f.repo.as_deref() == Some(affinity.as_str())
                             || f.path.contains(affinity.as_str());
@@ -1035,10 +1051,31 @@ async fn inject_context_remote(
                     let removed = before - resp_files.len();
                     if removed > 0 {
                         eprintln!(
-                            "bobbin: cross-repo gate filtered {} non-affinity files (gate={:.3})",
-                            removed, non_affinity_gate,
+                            "bobbin: cross-repo gate filtered {} non-affinity files (gate={:.3}, intent={:?})",
+                            removed, non_affinity_gate, intent,
                         );
                     }
+                }
+            }
+
+            // Max chunks cap: prevent context flooding when many files pass the gate.
+            // Keep files in order (highest relevance first), drop trailing files once
+            // total chunk count exceeds the cap.
+            {
+                let max_chunks: usize = 12; // Cap at 12 chunks per injection
+                let mut running = 0usize;
+                let mut keep = resp_files.len();
+                for (i, f) in resp_files.iter().enumerate() {
+                    running += f.chunks.len();
+                    if running > max_chunks {
+                        keep = i + 1; // Keep this file (partially over) but drop the rest
+                        break;
+                    }
+                }
+                if keep < resp_files.len() {
+                    let dropped = resp_files.len() - keep;
+                    eprintln!("bobbin: chunks cap dropped {} trailing files ({} chunks > {})", dropped, running, max_chunks);
+                    resp_files.truncate(keep);
                 }
             }
 

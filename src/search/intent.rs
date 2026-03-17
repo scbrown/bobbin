@@ -126,7 +126,8 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
         if lower.contains(phrase) { scores[4].1 += 2; }
     }
 
-    // Operational signals: tool execution, git/cargo/test commands, status checks
+    // Operational signals: tool execution, git/cargo/test commands, status checks,
+    // agent workflow queries (beads, hooks, mail, handoff)
     let op_stems = ["commit", "push", "pull", "merge", "rebase", "stash", "checkout"];
     let op_phrases = [
         "run the test", "run test", "cargo test", "cargo build", "cargo check",
@@ -138,6 +139,12 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
         "check status", "check the status", "check if tests pass",
         "push the code", "push this", "commit this", "commit the",
         "land this", "ship it", "merge this",
+        // Agent workflow phrases — these are about process, not code
+        "what's next", "what is next", "next task", "next bead",
+        "ready beads", "ready queue", "what's on my hook", "check my hook",
+        "check mail", "check inbox", "read mail", "read inbox",
+        "checking in", "session start", "hand off", "handoff",
+        "pick up work", "pick next", "what should i work on",
     ];
     // Strong signal: prompt IS a command (very short, starts with tool name)
     let cmd_prefixes = ["git ", "cargo ", "go ", "npm ", "make ", "bd ", "gt ", "docker "];
@@ -255,6 +262,15 @@ mod tests {
         assert_eq!(classify_intent("commit this and push"), QueryIntent::Operational);
         assert_eq!(classify_intent("bd close aegis-abc"), QueryIntent::Operational);
         assert_eq!(classify_intent("check if tests pass"), QueryIntent::Operational);
+    }
+
+    #[test]
+    fn test_classify_operational_workflow() {
+        // Agent workflow queries should be Operational, not General
+        assert_eq!(classify_intent("what's next on my hook"), QueryIntent::Operational);
+        assert_eq!(classify_intent("check my hook and mail"), QueryIntent::Operational);
+        assert_eq!(classify_intent("ready beads to pick up"), QueryIntent::Operational);
+        assert_eq!(classify_intent("check inbox for work"), QueryIntent::Operational);
     }
 
     #[test]
