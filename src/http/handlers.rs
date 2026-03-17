@@ -2546,8 +2546,15 @@ pub(super) async fn archive_search(
         filtered.retain(|r| {
             // Normalize: trim and lowercase for dedup comparison
             let key = r.chunk.content.trim().to_lowercase();
-            // Use first 200 chars as dedup key (sufficient for uniqueness)
-            let dedup_key = if key.len() > 200 { &key[..200] } else { &key };
+            // Truncate at a char boundary (avoids UTF-8 panic on multi-byte chars)
+            let end = if key.len() > 200 {
+                let mut i = 200;
+                while i > 0 && !key.is_char_boundary(i) { i -= 1; }
+                i
+            } else {
+                key.len()
+            };
+            let dedup_key = &key[..end];
             seen_content.insert(dedup_key.to_string())
         });
     }
@@ -2688,7 +2695,16 @@ pub(super) async fn archive_recent(
         records.retain(|(_, _, content, _)| {
             let body = extract_body(content).unwrap_or_default();
             let key = body.trim().to_lowercase();
-            let dedup_key = if key.len() > 200 { &key[..200] } else { &key };
+            // Truncate at a char boundary (floor_char_boundary avoids UTF-8 panic)
+            let end = if key.len() > 200 {
+                // Find the last char boundary at or before byte 200
+                let mut i = 200;
+                while i > 0 && !key.is_char_boundary(i) { i -= 1; }
+                i
+            } else {
+                key.len()
+            };
+            let dedup_key = &key[..end];
             seen_content.insert(dedup_key.to_string())
         });
     }
