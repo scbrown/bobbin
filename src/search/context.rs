@@ -782,7 +782,7 @@ impl ContextAssembler {
                 (result, final_score)
             })
             .collect();
-        combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Normalize RRF scores to [0, 1] so downstream threshold filters
         // (which expect similarity-scale scores) work correctly.
@@ -916,7 +916,7 @@ fn assemble_bundle(
         pinned_file_list.sort_by(|a, b| {
             let max_a = a.1.iter().map(|r| r.score).fold(f32::NEG_INFINITY, f32::max);
             let max_b = b.1.iter().map(|r| r.score).fold(f32::NEG_INFINITY, f32::max);
-            max_b.partial_cmp(&max_a).unwrap()
+            max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         for (file_path, mut results) in pinned_file_list {
@@ -993,7 +993,7 @@ fn assemble_bundle(
             .iter()
             .map(|r| r.score)
             .fold(f32::NEG_INFINITY, f32::max);
-        max_b.partial_cmp(&max_a).unwrap()
+        max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
     });
 
     let mut direct_hit_count: usize = 0;
@@ -1086,7 +1086,7 @@ fn assemble_bundle(
             .iter()
             .map(|c| c.coupling_score)
             .fold(f32::NEG_INFINITY, f32::max);
-        max_b.partial_cmp(&max_a).unwrap()
+        max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
     });
 
     let mut coupled_addition_count: usize = 0;
@@ -1173,7 +1173,7 @@ fn assemble_bundle(
     bridged_file_list.sort_by(|a, b| {
         let max_a = a.1.iter().map(|c| c.coupling_score).fold(f32::NEG_INFINITY, f32::max);
         let max_b = b.1.iter().map(|c| c.coupling_score).fold(f32::NEG_INFINITY, f32::max);
-        max_b.partial_cmp(&max_a).unwrap()
+        max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
     });
 
     let mut bridged_addition_count: usize = 0;
