@@ -936,6 +936,8 @@ async fn inject_context_remote(
                     "query": &prompt[..prompt.len().min(200)],
                     "top_score": top_score,
                     "gate_threshold": gate,
+                    "intent": format!("{:?}", intent),
+                    "gate_boost": intent_adj.gate_boost,
                     "files_returned": &files_json,
                     "chunks_returned": total_chunks,
                     "injection_id": &injection_id,
