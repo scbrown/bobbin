@@ -2580,11 +2580,14 @@ pub(super) async fn archive_search(
 
     // Content-based dedup: HLA and pensieve often capture the same message
     // multiple times with different IDs. Keep the highest-scoring version.
+    // Dedup on BODY (after frontmatter extraction) since duplicate records
+    // have different frontmatter (IDs, timestamps, agents) but identical bodies.
     {
         let mut seen_content = std::collections::HashSet::new();
         filtered.retain(|r| {
-            // Normalize: trim and lowercase for dedup comparison
-            let key = r.chunk.content.trim().to_lowercase();
+            // Strip frontmatter before comparing — duplicates differ only in metadata
+            let body = extract_body(&r.chunk.content).unwrap_or_default();
+            let key = body.trim().to_lowercase();
             // Truncate at a char boundary (avoids UTF-8 panic on multi-byte chars)
             let end = if key.len() > 200 {
                 let mut i = 200;
