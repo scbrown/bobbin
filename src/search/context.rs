@@ -1078,6 +1078,7 @@ fn assemble_bundle(
         let lower = path.to_lowercase();
         if lower.contains("/_plans/") || lower.contains("/_design/")
             || lower.contains("/_roadmap/") || lower.contains("/_specs/")
+            || lower.contains("/audit/")
             || lower.ends_with("/roadmap.md") || lower.ends_with("/changelog.md")
         {
             return true;
