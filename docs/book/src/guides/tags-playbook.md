@@ -227,6 +227,13 @@ After editing `tags.toml`:
 - **Repo scope**: Rules with `repo = "name"` only apply when indexing that specific
   repo. Omit `repo` for rules that should apply everywhere.
 
+- **Globstar root-relative paths**: Paths in the index are relative to the repo
+  root (e.g., `snapshots/ian/2026.md`). A pattern like `**/snapshots/**/*.md`
+  requires `**/` to match at least one directory component, so it won't match
+  `snapshots/ian/2026.md` at the root level. Fixed in v7 (commit 80c43c1) with
+  a `_/` prefix fallback in `resolve_tags()`. No action needed — just be aware
+  when writing new rules.
+
 ## Metrics to Track
 
 After each iteration, check:
