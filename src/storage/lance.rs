@@ -541,11 +541,22 @@ impl VectorStore {
             query = query.only_if(f.clone());
         }
 
-        let results = query
+        let results = match query
             .limit(limit)
             .execute()
             .await
-            .context("Failed to execute vector search")?;
+        {
+            Ok(r) => r,
+            Err(e) => {
+                // LanceDB raises "k must be positive" when a filter yields 0 matching
+                // rows in the index partition. Return empty results instead of panicking.
+                let msg = e.to_string();
+                if msg.contains("k must be positive") || msg.contains("must be positive") {
+                    return Ok(vec![]);
+                }
+                return Err(e).context("Failed to execute vector search");
+            }
+        };
 
         let batches: Vec<RecordBatch> = results
             .try_collect()
