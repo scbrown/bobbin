@@ -31,9 +31,14 @@ tags = ["domain:iac", "criticality:high"]
 repo = "goldblum"  # Optional: only apply when indexing this repo
 ```
 
-- `pattern` — Standard glob pattern matched against file paths
+- `pattern` — Standard glob pattern matched against relative file paths
 - `tags` — List of tag strings to assign (convention: `namespace:value`)
 - `repo` — Optional repo scope (only applies during indexing of that repo)
+
+> **Glob pattern note:** Patterns are matched against paths relative to the repo
+> root (e.g., `snapshots/ian/2026-03-12.md`, not the absolute path). The `**/`
+> prefix matches both root-level and nested paths — `**/CHANGELOG.md` matches
+> both `CHANGELOG.md` and `docs/CHANGELOG.md`.
 
 ### Effects
 
@@ -182,3 +187,9 @@ Check tag coverage after indexing:
 High untagged counts are normal — not every chunk needs tags. Focus rules on
 document types that cause noise (changelogs, templates, test files) or that
 need boosting (critical configs, design docs).
+
+To filter search results by tag:
+```bash
+bobbin search "your query" --tag type:guide        # Include only guides
+bobbin search "your query" --exclude-tag type:eval  # Exclude eval artifacts
+```
