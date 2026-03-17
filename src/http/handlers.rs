@@ -2680,11 +2680,14 @@ pub(super) async fn archive_recent(
     // Sort by path descending (newest first) — paths are date-partitioned (YYYY/MM/DD)
     records.sort_by(|a, b| b.3.cmp(&a.3));
 
-    // Content-based dedup: same design doc often stored by multiple agents
+    // Content-based dedup: same design doc often stored by multiple agents.
+    // Dedup on BODY (after frontmatter extraction) since duplicate records
+    // have different frontmatter (IDs, timestamps, agents) but identical bodies.
     {
         let mut seen_content = std::collections::HashSet::new();
         records.retain(|(_, _, content, _)| {
-            let key = content.trim().to_lowercase();
+            let body = extract_body(content).unwrap_or_default();
+            let key = body.trim().to_lowercase();
             let dedup_key = if key.len() > 200 { &key[..200] } else { &key };
             seen_content.insert(dedup_key.to_string())
         });
