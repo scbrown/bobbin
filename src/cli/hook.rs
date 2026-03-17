@@ -1001,7 +1001,7 @@ async fn inject_context_remote(
                 let before = resp_files.len();
                 resp_files.retain(|f| {
                     let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
-                    !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "CLAUDE.local.md")
+                    !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "CLAUDE.local.md")
                 });
                 let removed = before - resp_files.len();
                 if removed > 0 {
@@ -1014,7 +1014,7 @@ async fn inject_context_remote(
             // These are reference material, not active code context.
             {
                 let before = resp_files.len();
-                let design_dirs = ["/_plans/", "/_design/", "/_roadmap/", "/_specs/"];
+                let design_dirs = ["/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/"];
                 let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md"];
                 resp_files.retain(|f| {
                     let path_lower = f.path.to_lowercase();
@@ -2252,6 +2252,26 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let access_filter = crate::access::RepoFilter::from_config(&config.access, &role);
     let mut bundle = bundle;
     bundle.files.retain(|f| access_filter.is_allowed(crate::access::RepoFilter::repo_from_path(&f.path)));
+
+    // 7c. Filter out files already in agent context (CLAUDE.md, AGENTS.md, etc.)
+    bundle.files.retain(|f| {
+        let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
+        !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "CLAUDE.local.md")
+    });
+
+    // 7d. Filter out design doc and audit directories
+    {
+        let design_dirs = ["/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/"];
+        let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md"];
+        bundle.files.retain(|f| {
+            let path_lower = f.path.to_lowercase();
+            if design_dirs.iter().any(|d| path_lower.contains(d)) {
+                return false;
+            }
+            let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
+            !design_files.iter().any(|d| filename.eq_ignore_ascii_case(d))
+        });
+    }
 
     // 8. Session reducing: filter out chunks already injected in this session
     let reducing_enabled = hooks_cfg.reducing_enabled && !input.session_id.is_empty();

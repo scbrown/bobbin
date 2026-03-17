@@ -149,6 +149,10 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
         "check mail", "check inbox", "read mail", "read inbox",
         "checking in", "session start", "hand off", "handoff",
         "pick up work", "pick next", "what should i work on",
+        // Bead assignment/status queries
+        "assigned to me", "my beads", "my issues", "my tasks",
+        "beads assigned", "open beads", "in progress beads",
+        "close this bead", "close the bead", "update the bead",
     ];
     // Strong signal: prompt IS a command (very short, starts with tool name)
     let cmd_prefixes = ["git ", "cargo ", "go ", "npm ", "make ", "bd ", "gt ", "docker "];
@@ -281,6 +285,14 @@ mod tests {
         assert_eq!(classify_intent("check my hook and mail"), QueryIntent::Operational);
         assert_eq!(classify_intent("ready beads to pick up"), QueryIntent::Operational);
         assert_eq!(classify_intent("check inbox for work"), QueryIntent::Operational);
+    }
+
+    #[test]
+    fn test_classify_operational_bead_queries() {
+        // Bead assignment/status queries should be Operational
+        assert_eq!(classify_intent("what beads are assigned to me"), QueryIntent::Operational);
+        assert_eq!(classify_intent("show my open beads"), QueryIntent::Operational);
+        assert_eq!(classify_intent("close this bead and pick next"), QueryIntent::Operational);
     }
 
     #[test]
