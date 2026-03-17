@@ -138,7 +138,13 @@ impl TagsConfig {
     /// Load tags config, returning default if file doesn't exist
     pub fn load_or_default(path: &Path) -> Self {
         if path.exists() {
-            Self::load(path).unwrap_or_default()
+            match Self::load(path) {
+                Ok(config) => config,
+                Err(e) => {
+                    eprintln!("warning: failed to parse {}: {e:#}; using defaults", path.display());
+                    Self::default()
+                }
+            }
         } else {
             Self::default()
         }
@@ -383,14 +389,20 @@ pub fn resolve_tags(config: &TagsConfig, file_path: &str, repo: Option<&str>) ->
                 continue;
             }
         }
-        if let Ok(pat) = Pattern::new(&rule.pattern) {
-            // Try matching the path directly, and also with a dummy prefix
-            // so that `**/foo` patterns match root-relative paths like `foo/bar.md`.
-            // Without this, `**/snapshots/**/*.md` fails on `snapshots/ian/2026.md`
-            // because `**/` requires at least one path component before the match.
-            let prefixed = format!("_/{}", file_path);
-            if pat.matches(file_path) || pat.matches(&prefixed) {
-                tags.extend(rule.tags.iter().cloned());
+        match Pattern::new(&rule.pattern) {
+            Ok(pat) => {
+                // Try matching the path directly, and also with a dummy prefix
+                // so that `**/foo` patterns match root-relative paths like `foo/bar.md`.
+                // Without this, `**/snapshots/**/*.md` fails on `snapshots/ian/2026.md`
+                // because `**/` requires at least one path component before the match.
+                let prefixed = format!("_/{}", file_path);
+                if pat.matches(file_path) || pat.matches(&prefixed) {
+                    tags.extend(rule.tags.iter().cloned());
+                }
+            }
+            Err(_) => {
+                // Log once per bad pattern would be ideal, but for now just skip.
+                // Invalid patterns are caught at config validation time.
             }
         }
     }
