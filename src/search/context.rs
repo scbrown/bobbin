@@ -959,7 +959,9 @@ fn assemble_bundle(
         let filename = path.rsplit('/').next().unwrap_or(path);
         if matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "VISION.md" | "PRD.md"
             | "ARCHITECTURE.md" | "DESIGN.md" | "CHANGELOG.md"
-            | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md") {
+            | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md"
+            | "QUICKSTART.md" | "FAQ.md" | "INSTALLING.md" | "UNINSTALLING.md"
+            | "TROUBLESHOOTING.md" | "RELEASING.md" | "SETUP.md") {
             return true;
         }
         false

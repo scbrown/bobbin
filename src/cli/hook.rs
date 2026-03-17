@@ -1091,7 +1091,9 @@ async fn inject_context_remote(
                 resp_files.retain(|f| {
                     let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
                     !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "CLAUDE.local.md"
-                        | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md")
+                        | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md"
+                        | "QUICKSTART.md" | "FAQ.md" | "INSTALLING.md" | "UNINSTALLING.md"
+                        | "TROUBLESHOOTING.md" | "RELEASING.md" | "SETUP.md")
                 });
                 let removed = before - resp_files.len();
                 if removed > 0 {
@@ -2395,7 +2397,9 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         bundle.files.retain(|f| {
             let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
             !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "CLAUDE.local.md"
-                | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md")
+                | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md"
+                        | "QUICKSTART.md" | "FAQ.md" | "INSTALLING.md" | "UNINSTALLING.md"
+                        | "TROUBLESHOOTING.md" | "RELEASING.md" | "SETUP.md")
         });
         let removed = before - bundle.files.len();
         if removed > 0 {
