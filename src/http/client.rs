@@ -158,6 +158,12 @@ pub struct ContextSummaryOutput {
     /// Missing from older servers, defaults to 0.0.
     #[serde(default)]
     pub top_semantic_score: f32,
+    /// Detected query intent (e.g. "BugFix", "Operational").
+    #[serde(default)]
+    pub intent: Option<String>,
+    /// Recommended gate boost for detected intent.
+    #[serde(default)]
+    pub gate_boost: Option<f32>,
 }
 
 /// Response from the /read endpoint

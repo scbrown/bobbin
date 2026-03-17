@@ -1365,6 +1365,14 @@ struct ContextSummaryOutput {
     /// Raw cosine similarity of the top semantic result (before RRF).
     /// Used by clients for gate_threshold checks.
     top_semantic_score: f32,
+    /// Detected query intent (e.g. "BugFix", "Architecture", "Operational").
+    /// Clients can use this with gate_boost to apply intent-aware gating.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    intent: Option<String>,
+    /// Recommended additive gate boost for detected intent.
+    /// Add to base gate_threshold for intent-aware gating.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gate_boost: Option<f32>,
 }
 
 pub(super) async fn context(
@@ -1395,6 +1403,8 @@ pub(super) async fn context(
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                intent: None,
+                gate_boost: None,
             },
         }));
     }
@@ -1487,6 +1497,13 @@ pub(super) async fn context(
         "context"
     );
 
+    // Classify query intent and include in response for client-side gating
+    let intent = crate::search::intent::classify_intent(&params.q);
+    let adj = crate::search::intent::intent_adjustments(intent);
+    let mut summary = to_context_summary(&bundle.summary);
+    summary.intent = Some(format!("{:?}", intent));
+    summary.gate_boost = Some(adj.gate_boost);
+
     Ok(Json(ContextResponse {
         query: bundle.query,
         budget: ContextBudgetInfo {
@@ -1494,7 +1511,7 @@ pub(super) async fn context(
             used_lines: bundle.budget.used_lines,
         },
         files: bundle.files.iter().map(to_context_file).collect(),
-        summary: to_context_summary(&bundle.summary),
+        summary,
     }))
 }
 
@@ -2064,6 +2081,8 @@ pub(super) async fn review(
                 source_files: 0,
                 doc_files: 0,
                 top_semantic_score: 0.0,
+                intent: None,
+                gate_boost: None,
             },
         }));
     }
@@ -3805,6 +3824,8 @@ fn to_context_summary(s: &crate::search::context::ContextSummary) -> ContextSumm
         source_files: s.source_files,
         doc_files: s.doc_files,
         top_semantic_score: s.top_semantic_score,
+        intent: None,
+        gate_boost: None,
     }
 }
 
