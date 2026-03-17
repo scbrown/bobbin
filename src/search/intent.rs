@@ -220,11 +220,11 @@ pub fn intent_adjustments(intent: QueryIntent) -> IntentAdjustments {
             doc_demotion_factor: 2.0,    // Strongly demote docs
             semantic_weight_factor: 0.5,  // Keyword-heavy (command names are literal)
             recency_weight_factor: 0.5,   // Recency irrelevant
-            gate_boost: 0.15,            // Raise gate from 0.50 → 0.65 (blocks operational noise)
+            gate_boost: 0.15,            // Raise gate from 0.45 → 0.60 (blocks operational noise)
             coupling_threshold: Some(0.30), // Very tight: operational queries rarely need coupling
         },
         QueryIntent::General => IntentAdjustments {
-            gate_boost: 0.05,            // Raise gate (0.50 → 0.55) to filter marginal matches
+            gate_boost: 0.07,            // Raise gate (0.45 → 0.52) to filter marginal noise
             ..IntentAdjustments::default()
         },
     }
@@ -338,6 +338,6 @@ mod tests {
         assert!((adj.semantic_weight_factor - 1.0).abs() < f32::EPSILON);
         assert!((adj.recency_weight_factor - 1.0).abs() < f32::EPSILON);
         assert!(adj.gate_boost > 0.0, "General intent should have slight gate boost");
-        assert!(adj.gate_boost <= 0.05, "General gate boost should be small");
+        assert!(adj.gate_boost <= 0.10, "General gate boost should be small");
     }
 }
