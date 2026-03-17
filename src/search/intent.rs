@@ -111,8 +111,9 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
     }
 
     // Configuration signals
-    let config_stems = ["config", "deploy", "setup", "install", "env", "environment", "dockerfile", "yaml", "toml", "nginx", "traefik"];
-    let config_phrases = ["set up", "how to configure", "how to deploy", "how to install"];
+    let config_stems = ["config", "deploy", "setup", "install", "env", "environment", "dockerfile", "yaml", "toml", "nginx", "traefik", "systemd", "systemctl"];
+    let config_phrases = ["set up", "how to configure", "how to deploy", "how to install",
+                          "deploy to", "deploy the", "deploy this", "deploy it"];
     for kw in &config_stems {
         if has_word(kw) { scores[3].1 += 1; }
     }
@@ -289,6 +290,8 @@ mod tests {
         assert_eq!(classify_intent("how to configure nginx for this service"), QueryIntent::Configuration);
         assert_eq!(classify_intent("set up the docker environment"), QueryIntent::Configuration);
         assert_eq!(classify_intent("update the deploy yaml config"), QueryIntent::Configuration);
+        assert_eq!(classify_intent("deploy the service to production"), QueryIntent::Configuration);
+        assert_eq!(classify_intent("deploy this to kota"), QueryIntent::Configuration);
     }
 
     #[test]

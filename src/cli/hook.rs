@@ -881,6 +881,15 @@ async fn inject_context_remote(
     let intent = crate::search::intent::classify_intent(search_query);
     let intent_adj = crate::search::intent::intent_adjustments(intent);
 
+    // 3h. Skip injection entirely for Operational intent. Agents running shell
+    // commands (gt hook, bd ready, git push, etc.) never benefit from code context.
+    // The Operational gate boost (0.15) is insufficient because semantic scores
+    // for hook/mail/status keywords match gastown infrastructure code at 0.7+.
+    if intent == crate::search::intent::QueryIntent::Operational {
+        eprintln!("bobbin: skipped (operational intent: {:?})", intent);
+        return Ok(());
+    }
+
     // 4. Assemble context via remote server (uses full ContextAssembler on server
     //    side, including coupling expansion and provenance bridging).
     //    Falls back to /search if /context returns 404 (e.g., Traefik proxy
@@ -1097,7 +1106,7 @@ async fn inject_context_remote(
                 let before = resp_files.len();
                 let design_dirs = [
                     "/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/",
-                    "/docs/tasks/", "/docs/plans/", "/docs/design/", "/docs/runbooks/",
+                    "/docs/tasks/", "/docs/plans/", "/docs/design/", "/docs/designs/", "/docs/runbooks/",
                     "/crew/", "/polecats/",
                     "/memory/", "/.beads/", "/session-notes/", "/sessions/",
                 ];
@@ -2305,6 +2314,13 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let intent = crate::search::intent::classify_intent(search_query);
     let adj = crate::search::intent::intent_adjustments(intent);
 
+    // Skip injection entirely for Operational intent (matches remote mode).
+    // Agents running shell commands never benefit from code context.
+    if intent == crate::search::intent::QueryIntent::Operational {
+        eprintln!("bobbin: skipped (operational intent: {:?})", intent);
+        return Ok(());
+    }
+
     // Base values from calibration or config
     let base_sw = cal_sw.unwrap_or(config.search.semantic_weight);
     let base_dd = cal_dd.unwrap_or(config.search.doc_demotion);
@@ -2393,7 +2409,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         let before = bundle.files.len();
         let design_dirs = [
             "/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/",
-            "/docs/tasks/", "/docs/plans/", "/docs/design/", "/docs/runbooks/",
+            "/docs/tasks/", "/docs/plans/", "/docs/design/", "/docs/designs/", "/docs/runbooks/",
             "/crew/", "/polecats/",
             "/memory/", "/.beads/", "/session-notes/", "/sessions/",
         ];

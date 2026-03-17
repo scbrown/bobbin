@@ -947,7 +947,7 @@ fn assemble_bundle(
             || lower.contains("/_roadmap/") || lower.contains("/_specs/")
             || lower.contains("/audit/") || lower.contains("/crew/")
             || lower.contains("/polecats/") || lower.contains("/docs/tasks/")
-            || lower.contains("/docs/plans/") || lower.contains("/docs/design/")
+            || lower.contains("/docs/plans/") || lower.contains("/docs/design/") || lower.contains("/docs/designs/")
             || lower.contains("/docs/runbooks/")
             || lower.contains("/memory/") || lower.contains("/.beads/")
             || lower.contains("/session-notes/") || lower.contains("/sessions/")
