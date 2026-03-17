@@ -2665,8 +2665,8 @@ pub(super) async fn archive_recent(
         return Err(bad_request("No archive sources configured".to_string()));
     }
 
-    // (source_name, id, content, rel_path)
-    let mut records: Vec<(String, String, String, String)> = Vec::new();
+    // (source_name, id, content, rel_path, sort_date)
+    let mut records: Vec<(String, String, String, String, String)> = Vec::new();
 
     for (source_name, source_path) in &paths {
         // Apply source filter early
@@ -2686,19 +2686,23 @@ pub(super) async fn archive_recent(
         let after = params.after.as_deref().unwrap_or(&default_after);
         collect_recent_records(archive_root, archive_root, after, &mut source_records);
         for (id, content, rel_path) in source_records {
-            records.push((source_name.clone(), id, content, rel_path));
+            // Extract sort date: prefer frontmatter timestamp, fallback to path date
+            let sort_date = extract_timestamp_from_frontmatter(&content)
+                .or_else(|| extract_date_from_archive_path(&format!("_:{}", rel_path)))
+                .unwrap_or_default();
+            records.push((source_name.clone(), id, content, rel_path, sort_date));
         }
     }
 
-    // Sort by path descending (newest first) — paths are date-partitioned (YYYY/MM/DD)
-    records.sort_by(|a, b| b.3.cmp(&a.3));
+    // Sort by extracted date descending (newest first), then by path for ties
+    records.sort_by(|a, b| b.4.cmp(&a.4).then_with(|| b.3.cmp(&a.3)));
 
     // Content-based dedup: same design doc often stored by multiple agents.
     // Dedup on BODY (after frontmatter extraction) since duplicate records
     // have different frontmatter (IDs, timestamps, agents) but identical bodies.
     {
         let mut seen_content = std::collections::HashSet::new();
-        records.retain(|(_, _, content, _)| {
+        records.retain(|(_, _, content, _, _)| {
             let body = extract_body(content).unwrap_or_default();
             let key = body.trim().to_lowercase();
             // Truncate at a char boundary (floor_char_boundary avoids UTF-8 panic)
@@ -2720,11 +2724,15 @@ pub(super) async fn archive_recent(
     let total = records.len();
     let results: Vec<ArchiveResultItem> = records
         .into_iter()
-        .map(|(source_name, id, content, rel_path)| {
+        .map(|(source_name, id, content, rel_path, sort_date)| {
             let body = extract_body(&content).unwrap_or_default();
             let prefixed_path = format!("{}:{}", source_name, rel_path);
-            let timestamp = extract_date_from_archive_path(&prefixed_path)
-                .unwrap_or_default();
+            // Use the already-extracted sort_date for timestamp
+            let timestamp = if sort_date.is_empty() {
+                extract_date_from_archive_path(&prefixed_path).unwrap_or_default()
+            } else {
+                sort_date
+            };
 
             ArchiveResultItem {
                 id,
@@ -2819,6 +2827,12 @@ fn collect_recent_records(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
+            // Skip underscore-prefixed directories (_plans/, _templates/, etc.)
+            // These contain static design docs, not time-series observations.
+            let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if dir_name.starts_with('_') {
+                continue;
+            }
             collect_recent_records(root, &path, after, results);
         } else if path.extension().is_some_and(|e| e == "md") {
             let rel = match path.strip_prefix(root) {
