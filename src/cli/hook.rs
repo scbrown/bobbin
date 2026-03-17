@@ -877,6 +877,20 @@ async fn inject_context_remote(
                 }
             }
 
+            // Filter out files already in agent context (CLAUDE.md, AGENTS.md, etc.)
+            // These are injected into every Claude Code session automatically.
+            {
+                let before = resp_files.len();
+                resp_files.retain(|f| {
+                    let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
+                    !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "CLAUDE.local.md")
+                });
+                let removed = before - resp_files.len();
+                if removed > 0 {
+                    eprintln!("bobbin: filtered {} already-in-context files (CLAUDE.md etc.)", removed);
+                }
+            }
+
             // Rebuild response with updated counts
             let total_chunks: usize = resp_files.iter().map(|f| f.chunks.len()).sum();
             let resp = crate::http::client::ContextResponse {
