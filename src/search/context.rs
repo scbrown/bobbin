@@ -947,7 +947,8 @@ fn assemble_bundle(
             || lower.contains("/_roadmap/") || lower.contains("/_specs/")
             || lower.contains("/audit/") || lower.contains("/crew/")
             || lower.contains("/polecats/") || lower.contains("/docs/tasks/")
-            || lower.contains("/docs/plans/") || lower.contains("/docs/runbooks/")
+            || lower.contains("/docs/plans/") || lower.contains("/docs/design/")
+            || lower.contains("/docs/runbooks/")
             || lower.contains("/memory/") || lower.contains("/.beads/")
             || lower.contains("/session-notes/") || lower.contains("/sessions/")
             || lower.ends_with("/roadmap.md") || lower.ends_with("/changelog.md")
@@ -957,6 +958,7 @@ fn assemble_bundle(
         // CLAUDE.md/AGENTS.md and static product docs already in agent context
         let filename = path.rsplit('/').next().unwrap_or(path);
         if matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "VISION.md" | "PRD.md"
+            | "ARCHITECTURE.md" | "DESIGN.md" | "CHANGELOG.md"
             | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md") {
             return true;
         }

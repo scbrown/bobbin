@@ -1097,11 +1097,11 @@ async fn inject_context_remote(
                 let before = resp_files.len();
                 let design_dirs = [
                     "/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/",
-                    "/docs/tasks/", "/docs/plans/", "/docs/runbooks/",
+                    "/docs/tasks/", "/docs/plans/", "/docs/design/", "/docs/runbooks/",
                     "/crew/", "/polecats/",
                     "/memory/", "/.beads/", "/session-notes/", "/sessions/",
                 ];
-                let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md"];
+                let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md", "CHANGELOG.md"];
                 resp_files.retain(|f| {
                     let path_lower = f.path.to_lowercase();
                     // Skip if path contains a design/planning directory
@@ -2397,7 +2397,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             "/crew/", "/polecats/",
             "/memory/", "/.beads/", "/session-notes/", "/sessions/",
         ];
-        let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md"];
+        let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md", "CHANGELOG.md"];
         bundle.files.retain(|f| {
             let path_lower = f.path.to_lowercase();
             if design_dirs.iter().any(|d| path_lower.contains(d)) {
