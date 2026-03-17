@@ -2625,7 +2625,8 @@ pub(super) async fn archive_entry(
 
 #[derive(Deserialize)]
 struct ArchiveRecentParams {
-    after: String,
+    /// Only return records after this date (YYYY-MM-DD). Defaults to 30 days ago.
+    after: Option<String>,
     limit: Option<usize>,
     /// Filter by archive source name (e.g., "hla", "pensieve")
     source: Option<String>,
@@ -2663,7 +2664,14 @@ pub(super) async fn archive_recent(
         }
         let archive_root = std::path::Path::new(source_path);
         let mut source_records: Vec<(String, String, String)> = Vec::new();
-        collect_recent_records(archive_root, archive_root, &params.after, &mut source_records);
+        // Default to 30 days ago if no after date provided
+        let default_after = {
+            let now = chrono::Utc::now();
+            let thirty_days_ago = now - chrono::Duration::days(30);
+            thirty_days_ago.format("%Y-%m-%d").to_string()
+        };
+        let after = params.after.as_deref().unwrap_or(&default_after);
+        collect_recent_records(archive_root, archive_root, after, &mut source_records);
         for (id, content, rel_path) in source_records {
             records.push((source_name.clone(), id, content, rel_path));
         }
