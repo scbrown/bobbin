@@ -883,6 +883,55 @@ fn assemble_bundle(
         })
         .collect();
 
+    // Path dedup: same file indexed at both relative and absolute paths
+    // (e.g. "internal/cmd/foo.go" and "/var/lib/bobbin/repos/gastown/internal/cmd/foo.go").
+    // Normalize by stripping the /var/lib/bobbin/repos/<repo>/ prefix, then keep
+    // the higher-scoring variant. Only dedup when original paths differ (same file,
+    // different index paths) — don't remove different chunks from the same file.
+    let seed_results = {
+        let repo_prefix = "/var/lib/bobbin/repos/";
+        let normalize = |path: &str| -> String {
+            if path.starts_with(repo_prefix) {
+                path[repo_prefix.len()..]
+                    .find('/')
+                    .map(|i| &path[repo_prefix.len() + i + 1..])
+                    .unwrap_or(path)
+                    .to_string()
+            } else {
+                path.trim_start_matches('/').to_string()
+            }
+        };
+        // Group by (normalized_path, chunk_range) to only dedup true duplicates
+        // (same relative path + same line range = same content from different index paths)
+        let mut best_idx: HashMap<(String, u32, u32), usize> = HashMap::new();
+        let mut remove_set: HashSet<usize> = HashSet::new();
+        for (idx, result) in seed_results.iter().enumerate() {
+            let relpath = normalize(&result.file_path);
+            let key = (relpath, result.start_line, result.end_line);
+            if let Some(&prev_idx) = best_idx.get(&key) {
+                // Same relative path AND same line range — true duplicate
+                if result.score > seed_results[prev_idx].score {
+                    remove_set.insert(prev_idx);
+                    best_idx.insert(key, idx);
+                } else {
+                    remove_set.insert(idx);
+                }
+            } else {
+                best_idx.insert(key, idx);
+            }
+        }
+        if !remove_set.is_empty() {
+            seed_results
+                .into_iter()
+                .enumerate()
+                .filter(|(i, _)| !remove_set.contains(i))
+                .map(|(_, r)| r)
+                .collect::<Vec<_>>()
+        } else {
+            seed_results
+        }
+    };
+
     // Partition into pinned and normal results
     let (pinned_results, normal_results): (Vec<SeedResult>, Vec<SeedResult>) =
         seed_results.into_iter().partition(|r| r.is_pinned);

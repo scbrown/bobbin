@@ -131,7 +131,7 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
     }
 
     // Operational signals: tool execution, git/cargo/test commands, status checks,
-    // agent workflow queries (beads, hooks, mail, handoff)
+    // agent workflow queries (beads, hooks, mail, handoff), infrastructure monitoring
     let op_stems = ["commit", "push", "pull", "merge", "rebase", "stash", "checkout", "check", "status", "close"];
     let op_phrases = [
         "run the test", "run test", "cargo test", "cargo build", "cargo check",
@@ -155,7 +155,26 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
         "close this bead", "close the bead", "update the bead",
         "close your beads", "close beads", "check the status",
         "check status", "check your", "check on",
+        // Infrastructure monitoring — runtime queries about services, not code
+        "disk usage", "disk space", "memory usage", "cpu usage", "cpu load",
+        "service status", "container status", "is it up", "is it down",
+        "is it running", "restart the", "restart service",
+        "how much disk", "how much memory", "how much space",
+        "free space", "uptime", "health check",
+        "alert firing", "alert status", "prometheus", "grafana",
+        "backup status", "cert expir",
     ];
+    // Monitoring queries often compete with "what is the" (Architecture) — boost them
+    let op_strong_phrases = [
+        "disk usage", "disk space", "memory usage", "cpu usage", "cpu load",
+        "how much disk", "how much memory", "how much space",
+        "service status", "container status", "backup status",
+        "alert firing", "alert status",
+        "is it up", "is it down", "is it running",
+    ];
+    for phrase in &op_strong_phrases {
+        if lower.contains(phrase) { scores[5].1 += 1; } // Extra point on top of the +2 above
+    }
     // Strong signal: prompt IS a command (very short, starts with tool name)
     let cmd_prefixes = ["git ", "cargo ", "go ", "npm ", "make ", "bd ", "gt ", "docker "];
     for phrase in &op_phrases {
@@ -303,6 +322,19 @@ mod tests {
         assert_eq!(classify_intent("check the patrol status and queue"), QueryIntent::Operational);
         assert_eq!(classify_intent("close your beads when done"), QueryIntent::Operational);
         assert_eq!(classify_intent("check on the deployment"), QueryIntent::Operational);
+    }
+
+    #[test]
+    fn test_classify_operational_monitoring() {
+        // Infrastructure monitoring queries should be Operational, not Architecture
+        assert_eq!(classify_intent("what is the disk usage on seeker2"), QueryIntent::Operational);
+        assert_eq!(classify_intent("how much disk space is left"), QueryIntent::Operational);
+        assert_eq!(classify_intent("check the memory usage on kota"), QueryIntent::Operational);
+        assert_eq!(classify_intent("check the backup status"), QueryIntent::Operational);
+        assert_eq!(classify_intent("restart the service"), QueryIntent::Operational);
+        assert_eq!(classify_intent("check cert expiry on traefik"), QueryIntent::Operational);
+        assert_eq!(classify_intent("disk usage on the server"), QueryIntent::Operational);
+        assert_eq!(classify_intent("alert firing on prometheus"), QueryIntent::Operational);
     }
 
     #[test]
