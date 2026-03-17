@@ -78,6 +78,21 @@ fn is_automated_message(prompt: &str) -> bool {
         return true;
     }
 
+    // Agent role announcements ("Crew ian, checking in.", "aegis Crew mel, checking in.")
+    if check.contains("checking in") && check.contains("Crew ") {
+        return true;
+    }
+
+    // System reminder blocks (hook output injected into prompts)
+    if check.starts_with("<system-reminder>") || check.starts_with("[GAS TOWN]") {
+        return true;
+    }
+
+    // Handoff mail content — "Check your hook and mail" directives
+    if check.contains("Check your hook") && check.contains("mail") && check.contains("then act") {
+        return true;
+    }
+
     false
 }
 
@@ -6120,6 +6135,17 @@ mod tests {
 
         // Queued nudge wrappers
         assert!(is_automated_message("QUEUED NUDGE (1 message(s)):\n\n  [from dog] check status\n\nThis is a background notification. Continue current work."));
+
+        // Agent role announcements
+        assert!(is_automated_message("aegis Crew ian, checking in."));
+        assert!(is_automated_message("\naegis Crew mel, checking in.\n"));
+
+        // System reminder blocks
+        assert!(is_automated_message("<system-reminder>\nUserPromptSubmit hook success\n</system-reminder>"));
+        assert!(is_automated_message("[GAS TOWN] crew ian (rig: aegis) <- self"));
+
+        // Handoff mail directives
+        assert!(is_automated_message("Check your hook and mail, then act on the hook if present:\n1. `gt hook`"));
 
         // Normal messages should NOT be filtered
         assert!(!is_automated_message("Fix the bug in bobbin search"));
