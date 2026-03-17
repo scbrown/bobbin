@@ -125,7 +125,9 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
 
     // Navigation signals
     let nav_stems = ["where", "find", "locate", "which", "file", "path", "defin", "declarat"];
-    let nav_phrases = ["where is", "where are", "which file", "find the", "locate the", "defined in"];
+    let nav_phrases = ["where is", "where are", "which file", "find the", "locate the", "defined in",
+                       "look at", "read the", "open the", "show me the file", "what file",
+                       "search for", "grep for", "look up"];
     for kw in &nav_stems {
         if has_word(kw) { scores[4].1 += 1; }
     }
@@ -167,6 +169,13 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
         "free space", "uptime", "health check",
         "alert firing", "alert status", "prometheus", "grafana",
         "backup status", "cert expir",
+        // Review/diff — operational, not code context
+        "review the pr", "review this pr", "review the diff", "show the diff",
+        "what changed", "what did i change", "show changes",
+        "git show", "git blame", "git shortlog",
+        // Session lifecycle
+        "cycle session", "new session", "fresh session", "context low",
+        "context is low", "running low on context",
     ];
     // Monitoring queries often compete with "what is the" (Architecture) — boost them
     let op_strong_phrases = [

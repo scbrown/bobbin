@@ -196,6 +196,16 @@ fn is_automated_message(prompt: &str) -> bool {
         return true;
     }
 
+    // Repeated WORK directives with partial match (without "Keep working" suffix)
+    if check.contains("WORK: You are") && check.contains("differentiated work") {
+        return true;
+    }
+
+    // System reminder about task tools (injected by harness, not user)
+    if check.contains("task tools haven't been used recently") {
+        return true;
+    }
+
     // Molecule/convoy status checks (orchestration, not domain work)
     if check.contains("gt mol status") && check.contains("gt hook") {
         return true;
