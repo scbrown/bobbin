@@ -67,11 +67,40 @@ fn strip_xml_block(text: &str, tag: &str) -> String {
     result
 }
 
+/// Detect short prompts that are bead/issue commands (e.g., "remove bo-qq5h",
+/// "show aegis-abc", "close gt-xyz"). These are operational commands that don't
+/// benefit from search context injection. Bead IDs match: prefix-alphanumeric.
+fn is_bead_command(prompt: &str) -> bool {
+    if prompt.len() > 60 {
+        return false;
+    }
+    let words: Vec<&str> = prompt.split_whitespace().collect();
+    if words.len() > 5 {
+        return false;
+    }
+    words.iter().any(|w| {
+        let w = w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
+        if let Some(dash_pos) = w.find('-') {
+            let prefix = &w[..dash_pos];
+            let suffix = &w[dash_pos + 1..];
+            !prefix.is_empty()
+                && prefix.chars().all(|c| c.is_ascii_lowercase())
+                && !suffix.is_empty()
+                && suffix.len() >= 3
+                && suffix.chars().all(|c| c.is_ascii_alphanumeric())
+        } else {
+            false
+        }
+    })
+}
+
 /// Detect automated messages that don't benefit from semantic search.
 /// Auto-patrol nudges, reactor alerts, and similar machine-generated messages
 /// produce noise injections (matching docs about "escalation", "patrol", etc.)
 /// rather than useful context for the agent's actual work.
 fn is_automated_message(prompt: &str) -> bool {
+    // Trim leading whitespace — prompts may start with \n from nudge/hook wrappers
+    let prompt = prompt.trim_start();
     // Check first 500 chars for efficiency (patterns appear early in messages)
     let check = if prompt.len() > 500 { &prompt[..500] } else { prompt };
 
@@ -829,7 +858,13 @@ async fn inject_context_remote(
         clean_prompt.trim()
     };
 
-    // 3e. Truncate long prompts for search quality — embedding models lose focus
+    // 3e. Short bead-command skip: "remove bo-qq5h", "show aegis-abc", etc.
+    if is_bead_command(search_query) {
+        eprintln!("bobbin: skipped (short bead command detected)");
+        return Ok(());
+    }
+
+    // 3f. Truncate long prompts for search quality — embedding models lose focus
     // on very long inputs. Keep last 500 chars (most recent/relevant content).
     let search_query = if search_query.len() > 500 {
         // Find a word boundary near the cutpoint to avoid splitting mid-word
@@ -842,7 +877,7 @@ async fn inject_context_remote(
         search_query
     };
 
-    // 3f. Query intent classification: adjust gate threshold for operational queries
+    // 3g. Query intent classification: adjust gate threshold for operational queries
     let intent = crate::search::intent::classify_intent(search_query);
     let intent_adj = crate::search::intent::intent_adjustments(intent);
 
@@ -1097,7 +1132,7 @@ async fn inject_context_remote(
                     QueryIntent::Architecture | QueryIntent::Configuration => 0.04,
                     QueryIntent::Navigation => 0.06,
                     QueryIntent::Implementation | QueryIntent::BugFix => 0.08,
-                    QueryIntent::General => 0.08,
+                    QueryIntent::General => 0.10,
                     QueryIntent::Operational => 0.12, // Operational rarely needs cross-repo
                 };
                 if let Some(ref affinity) = repo_affinity {
@@ -2211,6 +2246,12 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     } else {
         clean_prompt.trim()
     };
+    // 3e. Short bead-command skip (local mode, mirrors remote mode)
+    if is_bead_command(search_query) {
+        eprintln!("bobbin: skipped (short bead command detected)");
+        return Ok(());
+    }
+
     let search_query = if search_query.len() > 500 {
         let cutoff = search_query.len() - 500;
         match search_query[cutoff..].find(' ') {
@@ -2380,7 +2421,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             QueryIntent::Architecture | QueryIntent::Configuration => 0.04,
             QueryIntent::Navigation => 0.06,
             QueryIntent::Implementation | QueryIntent::BugFix => 0.08,
-            QueryIntent::General => 0.08,
+            QueryIntent::General => 0.10,
             QueryIntent::Operational => 0.12,
         };
         if let Some(ref affinity) = repo_affinity {
@@ -6601,5 +6642,32 @@ mod tests {
         assert!(!is_automated_message("bd show aegis-abc123"));
         assert!(!is_automated_message("Run the tests and check for failures"));
         assert!(!is_automated_message("")); // Empty string
+
+        // Whitespace-trimmed patterns should still match
+        assert!(is_automated_message("  \n<system-reminder>\nhook output\n</system-reminder>"));
+        assert!(is_automated_message("\n[GAS TOWN] crew ian (rig: aegis) <- self"));
+    }
+
+    #[test]
+    fn test_is_bead_command() {
+        // Bead commands that should be skipped
+        assert!(is_bead_command("remove bo-qq5h"));
+        assert!(is_bead_command("show aegis-abc123"));
+        assert!(is_bead_command("close gt-xyz"));
+        assert!(is_bead_command("hook gt-h8x"));
+        assert!(is_bead_command("bd show aegis-ky3wc9"));
+        assert!(is_bead_command("unhook hq-abc"));
+        assert!(is_bead_command("aegis-mlpgac"));
+
+        // Should NOT be skipped (not bead commands)
+        assert!(!is_bead_command("Fix the bug in bobbin search"));
+        assert!(!is_bead_command("How do I deploy bobbin to kota?"));
+        assert!(!is_bead_command("Run the tests and check for failures"));
+        assert!(!is_bead_command("")); // Empty string
+        assert!(!is_bead_command("what is the architecture of the system and how does deployment work across all rigs"));
+        // Too short suffix (< 3 chars)
+        assert!(!is_bead_command("show x-ab"));
+        // Not lowercase prefix
+        assert!(!is_bead_command("show ABC-def123"));
     }
 }
