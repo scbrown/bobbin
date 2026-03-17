@@ -907,7 +907,7 @@ async fn inject_context_remote(
             Some(budget),
             Some(1),    // depth: 1 level of coupling expansion
             Some(2),    // max_coupled: 2 coupled files per seed (was 3, tightened to reduce noise)
-            Some(15),   // search_limit: 15 initial results (was 20, tightened for precision)
+            Some(12),   // search_limit: 12 initial results (was 15, tightened for precision)
             Some(coupling_threshold),
             repo_filter.as_deref(),
             Some(&role),

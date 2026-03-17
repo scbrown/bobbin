@@ -251,7 +251,8 @@ pub fn intent_adjustments(intent: QueryIntent) -> IntentAdjustments {
             coupling_threshold: Some(0.30), // Very tight: operational queries rarely need coupling
         },
         QueryIntent::General => IntentAdjustments {
-            gate_boost: 0.07,            // Raise gate (0.45 → 0.52) to filter marginal noise
+            gate_boost: 0.10,            // Raise gate (0.45 → 0.55) to filter marginal noise
+            coupling_threshold: Some(0.18), // Tighter than default (0.15) — General queries produce loose coupling noise
             ..IntentAdjustments::default()
         },
     }
