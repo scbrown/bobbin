@@ -473,6 +473,25 @@ impl Client {
         role: Option<&str>,
         repo_affinity: Option<&str>,
     ) -> Result<ContextResponse> {
+        self.context_with_weights(query, budget, depth, max_coupled, limit, coupling_threshold, repo, role, repo_affinity, None, None, None).await
+    }
+
+    /// Assemble context with per-request scoring weight overrides.
+    pub async fn context_with_weights(
+        &self,
+        query: &str,
+        budget: Option<usize>,
+        depth: Option<u32>,
+        max_coupled: Option<usize>,
+        limit: Option<usize>,
+        coupling_threshold: Option<f32>,
+        repo: Option<&str>,
+        role: Option<&str>,
+        repo_affinity: Option<&str>,
+        semantic_weight: Option<f32>,
+        doc_demotion: Option<f32>,
+        recency_weight: Option<f32>,
+    ) -> Result<ContextResponse> {
         let url = format!("{}/context", self.base_url);
         let mut params: Vec<(&str, String)> = vec![("q", query.to_string())];
         if let Some(b) = budget {
@@ -498,6 +517,15 @@ impl Client {
         }
         if let Some(ra) = repo_affinity {
             params.push(("repo_affinity", ra.to_string()));
+        }
+        if let Some(sw) = semantic_weight {
+            params.push(("semantic_weight", sw.to_string()));
+        }
+        if let Some(dd) = doc_demotion {
+            params.push(("doc_demotion", dd.to_string()));
+        }
+        if let Some(rw) = recency_weight {
+            params.push(("recency_weight", rw.to_string()));
         }
         self.get_json(&url, &params).await
     }

@@ -93,6 +93,21 @@ fn is_automated_message(prompt: &str) -> bool {
         return true;
     }
 
+    // Handoff continuation — "[GAS TOWN] crew" + "handoff" patterns
+    if check.contains("[GAS TOWN]") && check.contains("handoff") {
+        return true;
+    }
+
+    // Tool loaded / tool result acknowledgments (no domain content)
+    if check.trim() == "Tool loaded." || check.trim() == "Acknowledged." {
+        return true;
+    }
+
+    // Overseer work assignment nudges (repeated automated directive)
+    if check.contains("WORK: You are") && check.contains("Do NOT check disk space") {
+        return true;
+    }
+
     false
 }
 
@@ -734,8 +749,33 @@ async fn inject_context_remote(
     // Repo affinity: boost results from the agent's current repo
     let repo_affinity = detect_repo_name(&cwd);
 
+    // Compute per-request scoring overrides from intent classification.
+    // Only send overrides when intent adjustments differ from defaults (factor != 1.0).
+    let search_cfg = &config.search;
+    let semantic_weight_override = if (intent_adj.semantic_weight_factor - 1.0).abs() > f32::EPSILON {
+        // Direct multiplication: factor < 1.0 = more keyword, > 1.0 = more semantic
+        Some((search_cfg.semantic_weight * intent_adj.semantic_weight_factor).clamp(0.0, 1.0))
+    } else {
+        None
+    };
+    let doc_demotion_override = if (intent_adj.doc_demotion_factor - 1.0).abs() > f32::EPSILON {
+        // doc_demotion is a score multiplier (1.0=no demotion, 0.0=full demotion).
+        // Factor modifies the demotion EFFECT: factor<1.0 = less demotion (docs more visible),
+        // factor>1.0 = more demotion. Invert, scale effect, invert back.
+        let effect = (1.0 - search_cfg.doc_demotion) * intent_adj.doc_demotion_factor;
+        Some((1.0 - effect).clamp(0.0, 1.0))
+    } else {
+        None
+    };
+    let recency_weight_override = if (intent_adj.recency_weight_factor - 1.0).abs() > f32::EPSILON {
+        // Direct multiplication: factor > 1.0 = prefer recent, < 1.0 = less recency
+        Some((search_cfg.recency_weight * intent_adj.recency_weight_factor).clamp(0.0, 1.0))
+    } else {
+        None
+    };
+
     let context_result = client
-        .context(
+        .context_with_weights(
             prompt,
             Some(budget),
             Some(1),    // depth: 1 level of coupling expansion
@@ -745,6 +785,9 @@ async fn inject_context_remote(
             repo_filter.as_deref(),
             Some(&role),
             repo_affinity.as_deref(),
+            semantic_weight_override,
+            doc_demotion_override,
+            recency_weight_override,
         )
         .await;
 
@@ -938,6 +981,9 @@ async fn inject_context_remote(
                     "gate_threshold": gate,
                     "intent": format!("{:?}", intent),
                     "gate_boost": intent_adj.gate_boost,
+                    "semantic_weight_override": semantic_weight_override,
+                    "doc_demotion_override": doc_demotion_override,
+                    "recency_weight_override": recency_weight_override,
                     "files_returned": &files_json,
                     "chunks_returned": total_chunks,
                     "injection_id": &injection_id,

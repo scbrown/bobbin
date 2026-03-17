@@ -1304,6 +1304,12 @@ struct ContextParams {
     exclude_tag: Option<String>,
     /// Repo affinity: boost results from this repo (agent's current repo)
     repo_affinity: Option<String>,
+    /// Override semantic_weight (0.0=keyword only, 1.0=semantic only)
+    semantic_weight: Option<f32>,
+    /// Override doc_demotion (0.0=full demotion, 1.0=no demotion)
+    doc_demotion: Option<f32>,
+    /// Override recency_weight (0.0=no recency, 1.0=full recency)
+    recency_weight: Option<f32>,
 }
 
 #[derive(Serialize)]
@@ -1422,12 +1428,12 @@ pub(super) async fn context(
         depth: params.depth.unwrap_or(1),
         max_coupled: params.max_coupled.unwrap_or(3),
         coupling_threshold: params.coupling_threshold.unwrap_or(0.1),
-        semantic_weight: state.config.search.semantic_weight,
+        semantic_weight: params.semantic_weight.unwrap_or(state.config.search.semantic_weight),
         content_mode: ContentMode::Full,
         search_limit: params.limit.unwrap_or(20),
-        doc_demotion: state.config.search.doc_demotion,
+        doc_demotion: params.doc_demotion.unwrap_or(state.config.search.doc_demotion),
         recency_half_life_days: state.config.search.recency_half_life_days,
-        recency_weight: state.config.search.recency_weight,
+        recency_weight: params.recency_weight.unwrap_or(state.config.search.recency_weight),
         rrf_k: state.config.search.rrf_k,
         bridge_mode: BridgeMode::default(),
         bridge_boost_factor: 0.3,
