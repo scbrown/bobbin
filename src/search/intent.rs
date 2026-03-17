@@ -132,7 +132,8 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
 
     // Operational signals: tool execution, git/cargo/test commands, status checks,
     // agent workflow queries (beads, hooks, mail, handoff), infrastructure monitoring
-    let op_stems = ["commit", "push", "pull", "merge", "rebase", "stash", "checkout", "check", "status", "close"];
+    let op_stems = ["commit", "push", "pull", "merge", "rebase", "stash", "checkout", "check", "status", "close",
+                     "remove", "delete", "rename", "hook", "sling", "nudge"];
     let op_phrases = [
         "run the test", "run test", "cargo test", "cargo build", "cargo check",
         "go test", "npm test", "npm run", "make test", "make build",
@@ -174,6 +175,13 @@ pub fn classify_intent(prompt: &str) -> QueryIntent {
     ];
     for phrase in &op_strong_phrases {
         if lower.contains(phrase) { scores[5].1 += 1; } // Extra point on top of the +2 above
+    }
+    // Short bead/gt management commands: "remove bo-qq5h", "hook xyz", "show aegis-abc"
+    let mgmt_verbs = ["remove", "delete", "hook", "unhook", "sling", "show", "claim"];
+    if words.len() <= 4 {
+        for verb in &mgmt_verbs {
+            if has_word(verb) { scores[5].1 += 2; }
+        }
     }
     // Strong signal: prompt IS a command (very short, starts with tool name)
     let cmd_prefixes = ["git ", "cargo ", "go ", "npm ", "make ", "bd ", "gt ", "docker "];
@@ -335,6 +343,16 @@ mod tests {
         assert_eq!(classify_intent("check cert expiry on traefik"), QueryIntent::Operational);
         assert_eq!(classify_intent("disk usage on the server"), QueryIntent::Operational);
         assert_eq!(classify_intent("alert firing on prometheus"), QueryIntent::Operational);
+    }
+
+    #[test]
+    fn test_classify_operational_short_commands() {
+        // Short bead management commands should be Operational
+        assert_eq!(classify_intent("remove bo-qq5h"), QueryIntent::Operational);
+        assert_eq!(classify_intent("hook c9y9wm and handoff"), QueryIntent::Operational);
+        assert_eq!(classify_intent("delete this bead"), QueryIntent::Operational);
+        assert_eq!(classify_intent("show aegis-abc"), QueryIntent::Operational);
+        assert_eq!(classify_intent("sling gt-xyz aegis"), QueryIntent::Operational);
     }
 
     #[test]
