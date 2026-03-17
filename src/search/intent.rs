@@ -407,4 +407,22 @@ mod tests {
         assert!(adj.gate_boost > 0.0, "General intent should have slight gate boost");
         assert!(adj.gate_boost <= 0.15, "General gate boost should be moderate");
     }
+
+    #[test]
+    fn test_classify_navigation_expanded() {
+        // New navigation phrases added in Wave 18b
+        assert_eq!(classify_intent("look at src/main.rs"), QueryIntent::Navigation);
+        assert_eq!(classify_intent("read the config file"), QueryIntent::Navigation);
+        assert_eq!(classify_intent("search for the auth handler"), QueryIntent::Navigation);
+        assert_eq!(classify_intent("grep for error handling"), QueryIntent::Navigation);
+    }
+
+    #[test]
+    fn test_classify_operational_review() {
+        // Review/diff queries should be Operational
+        assert_eq!(classify_intent("review the pr for auth changes"), QueryIntent::Operational);
+        assert_eq!(classify_intent("what changed in the last commit"), QueryIntent::Operational);
+        assert_eq!(classify_intent("show the diff"), QueryIntent::Operational);
+        assert_eq!(classify_intent("git show HEAD"), QueryIntent::Operational);
+    }
 }
