@@ -56,6 +56,21 @@ fn strip_system_tags(text: &str) -> String {
         }
     }
     result.push_str(remaining);
+    // Strip <available-deferred-tools>...</available-deferred-tools> blocks
+    // (long tool name lists pollute search with MCP tool names)
+    let text = result;
+    let mut result = String::with_capacity(text.len());
+    let mut remaining = text.as_str();
+    while let Some(start) = remaining.find("<available-deferred-tools>") {
+        result.push_str(&remaining[..start]);
+        if let Some(end) = remaining[start..].find("</available-deferred-tools>") {
+            remaining = &remaining[start + end + "</available-deferred-tools>".len()..];
+        } else {
+            remaining = "";
+            break;
+        }
+    }
+    result.push_str(remaining);
     result
 }
 
