@@ -119,13 +119,36 @@ fn is_automated_message(prompt: &str) -> bool {
     }
 
     // Tool loaded / tool result acknowledgments (no domain content)
-    if check.trim() == "Tool loaded." || check.trim() == "Acknowledged." {
+    let trimmed = check.trim();
+    if trimmed == "Tool loaded." || trimmed == "Acknowledged."
+        || trimmed == "Continue." || trimmed == "OK" || trimmed == "ok"
+        || trimmed == "Go ahead." || trimmed == "Proceed."
+        || trimmed.starts_with("Tool loaded")
+    {
         return true;
     }
 
     // Overseer work assignment nudges (repeated automated directive)
-    if check.contains("WORK: You are") && check.contains("Do NOT check disk space") {
+    if check.contains("WORK: You are") {
         return true;
+    }
+
+    // Very short prompts that are just confirmations (< 15 chars, no technical terms)
+    if trimmed.len() < 15
+        && !trimmed.contains('_')
+        && !trimmed.contains('.')
+        && !trimmed.contains("::")
+        && trimmed.split_whitespace().count() <= 3
+    {
+        let lower = trimmed.to_lowercase();
+        let confirmation_words = [
+            "yes", "no", "ok", "sure", "thanks", "done", "good", "fine",
+            "right", "correct", "agreed", "continue", "proceed", "next",
+            "go", "yep", "nope", "ack", "roger", "noted",
+        ];
+        if confirmation_words.iter().any(|w| lower == *w || lower.starts_with(w)) {
+            return true;
+        }
     }
 
     false
