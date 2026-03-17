@@ -1112,11 +1112,29 @@ async fn inject_context_remote(
                     "/crew/", "/polecats/",
                     "/memory/", "/.beads/", "/session-notes/", "/sessions/",
                 ];
+                let test_dirs = [
+                    "/tests/", "/test/", "/__tests__/", "/spec/", "/specs/",
+                    "/testdata/", "/fixtures/",
+                    "/examples/", "/example/", "/samples/", "/demo/", "/demos/",
+                ];
+                let infra_dirs = [
+                    "/.github/workflows/", "/.github/actions/",
+                    "/terraform/", "/ansible/", "/helm/", "/deploy/",
+                    "/.circleci/", "/.gitlab-ci",
+                ];
                 let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md", "CHANGELOG.md"];
                 resp_files.retain(|f| {
                     let path_lower = f.path.to_lowercase();
                     // Skip if path contains a design/planning directory
                     if design_dirs.iter().any(|d| path_lower.contains(d)) {
+                        return false;
+                    }
+                    // Skip test/example directories
+                    if test_dirs.iter().any(|d| path_lower.contains(d)) {
+                        return false;
+                    }
+                    // Skip CI/infrastructure paths
+                    if infra_dirs.iter().any(|d| path_lower.contains(d)) {
                         return false;
                     }
                     // Skip known design doc filenames
@@ -1128,7 +1146,7 @@ async fn inject_context_remote(
                 });
                 let removed = before - resp_files.len();
                 if removed > 0 {
-                    eprintln!("bobbin: filtered {} design doc files (_plans/, ROADMAP.md, etc.)", removed);
+                    eprintln!("bobbin: filtered {} noise path files (design/test/infra)", removed);
                 }
             }
 
@@ -2417,10 +2435,26 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             "/crew/", "/polecats/",
             "/memory/", "/.beads/", "/session-notes/", "/sessions/",
         ];
+        let test_dirs = [
+            "/tests/", "/test/", "/__tests__/", "/spec/", "/specs/",
+            "/testdata/", "/fixtures/",
+            "/examples/", "/example/", "/samples/", "/demo/", "/demos/",
+        ];
+        let infra_dirs = [
+            "/.github/workflows/", "/.github/actions/",
+            "/terraform/", "/ansible/", "/helm/", "/deploy/",
+            "/.circleci/", "/.gitlab-ci",
+        ];
         let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md", "CHANGELOG.md"];
         bundle.files.retain(|f| {
             let path_lower = f.path.to_lowercase();
             if design_dirs.iter().any(|d| path_lower.contains(d)) {
+                return false;
+            }
+            if test_dirs.iter().any(|d| path_lower.contains(d)) {
+                return false;
+            }
+            if infra_dirs.iter().any(|d| path_lower.contains(d)) {
                 return false;
             }
             let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
@@ -2428,7 +2462,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         });
         let removed = before - bundle.files.len();
         if removed > 0 {
-            eprintln!("bobbin: filtered {} design doc files (_plans/, ROADMAP.md, etc.)", removed);
+            eprintln!("bobbin: filtered {} noise path files (design/test/infra)", removed);
         }
     }
 

@@ -955,6 +955,27 @@ fn assemble_bundle(
         {
             return true;
         }
+        // Test/example directories — test code scores high for implementation
+        // queries but rarely provides useful context for the agent's actual task.
+        if lower.contains("/tests/") || lower.contains("/test/")
+            || lower.contains("/__tests__/") || lower.contains("/spec/")
+            || lower.contains("/specs/") || lower.contains("/testdata/")
+            || lower.contains("/fixtures/")
+            || lower.contains("/examples/") || lower.contains("/example/")
+            || lower.contains("/samples/") || lower.contains("/demo/")
+            || lower.contains("/demos/")
+        {
+            return true;
+        }
+        // CI/infrastructure paths — config templates and workflow YAML score
+        // high on "setup"/"deploy" queries but aren't code context.
+        if lower.contains("/.github/workflows/") || lower.contains("/.github/actions/")
+            || lower.contains("/terraform/") || lower.contains("/ansible/")
+            || lower.contains("/helm/") || lower.contains("/deploy/")
+            || lower.contains("/.circleci/") || lower.contains("/.gitlab-ci")
+        {
+            return true;
+        }
         // CLAUDE.md/AGENTS.md and static product docs already in agent context
         let filename = path.rsplit('/').next().unwrap_or(path);
         if matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "VISION.md" | "PRD.md"
@@ -962,6 +983,17 @@ fn assemble_bundle(
             | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md"
             | "QUICKSTART.md" | "FAQ.md" | "INSTALLING.md" | "UNINSTALLING.md"
             | "TROUBLESHOOTING.md" | "RELEASING.md" | "SETUP.md") {
+            return true;
+        }
+        // Test file patterns (catches test files outside /test/ directories)
+        let fname_lower = filename.to_lowercase();
+        if fname_lower.ends_with("_test.go") || fname_lower.ends_with("_test.rs")
+            || fname_lower.ends_with(".test.ts") || fname_lower.ends_with(".test.js")
+            || fname_lower.ends_with(".spec.ts") || fname_lower.ends_with(".spec.js")
+            || fname_lower.starts_with("test_") // Python test files
+            || matches!(filename, "Dockerfile" | "docker-compose.yml" | "docker-compose.yaml"
+                | "Makefile" | "Justfile" | "Taskfile.yml")
+        {
             return true;
         }
         false
