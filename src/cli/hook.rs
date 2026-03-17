@@ -2369,16 +2369,29 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     bundle.files.retain(|f| access_filter.is_allowed(crate::access::RepoFilter::repo_from_path(&f.path)));
 
     // 7c. Filter out files already in agent context (CLAUDE.md, AGENTS.md, etc.)
-    bundle.files.retain(|f| {
-        let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
-        !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "CLAUDE.local.md")
-    });
-
-    // 7d. Filter out design doc and audit directories
+    // and static product docs that waste injection budget.
     {
+        let before = bundle.files.len();
+        bundle.files.retain(|f| {
+            let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
+            !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "CLAUDE.local.md"
+                | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md")
+        });
+        let removed = before - bundle.files.len();
+        if removed > 0 {
+            eprintln!("bobbin: filtered {} already-in-context files (CLAUDE.md etc.)", removed);
+        }
+    }
+
+    // 7d. Filter out design doc and audit directories — static planning/design docs
+    // produce high noise. Keep in sync with remote mode and context.rs is_noise_path.
+    {
+        let before = bundle.files.len();
         let design_dirs = [
             "/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/",
-            "/docs/tasks/", "/docs/plans/", "/docs/design/",
+            "/docs/tasks/", "/docs/plans/", "/docs/design/", "/docs/runbooks/",
+            "/crew/", "/polecats/",
+            "/memory/", "/.beads/", "/session-notes/", "/sessions/",
         ];
         let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md"];
         bundle.files.retain(|f| {
@@ -2389,6 +2402,45 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
             !design_files.iter().any(|d| filename.eq_ignore_ascii_case(d))
         });
+        let removed = before - bundle.files.len();
+        if removed > 0 {
+            eprintln!("bobbin: filtered {} design doc files (_plans/, ROADMAP.md, etc.)", removed);
+        }
+    }
+
+    // 7e. Cross-repo non-affinity gate: non-affinity results need a higher
+    // score to survive. Mirrors the remote mode gate logic.
+    {
+        use crate::search::intent::QueryIntent;
+        let repo_affinity = detect_repo_name(&cwd);
+        let cross_repo_penalty = match intent {
+            QueryIntent::Architecture | QueryIntent::Configuration => 0.04,
+            QueryIntent::Navigation => 0.06,
+            QueryIntent::Implementation | QueryIntent::BugFix => 0.08,
+            QueryIntent::General => 0.08,
+            QueryIntent::Operational => 0.12,
+        };
+        if let Some(ref affinity) = repo_affinity {
+            let before = bundle.files.len();
+            let non_affinity_gate = gate + cross_repo_penalty;
+            bundle.files.retain(|f| {
+                let is_affinity = f.repo.as_deref() == Some(affinity.as_str())
+                    || f.path.contains(affinity.as_str());
+                if is_affinity {
+                    true
+                } else {
+                    // Non-affinity must have at least one chunk above the higher gate
+                    f.chunks.iter().any(|c| c.score >= non_affinity_gate)
+                }
+            });
+            let removed = before - bundle.files.len();
+            if removed > 0 {
+                eprintln!(
+                    "bobbin: cross-repo gate filtered {} non-affinity files (gate={:.3}, intent={:?})",
+                    removed, non_affinity_gate, intent,
+                );
+            }
+        }
     }
 
     // 8. Session reducing: filter out chunks already injected in this session
