@@ -971,7 +971,7 @@ fn assemble_bundle(
         // high on "setup"/"deploy" queries but aren't code context.
         if lower.contains("/.github/workflows/") || lower.contains("/.github/actions/")
             || lower.contains("/terraform/") || lower.contains("/ansible/")
-            || lower.contains("/helm/") || lower.contains("/deploy/")
+            || lower.contains("/helm/")
             || lower.contains("/.circleci/") || lower.contains("/.gitlab-ci")
         {
             return true;
