@@ -966,12 +966,12 @@ fn assemble_bundle(
         {
             return true;
         }
-        // CI/infrastructure paths — config templates and workflow YAML score
-        // high on "setup"/"deploy" queries but aren't code context.
+        // CI workflow paths — GitHub/GitLab/CircleCI workflows are rarely useful
+        // as code context. Ansible, Terraform, and Helm have tag effects (domain:iac)
+        // and are intentionally NOT hard-filtered here.
         if lower.contains("/.github/workflows/") || lower.contains("/.github/actions/")
-            || lower.contains("/terraform/") || lower.contains("/ansible/")
-            || lower.contains("/helm/")
             || lower.contains("/.circleci/") || lower.contains("/.gitlab-ci")
+            || lower.contains("/.forgejo/workflows/")
         {
             return true;
         }
