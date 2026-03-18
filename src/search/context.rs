@@ -941,14 +941,13 @@ fn assemble_bundle(
         if ARCHIVE_LANGUAGES.contains(&lang) {
             return true;
         }
-        // Design doc paths (static planning docs overwhelm code context)
+        // Planning/orchestration paths — these are internal agent state, not code
+        // context. Doc types with tag effects (design, runbook, audit, probe) are
+        // intentionally NOT filtered here — tag scoring handles their relevance.
         let lower = path.to_lowercase();
-        if lower.contains("/_plans/") || lower.contains("/_design/")
-            || lower.contains("/_roadmap/") || lower.contains("/_specs/")
-            || lower.contains("/audit/") || lower.contains("/crew/")
-            || lower.contains("/polecats/") || lower.contains("/docs/tasks/")
-            || lower.contains("/docs/plans/") || lower.contains("/docs/design/") || lower.contains("/docs/designs/")
-            || lower.contains("/docs/runbooks/")
+        if lower.contains("/_plans/") || lower.contains("/_roadmap/") || lower.contains("/_specs/")
+            || lower.contains("/crew/") || lower.contains("/polecats/")
+            || lower.contains("/docs/tasks/") || lower.contains("/docs/plans/")
             || lower.contains("/memory/") || lower.contains("/.beads/")
             || lower.contains("/session-notes/") || lower.contains("/sessions/")
             || lower.ends_with("/roadmap.md") || lower.ends_with("/changelog.md")
