@@ -205,6 +205,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     metadata_store.set_meta("embedding_model", current_model)?;
 
+    // Store repo → source path mapping for calibrate and other commands
+    metadata_store.set_meta(
+        &format!("repo_source:{}", repo_name),
+        &source_root.to_string_lossy(),
+    )?;
+
     let embed = Embedder::from_config(&config.embedding, &model_dir)
         .context("Failed to load embedding model")?;
     let mut parser = Parser::new().context("Failed to initialize parser")?;

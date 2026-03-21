@@ -54,6 +54,17 @@ pub struct CalibrateArgs {
     #[arg(long)]
     bridge_sweep: bool,
 
+    /// Repository name to calibrate against (for multi-repo setups).
+    /// Samples commits from this repo's git history instead of the workspace root.
+    /// Source path is resolved from index metadata or --source.
+    #[arg(long)]
+    repo: Option<String>,
+
+    /// Source directory containing the git repo to sample commits from.
+    /// Overrides automatic source path resolution from index metadata.
+    #[arg(long)]
+    source: Option<PathBuf>,
+
     /// Directory to calibrate
     #[arg(default_value = ".")]
     path: PathBuf,
@@ -781,6 +792,109 @@ fn format_result(r: &GridResult, full: bool, bridge_sweep: bool) -> String {
     s
 }
 
+// --- Git Source Resolution ---
+
+/// Resolve the git source directory for commit sampling.
+///
+/// In multi-repo setups (e.g., `bobbin index --source /path/to/repo --repo name`),
+/// the `.bobbin/` directory lives in a workspace root that may not be a git repo.
+/// This function resolves the actual git repository path to sample commits from.
+///
+/// Resolution order:
+/// 1. `--source <path>` flag (explicit override)
+/// 2. `--repo <name>` → look up `repo_source:<name>` in metadata DB
+/// 3. If only one repo indexed, use its stored source path
+/// 4. Fall back to repo_root (works for single-repo setups where .bobbin/ is in the repo)
+fn resolve_git_source(
+    args: &CalibrateArgs,
+    repo_root: &std::path::Path,
+    db_path: &std::path::Path,
+) -> Result<PathBuf> {
+    // 1. Explicit --source flag
+    if let Some(ref source) = args.source {
+        return source
+            .canonicalize()
+            .with_context(|| format!("Invalid source path: {}", source.display()));
+    }
+
+    let ms = MetadataStore::open(db_path).ok();
+
+    // 2. --repo flag → metadata lookup
+    if let Some(ref repo_name) = args.repo {
+        if let Some(ref ms) = ms {
+            let key = format!("repo_source:{}", repo_name);
+            if let Ok(Some(path_str)) = ms.get_meta(&key) {
+                let path = PathBuf::from(&path_str);
+                if path.exists() {
+                    return Ok(path);
+                }
+                eprintln!(
+                    "  Warning: stored source path {} no longer exists, falling back to repo root",
+                    path_str
+                );
+            } else {
+                bail!(
+                    "No source path stored for repo '{}'. Re-run `bobbin index --repo {} --source <path>` to register it.",
+                    repo_name, repo_name
+                );
+            }
+        }
+    }
+
+    // 3. No --repo specified: if exactly one repo is indexed, use its source path
+    if let Some(ref ms) = ms {
+        let sources = collect_repo_sources(ms);
+        if sources.len() == 1 {
+            let (name, path) = &sources[0];
+            if path.exists() {
+                if !args.repo.is_some() {
+                    // Silently use the single repo's source
+                    return Ok(path.clone());
+                }
+            } else {
+                eprintln!(
+                    "  Warning: stored source for '{}' ({}) no longer exists",
+                    name, path.display()
+                );
+            }
+        } else if sources.len() > 1 {
+            // Multiple repos but no --repo specified — check if repo_root is a git repo
+            let git_check = std::process::Command::new("git")
+                .args(["rev-parse", "--git-dir"])
+                .current_dir(repo_root)
+                .output();
+            if git_check.map(|o| o.status.success()).unwrap_or(false) {
+                // repo_root is itself a git repo, use it
+                return Ok(repo_root.to_path_buf());
+            }
+            // Not a git repo — list available repos for the user
+            let repo_names: Vec<&str> = sources.iter().map(|(n, _)| n.as_str()).collect();
+            bail!(
+                "Multiple repos indexed ({}) but workspace root is not a git repo.\n\
+                 Use --repo <name> to specify which repo to calibrate against.\n\
+                 Available repos: {}",
+                sources.len(),
+                repo_names.join(", ")
+            );
+        }
+    }
+
+    // 4. Fallback: repo_root
+    Ok(repo_root.to_path_buf())
+}
+
+/// Collect all repo → source path mappings from metadata.
+fn collect_repo_sources(ms: &MetadataStore) -> Vec<(String, PathBuf)> {
+    ms.get_meta_by_prefix("repo_source:")
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(key, value)| {
+            let name = key.strip_prefix("repo_source:").unwrap_or(&key).to_string();
+            (name, PathBuf::from(value))
+        })
+        .collect()
+}
+
 // --- Main Entry Point ---
 
 pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
@@ -797,7 +911,7 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
         );
     }
 
-    let config = Config::load(&config_path)?;
+    let config = Config::load_merged(&repo_root)?;
     let lance_path = Config::lance_path(&repo_root);
     let db_path = Config::db_path(&repo_root);
     let model_dir = Config::model_cache_dir()?;
@@ -811,7 +925,11 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
         bail!("Index is empty. Run `bobbin index` first.");
     }
 
-    let git = GitAnalyzer::new(&repo_root)?;
+    // Resolve git source directory for commit sampling.
+    // Priority: --source flag > metadata lookup (repo_source:<name>) > repo_root fallback
+    let git_source = resolve_git_source(&args, &repo_root, &db_path)?;
+    let git = GitAnalyzer::new(&git_source)
+        .with_context(|| format!("Not a git repository: {}. Use --source to specify the repo path.", git_source.display()))?;
 
     // Phase 1: Sample commits
     if !output.quiet {
@@ -825,6 +943,9 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
                 "{}",
                 "Calibrating search parameters against git history...".bold()
             );
+        }
+        if git_source != repo_root {
+            eprintln!("  Sampling commits from: {}", git_source.display());
         }
     }
 
@@ -1374,6 +1495,8 @@ impl CalibrateArgs {
             full: false,
             resume: false,
             bridge_sweep: false,
+            repo: None,
+            source: None,
             path,
         }
     }

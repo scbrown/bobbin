@@ -134,6 +134,22 @@ impl MetadataStore {
         Ok(())
     }
 
+    /// Get all metadata entries matching a key prefix (e.g., "repo_source:")
+    pub fn get_meta_by_prefix(&self, prefix: &str) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT key, value FROM meta WHERE key LIKE ?1"
+        )?;
+        let pattern = format!("{}%", prefix);
+        let rows = stmt.query_map([&pattern], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
+    }
+
     /// Clear all coupling data
     pub fn clear_coupling(&self) -> Result<()> {
         self.conn.execute("DELETE FROM coupling", [])?;

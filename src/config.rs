@@ -787,6 +787,58 @@ impl Config {
             .with_context(|| format!("Failed to write global config: {}", path.display()))
     }
 
+    /// Load config with full hierarchy: global defaults < per-repo config.
+    ///
+    /// Resolution order (last wins):
+    /// 1. Compiled defaults (`Config::default()`)
+    /// 2. Global config (`~/.config/bobbin/config.toml`)
+    /// 3. Per-repo config (`.bobbin/config.toml`)
+    ///
+    /// Per-repo config is loaded as a TOML overlay — only fields explicitly
+    /// set in the file override the global values. Fields absent from the
+    /// per-repo file retain their global (or default) values.
+    pub fn load_merged(repo_root: &Path) -> Result<Self> {
+        // Start with global config (includes compiled defaults for missing fields)
+        let global = Self::load_global();
+
+        // Overlay per-repo config
+        let repo_config_path = Self::config_path(repo_root);
+        if repo_config_path.exists() {
+            let repo_toml = std::fs::read_to_string(&repo_config_path)
+                .with_context(|| format!("Failed to read {}", repo_config_path.display()))?;
+            // Parse the raw TOML to see which keys are explicitly set
+            let repo_table: toml::Value = toml::from_str(&repo_toml)
+                .with_context(|| format!("Failed to parse {}", repo_config_path.display()))?;
+            // Serialize global config to TOML value, then deep-merge repo on top
+            let global_table = toml::Value::try_from(&global)
+                .context("Failed to serialize global config for merge")?;
+            let merged = deep_merge_toml(global_table, repo_table);
+            merged.try_into()
+                .context("Failed to deserialize merged config")
+        } else {
+            Ok(global)
+        }
+    }
+}
+
+/// Deep-merge two TOML values. `overlay` keys override `base` keys.
+/// Tables are merged recursively; all other types are replaced wholesale.
+fn deep_merge_toml(base: toml::Value, overlay: toml::Value) -> toml::Value {
+    match (base, overlay) {
+        (toml::Value::Table(mut base_map), toml::Value::Table(overlay_map)) => {
+            for (key, overlay_val) in overlay_map {
+                let merged = if let Some(base_val) = base_map.remove(&key) {
+                    deep_merge_toml(base_val, overlay_val)
+                } else {
+                    overlay_val
+                };
+                base_map.insert(key, merged);
+            }
+            toml::Value::Table(base_map)
+        }
+        // Non-table overlay replaces base entirely
+        (_base, overlay) => overlay,
+    }
 }
 
 #[cfg(test)]
@@ -1347,5 +1399,56 @@ model = "all-MiniLM-L6-v2"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!(config.file_types.is_empty());
+    }
+
+    #[test]
+    fn test_deep_merge_toml_overlay_scalar() {
+        let base: toml::Value = toml::from_str(r#"
+[search]
+semantic_weight = 0.9
+doc_demotion = 0.3
+"#).unwrap();
+        let overlay: toml::Value = toml::from_str(r#"
+[search]
+semantic_weight = 0.7
+"#).unwrap();
+        let merged = deep_merge_toml(base, overlay);
+        let config: Config = merged.try_into().unwrap();
+        assert!((config.search.semantic_weight - 0.7).abs() < f32::EPSILON);
+        // doc_demotion should retain the base value
+        assert!((config.search.doc_demotion - 0.3).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_deep_merge_toml_overlay_adds_section() {
+        let base: toml::Value = toml::from_str(r#"
+[search]
+semantic_weight = 0.9
+"#).unwrap();
+        let overlay: toml::Value = toml::from_str(r#"
+[server]
+url = "http://search.svc"
+"#).unwrap();
+        let merged = deep_merge_toml(base, overlay);
+        let config: Config = merged.try_into().unwrap();
+        assert_eq!(config.server.url.as_deref(), Some("http://search.svc"));
+        // search.semantic_weight from base is preserved
+        assert!((config.search.semantic_weight - 0.9).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_deep_merge_toml_array_replaces() {
+        let base: toml::Value = toml::from_str(r#"
+[index]
+include = ["**/*.rs"]
+"#).unwrap();
+        let overlay: toml::Value = toml::from_str(r#"
+[index]
+include = ["**/*.py", "**/*.go"]
+"#).unwrap();
+        let merged = deep_merge_toml(base, overlay);
+        let config: Config = merged.try_into().unwrap();
+        // Arrays are replaced wholesale, not merged
+        assert_eq!(config.index.include, vec!["**/*.py", "**/*.go"]);
     }
 }
