@@ -163,10 +163,14 @@ th{text-align:left;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.0
 td{padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);font-size:0.85rem}
 td.mono{font-family:var(--mono)}
 
+/* Quick action cards */
+.card:hover{border-color:var(--accent);transition:border-color 0.15s}
+
 @media(max-width:768px){
   .grid-4{grid-template-columns:repeat(2,1fr)}
   nav{padding:0 0.75rem;gap:1rem}
   main{padding:0.75rem}
+  #page-home > div[style*="grid-template-columns"]{grid-template-columns:1fr !important}
 }
 </style>
 </head>
@@ -174,7 +178,8 @@ td.mono{font-family:var(--mono)}
 <nav>
   <div class="logo">bobbin</div>
   <div class="tabs">
-    <div class="tab active" data-page="search">Search</div>
+    <div class="tab active" data-page="home">Home</div>
+    <div class="tab" data-page="search">Search</div>
     <div class="tab" data-page="context">Context</div>
     <div class="tab" data-page="repos">Repos</div>
     <div class="tab" data-page="tags">Tags</div>
@@ -202,8 +207,76 @@ td.mono{font-family:var(--mono)}
     </details>
   </div>
 
+  <!-- HOME DASHBOARD -->
+  <div class="page active" id="page-home">
+    <!-- Quick search -->
+    <div class="search-box" style="margin-bottom:1.5rem">
+      <input type="text" id="home-search-q" placeholder="Search code, docs, symbols..." style="font-size:1rem;padding:0.8rem 1rem" autocomplete="off">
+      <button onclick="homeSearch()" style="padding:0.8rem 1.5rem;font-size:0.9rem">Search</button>
+    </div>
+
+    <!-- Stats row -->
+    <div class="grid grid-4" id="home-stats"></div>
+
+    <!-- Two-column: Recent injections + Quick actions -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.5rem">
+      <!-- Recent injections -->
+      <div>
+        <h3>Recent Injections</h3>
+        <div id="home-injections" style="margin-top:0.5rem"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+      <!-- Quick actions -->
+      <div>
+        <h3>Quick Actions</h3>
+        <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:0.5rem">
+          <div class="card" style="cursor:pointer;display:flex;align-items:center;gap:0.75rem" onclick="switchTab('context')">
+            <span style="font-size:1.2rem">📦</span>
+            <div>
+              <div style="font-weight:600;font-size:0.9rem">Assemble Context</div>
+              <div style="font-size:0.8rem;color:var(--dim)">Build task-relevant context bundles</div>
+            </div>
+          </div>
+          <div class="card" style="cursor:pointer;display:flex;align-items:center;gap:0.75rem" onclick="switchTab('hotspots')">
+            <span style="font-size:1.2rem">🔥</span>
+            <div>
+              <div style="font-weight:600;font-size:0.9rem">Code Hotspots</div>
+              <div style="font-size:0.8rem;color:var(--dim)">High-churn, high-complexity files</div>
+            </div>
+          </div>
+          <div class="card" style="cursor:pointer;display:flex;align-items:center;gap:0.75rem" onclick="switchTab('tags')">
+            <span style="font-size:1.2rem">🏷️</span>
+            <div>
+              <div style="font-weight:600;font-size:0.9rem">Browse Tags</div>
+              <div style="font-size:0.8rem;color:var(--dim)">Explore semantic tag assignments</div>
+            </div>
+          </div>
+          <div class="card" style="cursor:pointer;display:flex;align-items:center;gap:0.75rem" onclick="switchTab('feedback')">
+            <span style="font-size:1.2rem">📊</span>
+            <div>
+              <div style="font-weight:600;font-size:0.9rem">Injection Quality</div>
+              <div style="font-size:0.8rem;color:var(--dim)">Review agent feedback on injections</div>
+            </div>
+          </div>
+          <div class="card" style="cursor:pointer;display:flex;align-items:center;gap:0.75rem" onclick="switchTab('beads')">
+            <span style="font-size:1.2rem">🔍</span>
+            <div>
+              <div style="font-weight:600;font-size:0.9rem">Search Beads</div>
+              <div style="font-size:0.8rem;color:var(--dim)">Find issues and tasks</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top repos -->
+    <div style="margin-top:1.5rem">
+      <h3>Repositories</h3>
+      <div id="home-repos" style="margin-top:0.5rem"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
   <!-- SEARCH PAGE -->
-  <div class="page active" id="page-search">
+  <div class="page" id="page-search">
     <h2>Search</h2>
     <div id="filter-chips" class="filter-chips"></div>
     <div class="search-box">
@@ -472,7 +545,18 @@ function repoLink(fp, startLine, repoHint) {
   return buildUrl(template, repo, filePath, startLine);
 }
 function buildUrl(template, repo, filePath, startLine) {
-  let url = template.replace('{repo}', repo).replace('{path}', filePath);
+  // If template has no {path} placeholder, append a default source browse pattern
+  let tmpl = template;
+  if (!tmpl.includes('{path}')) {
+    // Detect forge type from URL pattern
+    if (tmpl.includes('github.com')) {
+      tmpl = tmpl.replace(/\/?$/, '') + '/blob/main/{path}#L{line}';
+    } else {
+      // Forgejo/Gitea default
+      tmpl = tmpl.replace(/\/?$/, '') + '/src/branch/main/{path}#L{line}';
+    }
+  }
+  let url = tmpl.replace('{repo}', repo).replace('{path}', filePath);
   if (startLine) {
     url = url.replace('{line}', startLine);
   } else {
@@ -1108,7 +1192,104 @@ function closeTagFiles() {
   document.getElementById('tag-files-section').style.display = 'none';
 }
 
+// -- Home dashboard --
+function homeSearch() {
+  const q = document.getElementById('home-search-q').value.trim();
+  if (!q) return;
+  document.getElementById('search-q').value = q;
+  switchTab('search');
+  updateChips();
+  doSearch();
+}
+document.getElementById('home-search-q').addEventListener('keydown', e => { if (e.key === 'Enter') homeSearch(); });
+
+function switchTab(page) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const tab = document.querySelector(`.tab[data-page="${page}"]`);
+  if (tab) tab.classList.add('active');
+  document.getElementById('page-' + page).classList.add('active');
+  if (page === 'repos' && !window._reposLoaded) loadRepos();
+  if (page === 'tags' && !window._tagsLoaded) loadTags();
+  if (page === 'hotspots' && !window._hotspotsLoaded) loadHotspots();
+  if (page === 'feedback' && !window._feedbackLoaded) loadFeedback();
+}
+
+async function loadHome() {
+  // Stats row
+  try {
+    const [status, fbStats] = await Promise.all([
+      fetch(API + '/status').then(r => r.json()),
+      fetch(API + '/feedback/stats').then(r => r.json()).catch(() => ({}))
+    ]);
+    _sources = status.sources || null;
+    const ix = status.index;
+    const repoCount = ix.languages ? new Set() : 0;
+    const totalInj = fbStats.total_injections || 0;
+    const totalFb = fbStats.total_feedback || 0;
+    const useful = fbStats.useful || 0;
+    const fbRate = totalFb > 0 ? Math.round(useful / totalFb * 100) : 0;
+    document.getElementById('home-stats').innerHTML = `
+      <div class="card"><div class="card-header">Files Indexed</div><div class="stat-value accent">${ix.total_files.toLocaleString()}</div></div>
+      <div class="card"><div class="card-header">Chunks</div><div class="stat-value green">${ix.total_chunks.toLocaleString()}</div></div>
+      <div class="card"><div class="card-header">Injections</div><div class="stat-value">${totalInj.toLocaleString()}</div></div>
+      <div class="card"><div class="card-header">Useful Rate</div><div class="stat-value amber">${totalFb > 0 ? fbRate + '%' : 'N/A'}</div><div style="color:var(--dim);font-size:0.75rem">${totalFb} ratings</div></div>
+    `;
+    document.getElementById('pulse').style.background = 'var(--green)';
+  } catch(e) {
+    document.getElementById('pulse').style.background = 'var(--red)';
+    document.getElementById('home-stats').innerHTML = '<div class="card"><div class="stat-value" style="color:var(--red)">Offline</div></div>';
+  }
+
+  // Recent injections
+  try {
+    const data = await fetch(API + '/feedback?limit=8').then(r => r.json());
+    const el = document.getElementById('home-injections');
+    if (!data || data.length === 0) {
+      el.innerHTML = '<div class="empty">No injection feedback yet</div>';
+    } else {
+      const ratingColors = {useful:'var(--green)',noise:'var(--amber)',harmful:'var(--red)'};
+      el.innerHTML = data.map(f => {
+        const ts = f.timestamp ? f.timestamp.slice(0, 16).replace('T', ' ') : '?';
+        const color = ratingColors[f.rating] || 'var(--dim)';
+        return `<div class="result" style="border-left:3px solid ${color};padding:0.5rem 0.75rem;margin-bottom:0.35rem;cursor:pointer" onclick="switchTab('feedback')">
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <span class="result-type" style="background:${color}20;color:${color};font-size:0.7rem">${f.rating}</span>
+            <span style="font-size:0.8rem;color:var(--dim)">${esc(f.agent || '')}</span>
+            <span style="font-size:0.75rem;color:var(--dim);margin-left:auto">${ts}</span>
+          </div>
+          ${f.reason ? `<div style="font-size:0.8rem;color:var(--dim);margin-top:0.15rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.reason)}</div>` : ''}
+        </div>`;
+      }).join('');
+    }
+  } catch(e) {
+    document.getElementById('home-injections').innerHTML = '<div class="empty" style="font-size:0.85rem">Feedback data unavailable</div>';
+  }
+
+  // Top repos (compact)
+  try {
+    const data = await fetch(API + '/repos').then(r => r.json());
+    const el = document.getElementById('home-repos');
+    if (!data.repos || data.repos.length === 0) {
+      el.innerHTML = '<div class="empty">No repositories indexed</div>';
+    } else {
+      const sorted = data.repos.sort((a, b) => b.chunk_count - a.chunk_count);
+      el.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:0.5rem">' + sorted.map(repo => {
+        const topLang = repo.languages[0];
+        return `<div class="card" style="cursor:pointer;padding:0.5rem 0.75rem;display:flex;align-items:center;gap:0.5rem" onclick="switchTab('repos')">
+          ${topLang ? `<span class="lang-dot" style="background:${langColor(topLang.language)}"></span>` : ''}
+          <span style="font-family:var(--mono);font-size:0.85rem;color:var(--accent)">${esc(repo.name)}</span>
+          <span style="font-size:0.75rem;color:var(--dim)">${repo.chunk_count.toLocaleString()}</span>
+        </div>`;
+      }).join('') + '</div>';
+    }
+  } catch(e) {
+    document.getElementById('home-repos').innerHTML = '';
+  }
+}
+
 // Init
+loadHome();
 loadStatus();
 populateContextRepos();
 </script>
