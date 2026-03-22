@@ -955,7 +955,14 @@ generate these automatically from coupling data.
 - Staleness detection and `bundle refresh`
 - Bundle-scoped feedback stats
 
-### Phase 8: Eval Framework (Parallel with Phase 1-2)
+### Phase 8: `/bundle` Skill (Medium, after Phase 4)
+- Skill definition in skills/ directory
+- Subagent prompt: search → find_refs → related → synthesize bundle
+- `--save` flag to write directly to tags.toml
+- `--bg` flag for background execution
+- Integration with planning formula
+
+### Phase 9: Eval Framework (Parallel with Phase 1-2)
 - Write `bundle-*.yaml` eval tasks with real historical issues
 - Extend runner with `--mode` param (baseline/bundle-scoped/bundle-injected)
 - Before/after eval: create bundle from solved issue, test on related later issue
@@ -1016,6 +1023,113 @@ between research and PRD generation.
 Alternatively, it could be a standalone formula (`mol-bundle-plan`) that wraps
 `mol-idea-to-plan` and adds the bundle step. This avoids modifying the existing
 formula and lets teams opt in.
+
+## Claude Skill: `/bundle` — Build Bundles from Search
+
+A Claude Code skill that launches a subagent to search bobbin, assemble the results
+into a bundle definition, and return/save it. This is the **bootstrap mechanism** —
+agents build bundles as a side effect of normal work.
+
+### Usage
+
+```
+/bundle "context assembly pipeline"
+/bundle "reactor alert processing" --slug reactor-alerts
+/bundle "how does tag resolution work" --save   # writes to tags.toml immediately
+```
+
+### How It Works
+
+```
+User types: /bundle "context assembly pipeline"
+    │
+    ▼
+Skill launches subagent with:
+    │  - Query: "context assembly pipeline"
+    │  - Instructions: search bobbin, identify key files + symbols,
+    │    assess cross-repo scope, generate bundle definition
+    │
+    ▼
+Subagent executes:
+    1. bobbin search "context assembly pipeline"  → ranked file list
+    2. bobbin find_refs <top symbols>             → callers/callees
+    3. bobbin related <top files>                 → coupled files
+    4. Synthesize: pick the best files + refs, generate keywords
+    │    from the search query + symbol names
+    │
+    ▼
+Subagent returns bundle definition:
+    │
+    ▼
+Skill outputs to main conversation:
+    📦 Bundle: context-assembly-pipeline
+    Description: "Context assembly: hybrid search, RRF scoring, budget allocation"
+    Refs:
+      src/search/context.rs::ContextAssembler
+      src/search/context.rs::run_hybrid_search
+      src/search/context.rs::assemble
+      src/config.rs::ContextConfig
+    Keywords: context assembly, injection, budget, RRF, hybrid search
+    Repos: bobbin
+
+    → Run `bobbin bundle show context-assembly-pipeline` to use
+    → Add --save to write to tags.toml
+```
+
+### Why a Subagent?
+
+The search + analysis work consumes context. By running it in a subagent:
+- **Main context preserved** — the agent's conversation isn't flooded with search results
+- **Parallel execution** — `/bundle` can run in background while the agent continues working
+- **Reusable** — the skill can be invoked from any conversation, any agent
+
+### Skill Definition
+
+The skill lives in the agent's `skills/` directory:
+
+```yaml
+# skills/bundle.yaml (or bundle.md with frontmatter)
+name: bundle
+description: Search bobbin and create a context bundle from results
+trigger: /bundle
+agent: true              # launches subagent
+background: optional     # can run in background with --bg flag
+```
+
+The skill prompt instructs the subagent to:
+
+1. Run `bobbin search` with the user's query
+2. For top results, run `bobbin find_refs` to get symbol relationships
+3. Run `bobbin related` on top files to find coupled files
+4. Assess whether results span multiple repos
+5. Generate a `[[bundles]]` TOML block with:
+   - `name`: slugified from query or `--slug` arg
+   - `description`: one-line synthesis of what the bundle covers
+   - `refs`: top symbols from search (prefer `file::symbol` over whole files)
+   - `keywords`: the original query + extracted symbol/concept names
+   - `repos`: if results span multiple repos
+6. If `--save` flag: append to tags.toml and confirm
+7. Return the bundle definition to the parent conversation
+
+### Integration with Planning
+
+The planning formula (`mol-plan-with-bundles`) can invoke `/bundle` during its
+research phase instead of doing the search + bundle creation manually. The skill
+encapsulates the pattern so it's available everywhere — not just in formulas.
+
+### Bootstrap Flywheel
+
+```
+Agent works on task
+    → Needs context, runs /bundle "X"
+    → Bundle created, agent uses it
+    → Bundle persists in tags.toml
+    → Next agent on related task gets bundle via keyword match
+    → Bundle improves over time (agents add refs, feedback tracks quality)
+```
+
+The more agents use `/bundle`, the more bundles exist, the better context injection
+gets, the more agents find bundles useful. Self-reinforcing loop.
 
 ## Open Questions
 
