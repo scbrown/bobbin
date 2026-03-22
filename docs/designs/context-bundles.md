@@ -998,11 +998,20 @@ bobbin bundle create "<plan-slug>" \
   --keywords "<research queries that worked>"
 ```
 
-**Step 3: PRD + Plan** (existing pattern)
+**Step 3: Feedback** (new)
+- Submit bobbin feedback on the searches performed during research
+- Rate which search results were useful vs noise for the topic
+- This improves future searches for the same domain — compound returns
+
+```bash
+bobbin feedback_submit <injection_id> --rating useful --comment "Found all key files for <topic>"
+```
+
+**Step 4: PRD + Plan** (existing pattern)
 - PRD references the bundle: "Implementation context: b:<slug>"
 - Plan steps reference specific sub-bundles or files within the bundle
 
-**Step 4: Bead Filing** (existing pattern + bundle label)
+**Step 5: Bead Filing** (existing pattern + bundle label)
 - Each bead gets labeled `b:<slug>`
 - Bead descriptions reference the bundle for implementation context
 
@@ -1012,7 +1021,8 @@ bd create "<task title>" -t task -p 2 -l "b:<slug>"
 
 **Result**: Every polecat that picks up a bead from this plan can run
 `bobbin bundle show <slug>` and get the exact context the planning agent
-assembled — no cold start, no redundant exploration.
+assembled — no cold start, no redundant exploration. And the feedback
+submitted during planning makes search better for everyone.
 
 ### Formula Placement
 
@@ -1044,18 +1054,25 @@ agents build bundles as a side effect of normal work.
 User types: /bundle "context assembly pipeline"
     │
     ▼
-Skill launches subagent with:
+Skill launches subagent with ALL tools available:
     │  - Query: "context assembly pipeline"
-    │  - Instructions: search bobbin, identify key files + symbols,
-    │    assess cross-repo scope, generate bundle definition
+    │  - Instructions: use every tool at your disposal to understand
+    │    this topic deeply, then synthesize into a bundle definition
     │
     ▼
-Subagent executes:
+Subagent executes (uses ALL capabilities, not just bobbin):
     1. bobbin search "context assembly pipeline"  → ranked file list
-    2. bobbin find_refs <top symbols>             → callers/callees
-    3. bobbin related <top files>                 → coupled files
-    4. Synthesize: pick the best files + refs, generate keywords
-    │    from the search query + symbol names
+    2. Read top files directly (Read tool)        → understand structure
+    3. Grep for key patterns                      → find related code
+    4. bobbin find_refs <top symbols>             → callers/callees
+    5. bobbin related <top files>                 → coupled files
+    6. Glob for related test files                → find test coverage
+    7. Synthesize: pick the best files + refs, generate keywords
+    │
+    ▼
+Subagent submits bobbin feedback on search quality:
+    │  bobbin feedback_submit <injection_id> --rating useful/noise
+    │  (closes the feedback loop — search quality improves over time)
     │
     ▼
 Subagent returns bundle definition:
@@ -1080,8 +1097,10 @@ Skill outputs to main conversation:
 
 The search + analysis work consumes context. By running it in a subagent:
 - **Main context preserved** — the agent's conversation isn't flooded with search results
-- **Parallel execution** — `/bundle` can run in background while the agent continues working
-- **Reusable** — the skill can be invoked from any conversation, any agent
+- **Full tool access** — subagent uses Read, Grep, Glob, bobbin MCP, everything
+- **Parallel execution** — `/bundle` can run in background while the agent continues
+- **Feedback loop** — subagent submits bobbin feedback, improving future searches
+- **Reusable** — invocable from any conversation, any agent, any formula
 
 ### Skill Definition
 
@@ -1090,7 +1109,7 @@ The skill lives in the agent's `skills/` directory:
 ```yaml
 # skills/bundle.yaml (or bundle.md with frontmatter)
 name: bundle
-description: Search bobbin and create a context bundle from results
+description: Deep-research a topic and create a context bundle from results
 trigger: /bundle
 agent: true              # launches subagent
 background: optional     # can run in background with --bg flag
@@ -1098,16 +1117,20 @@ background: optional     # can run in background with --bg flag
 
 The skill prompt instructs the subagent to:
 
-1. Run `bobbin search` with the user's query
-2. For top results, run `bobbin find_refs` to get symbol relationships
-3. Run `bobbin related` on top files to find coupled files
-4. Assess whether results span multiple repos
-5. Generate a `[[bundles]]` TOML block with:
+1. **Search broadly** — bobbin search for semantic matches, Grep for exact patterns,
+   Glob for file discovery, Read for understanding structure
+2. **Analyze deeply** — `find_refs` for symbol relationships, `related` for coupled
+   files, read key files to understand the code, check for tests
+3. **Assess scope** — do results span multiple repos? What tags apply?
+4. **Synthesize bundle** — generate a `[[bundles]]` TOML block with:
    - `name`: slugified from query or `--slug` arg
    - `description`: one-line synthesis of what the bundle covers
-   - `refs`: top symbols from search (prefer `file::symbol` over whole files)
-   - `keywords`: the original query + extracted symbol/concept names
+   - `refs`: top symbols (prefer `file::symbol` over whole files)
+   - `keywords`: the original query + extracted concept names
    - `repos`: if results span multiple repos
+5. **Submit feedback** — rate the bobbin searches that were performed
+   (`bobbin feedback_submit`). This closes the feedback loop: the act of
+   building a bundle also improves search quality for future queries.
 6. If `--save` flag: append to tags.toml and confirm
 7. Return the bundle definition to the parent conversation
 
@@ -1122,14 +1145,18 @@ encapsulates the pattern so it's available everywhere — not just in formulas.
 ```
 Agent works on task
     → Needs context, runs /bundle "X"
-    → Bundle created, agent uses it
+    → Subagent searches (all tools), builds bundle, submits feedback
     → Bundle persists in tags.toml
+    → Feedback improves bobbin search quality
     → Next agent on related task gets bundle via keyword match
-    → Bundle improves over time (agents add refs, feedback tracks quality)
+    → Next /bundle invocation gets better search results (from prior feedback)
+    → Bundle quality improves over time
 ```
 
-The more agents use `/bundle`, the more bundles exist, the better context injection
-gets, the more agents find bundles useful. Self-reinforcing loop.
+Three reinforcing loops:
+1. **More bundles** → better keyword coverage → more agents find bundles useful
+2. **More feedback** → better search quality → better bundles from `/bundle`
+3. **More usage data** → `bundle stats` identifies gaps → agents fill them
 
 ## Open Questions
 
