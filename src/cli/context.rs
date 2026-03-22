@@ -206,6 +206,7 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: config.server.repo_path_prefix.clone(),
+            ..ContextConfig::default()
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

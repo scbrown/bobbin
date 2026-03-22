@@ -1438,6 +1438,12 @@ pub(super) async fn context(
         Some(tag_filters.join(" AND "))
     };
 
+    // Cross-agent feedback: compute file-level boost scores from prior ratings
+    let feedback_scores = open_feedback_store(&state)
+        .ok()
+        .and_then(|fb| fb.file_feedback_scores(&params.q, 0.15).ok())
+        .filter(|m| !m.is_empty());
+
     let context_config = ContextConfig {
         budget_lines: params.budget.unwrap_or(500),
         depth: params.depth.unwrap_or(1),
@@ -1461,6 +1467,8 @@ pub(super) async fn context(
         max_bridged_files: 2,
         max_bridged_chunks_per_file: 1,
         repo_path_prefix: state.config.server.repo_path_prefix.clone(),
+        feedback_scores,
+        ..ContextConfig::default()
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2124,6 +2132,7 @@ pub(super) async fn review(
         max_bridged_files: 3,
         max_bridged_chunks_per_file: 2,
         repo_path_prefix: state.config.server.repo_path_prefix.clone(),
+        ..ContextConfig::default()
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

@@ -2611,6 +2611,16 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let base_dd = cal_dd.unwrap_or(config.search.doc_demotion);
     let base_rw = cal_rw.unwrap_or(config.search.recency_weight);
 
+    // Cross-agent feedback: compute file-level boost scores from prior ratings.
+    // Files rated "useful" by any agent for similar queries get a score boost.
+    let feedback_scores = {
+        let feedback_db_path = Config::feedback_db_path(&repo_root);
+        crate::storage::feedback::FeedbackStore::open(&feedback_db_path)
+            .ok()
+            .and_then(|fb| fb.file_feedback_scores(search_query, 0.15).ok())
+            .filter(|m| !m.is_empty())
+    };
+
     let context_config = ContextConfig {
         budget_lines: cal_budget.unwrap_or(budget),
         depth: 1,
@@ -2634,6 +2644,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         max_bridged_files: 2,
         max_bridged_chunks_per_file: 1,
         repo_path_prefix: config.server.repo_path_prefix.clone(),
+        feedback_scores,
+        ..ContextConfig::default()
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -3730,6 +3742,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: config.server.repo_path_prefix.clone(),
+            ..ContextConfig::default()
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -4401,6 +4414,7 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
             max_bridged_files: 2,
             max_bridged_chunks_per_file: 1,
             repo_path_prefix: config.server.repo_path_prefix.clone(),
+            ..ContextConfig::default()
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

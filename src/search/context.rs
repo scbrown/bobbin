@@ -100,6 +100,48 @@ pub struct ContextConfig {
     /// Filesystem prefix for indexed repos on the server (e.g. "/var/lib/bobbin/repos/").
     /// Used to normalize absolute paths back to repo-relative for dedup.
     pub repo_path_prefix: Option<String>,
+    /// Cross-agent feedback scores: file_path → aggregate feedback score.
+    /// Files rated "useful" by other agents for similar queries get boosted.
+    /// Populated by FeedbackStore::file_feedback_scores() before assembly.
+    pub feedback_scores: Option<HashMap<String, f32>>,
+    /// Maximum feedback boost multiplier. The actual boost is
+    /// `min(score * feedback_boost_weight, feedback_boost_max)`.
+    /// Default: 0.3 (30% max boost from feedback).
+    pub feedback_boost_max: f32,
+    /// Weight multiplier for feedback scores. Default: 0.2.
+    pub feedback_boost_weight: f32,
+}
+
+impl Default for ContextConfig {
+    fn default() -> Self {
+        Self {
+            budget_lines: 500,
+            depth: 1,
+            max_coupled: 3,
+            coupling_threshold: 0.1,
+            semantic_weight: 0.7,
+            content_mode: ContentMode::Full,
+            search_limit: 20,
+            doc_demotion: 0.5,
+            recency_half_life_days: 0.0,
+            recency_weight: 0.0,
+            rrf_k: 60.0,
+            bridge_mode: BridgeMode::default(),
+            bridge_boost_factor: 0.3,
+            extra_filter: None,
+            tags_config: None,
+            role: None,
+            file_type_rules: vec![],
+            repo_affinity: None,
+            repo_affinity_boost: 2.0,
+            max_bridged_files: 3,
+            max_bridged_chunks_per_file: 2,
+            repo_path_prefix: None,
+            feedback_scores: None,
+            feedback_boost_max: 0.3,
+            feedback_boost_weight: 0.2,
+        }
+    }
 }
 
 /// How much content to include in output
@@ -1022,6 +1064,25 @@ fn assemble_bundle(
         .filter(|r| !is_noise_path(&r.file_path, &r.language, &r.repo))
         .collect();
 
+    // Apply cross-agent feedback boost — files rated useful for similar queries
+    // get a score boost, files rated harmful get a penalty.
+    let seed_results: Vec<SeedResult> = if let Some(ref fb_scores) = config.feedback_scores {
+        let weight = config.feedback_boost_weight;
+        let max_boost = config.feedback_boost_max;
+        seed_results
+            .into_iter()
+            .map(|mut r| {
+                if let Some(&fb_score) = fb_scores.get(&r.file_path) {
+                    let boost = (fb_score * weight).clamp(-max_boost, max_boost);
+                    r.score *= 1.0 + boost;
+                }
+                r
+            })
+            .collect()
+    } else {
+        seed_results
+    };
+
     // Partition into pinned and normal results
     let (pinned_results, normal_results): (Vec<SeedResult>, Vec<SeedResult>) =
         seed_results.into_iter().partition(|r| r.is_pinned);
@@ -1526,6 +1587,7 @@ mod tests {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
+            ..ContextConfig::default()
         };
 
         let seeds = vec![
@@ -1565,6 +1627,7 @@ mod tests {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
+            ..ContextConfig::default()
         };
 
         let seeds = vec![
@@ -1601,6 +1664,7 @@ mod tests {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
+            ..ContextConfig::default()
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1634,6 +1698,7 @@ mod tests {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
+            ..ContextConfig::default()
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1671,6 +1736,7 @@ mod tests {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
+            ..ContextConfig::default()
         };
 
         let seeds = vec![
@@ -1709,6 +1775,7 @@ mod tests {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
+            ..ContextConfig::default()
         };
 
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)
@@ -1744,6 +1811,7 @@ mod tests {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
+            ..ContextConfig::default()
         };
 
         // Mix of commit and function seeds — commits should be excluded
@@ -1877,6 +1945,7 @@ mod tests {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
+            ..ContextConfig::default()
         };
 
         let mut pinned = make_seed("p1", "critical.rs", 1, 5, 0.5);
@@ -1938,6 +2007,7 @@ mod tests {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
+            ..ContextConfig::default()
         };
 
         // Pinned chunk of 15 lines but budget_reserve is 10 — should not fit
@@ -1978,6 +2048,7 @@ mod tests {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
+            ..ContextConfig::default()
         };
 
         let seeds = vec![
@@ -1990,5 +2061,73 @@ mod tests {
         assert_eq!(bundle.budget.pinned_lines, 0);
         assert_eq!(bundle.files.len(), 2);
         assert!(bundle.files.iter().all(|f| f.relevance == FileRelevance::Direct));
+    }
+
+    #[test]
+    fn test_feedback_boost_reranks_results() {
+        // Two chunks with equal scores — feedback should reorder them
+        let mut feedback_scores = HashMap::new();
+        feedback_scores.insert("b.rs".to_string(), 1.0); // Boost b.rs
+
+        let config = ContextConfig {
+            budget_lines: 20,
+            feedback_scores: Some(feedback_scores),
+            feedback_boost_weight: 0.5,
+            feedback_boost_max: 0.5,
+            ..ContextConfig::default()
+        };
+
+        let seeds = vec![
+            make_seed("c1", "a.rs", 1, 5, 0.8),
+            make_seed("c2", "b.rs", 1, 5, 0.8), // Same score as a.rs
+        ];
+
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        assert_eq!(bundle.files.len(), 2);
+        // b.rs should be first (higher score after boost)
+        assert_eq!(bundle.files[0].path, "b.rs");
+    }
+
+    #[test]
+    fn test_feedback_penalty_demotes_results() {
+        let mut feedback_scores = HashMap::new();
+        feedback_scores.insert("a.rs".to_string(), -1.0); // Penalize a.rs
+
+        let config = ContextConfig {
+            budget_lines: 20,
+            feedback_scores: Some(feedback_scores),
+            feedback_boost_weight: 0.3,
+            feedback_boost_max: 0.3,
+            ..ContextConfig::default()
+        };
+
+        let seeds = vec![
+            make_seed("c1", "a.rs", 1, 5, 0.9), // Higher base score but penalized
+            make_seed("c2", "b.rs", 1, 5, 0.8),
+        ];
+
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        assert_eq!(bundle.files.len(), 2);
+        // b.rs should now be first despite lower base score
+        assert_eq!(bundle.files[0].path, "b.rs");
+    }
+
+    #[test]
+    fn test_feedback_none_no_effect() {
+        let config = ContextConfig {
+            budget_lines: 20,
+            feedback_scores: None, // No feedback
+            ..ContextConfig::default()
+        };
+
+        let seeds = vec![
+            make_seed("c1", "a.rs", 1, 5, 0.9),
+            make_seed("c2", "b.rs", 1, 5, 0.8),
+        ];
+
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        assert_eq!(bundle.files.len(), 2);
+        // Original order preserved
+        assert_eq!(bundle.files[0].path, "a.rs");
     }
 }

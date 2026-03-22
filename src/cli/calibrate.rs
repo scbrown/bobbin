@@ -631,6 +631,7 @@ async fn run_probes(
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: config.server.repo_path_prefix.clone(),
+            ..ContextConfig::default()
     };
     let mut assembler = ContextAssembler::new(embedder, vs, ms, initial_config);
 
@@ -666,6 +667,7 @@ async fn run_probes(
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: config.server.repo_path_prefix.clone(),
+            ..ContextConfig::default()
         });
 
         let mut total_precision = 0.0_f32;

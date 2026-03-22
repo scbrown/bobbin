@@ -577,6 +577,100 @@ impl FeedbackStore {
         Ok(ids)
     }
 
+    /// Compute per-file feedback scores based on cross-agent ratings.
+    ///
+    /// For each file that appeared in a rated injection, accumulates a score:
+    /// - "useful" ratings add +1.0 (scaled by query keyword overlap)
+    /// - "noise" ratings add -0.3
+    /// - "harmful" ratings add -1.0
+    ///
+    /// Query overlap is measured by splitting both the current query and the
+    /// injection query into lowercase keywords and computing Jaccard similarity.
+    /// This ensures files rated useful for similar topics get boosted more than
+    /// files rated useful for unrelated queries.
+    ///
+    /// Returns a map of file_path → aggregate score. Only files with non-zero
+    /// scores are included. Scores are NOT normalized — callers should apply
+    /// their own clamping/scaling.
+    pub fn file_feedback_scores(
+        &self,
+        query: &str,
+        min_overlap: f32,
+    ) -> Result<std::collections::HashMap<String, f32>> {
+        use std::collections::{HashMap, HashSet};
+
+        let query_words: HashSet<String> = query
+            .to_lowercase()
+            .split_whitespace()
+            .filter(|w| w.len() >= 3)
+            .map(|w| w.to_string())
+            .collect();
+
+        if query_words.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        // Join injections + feedback, get the query + files + rating
+        let mut stmt = self.conn.prepare(
+            "SELECT i.query, i.files_json, f.rating
+             FROM feedback f
+             JOIN injections i ON f.injection_id = i.injection_id
+             WHERE i.files_json IS NOT NULL AND i.query IS NOT NULL
+             ORDER BY f.timestamp DESC
+             LIMIT 500",
+        )?;
+
+        let mut scores: HashMap<String, f32> = HashMap::new();
+
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+
+        for row in rows {
+            let (inj_query, files_json, rating) = row?;
+
+            // Compute keyword overlap (Jaccard similarity)
+            let inj_words: HashSet<String> = inj_query
+                .to_lowercase()
+                .split_whitespace()
+                .filter(|w| w.len() >= 3)
+                .map(|w| w.to_string())
+                .collect();
+            if inj_words.is_empty() {
+                continue;
+            }
+            let intersection = query_words.intersection(&inj_words).count() as f32;
+            let union = query_words.union(&inj_words).count() as f32;
+            let overlap = intersection / union;
+
+            if overlap < min_overlap {
+                continue;
+            }
+
+            let weight = match rating.as_str() {
+                "useful" => 1.0 * overlap,
+                "noise" => -0.3 * overlap,
+                "harmful" => -1.0 * overlap,
+                _ => continue,
+            };
+
+            // Parse files_json
+            if let Ok(files) = serde_json::from_str::<Vec<String>>(&files_json) {
+                for file in files {
+                    *scores.entry(file).or_insert(0.0) += weight;
+                }
+            }
+        }
+
+        // Remove zero-score entries
+        scores.retain(|_, v| *v != 0.0);
+        Ok(scores)
+    }
+
     /// Get feedback auto-tags (feedback:hot, feedback:cold) keyed by file path.
     /// Returns empty map if the feedback_tags table doesn't exist yet.
     pub fn get_feedback_tags(&self) -> Result<std::collections::HashMap<String, Vec<String>>> {
@@ -922,5 +1016,167 @@ mod tests {
         // Verify no lineage record was created (transaction-like behavior)
         let records = store.list_lineage(&LineageQuery::default()).unwrap();
         assert_eq!(records.len(), 0, "No lineage should be created when feedback IDs are invalid");
+    }
+
+    #[test]
+    fn test_file_feedback_scores_basic() {
+        let (store, _f) = temp_store();
+
+        // Create an injection with files and query
+        store
+            .store_injection_with_output(
+                "inj-score1",
+                None,
+                Some("agent-a"),
+                "authentication login handler",
+                &["src/auth.rs".to_string(), "src/session.rs".to_string()],
+                2,
+                100,
+                None,
+            )
+            .unwrap();
+
+        // Rate it useful
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-score1".to_string(),
+                agent: "agent-b".to_string(),
+                rating: "useful".to_string(),
+                reason: String::new(),
+            })
+            .unwrap();
+
+        // Query with overlapping keywords
+        let scores = store
+            .file_feedback_scores("authentication middleware handler", 0.1)
+            .unwrap();
+        assert!(!scores.is_empty(), "Should have scores for similar query");
+        assert!(
+            scores.get("src/auth.rs").copied().unwrap_or(0.0) > 0.0,
+            "auth.rs should be boosted"
+        );
+        assert!(
+            scores.get("src/session.rs").copied().unwrap_or(0.0) > 0.0,
+            "session.rs should be boosted"
+        );
+    }
+
+    #[test]
+    fn test_file_feedback_scores_harmful_penalty() {
+        let (store, _f) = temp_store();
+
+        store
+            .store_injection_with_output(
+                "inj-harm1",
+                None,
+                Some("agent-a"),
+                "database connection pooling",
+                &["src/db.rs".to_string()],
+                1,
+                100,
+                None,
+            )
+            .unwrap();
+
+        // Rate it harmful
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-harm1".to_string(),
+                agent: "agent-c".to_string(),
+                rating: "harmful".to_string(),
+                reason: "wrong file".to_string(),
+            })
+            .unwrap();
+
+        let scores = store
+            .file_feedback_scores("database connection pooling", 0.1)
+            .unwrap();
+        assert!(
+            scores.get("src/db.rs").copied().unwrap_or(0.0) < 0.0,
+            "db.rs should have negative score from harmful rating"
+        );
+    }
+
+    #[test]
+    fn test_file_feedback_scores_no_overlap() {
+        let (store, _f) = temp_store();
+
+        store
+            .store_injection_with_output(
+                "inj-nooverlap",
+                None,
+                Some("agent-a"),
+                "authentication login handler",
+                &["src/auth.rs".to_string()],
+                1,
+                100,
+                None,
+            )
+            .unwrap();
+
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-nooverlap".to_string(),
+                agent: "agent-b".to_string(),
+                rating: "useful".to_string(),
+                reason: String::new(),
+            })
+            .unwrap();
+
+        // Query with completely different keywords — should have no overlap
+        let scores = store
+            .file_feedback_scores("database migration schema", 0.1)
+            .unwrap();
+        assert!(
+            scores.is_empty(),
+            "Should have no scores for unrelated query"
+        );
+    }
+
+    #[test]
+    fn test_file_feedback_scores_cross_agent() {
+        let (store, _f) = temp_store();
+
+        // Two different agents rate the same injection
+        store
+            .store_injection_with_output(
+                "inj-cross1",
+                None,
+                Some("agent-a"),
+                "error handling retry logic",
+                &["src/retry.rs".to_string()],
+                1,
+                100,
+                None,
+            )
+            .unwrap();
+
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-cross1".to_string(),
+                agent: "agent-b".to_string(),
+                rating: "useful".to_string(),
+                reason: String::new(),
+            })
+            .unwrap();
+
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-cross1".to_string(),
+                agent: "agent-c".to_string(),
+                rating: "useful".to_string(),
+                reason: String::new(),
+            })
+            .unwrap();
+
+        let scores = store
+            .file_feedback_scores("error handling retry mechanism", 0.1)
+            .unwrap();
+        let retry_score = scores.get("src/retry.rs").copied().unwrap_or(0.0);
+        assert!(
+            retry_score > 0.5,
+            "retry.rs should have high score from 2 useful ratings, got {}",
+            retry_score
+        );
     }
 }
