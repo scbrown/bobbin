@@ -49,8 +49,8 @@ Key sections: `[index]` file patterns, `[search]` hybrid weights, `[embedding]` 
 | RBAC | Role-based repo/path access control | `docs/book/src/config/reference.md` (`[access]`) |
 | Multi-repo | Index multiple repos into one store | `docs/book/src/guides/multi-repo.md` |
 | Reactions | Pattern-triggered hook actions | `.bobbin/reactions.toml` |
-| Feedback | Agent ratings improve search quality | `docs/book/src/guides/hooks.md` |
-| Archive | Index structured markdown records | `docs/book/src/config/reference.md` (`[archive]`) |
+| Feedback | Agent ratings improve search quality | `docs/book/src/guides/feedback.md` |
+| Archive | Index structured markdown records | `docs/book/src/guides/archive.md` |
 | MCP server | Expose tools via Model Context Protocol | `docs/book/src/mcp/overview.md` |
 
 ## Architecture

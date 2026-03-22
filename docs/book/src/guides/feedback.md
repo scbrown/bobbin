@@ -1,110 +1,108 @@
 ---
 title: Feedback System
 description: How agent ratings improve search quality over time
-tags: [feedback, hooks, guide]
+tags: [feedback, guide]
 status: draft
 category: guide
-related: [guides/hooks.md, guides/tags.md, config/hooks.md]
+related: [guides/hooks.md, config/hooks.md]
 ---
 
 # Feedback System
 
-Bobbin's feedback system tracks which injected context agents actually use, collects explicit ratings, and uses that data to auto-tag chunks as "hot" (frequently useful) or "cold" (frequently ignored). Over time, this shifts search rankings toward code that matters.
+Bobbin tracks what context it injects and lets agents rate it. Over time, feedback data drives automatic quality improvements — files that are consistently useful get boosted, files that are consistently noise get demoted.
 
-## How it works
+## How It Works
 
-### Implicit signals (automatic)
+### 1. Injection Tracking
 
-The PostToolUse hook tracks which injected files agents interact with:
+Every time bobbin injects context via hooks, it records:
 
-1. After each UserPromptSubmit injection, bobbin records which files were injected
-2. When the agent calls Write/Edit/Read on an injected file, that's a **positive signal**
-3. If injected files go unused across 3+ consecutive sessions, that's a **negative signal**
+- **injection_id** — Unique identifier for this injection
+- **query** — The prompt that triggered the injection
+- **files/chunks** — What was injected (paths, chunk IDs, content)
+- **agent** — Which agent received the injection
+- **session_id** — The Claude Code session
 
-No agent action needed — signals accumulate automatically.
+### 2. Feedback Collection
 
-### Explicit ratings
-
-Agents can rate injections directly. Every `feedback_prompt_interval` injections (default: 5), bobbin prompts the agent to rate the last injection.
-
-Valid ratings:
+Agents rate injections as `useful`, `noise`, or `harmful`:
 
 | Rating | Meaning |
 |--------|---------|
-| `useful` | The injected context helped with the task |
-| `noise` | Irrelevant to what I was working on |
-| `harmful` | Actively misleading or confusing |
+| `useful` | The injected code was relevant and helpful |
+| `noise` | The injection was irrelevant to the task |
+| `harmful` | The injection was actively misleading |
 
-Submit via HTTP API:
-
-```
-POST /feedback
-{
-  "injection_id": "inj-abc123",
-  "rating": "useful",
-  "reason": "Found the auth middleware I needed"
-}
-```
-
-Or via MCP tool: `bobbin_feedback_submit`.
-
-The `agent` field is auto-detected from `GT_ROLE` or `BD_ACTOR` env vars.
-
-## Auto-tagging: hot and cold
-
-Feedback signals are converted to tags during indexing:
-
-| Condition | Tag assigned | Effect |
-|-----------|-------------|--------|
-| 5+ sessions with positive signals | `feedback:hot` | `boost = 0.3` (30% score increase) |
-| 10+ sessions with negative signals | `feedback:cold` | `boost = -0.5` (50% score decrease) |
-
-These tag effects are applied during context assembly (see [Tags & Effects](tags.md)). The `/search` endpoint does **not** apply boost/demotion — only `/context` and hook injection do.
-
-## Configuration
+Feedback is collected automatically via the `feedback_prompt_interval` config:
 
 ```toml
 [hooks]
-# Prompt agents for feedback every N injections (0 = disabled)
-feedback_prompt_interval = 5
+feedback_prompt_interval = 5  # Prompt every 5 injections (0 = disabled)
 ```
 
-## Storage schema
+Every N injections, bobbin prompts the agent to rate up to 3 unrated injections from the current session.
 
-Feedback data lives in `.bobbin/feedback.db` (SQLite):
+### 3. Feedback Tags
 
-**injections** — what bobbin injected:
-- `injection_id`, `session_id`, `agent`, `query`, `files_json`, `chunks_json`, `total_chunks`, `budget_lines`
+Accumulated feedback generates tags on files:
 
-**feedback** — agent ratings:
-- `injection_id`, `agent`, `rating` (useful/noise/harmful), `reason`, `timestamp`
+| Tag | Meaning |
+|-----|---------|
+| `feedback:hot` | File is frequently rated as useful |
+| `feedback:cold` | File is frequently rated as noise |
 
-**lineage** — traces feedback to fixes:
-- `action_type` (access_rule, tag_effect, config_change, code_fix, exclusion_rule)
-- Links feedback IDs to beads and commits that addressed the issue
+These tags are loaded during indexing and merged into chunk tags. Combined with tag effects:
 
-## Feedback stats
+```toml
+[effects."feedback:hot"]
+boost = 0.3    # Boost frequently-useful files
+pin = true     # Always include if budget allows
 
-Query aggregate stats via:
-
-```
-GET /feedback/stats
-```
-
-Returns: `total_injections`, `total_feedback`, `useful`/`noise`/`harmful` counts, `actioned`/`unactioned` (feedback with/without linked fixes).
-
-## Quality improvement loop
-
-```
-Agent receives injection
-    ↓
-PostToolUse → positive/negative signal recorded
-    ↓
-After threshold sessions → feedback:hot or feedback:cold tag
-    ↓
-Tag effects adjust scoring in context assembly
-    ↓
-Future agents see better-ranked results
+[effects."feedback:cold"]
+boost = -0.3   # Demote frequently-noisy files
 ```
 
-The loop is self-reinforcing: useful code rises, noisy code sinks, and the system adapts to actual usage patterns without manual tuning.
+## HTTP API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/feedback` | POST | Submit a rating: `{injection_id, agent, rating, reason}` |
+| `/feedback` | GET | List feedback with filters: `?rating=noise&agent=stryder&limit=50` |
+| `/feedback/stats` | GET | Aggregated stats: total injections, ratings by type, coverage |
+| `/injections/{id}` | GET | View injection detail: query, files, formatted output, feedback |
+| `/feedback/lineage` | POST | Record an action that resolves feedback |
+| `/feedback/lineage` | GET | List resolution actions |
+
+## Lineage Tracking
+
+When feedback leads to a fix (new tag rule, access control change, code fix), record it via lineage:
+
+```json
+{
+  "action_type": "tag_effect",
+  "description": "Added type:changelog demotion to reduce changelog noise",
+  "commit_hash": "abc123",
+  "bead": "aegis-xyz",
+  "agent": "stryder"
+}
+```
+
+Valid action types: `access_rule`, `tag_effect`, `config_change`, `code_fix`, `exclusion_rule`.
+
+Lineage records link feedback to concrete improvements, creating an audit trail of search quality evolution.
+
+## Web UI
+
+The **Feedback** tab in the web UI shows:
+
+- Injection and feedback counts with coverage percentage
+- Rating breakdown (useful/noise/harmful)
+- Filterable feedback list by rating and agent
+- Click any feedback record to see the full injection detail: what was injected, the query, files included, and all ratings
+
+## Best Practices
+
+1. **Keep feedback_prompt_interval low** (3-5) during initial deployment to build up data quickly
+2. **Review noise patterns** in the Feedback tab — repeated noise on the same files indicates missing tag rules or exclusions
+3. **Use lineage** to track what you changed in response to feedback — this closes the loop
+4. **Check feedback:hot/cold tags** after reindexing to verify the system is learning from ratings
