@@ -190,9 +190,103 @@ enabled_languages = ["markdown", "python"]
 
 This includes surrounding lines when computing each chunk's vector, improving retrieval quality.
 
+## Advanced search features
+
+### Recency weighting
+
+Recently modified files get a scoring boost. This helps surface actively-maintained code over stale artifacts.
+
+```toml
+[search]
+recency_half_life_days = 30.0  # After 30 days, boost drops to 50%
+recency_weight = 0.3           # Max 30% score penalty for old files (0.0 = disabled)
+```
+
+The formula: `score * (1.0 - weight + weight * decay)`. At `recency_weight = 0.3`, a very old file loses at most 30% of its score. At 1.0, old files can lose 100%.
+
+Set `recency_weight = 0.0` to disable entirely (treat all files equally regardless of age).
+
+### Doc demotion
+
+Documentation and config files naturally score high on many queries because they describe everything. Doc demotion reduces their ranking so source code surfaces first.
+
+```toml
+[search]
+doc_demotion = 0.3  # Multiply doc/config RRF scores by 0.3 (70% penalty)
+```
+
+Values: `1.0` = no demotion, `0.0` = completely suppress docs. Only affects files classified as documentation or config — source and test files are untouched.
+
+### Bridge mode
+
+Bridging discovers source files through documentation and commit context. When a search matches a doc file that references `auth.rs`, bridging can find and include `auth.rs` even if it didn't match directly.
+
+Four modes:
+
+| Mode | Behavior |
+|------|----------|
+| `off` | No bridging (baseline) |
+| `inject` | Add discovered files as new results (default) |
+| `boost` | Boost scores of files already in results |
+| `boost_inject` | Both: boost existing + inject undiscovered |
+
+Bridge mode is configured in `calibration.json` (via `bobbin calibrate --bridge-sweep`) or in context assembly config. The `bridge_boost_factor` controls how much existing scores increase: `final_score *= (1.0 + factor)`.
+
+### Keyword-triggered repo scoping
+
+In multi-repo setups, certain queries should automatically scope to specific repos. Configure this in `[hooks]`:
+
+```toml
+[[hooks.keyword_repos]]
+keywords = ["ansible", "playbook", "deploy"]
+repos = ["goldblum", "homelab-mcp"]
+
+[[hooks.keyword_repos]]
+keywords = ["bobbin", "search", "index"]
+repos = ["bobbin"]
+```
+
+When any keyword matches (case-insensitive substring), search is scoped to those repos instead of searching everywhere. This reduces noise when the query clearly targets a specific domain.
+
+### Repo affinity boost
+
+Files from the agent's current repo get a configurable score multiplier:
+
+```toml
+[hooks]
+repo_affinity_boost = 2.0  # 2x score for local repo files (1.0 = disabled)
+```
+
+This biases results toward the repo the agent is working in, which is usually what you want.
+
+### RRF constant (rrf_k)
+
+Controls how Reciprocal Rank Fusion merges semantic and keyword results:
+
+```toml
+[search]
+rrf_k = 60.0  # Standard value
+```
+
+Lower values make top-ranked results dominate more. Higher values flatten the score distribution, giving lower-ranked results more influence. Most users should leave this at 60.0.
+
+### Calibrating all parameters
+
+Rather than tuning manually, use `bobbin calibrate` to auto-tune:
+
+```bash
+bobbin calibrate --apply               # Quick sweep of core params
+bobbin calibrate --full --apply        # Extended: also tunes recency + coupling
+bobbin calibrate --bridge-sweep --apply # Sweep bridge mode using calibrated core
+```
+
+See [calibrate CLI reference](../cli/calibrate.md) for details.
+
 ## Next steps
 
 - [Context Assembly](context-assembly.md) — use search results as seeds for a broader context bundle
+- [Tags & Effects](tags.md) — boost or demote results by tag patterns
 - [Deps & Refs](deps-refs.md) — follow import chains and symbol references
+- [Access Control](access-control.md) — role-based result filtering
 - [`search` CLI reference](../cli/search.md) — full flag reference
 - [`grep` CLI reference](../cli/grep.md) — full flag reference
