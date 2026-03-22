@@ -57,7 +57,7 @@ description = "Assembles relevant code for agent prompts"
 keywords = ["context assembly", "context injection", "budget", "progressive disclosure"]
 tags = ["domain:context-assembly"]       # membership via existing tags
 files = ["src/search/context.rs"]        # explicit file membership (optional)
-children = ["context/pipeline", "context/tags", "context/budget"]
+# children are implicit: any bundle named "context/*" is a child
 
 [[bundles]]
 name = "context/pipeline"
@@ -90,12 +90,16 @@ keywords = ["hook injection", "PostToolUse", "UserPromptSubmit"]
 | `tags` | string[] | no | Tag-based membership (chunks with these tags belong). |
 | `files` | string[] | no | Explicit file paths (repo-relative). |
 | `docs` | string[] | no | Documentation files associated with this bundle. |
-| `children` | string[] | no | Sub-bundle names (for hierarchy at L0). |
 | `includes` | string[] | no | Other bundles pulled in at L2 deep dive. |
 | `repo` | string | no | Scope to a specific repo (multi-repo deployments). |
 
 Membership is the **union** of tag-matched chunks + explicit files + docs. This allows
 bundles to be as precise (explicit files only) or as broad (tag-based) as needed.
+
+**Hierarchy is implicit from naming**: any bundle named `X/Y` is a child of `X`.
+At L0, `bobbin bundle list` builds the tree by splitting on `/`. No explicit
+`children` field needed — the naming convention IS the relationship. Renaming or
+adding a sub-bundle automatically updates the tree.
 
 ### 2. Progressive Disclosure Levels
 
