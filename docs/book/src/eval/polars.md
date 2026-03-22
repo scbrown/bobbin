@@ -20,7 +20,7 @@ Implement the fix. Run the test suite with the test command to verify.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
-| no-bobbin | 100.0% | 100.0% | 66.7% | 80.0% | 4.4m $0.81 |
+| no-bobbin | 100.0% | 100.0% | 66.7% | 80.0% | 4.4m | $0.81 |
 
 <div class="eval-chart">
 
@@ -61,7 +61,7 @@ Implement the fix. Run the test suite with the test command to verify.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
-| no-bobbin | 100.0% | 100.0% | 66.7% | 79.4% | 6.4m $1.74 |
+| no-bobbin | 100.0% | 100.0% | 66.7% | 79.4% | 6.4m | $1.74 |
 
 <div class="eval-chart">
 

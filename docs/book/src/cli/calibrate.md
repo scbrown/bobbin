@@ -63,7 +63,7 @@ With `--apply`, writes the best params to `.bobbin/calibration.json`, which take
 Commits are filtered before sampling:
 
 - **Included**: Commits with 2–30 changed files within the `--since` window
-- **Excluded**: Merge commits, reverts, and noise commits (prefixes: `chore:`, `ci:`, `docs:`, `style:`, `build:`, `release:`, `bump `, `auto-merge`, `update dependency`)
+- **Excluded**: Merge commits, reverts, and noise commits (prefixes: `chore:`, `ci:`, `docs:`, `style:`, `build:`, `release:`, `bump`, `auto-merge`, `update dependency`)
 - **Sampling**: Evenly-spaced picks across filtered candidates (stratified, not random)
 
 If >50% of sampled commits have very short messages (<20 chars) or generic text ("fix", "wip", "temp"), calibration warns that accuracy may be reduced.
@@ -72,7 +72,7 @@ If >50% of sampled commits have very short messages (<20 chars) or generic text 
 
 Each probe scores the context bundle returned for a commit message query against the files actually modified in that commit:
 
-```
+```text
 precision = |injected ∩ truth| / |injected|
 recall    = |injected ∩ truth| / |truth|
 f1        = 2 × precision × recall / (precision + recall)
