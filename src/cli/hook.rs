@@ -2143,6 +2143,149 @@ fn chunk_key(file_path: &str, start_line: u32, end_line: u32) -> String {
     format!("{}:{}:{}", file_path, start_line, end_line)
 }
 
+/// Tracks recent prompts within a session to build conversation-aware queries.
+///
+/// Stored as JSONL at `.bobbin/session/<cc_session_id>/prompts.jsonl`.
+/// Each entry records a cleaned prompt and timestamp, limited to the most recent
+/// N entries (configurable, default 5). When building a search query, recent
+/// prompts are combined with the current prompt to capture conversational trajectory.
+struct PromptHistory {
+    entries: Vec<PromptEntry>,
+    path: Option<PathBuf>,
+    max_entries: usize,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+struct PromptEntry {
+    prompt: String,
+    timestamp: u64, // unix epoch seconds
+}
+
+impl PromptHistory {
+    /// Load prompt history for a Claude Code session.
+    fn load(repo_root: &Path, cc_session_id: &str, max_entries: usize) -> Self {
+        if cc_session_id.is_empty() {
+            return Self { entries: Vec::new(), path: None, max_entries };
+        }
+        let dir = repo_root.join(".bobbin").join("session").join(cc_session_id);
+        let path = dir.join("prompts.jsonl");
+
+        let mut entries = Vec::new();
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                for line in content.lines() {
+                    if let Ok(entry) = serde_json::from_str::<PromptEntry>(line) {
+                        entries.push(entry);
+                    }
+                }
+            }
+        }
+
+        // Keep only the most recent max_entries
+        if entries.len() > max_entries {
+            entries = entries.split_off(entries.len() - max_entries);
+        }
+
+        Self { entries, path: Some(path), max_entries }
+    }
+
+    /// Record a new prompt. Appends to the JSONL file and maintains window size.
+    fn record(&mut self, prompt: &str) {
+        let entry = PromptEntry {
+            prompt: prompt.to_string(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+        };
+
+        self.entries.push(entry.clone());
+
+        // Trim to max_entries
+        if self.entries.len() > self.max_entries {
+            self.entries = self.entries.split_off(self.entries.len() - self.max_entries);
+        }
+
+        // Append to file
+        if let Some(path) = &self.path {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Ok(json) = serde_json::to_string(&entry) {
+                use std::io::Write;
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                {
+                    let _ = writeln!(f, "{}", json);
+                }
+            }
+        }
+    }
+
+    /// Build a trajectory-aware search query from recent prompts + current prompt.
+    ///
+    /// Combines the current prompt with up to N recent prompts, weighted by recency.
+    /// Recent prompts are truncated to keep the combined query under a character limit.
+    /// Returns the enriched query string.
+    fn build_trajectory_query(&self, current_prompt: &str, max_chars: usize) -> String {
+        if self.entries.is_empty() {
+            return current_prompt.to_string();
+        }
+
+        // Current prompt gets full weight (placed last, most influential for embeddings)
+        let current_len = current_prompt.len();
+        if current_len >= max_chars {
+            return current_prompt.to_string();
+        }
+
+        let remaining = max_chars - current_len;
+
+        // Collect recent prompts (excluding any that match the current prompt)
+        let recent: Vec<&str> = self.entries
+            .iter()
+            .rev()
+            .filter(|e| e.prompt != current_prompt)
+            .map(|e| e.prompt.as_str())
+            .take(3) // Use at most 3 recent prompts
+            .collect();
+
+        if recent.is_empty() {
+            return current_prompt.to_string();
+        }
+
+        // Allocate remaining budget across recent prompts (more recent = more budget)
+        let mut context_parts: Vec<String> = Vec::new();
+        let per_prompt_budget = remaining / recent.len();
+
+        for prompt in recent.iter().rev() {
+            // Reverse back to chronological order
+            let truncated = if prompt.len() > per_prompt_budget {
+                // Take the last per_prompt_budget chars (most relevant part)
+                let cutoff = prompt.len() - per_prompt_budget;
+                match prompt[cutoff..].find(' ') {
+                    Some(pos) => &prompt[cutoff + pos + 1..],
+                    None => &prompt[cutoff..],
+                }
+            } else {
+                prompt
+            };
+            if !truncated.is_empty() {
+                context_parts.push(truncated.to_string());
+            }
+        }
+
+        if context_parts.is_empty() {
+            current_prompt.to_string()
+        } else {
+            // Format: "context from history... | current prompt"
+            // The pipe separator helps embeddings distinguish trajectory from current focus
+            format!("{} | {}", context_parts.join(" "), current_prompt)
+        }
+    }
+}
+
 /// Generate `.bobbin/hot-topics.md` from injection frequency data.
 fn generate_hot_topics(state: &HookState, output_path: &Path) -> Result<()> {
     use std::fmt::Write;
@@ -2362,6 +2505,12 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     } else {
         search_query
     };
+
+    // 3f. Conversation-aware query: enrich with recent prompt history
+    let mut prompt_history = PromptHistory::load(&repo_root, &input.session_id, 5);
+    let trajectory_query = prompt_history.build_trajectory_query(search_query, 700);
+    prompt_history.record(search_query);
+    let search_query = trajectory_query.as_str();
 
     // 4. Open stores
     let lance_path = Config::lance_path(&repo_root);
@@ -6926,5 +7075,90 @@ mod tests {
         assert!(!is_bead_command("show x-ab"));
         // Not lowercase prefix
         assert!(!is_bead_command("show ABC-def123"));
+    }
+
+    #[test]
+    fn test_prompt_history_trajectory_empty() {
+        let history = PromptHistory {
+            entries: Vec::new(),
+            path: None,
+            max_entries: 5,
+        };
+        let query = history.build_trajectory_query("current prompt", 700);
+        assert_eq!(query, "current prompt");
+    }
+
+    #[test]
+    fn test_prompt_history_trajectory_with_history() {
+        let history = PromptHistory {
+            entries: vec![
+                PromptEntry { prompt: "how does auth work".to_string(), timestamp: 100 },
+                PromptEntry { prompt: "show me the middleware".to_string(), timestamp: 200 },
+            ],
+            path: None,
+            max_entries: 5,
+        };
+        let query = history.build_trajectory_query("error handling in routes", 700);
+        // Should contain history + current, separated by |
+        assert!(query.contains("auth"));
+        assert!(query.contains("middleware"));
+        assert!(query.contains("error handling in routes"));
+        assert!(query.contains(" | "));
+    }
+
+    #[test]
+    fn test_prompt_history_trajectory_dedup_current() {
+        let history = PromptHistory {
+            entries: vec![
+                PromptEntry { prompt: "same prompt".to_string(), timestamp: 100 },
+            ],
+            path: None,
+            max_entries: 5,
+        };
+        let query = history.build_trajectory_query("same prompt", 700);
+        // Should NOT duplicate the current prompt
+        assert_eq!(query, "same prompt");
+    }
+
+    #[test]
+    fn test_prompt_history_trajectory_respects_max_chars() {
+        let history = PromptHistory {
+            entries: vec![
+                PromptEntry { prompt: "a".repeat(500), timestamp: 100 },
+            ],
+            path: None,
+            max_entries: 5,
+        };
+        let query = history.build_trajectory_query("current", 100);
+        // Total should not exceed max_chars
+        assert!(query.len() <= 200, "query too long: {}", query.len());
+    }
+
+    #[test]
+    fn test_prompt_history_record_and_load() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let repo_root = tmp.path();
+        let session_dir = repo_root.join(".bobbin").join("session").join("test-sess");
+        std::fs::create_dir_all(&session_dir).unwrap();
+
+        let mut history = PromptHistory::load(repo_root, "test-sess", 3);
+        assert!(history.entries.is_empty());
+
+        history.record("first prompt");
+        history.record("second prompt");
+        history.record("third prompt");
+
+        // Reload from disk
+        let reloaded = PromptHistory::load(repo_root, "test-sess", 3);
+        assert_eq!(reloaded.entries.len(), 3);
+        assert_eq!(reloaded.entries[0].prompt, "first prompt");
+        assert_eq!(reloaded.entries[2].prompt, "third prompt");
+
+        // Add one more — should maintain max_entries=3
+        let mut history2 = PromptHistory::load(repo_root, "test-sess", 3);
+        history2.record("fourth prompt");
+        assert_eq!(history2.entries.len(), 3);
+        assert_eq!(history2.entries[0].prompt, "second prompt"); // first was trimmed
+        assert_eq!(history2.entries[2].prompt, "fourth prompt");
     }
 }
