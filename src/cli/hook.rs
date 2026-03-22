@@ -4159,26 +4159,25 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         if input.session_id.is_empty() { None } else { Some(&input.session_id) },
     );
 
-    // 3. Build search query from error context
-    // Combine tool name, relevant input info, and error message for a targeted search
+    // 3. Extract command hint and error excerpt
+    let command = input
+        .tool_input
+        .get("command")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
     let file_hint = input
         .tool_input
         .get("file_path")
         .and_then(|v| v.as_str())
-        .or_else(|| input.tool_input.get("command").and_then(|v| v.as_str()))
-        .unwrap_or("");
+        .unwrap_or(command);
 
     // Truncate error to avoid overwhelming the search
-    let error_excerpt = if input.error.len() > 200 {
-        &input.error[..200]
+    let error_excerpt = if input.error.len() > 500 {
+        &input.error[..500]
     } else {
         &input.error
     };
-
-    let query = format!(
-        "{} {} error: {}",
-        input.tool_name, file_hint, error_excerpt
-    );
 
     // 4. Open stores
     let lance_path = Config::lance_path(&repo_root);
@@ -4207,58 +4206,186 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         }
     }
 
-    let embedder = Embedder::from_config(&config.embedding, &model_dir)
-        .context("Failed to load embedding model")?;
+    // 6. Try error-context injection: parse file paths from build/test errors
+    //    and inject those files directly (faster + more precise than semantic search).
+    let parsed = crate::errors::parse_error_output(&input.error, command);
+    let mut direct_injection_output = String::new();
+    let mut direct_files_found = 0usize;
+    let mut direct_chunks_found = 0usize;
+    let mut lines_used = 0usize;
 
-    // 6. Assemble context with smaller budget and fewer results
-    let context_config = ContextConfig {
-        budget_lines: budget,
-        depth: 0, // No coupling expansion for failure context (keep it fast)
-        max_coupled: 0,
-        coupling_threshold: 0.1,
-        semantic_weight: config.search.semantic_weight,
-        content_mode: ContentMode::Preview,
-        search_limit: 10, // Fewer results since we want speed
-        doc_demotion: config.search.doc_demotion,
-        recency_half_life_days: config.search.recency_half_life_days,
-        recency_weight: config.search.recency_weight,
-        rrf_k: config.search.rrf_k,
-        bridge_mode: BridgeMode::Off, // No bridging for failure context (speed)
-        bridge_boost_factor: 0.0,
-        extra_filter: None,
-        tags_config: None,
-        role: None,
-        file_type_rules: config.file_types.clone(),
-        repo_affinity: detect_repo_name(&cwd),
-        repo_affinity_boost: config.hooks.repo_affinity_boost,
-        max_bridged_files: 2,
-        max_bridged_chunks_per_file: 1,
-        repo_path_prefix: config.server.repo_path_prefix.clone(),
+    if input.tool_name == "Bash" && !parsed.refs.is_empty() {
+        let repo_name = detect_repo_name(&cwd);
+
+        for error_ref in &parsed.refs {
+            if lines_used >= budget {
+                break;
+            }
+
+            // Skip empty paths (symbol-only refs from test output)
+            if error_ref.path.is_empty() {
+                continue;
+            }
+
+            // Fetch chunks for this file from the index
+            let chunks = vector_store.get_chunks_for_file(&error_ref.path, repo_name.as_deref()).await;
+            let chunks = match chunks {
+                Ok(c) if !c.is_empty() => c,
+                _ => continue,
+            };
+
+            direct_files_found += 1;
+
+            // If we have a specific line number, find the chunk containing it
+            let relevant_chunks: Vec<_> = if let Some(line) = error_ref.line {
+                let mut matching: Vec<_> = chunks.iter()
+                    .filter(|c| c.start_line <= line && c.end_line >= line)
+                    .collect();
+                // If no chunk spans the exact line, take the nearest chunk
+                if matching.is_empty() {
+                    matching = chunks.iter()
+                        .min_by_key(|c| {
+                            let mid = (c.start_line + c.end_line) / 2;
+                            (mid as i64 - line as i64).unsigned_abs()
+                        })
+                        .into_iter()
+                        .collect();
+                }
+                matching
+            } else {
+                // No line number: take the first few chunks (file header / key definitions)
+                chunks.iter().take(3).collect()
+            };
+
+            for chunk in &relevant_chunks {
+                let chunk_lines = chunk.content.lines().count();
+                if lines_used + chunk_lines + 3 > budget {
+                    break;
+                }
+
+                let line_info = if let Some(line) = error_ref.line {
+                    format!(" (error at line {})", line)
+                } else {
+                    String::new()
+                };
+                let symbol_info = error_ref.symbol.as_ref()
+                    .map(|s| format!(" — symbol: `{}`", s))
+                    .unwrap_or_default();
+
+                direct_injection_output.push_str(&format!(
+                    "### {}:{}-{}{}{}\n```{}\n{}\n```\n\n",
+                    chunk.file_path,
+                    chunk.start_line,
+                    chunk.end_line,
+                    line_info,
+                    symbol_info,
+                    chunk.language,
+                    chunk.content.trim_end(),
+                ));
+                lines_used += chunk_lines + 3;
+                direct_chunks_found += 1;
+            }
+
+            // Include coupled files for this error file (co-changing files)
+            if lines_used < budget {
+                if let Ok(coupling) = crate::reactions::query_coupling(
+                    &metadata_store,
+                    &error_ref.path,
+                    0.3,
+                    3,
+                ) {
+                    for coupled in &coupling.coupled_files {
+                        if lines_used >= budget {
+                            break;
+                        }
+                        // Fetch preview of coupled file
+                        let coupled_chunks = vector_store
+                            .get_chunks_for_file(&coupled.path, repo_name.as_deref())
+                            .await;
+                        if let Ok(cc) = coupled_chunks {
+                            if let Some(first) = cc.first() {
+                                let chunk_lines = first.content.lines().count();
+                                if lines_used + chunk_lines + 3 <= budget {
+                                    direct_injection_output.push_str(&format!(
+                                        "### {} (coupled: {:.0}% co-change rate)\n```{}\n{}\n```\n\n",
+                                        first.file_path,
+                                        coupled.score * 100.0,
+                                        first.language,
+                                        first.content.trim_end(),
+                                    ));
+                                    lines_used += chunk_lines + 3;
+                                    direct_chunks_found += 1;
+                                    direct_files_found += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 7. If direct injection found files, output them; otherwise fall back to semantic search
+    let (output_text, method) = if !direct_injection_output.is_empty() {
+        let header = format!(
+            "Bobbin found {} source chunks in {} files referenced by this error:\n\n",
+            direct_chunks_found, direct_files_found,
+        );
+        (format!("{}{}", header, direct_injection_output), "direct")
+    } else {
+        // Semantic search fallback (original behavior)
+        let query = format!(
+            "{} {} error: {}",
+            input.tool_name, file_hint, error_excerpt
+        );
+        let embedder = Embedder::from_config(&config.embedding, &model_dir)
+            .context("Failed to load embedding model")?;
+
+        let context_config = ContextConfig {
+            budget_lines: budget,
+            depth: 0,
+            max_coupled: 0,
+            coupling_threshold: 0.1,
+            semantic_weight: config.search.semantic_weight,
+            content_mode: ContentMode::Preview,
+            search_limit: 10,
+            doc_demotion: config.search.doc_demotion,
+            recency_half_life_days: config.search.recency_half_life_days,
+            recency_weight: config.search.recency_weight,
+            rrf_k: config.search.rrf_k,
+            bridge_mode: BridgeMode::Off,
+            bridge_boost_factor: 0.0,
+            extra_filter: None,
+            tags_config: None,
+            role: None,
+            file_type_rules: config.file_types.clone(),
+            repo_affinity: detect_repo_name(&cwd),
+            repo_affinity_boost: config.hooks.repo_affinity_boost,
+            max_bridged_files: 2,
+            max_bridged_chunks_per_file: 1,
+            repo_path_prefix: config.server.repo_path_prefix.clone(),
+        };
+
+        let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+        let bundle = assembler.assemble(&query, None).await?;
+
+        if bundle.files.is_empty() || bundle.summary.top_semantic_score < 0.3 {
+            return Ok(());
+        }
+
+        let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false, None, &config.hooks.format_mode);
+        let header = format!(
+            "Bobbin found {} relevant chunks for this error (via semantic search):\n\n",
+            bundle.summary.total_chunks,
+        );
+        (format!("{}{}", header, context_text), "semantic")
     };
 
-    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
-    let bundle = assembler.assemble(&query, None).await?;
-
-    if bundle.files.is_empty() {
-        return Ok(());
-    }
-
-    // 7. Gate: skip if results aren't relevant enough
-    if bundle.summary.top_semantic_score < 0.3 {
-        return Ok(());
-    }
-
-    // 8. Format output
-    let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false, None, &config.hooks.format_mode);
-    let header = format!(
-        "Bobbin found {} relevant chunks for this error (via search fallback):\n\n",
-        bundle.summary.total_chunks,
-    );
-
+    // 8. Output response
     let response = HookResponse {
         hook_specific_output: HookSpecificOutput {
             hook_event_name: "PostToolUseFailure".to_string(),
-            additional_context: format!("{}{}", header, context_text),
+            additional_context: output_text,
         },
     };
     println!("{}", serde_json::to_string(&response)?);
@@ -4273,9 +4400,12 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
             hook_start.elapsed().as_millis() as u64,
             serde_json::json!({
                 "tool_name": input.tool_name,
-                "error_excerpt": error_excerpt,
-                "files_returned": bundle.summary.total_files,
-                "top_score": bundle.summary.top_semantic_score,
+                "error_excerpt": &error_excerpt[..error_excerpt.len().min(200)],
+                "method": method,
+                "parsed_refs": parsed.refs.len(),
+                "is_build_error": parsed.is_build_error,
+                "direct_files": direct_files_found,
+                "direct_chunks": direct_chunks_found,
             }),
         ),
     );

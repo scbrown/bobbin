@@ -6,6 +6,7 @@ mod analysis;
 mod cli;
 mod commands;
 pub mod config;
+mod errors;
 mod http;
 mod index;
 mod mcp;
