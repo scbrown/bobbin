@@ -172,7 +172,8 @@ How it works:
 This means early prompts get full context, and follow-up prompts get only *new* relevant code — keeping the context window efficient.
 
 When reducing fires, you'll see output like:
-```
+
+```text
 bobbin: injecting 3 new chunks (7 previously injected, turn 4)
 ```
 
@@ -221,7 +222,8 @@ feedback_prompt_interval = 5    # Every 5 injections (0 = disabled)
 ```
 
 Every N injections, bobbin shows unrated injection IDs and prompts:
-```
+
+```text
 bobbin: 3 unrated injections this session. Rate with:
   bobbin feedback submit --injection <id> --rating <useful|noise|harmful>
 ```
@@ -367,6 +369,7 @@ guidance = "Deploy detected. Verify staging tests passed first."
 In multi-agent environments, many prompts are operational (patrol nudges, reactor alerts, handoff messages) rather than development queries. Bobbin automatically detects these and skips injection to avoid wasting tokens on irrelevant context.
 
 Automated message detection recognizes patterns like:
+
 - Patrol nudges (`"Auto-patrol: ..."`, `"PATROL LOOP ..."`)
 - Reactor alerts (`"[reactor] ..."`)
 - Handoff/startup protocols (`"HANDOFF COMPLETE"`, `"STARTUP PROTOCOL"`)

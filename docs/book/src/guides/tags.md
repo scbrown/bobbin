@@ -170,12 +170,13 @@ Use `namespace:value` format for clarity:
 
 When tag effects are applied during context assembly, the formula is:
 
-```
+```text
 effective_factor = product(1 + boost for each matching tag effect)
 final_score = raw_score * clamp(effective_factor, 0.01, 10.0)
 ```
 
 **Examples:**
+
 - `boost = 0.5` → factor = 1.5 → 50% score increase
 - `boost = -0.8` → factor = 0.2 → 80% score decrease
 - Multiple tags: `canonical` (boost +0.5) + `architecture` (boost +0.2) → factor = 1.5 × 1.2 = 1.8
@@ -267,11 +268,13 @@ boost = 0.0
 After modifying `tags.toml`:
 
 1. **Reindex** affected repos to apply new tag rules to chunks:
+
    ```bash
    bobbin index /path/to/data --repo <name> --source /path/to/repo --force
    ```
 
 2. **Restart the server** if running in HTTP mode (tags config is loaded at startup):
+
    ```bash
    sudo systemctl restart bobbin
    ```
@@ -293,7 +296,8 @@ bobbin search "your query" --json | jq '.results[].tags'
 ```
 
 Check tag coverage after indexing:
-```
+
+```text
 ✓ Indexed 942 files (12270 chunks)
   Tags: 41096 tagged, 21327 untagged chunks
 ```
@@ -303,6 +307,7 @@ document types that cause noise (changelogs, templates, test files) or that
 need boosting (critical configs, design docs).
 
 To filter search results by tag:
+
 ```bash
 bobbin search "your query" --tag type:guide        # Include only guides
 bobbin search "your query" --exclude-tag type:eval  # Exclude eval artifacts

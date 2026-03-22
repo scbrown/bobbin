@@ -203,9 +203,11 @@ After editing `tags.toml`:
 2. **Deploy to server**: `scp tags.toml user@server:/path/.bobbin/tags.toml`
 3. **Restart bobbin**: `sudo systemctl restart bobbin` (tags loaded at startup)
 4. **Reindex affected repos**:
+
    ```bash
    bobbin index /data --repo <name> --source /path/to/repo --force
    ```
+
 5. **Verify via `/context` endpoint** (not `/search` — tag effects only apply to context)
 6. **Check tag counts**: `curl -s http://search.svc/tags?repo=<name> | jq`
 

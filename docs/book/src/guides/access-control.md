@@ -107,7 +107,7 @@ deny_paths = ["harnesses/*/CLAUDE.md", ".env*", "secrets/**"]
 
 ### HTTP API usage
 
-```
+```text
 GET /search?q=auth+flow&role=aegis/crew/ian
 GET /context?q=fix+login&role=human
 ```
