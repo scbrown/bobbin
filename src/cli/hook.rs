@@ -2136,6 +2136,23 @@ impl SessionLedger {
     fn len(&self) -> usize {
         self.entries.len()
     }
+
+    /// Get unique file paths from previously injected chunks.
+    /// Chunk keys are formatted as "file_path:start_line:end_line".
+    fn injected_files(&self) -> Vec<String> {
+        let mut files: HashSet<String> = HashSet::new();
+        for key in &self.entries {
+            // Find the last two colons to extract the file path
+            // Keys are "path:start:end" — path itself may contain colons on Windows
+            if let Some(last_colon) = key.rfind(':') {
+                if let Some(second_colon) = key[..last_colon].rfind(':') {
+                    let file = &key[..second_colon];
+                    files.insert(file.to_string());
+                }
+            }
+        }
+        files.into_iter().collect()
+    }
 }
 
 /// Build a chunk key from file path and chunk line range.
@@ -2830,10 +2847,75 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         .count();
     let reduced_count = total_chunks_before.saturating_sub(new_chunks);
 
-    // 9. Output context (only if we have new chunks)
+    // 9. Output context (only if we have new chunks) — or try complementary expansion
     if bundle.files.is_empty() || new_chunks == 0 {
         if reducing_enabled && reduced_count > 0 {
-            eprintln!("bobbin: skipped (all {} chunks previously injected)", reduced_count);
+            // 9a. Complementary expansion: find coupled files the agent hasn't seen yet
+            let previously_seen_files = ledger.injected_files();
+            let seen_set: HashSet<&str> = previously_seen_files.iter().map(|s| s.as_str()).collect();
+
+            let mut complementary_files: Vec<(String, f32)> = Vec::new();
+            // Reopen metadata store (original was moved into ContextAssembler)
+            let comp_metadata = MetadataStore::open(&db_path).ok();
+            if let Some(ref comp_ms) = comp_metadata {
+            for seen_file in &previously_seen_files {
+                if let Ok(coupled) = comp_ms.get_coupling(seen_file, 5) {
+                    for c in coupled {
+                        let other = if c.file_a == *seen_file { &c.file_b } else { &c.file_a };
+                        if !seen_set.contains(other.as_str()) && c.score >= 0.1 {
+                            complementary_files.push((other.clone(), c.score));
+                        }
+                    }
+                }
+            }
+            } // end if let Some(comp_ms)
+
+            // Deduplicate and sort by coupling score
+            complementary_files.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            complementary_files.dedup_by(|a, b| a.0 == b.0);
+            complementary_files.truncate(5);
+
+            if !complementary_files.is_empty() {
+                // Format complementary suggestion as context
+                use std::fmt::Write as FmtWrite;
+                let mut comp_context = String::new();
+                let _ = writeln!(comp_context, "## Complementary Files");
+                let _ = writeln!(comp_context, "You've been working with files that are coupled to these (not yet viewed):\n");
+                for (file, score) in &complementary_files {
+                    let _ = writeln!(comp_context, "- `{}` (coupling: {:.2})", file, score);
+                }
+
+                let injection_id = generate_context_injection_id(prompt);
+                let response = serde_json::json!({
+                    "hookSpecificOutput": {
+                        "hookEventName": "UserPromptSubmit",
+                        "additionalContext": comp_context,
+                    }
+                });
+                println!("{}", response);
+
+                // Record complementary files in ledger (as pseudo-entries to avoid re-suggesting)
+                let comp_keys: Vec<String> = complementary_files.iter()
+                    .map(|(f, _)| chunk_key(f, 0, 0)) // marker entries
+                    .collect();
+                ledger.record(&comp_keys, &injection_id);
+
+                crate::metrics::emit(&repo_root, &crate::metrics::event(
+                    &metrics_source,
+                    "hook_complementary_expansion",
+                    "hook inject-context",
+                    hook_start.elapsed().as_millis() as u64,
+                    serde_json::json!({
+                        "query": prompt,
+                        "total_chunks": total_chunks_before,
+                        "previously_injected": reduced_count,
+                        "complementary_files": complementary_files.len(),
+                    }),
+                ));
+                return Ok(());
+            }
+
+            eprintln!("bobbin: skipped (all {} chunks previously injected, no complementary files)", reduced_count);
             crate::metrics::emit(&repo_root, &crate::metrics::event(
                 &metrics_source,
                 "hook_reducing_skip",
@@ -7075,6 +7157,36 @@ mod tests {
         assert!(!is_bead_command("show x-ab"));
         // Not lowercase prefix
         assert!(!is_bead_command("show ABC-def123"));
+    }
+
+    #[test]
+    fn test_session_ledger_injected_files() {
+        let mut ledger = SessionLedger {
+            entries: HashSet::new(),
+            turn: 0,
+            path: None,
+        };
+        // Simulate chunk keys
+        ledger.entries.insert("src/main.rs:1:10".to_string());
+        ledger.entries.insert("src/main.rs:20:30".to_string());
+        ledger.entries.insert("src/config.rs:5:15".to_string());
+        ledger.entries.insert("tests/test_auth.rs:1:50".to_string());
+
+        let files = ledger.injected_files();
+        assert_eq!(files.len(), 3, "should have 3 unique files");
+        assert!(files.contains(&"src/main.rs".to_string()));
+        assert!(files.contains(&"src/config.rs".to_string()));
+        assert!(files.contains(&"tests/test_auth.rs".to_string()));
+    }
+
+    #[test]
+    fn test_session_ledger_injected_files_empty() {
+        let ledger = SessionLedger {
+            entries: HashSet::new(),
+            turn: 0,
+            path: None,
+        };
+        assert!(ledger.injected_files().is_empty());
     }
 
     #[test]
