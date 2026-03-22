@@ -9,7 +9,62 @@ related: [config/index.md, config/search.md, config/embedding.md, config/hooks.m
 
 # Configuration Reference
 
-Bobbin stores its configuration in `.bobbin/config.toml`, created by `bobbin init`.
+## Configuration Hierarchy
+
+Bobbin uses a layered configuration system. Each layer overrides the one above:
+
+| Priority | Location | Purpose |
+|----------|----------|---------|
+| 1 (lowest) | Compiled defaults | Sensible out-of-the-box values |
+| 2 | `~/.config/bobbin/config.toml` | Machine-wide defaults (global config) |
+| 3 | `.bobbin/config.toml` | Project-specific settings (per-repo config) |
+| 4 | `.bobbin/calibration.json` | Auto-tuned search parameters |
+| 5 (highest) | CLI flags | Per-invocation overrides |
+
+### How merging works
+
+When both global and per-repo configs exist, they are **deep-merged**:
+
+- **Tables** merge recursively — a per-repo `[search]` section only needs to set the fields it wants to override. Unset fields inherit from global config.
+- **Arrays** replace wholesale — a per-repo `index.include` replaces the entire global include list.
+- **Scalars** replace — a per-repo `search.semantic_weight = 0.5` overrides the global value.
+
+### Example
+
+Global config (`~/.config/bobbin/config.toml`):
+```toml
+[server]
+url = "http://search.svc"
+
+[hooks]
+gate_threshold = 0.50
+budget = 300
+skip_prefixes = ["git ", "bd ", "gt "]
+```
+
+Per-repo config (`.bobbin/config.toml`):
+```toml
+[search]
+semantic_weight = 0.8
+
+[hooks]
+budget = 500  # Override just this field; gate_threshold inherits 0.50
+```
+
+Result: server.url = "http://search.svc", hooks.gate_threshold = 0.50, hooks.budget = 500, search.semantic_weight = 0.8.
+
+### Calibration overlay
+
+`bobbin calibrate --apply` writes optimal search parameters to `.bobbin/calibration.json`. These override config.toml values for: `semantic_weight`, `doc_demotion`, `rrf_k`, and optionally `recency_half_life_days`, `recency_weight`, `coupling_depth`, `budget_lines`, `search_limit`, `bridge_mode`, `bridge_boost_factor`.
+
+The `search`, `context`, and `hook` commands all load calibration.json and prefer its values over config.toml. CLI flags still override everything.
+
+### Tags and reactions
+
+Two additional config files have their own global/local merge behavior:
+
+- **`tags.toml`** — tag pattern rules. Loaded from `.bobbin/tags.toml` or `~/.config/bobbin/tags.toml` (server loads at startup; requires restart to pick up changes).
+- **`reactions.toml`** — hook reaction rules. Merged: global `~/.config/bobbin/reactions.toml` + local `.bobbin/reactions.toml`. Local rules override global rules by name.
 
 ## Full Default Configuration
 
