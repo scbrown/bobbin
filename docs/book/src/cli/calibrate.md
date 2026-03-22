@@ -50,13 +50,35 @@ bobbin calibrate --repo myproject         # Calibrate a specific repo in multi-r
 
 ## How It Works
 
-1. Samples N recent commits from git history
-2. For each commit, extracts changed files and builds a search query from the diff
-3. Grid-sweeps parameter combinations (semantic_weight, search_limit, budget)
-4. Scores each combination by how well search results match the actual changed files
-5. Reports the best configuration with recall metrics
+1. **Sample** N recent commits from git history (stratified across the time range)
+2. **Build queries** from commit messages — each message becomes a search probe
+3. **Grid-sweep** parameter combinations across all configured dimensions
+4. **Score** each combination by precision, recall, and F1 against ground truth (modified files)
+5. **Rank** by F1 and report the best configuration
 
 With `--apply`, writes the best params to `.bobbin/calibration.json`, which takes precedence over config.toml values at search time.
+
+### Sample selection
+
+Commits are filtered before sampling:
+
+- **Included**: Commits with 2–30 changed files within the `--since` window
+- **Excluded**: Merge commits, reverts, and noise commits (prefixes: `chore:`, `ci:`, `docs:`, `style:`, `build:`, `release:`, `bump `, `auto-merge`, `update dependency`)
+- **Sampling**: Evenly-spaced picks across filtered candidates (stratified, not random)
+
+If >50% of sampled commits have very short messages (<20 chars) or generic text ("fix", "wip", "temp"), calibration warns that accuracy may be reduced.
+
+### Scoring
+
+Each probe scores the context bundle returned for a commit message query against the files actually modified in that commit:
+
+```
+precision = |injected ∩ truth| / |injected|
+recall    = |injected ∩ truth| / |truth|
+f1        = 2 × precision × recall / (precision + recall)
+```
+
+Configs are ranked by average F1 across all sampled commits.
 
 ## Sweep Modes
 

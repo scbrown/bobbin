@@ -153,6 +153,106 @@ dedup_enabled = true    # Default
 
 Set to `false` if you want every prompt to get fresh injection regardless.
 
+## Progressive reducing
+
+Over a long conversation, bobbin avoids re-injecting code you've already seen. The **reducing** system keeps a per-session ledger of every chunk injected and filters duplicates on subsequent turns.
+
+```toml
+[hooks]
+reducing_enabled = true    # Default
+```
+
+How it works:
+
+1. Each injection records which chunks were sent, stored in `.bobbin/session/<session_id>/ledger.jsonl`
+2. On the next prompt, bobbin filters out chunks already in the ledger
+3. Only new or changed chunks are injected
+4. The ledger resets on context compaction (SessionStart hook)
+
+This means early prompts get full context, and follow-up prompts get only *new* relevant code — keeping the context window efficient.
+
+When reducing fires, you'll see output like:
+```
+bobbin: injecting 3 new chunks (7 previously injected, turn 4)
+```
+
+Set `reducing_enabled = false` to inject all matching chunks every time (useful for debugging).
+
+## Keyword-triggered repo scoping
+
+In multi-repo setups, certain queries clearly target specific repos. Configure keyword rules to auto-scope search:
+
+```toml
+[[hooks.keyword_repos]]
+keywords = ["ansible", "playbook", "deploy"]
+repos = ["goldblum", "homelab-mcp"]
+
+[[hooks.keyword_repos]]
+keywords = ["bobbin", "search", "embedding"]
+repos = ["bobbin"]
+
+[[hooks.keyword_repos]]
+keywords = ["beads", "bd ", "issue"]
+repos = ["beads"]
+```
+
+When any keyword matches (case-insensitive substring), search is scoped to only those repos. If no keywords match, all repos are searched.
+
+Multiple rules can match simultaneously — their repo lists are merged and deduplicated.
+
+## Repo affinity boost
+
+Files from the agent's current working directory repo get a score multiplier:
+
+```toml
+[hooks]
+repo_affinity_boost = 2.0    # Default: 2x score for local repo
+```
+
+This is a soft bias — cross-repo results still appear, but local files rank higher. Set to `1.0` to disable.
+
+## Feedback prompts
+
+Bobbin periodically prompts agents to rate injected context quality:
+
+```toml
+[hooks]
+feedback_prompt_interval = 5    # Every 5 injections (0 = disabled)
+```
+
+Every N injections, bobbin shows unrated injection IDs and prompts:
+```
+bobbin: 3 unrated injections this session. Rate with:
+  bobbin feedback submit --injection <id> --rating <useful|noise|harmful>
+```
+
+Ratings feed into the [Feedback System](feedback.md) — over time, frequently useful code gets boosted and noisy code gets demoted.
+
+## Format modes
+
+Control the output format of injected context:
+
+```toml
+[hooks]
+format_mode = "standard"    # Default
+```
+
+| Mode | Description |
+|------|-------------|
+| `standard` | File paths, line ranges, and code content |
+| `minimal` | Compact output, fewer decorators |
+| `verbose` | Extended metadata (scores, tags, chunk types) |
+| `xml` | XML-tagged output for structured parsing |
+
+The `show_docs` setting controls whether documentation files appear in injection output:
+
+```toml
+[hooks]
+show_docs = true    # Default. Set false to inject code-only
+```
+
+When `false`, doc files are still used for [bridge discovery](searching.md#bridge-mode) but not shown to the agent.
+
 ## Full configuration reference
 
 All settings in `.bobbin/config.toml` under `[hooks]`:
@@ -160,11 +260,18 @@ All settings in `.bobbin/config.toml` under `[hooks]`:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `threshold` | `0.5` | Minimum relevance score to include a result |
-| `budget` | `150` | Maximum lines of injected context |
-| `content_mode` | `"preview"` | Display mode: `full`, `preview`, or `none` |
-| `min_prompt_length` | `10` | Skip injection for prompts shorter than this |
-| `gate_threshold` | `0.75` | Minimum top-result similarity to inject at all |
-| `dedup_enabled` | `true` | Skip injection when results match previous session |
+| `budget` | `300` | Maximum lines of injected context |
+| `content_mode` | `"full"` | Display mode: `full`, `preview`, or `none` |
+| `min_prompt_length` | `20` | Skip injection for prompts shorter than this (chars) |
+| `gate_threshold` | `0.45` | Minimum top-result similarity to inject at all |
+| `dedup_enabled` | `true` | Skip injection when results match previous turn |
+| `reducing_enabled` | `true` | Progressive reducing (delta injection across session) |
+| `show_docs` | `true` | Include documentation files in output |
+| `format_mode` | `"standard"` | Output format: `standard`, `minimal`, `verbose`, `xml` |
+| `skip_prefixes` | `[]` | Prompt prefixes that skip injection entirely |
+| `keyword_repos` | `[]` | Keyword-triggered repo scoping rules |
+| `repo_affinity_boost` | `2.0` | Score multiplier for current repo files |
+| `feedback_prompt_interval` | `5` | Prompt for feedback every N injections (0 = disabled) |
 
 ## Git hooks
 
