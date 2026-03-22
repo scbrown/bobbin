@@ -96,15 +96,62 @@ The `role` field supports glob patterns. When a request includes a role
 (via `--role` flag or `BOBBIN_ROLE` env var), scoped effects override
 global effects for matching roles.
 
-## Built-in Tags
+## Tag Assignment Sources
 
-Bobbin automatically assigns some tags during indexing:
+Tags are assigned from four sources during indexing. All sources merge — multiple matching rules union their tags into a comma-separated sorted string per chunk.
+
+### 1. Convention Tags (auto-assigned)
 
 | Tag | Applied to |
 |-----|-----------|
 | `auto:init` | Go `init()` functions |
 | `auto:test` | Test functions (Go, Rust, Python, JS) |
-| `auto:docs` | Documentation files |
+| `auto:docs` | Documentation files (markdown, rst, etc.) |
+| `auto:config` | Config files (YAML, TOML, JSON, .env, etc.) |
+| `auto:generated` | Generated code (.min.js, .gen.go, .generated.ts, etc.) |
+
+### 2. Pattern Rules (tags.toml)
+
+Glob patterns matched against repo-relative paths. See [Rules](#rules) above.
+
+### 3. Frontmatter Tags
+
+Markdown files with YAML frontmatter between `---` fences:
+
+```markdown
+---
+tags: [canonical, architecture]
+---
+```
+
+Supported field names: `tags`, `bobbin-tags`, `labels`. Supports inline arrays, single values, and block lists. Tags without a `:` prefix are auto-prefixed with `user:` (e.g., `canonical` → `user:canonical`).
+
+### 4. Code Comment Directives
+
+Inline tag assignment in source code:
+
+```rust
+// bobbin:tag security critical
+fn handle_auth() { ... }
+
+# bobbin:tag deprecated
+def old_api():
+```
+
+Supports `//`, `#`, and `/* */` comment styles. Tags are applied to the chunk containing the comment. Same `user:` auto-prefix as frontmatter.
+
+## Role Specificity
+
+When multiple scoped effects match a role, the most specific pattern wins. Specificity is counted by non-wildcard path segments:
+
+| Pattern | Specificity | Example match |
+|---------|------------|---------------|
+| `aegis/crew/stryder` | 3 (most specific) | Exact agent |
+| `*/crew/stryder` | 2 | Any rig's stryder |
+| `*/crew/*` | 1 | Any crew member |
+| `*` | 0 (least specific) | Everyone |
+
+If a scoped effect matches, it fully replaces the global effect for that tag — it does not stack.
 
 ## Tag Naming Conventions
 

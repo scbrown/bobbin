@@ -192,6 +192,104 @@ Use `--force` to regenerate even if the injection count hasn't reached the autom
 bobbin hook hot-topics --force
 ```
 
+## Reactions (PostToolUse hooks)
+
+Reactions are rule-based context injections that fire after specific tool calls. Unlike the prompt-level hook, reactions target tool usage patterns — when an agent edits a config file, runs a deploy command, or touches a specific codebase area, bobbin can inject relevant guidance and related files.
+
+Reactions live in `.bobbin/reactions.toml`:
+
+```toml
+[[reactions]]
+name = "service-restart-runbook"
+tool = "Bash"
+[reactions.match]
+command = "systemctl (restart|stop|start)"
+guidance = "Check the runbook for {args.command} before restarting services in production."
+search_query = "service restart runbook {file_stem}"
+max_context_lines = 30
+
+[[reactions]]
+name = "ansible-role-edit"
+tool = "Edit"
+[reactions.match]
+file_path = ".*/ansible/roles/.*"
+guidance = "This is an Ansible role. Test with: ansible-playbook --check -l test"
+use_coupling = true
+coupling_threshold = 0.15
+
+[[reactions]]
+name = "credential-guard"
+tool = "Edit"
+[reactions.match]
+file_path = ".*\\.(env|credentials|secret).*"
+guidance = "WARNING: This file may contain credentials. Never commit secrets to git."
+```
+
+### Reaction fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Rule name (used for dedup and metrics) |
+| `tool` | string | Tool name glob (e.g., `"Edit"`, `"Bash"`, `"mcp__homelab__*"`) |
+| `match` | table | Parameter match conditions — keys are param names, values are regex |
+| `guidance` | string | Text shown to the agent. Supports `{args.X}` and `{file_stem}` templating |
+| `search_query` | string | Search query template for injecting related files |
+| `search_group` | string | Index group to search |
+| `search_tags` | list | Tag filters for scoped search |
+| `max_context_lines` | int | Max lines to inject (default: 50) |
+| `use_coupling` | bool | Use git coupling instead of search |
+| `coupling_threshold` | float | Min coupling score (default: 0.1) |
+| `roles` | list | Role patterns this reaction applies to (glob, e.g., `"aegis/crew/*"`) |
+
+### Role-scoped reactions
+
+Restrict reactions to specific agent roles:
+
+```toml
+[[reactions]]
+name = "deploy-check"
+tool = "Bash"
+[reactions.match]
+command = "deploy|kubectl"
+roles = ["*/crew/*"]      # Only crew members, not polecats
+guidance = "Deploy detected. Verify staging tests passed first."
+```
+
+## Noise filtering
+
+In multi-agent environments, many prompts are operational (patrol nudges, reactor alerts, handoff messages) rather than development queries. Bobbin automatically detects these and skips injection to avoid wasting tokens on irrelevant context.
+
+Automated message detection recognizes patterns like:
+- Patrol nudges (`"Auto-patrol: ..."`, `"PATROL LOOP ..."`)
+- Reactor alerts (`"[reactor] ..."`)
+- Handoff/startup protocols (`"HANDOFF COMPLETE"`, `"STARTUP PROTOCOL"`)
+- Agent role announcements (`"aegis Crew ian, checking in."`)
+- System reminder blocks (`"<system-reminder>..."`)
+
+This is hardcoded in the hook logic and not configurable — it targets patterns that are definitively operational.
+
+For user-configurable noise filtering, use `skip_prefixes`:
+
+```toml
+[hooks]
+skip_prefixes = [
+    "git ", "bd ", "gt ",
+    "cargo build", "go test",
+    "y", "n", "ok", "done",
+]
+```
+
+See [Hooks Configuration](../config/hooks.md) for full skip_prefixes documentation.
+
+## Directory navigation injection
+
+When an agent encounters a file-not-found error or tries to read a directory, bobbin can inject the directory tree to help navigation:
+
+- **EISDIR (directory read)**: Shows the directory tree (up to 20 lines)
+- **File not found**: Shows the parent directory tree to help locate the right file
+
+This fires via the `try_directory_navigation()` function in the hook and requires no configuration.
+
 ## Removing hooks
 
 Remove Claude Code hooks:
