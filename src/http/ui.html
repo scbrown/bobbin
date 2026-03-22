@@ -174,19 +174,21 @@ td.mono{font-family:var(--mono)}
 <nav>
   <div class="logo">bobbin</div>
   <div class="tabs">
-    <div class="tab active" data-page="status">Status</div>
-    <div class="tab" data-page="search">Search</div>
+    <div class="tab active" data-page="search">Search</div>
+    <div class="tab" data-page="context">Context</div>
     <div class="tab" data-page="repos">Repos</div>
+    <div class="tab" data-page="tags">Tags</div>
     <div class="tab" data-page="beads">Beads</div>
     <div class="tab" data-page="hotspots">Hotspots</div>
     <div class="tab" data-page="feedback">Feedback</div>
+    <div class="tab" data-page="status">Status</div>
   </div>
   <div class="pulse" id="pulse" title="Connected"></div>
 </nav>
 
 <main>
   <!-- STATUS PAGE -->
-  <div class="page active" id="page-status">
+  <div class="page" id="page-status">
     <h2>Index Status</h2>
     <div class="grid grid-4" id="status-stats"></div>
     <div style="margin-top:1.5rem">
@@ -201,7 +203,7 @@ td.mono{font-family:var(--mono)}
   </div>
 
   <!-- SEARCH PAGE -->
-  <div class="page" id="page-search">
+  <div class="page active" id="page-search">
     <h2>Search</h2>
     <div id="filter-chips" class="filter-chips"></div>
     <div class="search-box">
@@ -237,6 +239,39 @@ td.mono{font-family:var(--mono)}
       </div>
     </div>
     <div id="search-results"></div>
+  </div>
+
+  <!-- CONTEXT PAGE -->
+  <div class="page" id="page-context">
+    <h2>Context Assembly</h2>
+    <p style="color:var(--dim);margin-bottom:1rem;font-size:0.85rem">Assemble task-relevant context bundles from search + git coupling. This is what agents receive via hooks.</p>
+    <div class="search-box">
+      <input type="text" id="context-q" placeholder="Describe your task... e.g. fix the login timeout bug">
+      <input type="number" id="context-budget" value="500" min="50" max="5000" style="width:80px" title="Budget (lines)">
+      <input type="number" id="context-limit" value="20" min="1" max="100" style="width:60px" title="Search limit">
+      <select id="context-repo">
+        <option value="">All repos</option>
+      </select>
+      <button onclick="doContext()">Assemble</button>
+    </div>
+    <div id="context-results"></div>
+  </div>
+
+  <!-- TAGS PAGE -->
+  <div class="page" id="page-tags">
+    <h2>Tag Browser</h2>
+    <p style="color:var(--dim);margin-bottom:1rem;font-size:0.85rem">Browse semantic tags assigned to indexed chunks. Tags drive score effects in context assembly.</p>
+    <div id="tags-summary" style="margin-bottom:1rem"></div>
+    <div class="grid grid-3" id="tags-grid"></div>
+    <div id="tag-files-section" style="display:none;margin-top:1.5rem">
+      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem">
+        <h3 id="tag-files-title" style="margin:0"></h3>
+        <span style="color:var(--dim);cursor:pointer;font-size:0.85rem" onclick="closeTagFiles()">[close]</span>
+      </div>
+      <div class="card" style="max-height:50vh;overflow-y:auto">
+        <div id="tag-file-list"></div>
+      </div>
+    </div>
   </div>
 
   <!-- REPOS PAGE -->
@@ -321,6 +356,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     document.getElementById('page-' + tab.dataset.page).classList.add('active');
     if (tab.dataset.page === 'repos' && !window._reposLoaded) loadRepos();
+    if (tab.dataset.page === 'tags' && !window._tagsLoaded) loadTags();
     if (tab.dataset.page === 'hotspots' && !window._hotspotsLoaded) loadHotspots();
     if (tab.dataset.page === 'feedback' && !window._feedbackLoaded) loadFeedback();
   });
@@ -920,8 +956,161 @@ function closeDetail() {
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
 
+// -- Context assembly --
+async function doContext() {
+  const q = document.getElementById('context-q').value.trim();
+  if (!q) return;
+  const budget = document.getElementById('context-budget').value;
+  const limit = document.getElementById('context-limit').value;
+  const repo = document.getElementById('context-repo').value;
+  const el = document.getElementById('context-results');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Assembling context...</div>';
+  try {
+    let url = `${API}/context?q=${encodeURIComponent(q)}&budget=${budget}&limit=${limit}`;
+    if (repo) url += `&repo=${encodeURIComponent(repo)}`;
+    const data = await fetch(url).then(r => r.json());
+    if (data.error) { el.innerHTML = `<div class="empty" style="color:var(--red)">${esc(data.error)}</div>`; return; }
+    const files = data.files || [];
+    const summary = data.summary || {};
+    const budgetInfo = data.budget || {};
+    let html = `<div style="display:flex;gap:1.5rem;margin-bottom:1rem;flex-wrap:wrap">
+      <div class="card" style="flex:1;min-width:150px"><div class="card-header">Files</div><div class="stat-value accent">${files.length}</div></div>
+      <div class="card" style="flex:1;min-width:150px"><div class="card-header">Budget Used</div><div class="stat-value green">${budgetInfo.used_lines || 0}<span style="font-size:0.9rem;color:var(--dim)"> / ${budgetInfo.max_lines || budget}</span></div></div>
+      <div class="card" style="flex:1;min-width:150px"><div class="card-header">Repos</div><div class="stat-value">${summary.repo_count || new Set(files.map(f => f.repo)).size}</div></div>
+    </div>`;
+    if (files.length === 0) {
+      html += '<div class="empty">No files matched the query above the gate threshold</div>';
+    } else {
+      html += files.map((f, i) => {
+        const rel = relPath(f.path);
+        const chunks = f.chunks || [];
+        const totalLines = chunks.reduce((s, c) => s + (c.end_line - c.start_line + 1), 0);
+        const firstChunk = chunks[0];
+        const link = firstChunk ? repoLink(f.path, firstChunk.start_line, f.repo) : repoLink(f.path, null, f.repo);
+        return `
+          <div class="result">
+            <div class="result-header">
+              <span style="font-family:var(--mono);font-size:0.75rem;color:var(--dim);min-width:20px">${i + 1}</span>
+              ${link ? `<a class="result-path" href="${link}" target="_blank">${esc(rel)}</a>` : `<span class="result-path">${esc(rel)}</span>`}
+              <span class="result-type">${esc(f.language)}</span>
+              <span class="result-type">${esc(f.relevance)}</span>
+              <span class="result-score">${totalLines} lines · ${chunks.length} chunks</span>
+            </div>
+            ${f.coupled_to && f.coupled_to.length > 0 ? `<div style="font-size:0.75rem;color:var(--dim);margin-top:0.25rem">coupled to: ${f.coupled_to.map(c => esc(c)).join(', ')}</div>` : ''}
+            ${chunks.map(c => `
+              <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.25rem;padding-left:1.5rem;font-size:0.8rem">
+                <span class="result-lines">L${c.start_line}-${c.end_line}</span>
+                ${c.name ? `<span class="result-name" style="font-size:0.8rem">${esc(c.name)}</span>` : ''}
+                <span class="result-type">${esc(c.chunk_type)}</span>
+                ${c.match_type ? `<span style="color:var(--dim);font-size:0.75rem">${esc(c.match_type)}</span>` : ''}
+              </div>
+            `).join('')}
+          </div>`;
+      }).join('');
+    }
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+document.getElementById('context-q').addEventListener('keydown', e => { if (e.key === 'Enter') doContext(); });
+
+// Populate context repo dropdown when repos are loaded
+async function populateContextRepos() {
+  try {
+    const data = await fetch(API + '/repos').then(r => r.json());
+    const select = document.getElementById('context-repo');
+    (data.repos || []).forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.name;
+      opt.textContent = r.name;
+      select.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+// -- Tags browser --
+async function loadTags() {
+  window._tagsLoaded = true;
+  const grid = document.getElementById('tags-grid');
+  const summary = document.getElementById('tags-summary');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div> Loading tags...</div>';
+  try {
+    const data = await fetch(API + '/tags').then(r => r.json());
+    const tags = data.tags || [];
+    const tagged = data.tagged_chunks || 0;
+    const untagged = data.untagged_chunks || 0;
+    const total = tagged + untagged;
+    const pct = total > 0 ? Math.round(tagged / total * 100) : 0;
+    summary.innerHTML = `<div style="display:flex;gap:1.5rem;flex-wrap:wrap">
+      <div class="card" style="flex:1;min-width:150px"><div class="card-header">Unique Tags</div><div class="stat-value accent">${tags.length}</div></div>
+      <div class="card" style="flex:1;min-width:150px"><div class="card-header">Tagged Chunks</div><div class="stat-value green">${tagged.toLocaleString()}</div></div>
+      <div class="card" style="flex:1;min-width:150px"><div class="card-header">Coverage</div><div class="stat-value amber">${pct}%</div><div style="color:var(--dim);font-size:0.8rem">${untagged.toLocaleString()} untagged</div></div>
+    </div>`;
+    if (tags.length === 0) {
+      grid.innerHTML = '<div class="empty">No tags found</div>';
+      return;
+    }
+    // Group tags by prefix (type:, domain:, scope:, etc.)
+    const groups = {};
+    tags.forEach(t => {
+      const colonIdx = t.tag.indexOf(':');
+      const prefix = colonIdx > 0 ? t.tag.slice(0, colonIdx) : 'other';
+      if (!groups[prefix]) groups[prefix] = [];
+      groups[prefix].push(t);
+    });
+    grid.innerHTML = Object.entries(groups).sort((a, b) => {
+      const order = ['type', 'domain', 'scope', 'role', 'other'];
+      return (order.indexOf(a[0]) === -1 ? 99 : order.indexOf(a[0])) - (order.indexOf(b[0]) === -1 ? 99 : order.indexOf(b[0]));
+    }).map(([prefix, items]) => `
+      <div class="card">
+        <div class="card-header">${esc(prefix)} (${items.length})</div>
+        ${items.sort((a,b) => b.count - a.count).map(t => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:0.2rem 0;cursor:pointer" onclick="loadTagFiles('${esc(t.tag)}')">
+            <span style="font-family:var(--mono);font-size:0.8rem;color:var(--accent)">${esc(t.tag)}</span>
+            <span style="font-family:var(--mono);font-size:0.75rem;color:var(--dim)">${t.count.toLocaleString()}</span>
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+  } catch(e) {
+    grid.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+async function loadTagFiles(tagName) {
+  const section = document.getElementById('tag-files-section');
+  const el = document.getElementById('tag-file-list');
+  const title = document.getElementById('tag-files-title');
+  section.style.display = 'block';
+  title.textContent = tagName;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Loading files...</div>';
+  try {
+    const data = await fetch(`${API}/tags?tag=${encodeURIComponent(tagName)}`).then(r => r.json());
+    const files = data.files || [];
+    if (files.length === 0) {
+      el.innerHTML = '<div class="empty">No files with this tag</div>';
+    } else {
+      el.innerHTML = `<div style="color:var(--dim);font-size:0.8rem;margin-bottom:0.5rem">${files.length} files</div>` +
+        files.map(f => {
+          const rel = relPath(f);
+          const link = repoLink(f);
+          return `<div class="file-item">${link ? `<a class="file-path" href="${link}" target="_blank">${esc(rel)}</a>` : `<div class="file-path">${esc(rel)}</div>`}</div>`;
+        }).join('');
+    }
+    section.scrollIntoView({behavior:'smooth'});
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+function closeTagFiles() {
+  document.getElementById('tag-files-section').style.display = 'none';
+}
+
 // Init
 loadStatus();
+populateContextRepos();
 </script>
 </body>
 </html>
