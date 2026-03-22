@@ -78,6 +78,20 @@ description = "CLI injection into agent prompts"
 files = ["src/cli/hook.rs"]
 includes = ["context", "tags"]  # pulls in these bundles at L2 deep dive
 keywords = ["hook injection", "PostToolUse", "UserPromptSubmit"]
+
+# Cross-repo bundle: spans bobbin + aegis + gastown
+[[bundles]]
+name = "reactor-alerts"
+description = "Alert pipeline: Prometheus → reactor → IRC bridge"
+repos = ["aegis", "bobbin"]
+files = [
+    "aegis:deploy/reactor/reactor.py",
+    "aegis:deploy/aegis-irc/main.go",
+    "aegis:deploy/alertmanager/config.yml",
+    "bobbin:src/cli/hook.rs",              # injection path that delivers context
+]
+keywords = ["reactor", "alerts", "prometheus", "IRC bridge"]
+tags = ["domain:monitoring", "domain:comms"]
 ```
 
 #### Bundle fields
@@ -88,10 +102,10 @@ keywords = ["hook injection", "PostToolUse", "UserPromptSubmit"]
 | `description` | string | yes | One-line summary (shown at L0). |
 | `keywords` | string[] | no | Search terms that trigger this bundle. |
 | `tags` | string[] | no | Tag-based membership (chunks with these tags belong). |
-| `files` | string[] | no | Explicit file paths (repo-relative). |
-| `docs` | string[] | no | Documentation files associated with this bundle. |
+| `files` | string[] | no | File paths. Bare paths are repo-relative; `repo:path` for cross-repo. |
+| `docs` | string[] | no | Documentation files. Same `repo:path` syntax for cross-repo. |
 | `includes` | string[] | no | Other bundles pulled in at L2 deep dive. |
-| `repo` | string | no | Scope to a specific repo (multi-repo deployments). |
+| `repos` | string[] | no | Repos this bundle spans. Omit = all repos (tag/keyword match). |
 
 Membership is the **union** of tag-matched chunks + explicit files + docs. This allows
 bundles to be as precise (explicit files only) or as broad (tag-based) as needed.
@@ -100,6 +114,38 @@ bundles to be as precise (explicit files only) or as broad (tag-based) as needed
 At L0, `bobbin bundle list` builds the tree by splitting on `/`. No explicit
 `children` field needed — the naming convention IS the relationship. Renaming or
 adding a sub-bundle automatically updates the tree.
+
+**Cross-repo bundles** are first-class. Many real subsystems span repositories —
+the alert pipeline touches aegis (reactor, IRC bridge), bobbin (context injection),
+and goldblum (ansible deployment). A bundle captures this cross-cutting concern
+as a single addressable unit.
+
+File references use `repo:path` syntax:
+
+```toml
+files = [
+    "src/tags.rs",                       # bare path → current repo (or any repo if no repo scope)
+    "aegis:deploy/reactor/reactor.py",   # explicit repo prefix
+    "gastown:internal/nudge/nudge.go",   # another repo
+]
+```
+
+The `repos` field declares which repos the bundle spans. This serves two purposes:
+1. **Search scoping**: When querying with `bundle=X`, search is limited to these repos
+2. **Validation**: `bobbin bundle check` can verify all referenced files exist
+
+When `repos` is omitted, the bundle matches across all indexed repos via tags/keywords.
+When present, it constrains both file resolution and search queries.
+
+At query time, cross-repo bundles work identically to single-repo bundles — the
+`extra_filter` SQL clause just includes multiple repo conditions:
+
+```sql
+WHERE (repo = 'aegis' AND file_path IN (...)) OR (repo = 'bobbin' AND file_path IN (...))
+```
+
+This maps directly onto bobbin's existing multi-repo index — LanceDB already stores
+repo as a column on every chunk. No new infrastructure needed.
 
 ### 2. Progressive Disclosure Levels
 
@@ -846,27 +892,20 @@ formula and lets teams opt in.
 
 ## Open Questions
 
-1. **Bundle namespace**: Should bundles be repo-scoped (`aegis:context`) or global?
-   Current design is global with optional `repo` field. Multi-repo bundles (spanning
-   repos) could be powerful but complex.
-
-2. **Bundle versioning**: Should bundles track version history? Probably not initially —
+1. **Bundle versioning**: Should bundles track version history? Probably not initially —
    git history of `tags.toml` provides this implicitly for config-defined bundles.
 
-3. **Maximum bundle size**: Should we cap files per bundle? Large bundles defeat the
+2. **Maximum bundle size**: Should we cap files per bundle? Large bundles defeat the
    purpose (they become "search everything"). Suggested limit: 20 files per bundle,
    use hierarchy for larger subsystems.
 
-4. **LLM-generated descriptions**: At L1, should we use the embedding model to generate
+3. **LLM-generated descriptions**: At L1, should we use the embedding model to generate
    a natural-language summary of the bundle's purpose from its member files? Could be
    expensive but very useful for onboarding.
 
-5. **Cross-project bundles**: Can a bundle in the aegis rig reference files in the
-   bobbin repo? The multi-repo index supports this, but the UX needs thought.
-
-6. **Formula ownership**: Should `mol-plan-with-bundles` live in gastown (formula home)
+4. **Formula ownership**: Should `mol-plan-with-bundles` live in gastown (formula home)
    or bobbin (bundle owner)? Gastown makes sense for the formula runtime, but bobbin
    needs to provide the `bundle create` primitive.
 
-7. **Slug collision**: What happens when two agents create bundles with the same
+5. **Slug collision**: What happens when two agents create bundles with the same
    auto-generated slug? Options: fail loudly, auto-suffix, merge.
