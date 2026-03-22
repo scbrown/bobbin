@@ -24,6 +24,33 @@ fn detect_repo_name(dir: &Path) -> Option<String> {
     }
 }
 
+/// Detect the server-side repo name from a working directory.
+///
+/// In Gas Town, workspaces follow the pattern `/<town>/<rig>/crew/<name>/`
+/// or `/<town>/<rig>/polecats/<name>/`. The rig name (e.g., "bobbin", "aegis")
+/// is the repo name on the server, while `detect_repo_name` would return "strider"
+/// or "ian" (the git root directory). This function walks up looking for known
+/// Gas Town directory patterns.
+///
+/// Falls back to `detect_repo_name` if no Gas Town structure is found.
+fn detect_server_repo_name(dir: &Path) -> Option<String> {
+    // Walk up looking for a parent named "crew" or "polecats" — the grandparent is the rig/repo
+    let mut current = dir.to_path_buf();
+    for _ in 0..10 {
+        if let Some(name) = current.file_name().and_then(|n| n.to_str()) {
+            if name == "crew" || name == "polecats" {
+                // Parent of crew/polecats is the rig name (= server repo name)
+                return current.parent()?.file_name()?.to_str().map(|s| s.to_string());
+            }
+        }
+        if !current.pop() {
+            break;
+        }
+    }
+    // Fallback: use git root dir name
+    detect_repo_name(dir)
+}
+
 /// Strip XML tag blocks from prompt text that pollute semantic search.
 /// System boilerplate, tool schemas, previous injections, and tool call output
 /// all add noise to embedding queries without providing useful search signal.
@@ -4492,11 +4519,34 @@ async fn run_post_tool_use_failure_remote(
     let mut direct_chunks = 0usize;
     let mut lines_used = 0usize;
 
+    // Resolve relative paths to server paths.
+    // Server stores files as /var/lib/bobbin/repos/<repo>/<path>.
+    // Use config repo_path_prefix if set, otherwise default to /var/lib/bobbin/repos/.
+    let repo_prefix = config.server.repo_path_prefix.as_deref()
+        .unwrap_or("/var/lib/bobbin/repos");
+
+    // Detect the actual repo name for server path resolution.
+    // In Gas Town, crew workspaces are at /<town>/<rig>/crew/<name>/ — the rig
+    // name is the repo name on the server, not the git root directory.
+    let server_repo = detect_server_repo_name(&cwd).or(repo_affinity.clone());
+
+    let resolve_path = |path: &str| -> String {
+        if path.starts_with('/') {
+            path.to_string()
+        } else if let Some(ref repo) = server_repo {
+            format!("{}/{}/{}", repo_prefix, repo, path.trim_start_matches("./"))
+        } else {
+            path.to_string()
+        }
+    };
+
     if input.tool_name == "Bash" && !parsed.refs.is_empty() {
         for error_ref in &parsed.refs {
             if lines_used >= budget || error_ref.path.is_empty() {
                 continue;
             }
+
+            let server_path = resolve_path(&error_ref.path);
 
             // Use read_chunk to fetch code around the error line
             let (start, end) = if let Some(line) = error_ref.line {
@@ -4507,7 +4557,7 @@ async fn run_post_tool_use_failure_remote(
                 (1, 50)
             };
 
-            if let Ok(chunk) = client.read_chunk(&error_ref.path, start, end, Some(5)).await {
+            if let Ok(chunk) = client.read_chunk(&server_path, start, end, Some(5)).await {
                 let chunk_lines = chunk.content.lines().count();
                 if lines_used + chunk_lines + 3 <= budget {
                     let line_info = error_ref.line
@@ -4535,7 +4585,7 @@ async fn run_post_tool_use_failure_remote(
 
             // Fetch coupled/related files
             if lines_used < budget {
-                if let Ok(related) = client.related(&error_ref.path, 3, Some(0.3)).await {
+                if let Ok(related) = client.related(&server_path, 3, Some(0.3)).await {
                     for rel in &related.related {
                         if lines_used >= budget {
                             break;
