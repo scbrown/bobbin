@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::OutputConfig;
+use crate::config::Config;
 use crate::tags::{BundleConfig, BundleRef, RefTarget, TagsConfig};
 
 #[derive(Args)]
@@ -53,10 +54,30 @@ pub async fn run(args: BundleArgs, output: OutputConfig) -> Result<()> {
     }
 }
 
+/// Load tags config with bundle definitions, checking local .bobbin/ first, then global config.
+fn load_tags_with_bundles(repo_root: &std::path::Path) -> TagsConfig {
+    let local_path = TagsConfig::tags_path(repo_root);
+    let mut config = TagsConfig::load_or_default(&local_path);
+
+    // If no bundles found locally, check global config
+    if config.bundles.is_empty() {
+        if let Some(global_dir) = Config::global_config_dir() {
+            let global_tags_path = global_dir.join("tags.toml");
+            if global_tags_path.exists() {
+                let global_config = TagsConfig::load_or_default(&global_tags_path);
+                if !global_config.bundles.is_empty() {
+                    config.bundles = global_config.bundles;
+                }
+            }
+        }
+    }
+
+    config
+}
+
 async fn run_list(path: PathBuf, args: ListArgs, output: OutputConfig) -> Result<()> {
     let repo_root = path.canonicalize().unwrap_or(path);
-    let tags_path = TagsConfig::tags_path(&repo_root);
-    let config = TagsConfig::load_or_default(&tags_path);
+    let config = load_tags_with_bundles(&repo_root);
 
     let bundles = &config.bundles;
     if bundles.is_empty() {
@@ -170,8 +191,7 @@ fn print_bundle_tree(bundles: &[&BundleConfig]) {
 
 async fn run_show(path: PathBuf, args: ShowArgs, output: OutputConfig) -> Result<()> {
     let repo_root = path.canonicalize().unwrap_or(path);
-    let tags_path = TagsConfig::tags_path(&repo_root);
-    let config = TagsConfig::load_or_default(&tags_path);
+    let config = load_tags_with_bundles(&repo_root);
 
     // Resolve name: strip "b:" prefix if present, convert slug back to name
     let name = resolve_bundle_name(&args.name, &config.bundles);
