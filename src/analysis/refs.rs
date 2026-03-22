@@ -1,5 +1,7 @@
 use anyhow::Result;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 use crate::storage::VectorStore;
 use crate::types::ChunkType;
@@ -30,6 +32,13 @@ pub struct SymbolUsage {
 pub struct SymbolRefs {
     pub definition: Option<SymbolDefinition>,
     pub usages: Vec<SymbolUsage>,
+}
+
+/// A function/symbol called by another function
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Callee {
+    pub name: String,
+    pub definition: Option<SymbolDefinition>,
 }
 
 /// All symbols defined in a file
@@ -223,6 +232,148 @@ impl<'a> RefAnalyzer<'a> {
             symbols,
         })
     }
+
+    /// Find callees of a function — symbols that appear to be called within its body.
+    ///
+    /// Extracts function call patterns from the chunk content using regex,
+    /// then resolves each candidate against the index. Returns only candidates
+    /// that have a matching definition in the index (i.e., known symbols).
+    ///
+    /// This is heuristic-based (~80% accuracy, same philosophy as find_refs):
+    /// - Extracts `identifier(` patterns (function calls)
+    /// - Extracts `identifier.method(` patterns (method calls)
+    /// - Filters out language keywords and common false positives
+    /// - Resolves against indexed chunk names
+    pub async fn find_callees(
+        &self,
+        chunk_content: &str,
+        chunk_name: Option<&str>,
+        limit: usize,
+        repo: Option<&str>,
+    ) -> Result<Vec<Callee>> {
+        let candidates = extract_call_candidates(chunk_content, chunk_name);
+
+        let mut callees = Vec::new();
+        let mut seen = HashSet::new();
+
+        for candidate in candidates {
+            if callees.len() >= limit {
+                break;
+            }
+            if seen.contains(&candidate) {
+                continue;
+            }
+            seen.insert(candidate.clone());
+
+            // Try to resolve the candidate to a definition in the index
+            let chunks = self
+                .vector_store
+                .get_chunks_by_name(&candidate, repo)
+                .await?;
+
+            let definition = chunks.into_iter().next().map(|chunk| {
+                let signature = chunk
+                    .content
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+                let name = chunk.name.unwrap_or_default();
+                SymbolDefinition {
+                    name,
+                    chunk_type: chunk.chunk_type,
+                    file_path: chunk.file_path,
+                    start_line: chunk.start_line,
+                    end_line: chunk.end_line,
+                    signature,
+                }
+            });
+
+            // Only include if the symbol was found in the index
+            if definition.is_some() {
+                callees.push(Callee {
+                    name: candidate,
+                    definition,
+                });
+            }
+        }
+
+        Ok(callees)
+    }
+}
+
+/// Extract potential function call names from source code.
+///
+/// Uses regex to find `identifier(` patterns, filters out language keywords
+/// and common false positives. Returns unique candidates in order of appearance.
+fn extract_call_candidates(content: &str, self_name: Option<&str>) -> Vec<String> {
+    // Match function calls: identifier( or .method(
+    // Also match :: path calls like Foo::bar(
+    let call_re = Regex::new(r"(?:^|[^a-zA-Z0-9_])([a-zA-Z_][a-zA-Z0-9_]*)(?:::[a-zA-Z_][a-zA-Z0-9_]*)*\s*\(")
+        .expect("valid regex");
+    let method_re = Regex::new(r"\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(")
+        .expect("valid regex");
+
+    // Language keywords and common false positives to skip
+    let skip: HashSet<&str> = [
+        // Rust
+        "if", "else", "match", "while", "for", "loop", "return", "fn", "pub", "let",
+        "mut", "const", "static", "struct", "enum", "impl", "trait", "use", "mod",
+        "where", "type", "as", "in", "ref", "move", "async", "await", "unsafe",
+        "Some", "None", "Ok", "Err", "Box", "Vec", "String", "println", "eprintln",
+        "format", "write", "writeln", "panic", "unreachable", "todo", "unimplemented",
+        "assert", "assert_eq", "assert_ne", "debug_assert", "cfg",
+        // Python
+        "def", "class", "import", "from", "print", "range", "len", "str", "int",
+        "float", "bool", "list", "dict", "set", "tuple", "isinstance", "hasattr",
+        "getattr", "setattr", "super", "self", "cls", "lambda", "yield",
+        // Go
+        "func", "var", "package", "make", "append", "cap", "copy", "delete",
+        "new", "close", "complex", "real", "imag", "recover", "defer", "go",
+        // JS/TS
+        "function", "var", "const", "require", "export", "typeof", "instanceof",
+        "console", "log", "warn", "error", "throw", "catch", "try", "finally",
+        // Common test patterns
+        "describe", "it", "test", "expect", "beforeEach", "afterEach",
+        // Type constructors / common generics
+        "HashMap", "BTreeMap", "HashSet", "Arc", "Rc", "Mutex", "RwLock",
+        "Option", "Result", "PhantomData",
+    ].iter().copied().collect();
+
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+
+    // Extract function-call-style identifiers
+    for cap in call_re.captures_iter(content) {
+        if let Some(m) = cap.get(1) {
+            let name = m.as_str();
+            if !skip.contains(name)
+                && name.len() >= 2
+                && self_name.map_or(true, |s| s != name)
+                && !seen.contains(name)
+            {
+                seen.insert(name.to_string());
+                candidates.push(name.to_string());
+            }
+        }
+    }
+
+    // Extract method calls
+    for cap in method_re.captures_iter(content) {
+        if let Some(m) = cap.get(1) {
+            let name = m.as_str();
+            if !skip.contains(name)
+                && name.len() >= 2
+                && self_name.map_or(true, |s| s != name)
+                && !seen.contains(name)
+            {
+                seen.insert(name.to_string());
+                candidates.push(name.to_string());
+            }
+        }
+    }
+
+    candidates
 }
 
 #[cfg(test)]
@@ -434,5 +585,108 @@ mod tests {
         // get_chunks_for_file sorts by start_line, so Config (line 1) before parse_config (line 10)
         assert_eq!(file_symbols.symbols[0].name, "Config");
         assert_eq!(file_symbols.symbols[1].name, "parse_config");
+    }
+
+    #[test]
+    fn test_extract_call_candidates_basic() {
+        let content = r#"fn handle_request(req: Request) -> Response {
+    let config = parse_config("app.toml");
+    let user = authenticate(req.token);
+    validate_input(&req.body);
+    send_response(user, config)
+}"#;
+        let candidates = extract_call_candidates(content, Some("handle_request"));
+        assert!(candidates.contains(&"parse_config".to_string()));
+        assert!(candidates.contains(&"authenticate".to_string()));
+        assert!(candidates.contains(&"validate_input".to_string()));
+        assert!(candidates.contains(&"send_response".to_string()));
+        // Should NOT contain the function itself
+        assert!(!candidates.contains(&"handle_request".to_string()));
+    }
+
+    #[test]
+    fn test_extract_call_candidates_filters_keywords() {
+        let content = r#"fn example() {
+    if condition {
+        for item in items {
+            match item {
+                Some(x) => println!("{}", x),
+                None => return,
+            }
+        }
+    }
+    let v = Vec::new();
+    real_function(v);
+}"#;
+        let candidates = extract_call_candidates(content, Some("example"));
+        // Should NOT contain keywords
+        assert!(!candidates.contains(&"if".to_string()));
+        assert!(!candidates.contains(&"for".to_string()));
+        assert!(!candidates.contains(&"match".to_string()));
+        // Should contain real function calls
+        assert!(candidates.contains(&"real_function".to_string()));
+    }
+
+    #[test]
+    fn test_extract_call_candidates_method_calls() {
+        let content = r#"fn process(data: &Data) {
+    data.validate();
+    let result = data.transform(42);
+    result.save();
+}"#;
+        let candidates = extract_call_candidates(content, Some("process"));
+        assert!(candidates.contains(&"validate".to_string()));
+        assert!(candidates.contains(&"transform".to_string()));
+        assert!(candidates.contains(&"save".to_string()));
+    }
+
+    #[test]
+    fn test_extract_call_candidates_deduplication() {
+        let content = r#"fn example() {
+    do_thing();
+    do_thing();
+    do_thing();
+}"#;
+        let candidates = extract_call_candidates(content, Some("example"));
+        let count = candidates.iter().filter(|c| *c == "do_thing").count();
+        assert_eq!(count, 1, "should deduplicate repeated calls");
+    }
+
+    #[tokio::test]
+    async fn test_find_callees() {
+        let (_tmp, mut store) = setup_test_store().await;
+        let analyzer = RefAnalyzer::new(&mut store);
+
+        // main() calls parse_config() — parse_config is in the index
+        let main_content = "fn main() -> Result<()> {\n    let config = parse_config(Path::new(\"config.toml\"))?;\n    println!(\"{}\", config.name);\n    Ok(())\n}";
+        let callees = analyzer
+            .find_callees(main_content, Some("main"), 10, None)
+            .await
+            .unwrap();
+
+        // parse_config should be found as a callee (it's in the index)
+        let callee_names: Vec<&str> = callees.iter().map(|c| c.name.as_str()).collect();
+        assert!(callee_names.contains(&"parse_config"), "should find parse_config as a callee, got: {:?}", callee_names);
+
+        // The callee should have a resolved definition
+        let pc = callees.iter().find(|c| c.name == "parse_config").unwrap();
+        assert!(pc.definition.is_some());
+        assert_eq!(pc.definition.as_ref().unwrap().file_path, "src/config.rs");
+    }
+
+    #[tokio::test]
+    async fn test_find_callees_unresolved_filtered() {
+        let (_tmp, mut store) = setup_test_store().await;
+        let analyzer = RefAnalyzer::new(&mut store);
+
+        // This calls nonexistent_fn which is NOT in the index
+        let content = "fn example() { nonexistent_fn(); }";
+        let callees = analyzer
+            .find_callees(content, Some("example"), 10, None)
+            .await
+            .unwrap();
+
+        // nonexistent_fn should NOT appear (not in index)
+        assert!(callees.is_empty(), "unresolved symbols should be filtered out");
     }
 }

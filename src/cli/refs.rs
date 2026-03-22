@@ -30,6 +30,9 @@ enum RefsCommand {
 
     /// List all symbols defined in a file
     Symbols(SymbolsArgs),
+
+    /// Find functions called by a symbol (callees / dependency chain)
+    Callees(CalleesArgs),
 }
 
 #[derive(Args)]
@@ -50,6 +53,16 @@ struct FindArgs {
 struct SymbolsArgs {
     /// File path to list symbols for
     file: PathBuf,
+}
+
+#[derive(Args)]
+struct CalleesArgs {
+    /// Symbol name to find callees for
+    symbol: String,
+
+    /// Maximum number of callee results
+    #[arg(long, short = 'n', default_value = "10")]
+    limit: usize,
 }
 
 #[derive(Serialize)]
@@ -78,6 +91,24 @@ struct UsageOutput {
     file_path: String,
     line: u32,
     context: String,
+}
+
+#[derive(Serialize)]
+struct CalleesOutput {
+    symbol: String,
+    callee_count: usize,
+    callees: Vec<CalleeOutput>,
+}
+
+#[derive(Serialize)]
+struct CalleeOutput {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    definition_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    definition_line: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signature: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -136,6 +167,9 @@ pub async fn run(args: RefsArgs, output: OutputConfig) -> Result<()> {
         }
         RefsCommand::Symbols(sym_args) => {
             run_symbols(&mut vector_store, sym_args, &repo_root, args.repo.as_deref(), &output).await
+        }
+        RefsCommand::Callees(callees_args) => {
+            run_callees(&mut vector_store, callees_args, args.repo.as_deref(), &output).await
         }
     }
 }
@@ -296,3 +330,88 @@ async fn run_symbols(
     Ok(())
 }
 
+async fn run_callees(
+    vector_store: &mut VectorStore,
+    args: CalleesArgs,
+    repo: Option<&str>,
+    output: &OutputConfig,
+) -> Result<()> {
+    // First, find the definition to get its content
+    let chunks = vector_store.get_chunks_by_name(&args.symbol, repo).await?;
+    let chunk = match chunks.into_iter().next() {
+        Some(c) => c,
+        None => {
+            if output.json {
+                println!(
+                    r#"{{"error": "not_found", "message": "Symbol '{}' not found in index"}}"#,
+                    args.symbol
+                );
+            } else if !output.quiet {
+                println!(
+                    "{} Symbol not found: {}",
+                    "!".yellow(),
+                    args.symbol.cyan()
+                );
+            }
+            return Ok(());
+        }
+    };
+
+    let analyzer = RefAnalyzer::new(vector_store);
+    let callees = analyzer
+        .find_callees(&chunk.content, chunk.name.as_deref(), args.limit, repo)
+        .await?;
+
+    if output.json {
+        let json_output = CalleesOutput {
+            symbol: args.symbol.clone(),
+            callee_count: callees.len(),
+            callees: callees
+                .iter()
+                .map(|c| CalleeOutput {
+                    name: c.name.clone(),
+                    definition_file: c.definition.as_ref().map(|d| d.file_path.clone()),
+                    definition_line: c.definition.as_ref().map(|d| d.start_line),
+                    signature: c.definition.as_ref().map(|d| d.signature.clone()),
+                })
+                .collect(),
+        };
+        println!("{}", serde_json::to_string_pretty(&json_output)?);
+    } else if !output.quiet {
+        println!(
+            "{} Callees of {} {}:",
+            "→".blue(),
+            chunk.chunk_type.to_string().magenta(),
+            args.symbol.cyan().bold(),
+        );
+
+        if callees.is_empty() {
+            println!("  No resolved callees found.");
+        } else {
+            for callee in &callees {
+                if let Some(ref def) = callee.definition {
+                    println!(
+                        "  {} {} ({}:{})",
+                        "→".green(),
+                        callee.name.bold(),
+                        def.file_path.blue(),
+                        def.start_line,
+                    );
+                    if output.verbose {
+                        println!("    {}", def.signature.dimmed());
+                    }
+                } else {
+                    println!("  {} {} {}", "?".yellow(), callee.name, "(unresolved)".dimmed());
+                }
+            }
+            println!(
+                "\n{} {} callee{}",
+                "✓".green(),
+                callees.len(),
+                if callees.len() == 1 { "" } else { "s" }
+            );
+        }
+    }
+
+    Ok(())
+}

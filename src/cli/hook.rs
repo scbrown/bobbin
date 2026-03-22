@@ -45,6 +45,11 @@ fn strip_system_tags(text: &str) -> String {
     // Example blocks from system prompts
     let result = strip_xml_block(&result, "example");
     let result = strip_xml_block(&result, "example_agent_descriptions");
+    // Claude's internal reasoning blocks (re-submitted in context)
+    let result = strip_xml_block(&result, "antml:thinking");
+    // System prompt metadata blocks
+    let result = strip_xml_block(&result, "fast_mode_info");
+    let result = strip_xml_block(&result, "types");
     result
 }
 
@@ -3577,8 +3582,9 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         let _ = builtin_result; // suppress unused warning
     }
 
-    // 9. Symbol refs lookup (Edit + Read modes)
+    // 9. Symbol refs lookup (Edit + Read modes) — callers AND callees
     let mut refs_count: usize = 0;
+    let mut callees_count: usize = 0;
     if (is_edit_mode || is_refs_only) && lines_used < budget {
         if let Some(ref rp) = rel_path {
             let refs_vs_result = VectorStore::open(&lance_path).await;
@@ -3587,11 +3593,18 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             if let Ok(mut refs_vs) = refs_vs_result {
 
             use crate::analysis::refs::RefAnalyzer;
-            let mut analyzer = RefAnalyzer::new(&mut refs_vs);
 
             // list_symbols needs the path as stored in the index (absolute)
             let abs_file = repo_root.join(rp);
             let abs_file_str = abs_file.to_string_lossy().to_string();
+
+            // Pre-fetch file chunks before creating the analyzer (to avoid borrow conflicts)
+            let file_chunks = refs_vs
+                .get_chunks_for_file(&abs_file_str, None)
+                .await
+                .unwrap_or_default();
+
+            let mut analyzer = RefAnalyzer::new(&mut refs_vs);
 
             // List symbols in the file
             let file_symbols = analyzer.list_symbols(&abs_file_str, None).await.unwrap_or_else(|_| {
@@ -3605,7 +3618,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 // Limit to top 3 symbols (by line order — most prominent definitions first)
                 let symbols_to_check: Vec<_> = file_symbols.symbols.iter().take(3).collect();
 
-                // Collect refs: for each symbol, find where it's used (in other files)
+                // 9a. Callers: for each symbol, find where it's used (in other files)
                 let mut symbol_refs: Vec<(String, Vec<String>)> = Vec::new();
                 for sym in &symbols_to_check {
                     let refs = analyzer
@@ -3660,6 +3673,67 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                         let _ = writeln!(context, "- `{}` → {}", sym_name,
                             usage_files.iter().map(|f| format!("`{}`", f)).collect::<Vec<_>>().join(", "));
                         lines_used += 1;
+                    }
+                }
+
+                // 9b. Callees: for each symbol, find what functions it calls
+                if lines_used < budget {
+                    let mut symbol_callees: Vec<(String, Vec<(String, String)>)> = Vec::new();
+                    for sym in &symbols_to_check {
+                        // Find the chunk content for this symbol
+                        let chunk = file_chunks.iter().find(|c| {
+                            c.name.as_deref() == Some(&sym.name)
+                        });
+                        if let Some(chunk) = chunk {
+                            let callees = analyzer
+                                .find_callees(&chunk.content, Some(&sym.name), 5, None)
+                                .await
+                                .unwrap_or_default();
+
+                            let callee_info: Vec<(String, String)> = callees
+                                .into_iter()
+                                .filter_map(|c| {
+                                    let def = c.definition?;
+                                    let rel_file = Path::new(&def.file_path)
+                                        .strip_prefix(&repo_root)
+                                        .map(|p| p.to_string_lossy().to_string())
+                                        .unwrap_or_else(|_| def.file_path);
+                                    Some((c.name, rel_file))
+                                })
+                                .collect();
+
+                            if !callee_info.is_empty() {
+                                symbol_callees.push((sym.name.clone(), callee_info));
+                            }
+                        }
+                    }
+
+                    if !symbol_callees.is_empty() {
+                        callees_count = symbol_callees.len();
+                        if lines_used > 0 {
+                            let _ = writeln!(context);
+                            lines_used += 1;
+                        }
+
+                        if is_refs_only {
+                            let _ = writeln!(context, "**Dependency chain** (functions called by symbols in this file):");
+                        } else {
+                            let _ = writeln!(context, "**Callees** (functions called by this file's symbols):");
+                        }
+                        lines_used += 1;
+
+                        for (sym_name, callee_info) in &symbol_callees {
+                            if lines_used >= budget {
+                                break;
+                            }
+                            let callees_str = callee_info
+                                .iter()
+                                .map(|(name, file)| format!("`{}` ({})", name, file))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let _ = writeln!(context, "- `{}` calls → {}", sym_name, callees_str);
+                            lines_used += 1;
+                        }
                     }
                 }
             }
@@ -3739,6 +3813,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                     "coupled_count": 0,
                     "search_files": 0,
                     "refs_count": 0,
+                    "callees_count": 0,
                     "reactions_fired": 0,
                     "skipped": true,
                 }),
@@ -3776,6 +3851,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 "coupled_count": coupled_count,
                 "search_files": search_file_count,
                 "refs_count": refs_count,
+                "callees_count": callees_count,
                 "reactions_fired": reactions_fired,
                 "reactions_rules": rules_fired,
                 "reactions_deduped": rules_deduped,
