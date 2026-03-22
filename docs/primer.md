@@ -7,7 +7,7 @@ Bobbin is a local-first code context engine — semantic search, keyword search,
 | Command | What it does | Docs |
 |---------|-------------|------|
 | `bobbin search <query>` | Hybrid semantic + keyword search | `docs/book/src/guides/searching.md` |
-| `bobbin context <query>` | Budget-controlled context bundles | `docs/book/src/guides/context.md` |
+| `bobbin context <query>` | Budget-controlled context bundles | `docs/book/src/cli/context.md` |
 | `bobbin grep <pattern>` | Regex/keyword search | `docs/book/src/cli/grep.md` |
 | `bobbin index` | Build/update search index | `docs/book/src/cli/index.md` |
 | `bobbin calibrate` | Auto-tune search params via git history | `docs/book/src/cli/calibrate.md` |
@@ -17,7 +17,7 @@ Bobbin is a local-first code context engine — semantic search, keyword search,
 | `bobbin impact <file>` | Predict affected files from a change | `docs/book/src/cli/impact.md` |
 | `bobbin review <range>` | Diff-aware context for code review | `docs/book/src/cli/review.md` |
 | `bobbin history <file>` | Commit history and churn stats | `docs/book/src/cli/history.md` |
-| `bobbin serve` | HTTP API / MCP server | `docs/book/src/mcp/index.md` |
+| `bobbin serve` | HTTP API / MCP server | `docs/book/src/mcp/overview.md` |
 | `bobbin hook` | Claude Code hook management | `docs/book/src/guides/hooks.md` |
 | `bobbin tag` | Semantic tag management | `docs/book/src/guides/tags.md` |
 | `bobbin status` | Index stats and calibration state | `docs/book/src/cli/status.md` |
@@ -51,7 +51,7 @@ Key sections: `[index]` file patterns, `[search]` hybrid weights, `[embedding]` 
 | Reactions | Pattern-triggered hook actions | `.bobbin/reactions.toml` |
 | Feedback | Agent ratings improve search quality | `docs/book/src/guides/hooks.md` |
 | Archive | Index structured markdown records | `docs/book/src/config/reference.md` (`[archive]`) |
-| MCP server | Expose tools via Model Context Protocol | `docs/book/src/mcp/index.md` |
+| MCP server | Expose tools via Model Context Protocol | `docs/book/src/mcp/overview.md` |
 
 ## Architecture
 

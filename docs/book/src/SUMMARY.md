@@ -39,6 +39,7 @@
 - [review](cli/review.md)
 - [similar](cli/similar.md)
 - [status](cli/status.md)
+- [calibrate](cli/calibrate.md)
 - [serve](cli/serve.md)
 - [benchmark](cli/benchmark.md)
 - [watch](cli/watch.md)
