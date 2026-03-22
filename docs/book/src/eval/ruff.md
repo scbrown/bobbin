@@ -18,14 +18,14 @@ removing parentheses.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
-| no-bobbin | 100.0% | 31.7% | 33.3% | 32.4% | 4.3m $1.23 |
-| with-bobbin | 100.0% | 70.2% | 61.9% | 63.6% | 4.4m $1.52 |
-| with-bobbin+blame_bridging=false | 100.0% | 33.3% | 33.3% | 33.3% | 4.6m $1.25 |
-| with-bobbin+coupling_depth=0 | 100.0% | 55.6% | 33.3% | 38.9% | 4.7m $1.45 |
-| with-bobbin+doc_demotion=0.0 | 100.0% | 55.6% | 55.6% | 55.6% | 5.0m $1.48 |
-| with-bobbin+gate_threshold=1.0 | 100.0% | 77.8% | 55.6% | 61.1% | 5.4m $1.39 |
-| with-bobbin+recency_weight=0.0 | 100.0% | 77.8% | 55.6% | 61.1% | 4.9m $1.43 |
-| with-bobbin+semantic_weight=0.0 | 100.0% | 23.6% | 33.3% | 25.2% | 4.7m $1.45 |
+| no-bobbin | 100.0% | 31.7% | 33.3% | 32.4% | 4.3m | $1.23 |
+| with-bobbin | 100.0% | 70.2% | 61.9% | 63.6% | 4.4m | $1.52 |
+| with-bobbin+blame_bridging=false | 100.0% | 33.3% | 33.3% | 33.3% | 4.6m | $1.25 |
+| with-bobbin+coupling_depth=0 | 100.0% | 55.6% | 33.3% | 38.9% | 4.7m | $1.45 |
+| with-bobbin+doc_demotion=0.0 | 100.0% | 55.6% | 55.6% | 55.6% | 5.0m | $1.48 |
+| with-bobbin+gate_threshold=1.0 | 100.0% | 77.8% | 55.6% | 61.1% | 5.4m | $1.39 |
+| with-bobbin+recency_weight=0.0 | 100.0% | 77.8% | 55.6% | 61.1% | 4.9m | $1.43 |
+| with-bobbin+semantic_weight=0.0 | 100.0% | 23.6% | 33.3% | 25.2% | 4.7m | $1.45 |
 
 <div class="eval-chart">
 
@@ -71,8 +71,8 @@ existing `allow\_boolean\_trap` logic.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
-| no-bobbin | 100.0% | 100.0% | 40.0% | 57.1% | 4.8m $0.00 |
-| with-bobbin | 100.0% | 100.0% | 40.0% | 57.1% | 4.3m $1.38 |
+| no-bobbin | 100.0% | 100.0% | 40.0% | 57.1% | 4.8m | $0.00 |
+| with-bobbin | 100.0% | 100.0% | 40.0% | 57.1% | 4.3m | $1.38 |
 
 <div class="eval-chart">
 
@@ -112,8 +112,8 @@ name ranges for imported members.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
-| no-bobbin | 100.0% | 100.0% | 83.3% | 90.0% | 9.2m $0.00 |
-| with-bobbin | 100.0% | 100.0% | 77.8% | 86.7% | 6.3m $1.92 |
+| no-bobbin | 100.0% | 100.0% | 83.3% | 90.0% | 9.2m | $0.00 |
+| with-bobbin | 100.0% | 100.0% | 77.8% | 86.7% | 6.3m | $1.92 |
 
 <div class="eval-chart">
 
@@ -153,8 +153,8 @@ annotations, and use it for the return type checks.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
-| no-bobbin | 100.0% | 46.7% | 66.7% | 54.2% | 3.9m $0.00 |
-| with-bobbin | 100.0% | 63.3% | 83.3% | 70.8% | 4.5m $1.67 |
+| no-bobbin | 100.0% | 46.7% | 66.7% | 54.2% | 3.9m | $0.00 |
+| with-bobbin | 100.0% | 63.3% | 83.3% | 70.8% | 4.5m | $1.67 |
 
 <div class="eval-chart">
 
@@ -193,8 +193,8 @@ for both `--silent` and `--quiet` modes to verify correct output behavior.
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
 |----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
-| no-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 3.6m $0.00 |
-| with-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 2.8m $0.63 |
+| no-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 3.6m | $0.00 |
+| with-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 2.8m | $0.63 |
 
 <div class="eval-chart">
 
