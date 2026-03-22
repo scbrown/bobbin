@@ -166,6 +166,73 @@ Use `namespace:value` format for clarity:
 | `criticality:` | Importance level | `criticality:high` |
 | `feedback:` | Feedback-driven scoring | `feedback:hot`, `feedback:cold` |
 
+## Scoring Mechanics
+
+When tag effects are applied during context assembly, the formula is:
+
+```
+effective_factor = product(1 + boost for each matching tag effect)
+final_score = raw_score * clamp(effective_factor, 0.01, 10.0)
+```
+
+**Examples:**
+- `boost = 0.5` → factor = 1.5 → 50% score increase
+- `boost = -0.8` → factor = 0.2 → 80% score decrease
+- Multiple tags: `canonical` (boost +0.5) + `architecture` (boost +0.2) → factor = 1.5 × 1.2 = 1.8
+
+When a chunk has any tag with a configured effect, the tag effect **replaces** the default `doc_demotion`. This means a doc file tagged `criticality:high` with `boost = 0.3` gets a 30% boost instead of the usual doc demotion penalty.
+
+### Exclude vs demote vs pin
+
+| Mechanism | When applied | Effect | Use case |
+|-----------|-------------|--------|----------|
+| **Exclude** (`exclude = true`) | Pre-search (SQL WHERE clause) | Chunk never fetched from DB | Noise that always wastes budget |
+| **Demote** (negative `boost`) | Post-search scoring | Score reduced but chunk still included | Sometimes useful, usually low-priority |
+| **Pin** (`pin = true`) | Assembly stage (reserved budget) | Bypasses relevance threshold, injected first | Critical content that must always appear |
+
+Excludes are the most efficient — chunks are filtered at the database level before scoring. Use them for content that is never useful (auto-generated files, boilerplate init functions).
+
+Pinned chunks have reserved budget (`budget_reserve` lines, default 50) and are always injected regardless of query relevance. Use sparingly.
+
+### /search vs /context
+
+The `/search` endpoint returns **raw scores** — only exclude filters are applied (pre-search WHERE clauses). Boost/demote/pin effects are NOT applied.
+
+The `/context` endpoint and hook injection apply the **full scoring pipeline**: excludes + boosts + demotes + pins.
+
+To verify tag effects are working, test with `bobbin context` or the `/context` API, not `/search`.
+
+## Scoped Effect Resolution
+
+When resolving effects for a role, specificity wins:
+
+1. Check `[[effects_scoped]]` entries matching both tag AND role glob
+2. Most specific role pattern wins (count non-wildcard segments)
+3. Fall back to global `[effects.tag]`
+4. No match = no effect (default behavior)
+
+```toml
+[effects.test]
+boost = -0.3                # Global: demote test files
+
+[[effects_scoped]]
+tag = "test"
+role = "aegis/crew/sentinel"
+boost = 0.3                 # Sentinel: BOOST test files (review coverage)
+```
+
+Scoped effects can also **un-exclude** a globally excluded tag:
+
+```toml
+[effects.internal]
+exclude = true              # Global: always exclude
+
+[[effects_scoped]]
+tag = "internal"
+role = "aegis/*"
+exclude = false             # Aegis agents CAN see internal content
+```
+
 ## Example: Reducing Noise
 
 A common pattern is to identify noisy document types and demote them:

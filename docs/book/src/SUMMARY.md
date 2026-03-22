@@ -19,6 +19,8 @@
 - [Deps & Refs](guides/deps-refs.md)
 - [Multi-Repo](guides/multi-repo.md)
 - [Tags & Effects](guides/tags.md)
+- [Feedback System](guides/feedback.md)
+- [Archive Integration](guides/archive.md)
 - [Watch & Automation](guides/watch-automation.md)
 - [Hooks](guides/hooks.md)
 - [Access Control (RBAC)](guides/access-control.md)
