@@ -153,7 +153,7 @@ Three levels map to the existing `ContentMode` enum, applied at the bundle level
 
 | Level | ContentMode | What you get | Budget cost | API param |
 |-------|-------------|-------------|-------------|-----------|
-| **L0: Map** | `None` | Bundle names + descriptions + children | ~1 line/bundle | `level=0` |
+| **L0: Map** | `None` | Bundle names + descriptions + sub-bundles | ~1 line/bundle | `level=0` |
 | **L1: Outline** | `Preview` | Key files, entry point names, first 3 lines | ~10 lines/file | `level=1` |
 | **L2: Deep** | `Full` | Full chunks, coupled files, bridged docs, includes | Full budget | `level=2` |
 
@@ -228,7 +228,6 @@ When a search or context query matches a bundle's keywords, the response include
       "name": "context",
       "description": "Assembles relevant code for agent prompts",
       "match": "keyword:context injection",
-      "children": ["context/pipeline", "context/tags", "context/budget"],
       "file_count": 5,
       "doc_count": 3,
       "drill": "bobbin bundle show context"
@@ -349,31 +348,28 @@ ad-hoc search results."
 
 ### 7. Storage
 
-**Config-defined bundles** (curated): Stored in `tags.toml` under `[[bundles]]`.
-Loaded at startup alongside tag rules. No new storage backend.
+All bundles live in `tags.toml` under `[[bundles]]`. One config file, one format,
+one load path. No separate database tables for "agent-created" vs "curated" —
+a bundle is a bundle regardless of who wrote it.
 
-**Agent-created bundles** (dynamic): Stored in a `bundles` table in `metadata.db`
-(the existing SQLite metadata store). Schema:
+When an agent creates a bundle via CLI, `bobbin bundle create` appends a
+`[[bundles]]` entry to tags.toml (or a designated bundles.toml include file if
+tags.toml gets too large). Same format, same resolution, same everything.
 
-```sql
-CREATE TABLE bundles (
-    name TEXT PRIMARY KEY,
-    description TEXT NOT NULL,
-    keywords TEXT,           -- JSON array
-    tags TEXT,               -- JSON array
-    files TEXT,              -- JSON array
-    docs TEXT,               -- JSON array
-    children TEXT,           -- JSON array
-    includes TEXT,           -- JSON array
-    repo TEXT,
-    created_by TEXT,         -- agent identifier
-    created_at TEXT,         -- ISO 8601
-    updated_at TEXT          -- ISO 8601
-);
+```bash
+# Agent creates a bundle — it goes into tags.toml
+bobbin bundle create "reactor-alerts" \
+  --description "Alert pipeline: Prometheus → reactor → IRC" \
+  --files "aegis:deploy/reactor/reactor.py" \
+  --keywords "reactor,alerts"
+
+# Result: appends [[bundles]] entry to tags.toml
+# No separate storage backend, no merge logic, no precedence rules
 ```
 
-Agent-created bundles are merged with config-defined bundles at runtime. Config-defined
-bundles take precedence (config is authoritative, agent bundles are supplementary).
+The only additional storage is the `bundle_usage` tracking table (see §13c)
+which records bundle-to-bead associations from bobbin's side. That's observational
+data, not bundle definitions.
 
 ### 8. Bundle Freshness & Staleness Detection
 
@@ -490,7 +486,7 @@ full progressive-disclosure context in one command:
 ```bash
 bobbin bundle show b:context-pipeline          # L1 outline (default)
 bobbin bundle show b:context-pipeline --deep   # L2 full context
-bobbin bundle show b:context-pipeline --map    # L0 children only
+bobbin bundle show b:context-pipeline --map    # L0 sub-bundles only
 ```
 
 The `b:` prefix is optional in bobbin commands but required in prose to avoid
@@ -786,7 +782,7 @@ generate these automatically from coupling data.
 
 ### Phase 1: Bundle Config + CLI (Small)
 - Add `[[bundles]]` parsing to `TagsConfig` in `tags.rs`
-- `BundleConfig` struct: name, description, keywords, tags, files, docs, children, includes
+- `BundleConfig` struct: name, description, keywords, tags, files, docs, includes, repos
 - `bobbin bundle list` and `bobbin bundle show <name>` CLI commands
 - L0 (map) and L1 (outline with `list_symbols`) output
 - **No search changes yet** — this is pure config + display
@@ -804,11 +800,10 @@ generate these automatically from coupling data.
 - Bundle annotation in injection output header
 - `bundle` column in `injections` table for feedback tracking
 
-### Phase 4: Agent-Created Bundles (Medium)
-- `bundles` table in metadata.db
+### Phase 4: Bundle CLI CRUD (Small)
 - `bobbin bundle create/add/remove` CLI commands
-- Merge agent-created + config-defined at runtime
-- MCP tool wrappers
+- Appends/modifies `[[bundles]]` entries in tags.toml
+- MCP tool wrappers for create/show/list
 
 ### Phase 5: Beads Integration via Labels (Small)
 - Convention: `b:<slug>` labels on beads (zero beads changes)
