@@ -97,6 +97,9 @@ pub struct ContextConfig {
     /// Maximum chunks per bridged file. Default: 2.
     /// Only the first N chunks (sorted by start_line) are kept per file.
     pub max_bridged_chunks_per_file: usize,
+    /// Filesystem prefix for indexed repos on the server (e.g. "/var/lib/bobbin/repos/").
+    /// Used to normalize absolute paths back to repo-relative for dedup.
+    pub repo_path_prefix: Option<String>,
 }
 
 /// How much content to include in output
@@ -884,12 +887,12 @@ fn assemble_bundle(
         .collect();
 
     // Path dedup: same file indexed at both relative and absolute paths
-    // (e.g. "internal/cmd/foo.go" and "/var/lib/bobbin/repos/gastown/internal/cmd/foo.go").
-    // Normalize by stripping the /var/lib/bobbin/repos/<repo>/ prefix, then keep
+    // (e.g. "internal/cmd/foo.go" and "/data/repos/gastown/internal/cmd/foo.go").
+    // Normalize by stripping the configured repo_path_prefix/<repo>/ prefix, then keep
     // the higher-scoring variant. Only dedup when original paths differ (same file,
     // different index paths) — don't remove different chunks from the same file.
     let seed_results = {
-        let repo_prefix = "/var/lib/bobbin/repos/";
+        let repo_prefix = config.repo_path_prefix.as_deref().unwrap_or("");
         let normalize = |path: &str| -> String {
             if path.starts_with(repo_prefix) {
                 path[repo_prefix.len()..]
@@ -1522,6 +1525,7 @@ mod tests {
             repo_affinity_boost: 2.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
+            repo_path_prefix: None,
         };
 
         let seeds = vec![
@@ -1560,6 +1564,7 @@ mod tests {
             repo_affinity_boost: 2.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
+            repo_path_prefix: None,
         };
 
         let seeds = vec![
@@ -1595,6 +1600,7 @@ mod tests {
             repo_affinity_boost: 2.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
+            repo_path_prefix: None,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1627,6 +1633,7 @@ mod tests {
             repo_affinity_boost: 2.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
+            repo_path_prefix: None,
         };
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
@@ -1663,6 +1670,7 @@ mod tests {
             repo_affinity_boost: 2.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
+            repo_path_prefix: None,
         };
 
         let seeds = vec![
@@ -1700,6 +1708,7 @@ mod tests {
             repo_affinity_boost: 2.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
+            repo_path_prefix: None,
         };
 
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)
@@ -1734,6 +1743,7 @@ mod tests {
             repo_affinity_boost: 2.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
+            repo_path_prefix: None,
         };
 
         // Mix of commit and function seeds — commits should be excluded
@@ -1866,6 +1876,7 @@ mod tests {
             repo_affinity_boost: 2.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
+            repo_path_prefix: None,
         };
 
         let mut pinned = make_seed("p1", "critical.rs", 1, 5, 0.5);
@@ -1926,6 +1937,7 @@ mod tests {
             repo_affinity_boost: 2.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
+            repo_path_prefix: None,
         };
 
         // Pinned chunk of 15 lines but budget_reserve is 10 — should not fit
@@ -1965,6 +1977,7 @@ mod tests {
             repo_affinity_boost: 2.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
+            repo_path_prefix: None,
         };
 
         let seeds = vec![

@@ -28,6 +28,16 @@ pub struct ServerConfig {
     /// Remote bobbin HTTP server URL (e.g. "http://search.svc")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// Bind address for `bobbin serve --http` (default: "0.0.0.0").
+    /// Use "127.0.0.1" to restrict to localhost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bind_address: Option<String>,
+    /// Filesystem prefix for indexed repos on the server.
+    /// Used to normalize absolute paths in search results back to
+    /// repo-relative paths (e.g., "/var/lib/bobbin/repos/").
+    /// If unset, absolute paths are returned as-is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_path_prefix: Option<String>,
 }
 
 /// Global configuration loaded from ~/.config/bobbin/config.toml.
@@ -579,28 +589,43 @@ pub struct RoleConfig {
 /// Example config:
 /// ```toml
 /// [sources]
-/// default_url = "http://git.svc/stiwi/{repo}/src/branch/main/{path}"
+/// # Template for auto-detected git remotes. {remote_base} is the web URL
+/// # of the repo (e.g. "https://github.com/owner/repo").
+/// # Forgejo/Gitea:
+/// remote_template = "{remote_base}/src/branch/main/{path}#L{line}"
+/// # GitHub:
+/// # remote_template = "{remote_base}/blob/main/{path}#L{line}"
 ///
+/// # Fallback template for repos with no git remote (uses {repo}, {path}, {line})
+/// default_url = ""
+///
+/// # Per-repo overrides (full URL templates, highest priority)
 /// [sources.repos]
-/// beads = "https://github.com/scbrown/beads/blob/main/{path}"
-/// bobbin = "https://github.com/scbrown/bobbin/blob/main/{path}"
+/// beads = "https://github.com/scbrown/beads/blob/main/{path}#L{line}"
 /// ```
 ///
-/// URL templates support `{repo}`, `{path}`, and `{line}` placeholders.
+/// URL templates support `{repo}`, `{path}`, `{line}`, and `{remote_base}` placeholders.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SourcesConfig {
-    /// Default URL template for repos not explicitly listed.
+    /// Template applied to auto-detected git remotes.
+    /// Placeholders: {remote_base} (web base URL), {path}, {line}
+    /// Example: "{remote_base}/src/branch/main/{path}#L{line}"
+    #[serde(default)]
+    pub remote_template: String,
+    /// Default URL template for repos not explicitly listed and without a git remote.
     /// Placeholders: {repo}, {path}, {line}
     pub default_url: String,
     /// Per-repo URL overrides. Key = repo short name, value = URL template.
+    /// These take priority over auto-detection.
     pub repos: std::collections::HashMap<String, String>,
 }
 
 impl Default for SourcesConfig {
     fn default() -> Self {
         Self {
-            default_url: "http://git.svc/stiwi/{repo}/src/branch/main/{path}#L{line}".to_string(),
+            remote_template: String::new(),
+            default_url: String::new(),
             repos: std::collections::HashMap::new(),
         }
     }

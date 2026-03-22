@@ -55,6 +55,13 @@ pub async fn run_server(repo_root: PathBuf, port: u16) -> Result<()> {
     }
 
     let config = Config::load(&config_path).context("Failed to load config")?;
+    let bind_addr: std::net::IpAddr = config
+        .server
+        .bind_address
+        .as_deref()
+        .unwrap_or("0.0.0.0")
+        .parse()
+        .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
     let resolved_sources = handlers::resolve_sources(&repo_root, &config.sources);
     let tags_config = TagsConfig::load_or_default(&TagsConfig::tags_path(&repo_root));
 
@@ -69,7 +76,7 @@ pub async fn run_server(repo_root: PathBuf, port: u16) -> Result<()> {
 
     let app = handlers::router(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let addr = SocketAddr::from((bind_addr, port));
     tracing::info!("Bobbin HTTP server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr)

@@ -871,40 +871,39 @@ pub(super) async fn invoke_http_command(
 
 // -- /status --
 
-/// Derive a browse URL template from a git remote URL.
+/// Extract a web base URL from a git remote URL.
+///
+/// Converts SSH (`git@host:owner/repo.git`) and HTTPS (`https://host/owner/repo.git`)
+/// remotes into a plain web base URL (`https://host/owner/repo`).
 /// Returns None if the remote URL can't be parsed.
-fn browse_url_from_remote(remote: &str) -> Option<String> {
-    // GitHub: https://github.com/owner/repo.git or git@github.com:owner/repo.git
-    if remote.contains("github.com") {
-        let path = remote
-            .trim_end_matches(".git")
-            .rsplit("github.com")
-            .next()?;
-        let path = path.trim_start_matches('/').trim_start_matches(':');
-        return Some(format!(
-            "https://github.com/{path}/blob/main/{{path}}#L{{line}}"
-        ));
-    }
-    // Forgejo: http://git.lan:3000/owner/repo.git or http://git.svc/owner/repo.git
-    if remote.contains("git.lan") || remote.contains("git.svc") {
-        let path = remote
-            .trim_end_matches(".git")
-            .rsplit('/')
-            .take(2)
-            .collect::<Vec<_>>();
-        if path.len() == 2 {
-            let owner = path[1];
-            let repo = path[0];
-            return Some(format!(
-                "http://git.svc/{owner}/{repo}/src/branch/main/{{path}}#L{{line}}"
-            ));
+fn web_base_from_remote(remote: &str) -> Option<String> {
+    let trimmed = remote.trim().trim_end_matches(".git");
+
+    // SSH: git@host:owner/repo.git
+    if let Some(rest) = trimmed.strip_prefix("git@") {
+        let (host, path) = rest.split_once(':')?;
+        let path = path.trim_start_matches('/');
+        if path.split('/').count() < 2 {
+            return None;
         }
+        return Some(format!("https://{host}/{path}"));
     }
+
+    // HTTPS: http(s)://host[:port]/owner/repo.git
+    if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
+        return Some(trimmed.to_string());
+    }
+
     None
 }
 
 /// Auto-detect source URLs from git remotes for all indexed repos,
 /// merged with manual overrides from config. Called once at startup.
+///
+/// For each repo without an explicit `[sources.repos]` entry, reads its git
+/// remote origin, extracts a web base URL, and applies `remote_template`
+/// to build a browse link. If no `remote_template` is configured, repos
+/// get no auto-detected links.
 pub(super) fn resolve_sources(
     repo_root: &std::path::Path,
     config_sources: &crate::config::SourcesConfig,
@@ -924,12 +923,18 @@ pub(super) fn resolve_sources(
             {
                 if output.status.success() {
                     let remote = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if let Some(url) = browse_url_from_remote(&remote) {
-                        sources.repos.insert(repo_name, url);
+                    if let Some(base) = web_base_from_remote(&remote) {
+                        if !sources.remote_template.is_empty() {
+                            let url = sources.remote_template
+                                .replace("{remote_base}", &base)
+                                .replace("{repo}", &repo_name);
+                            sources.repos.insert(repo_name, url);
+                        } else {
+                            // No template — store base URL so UI can at least link to repo home
+                            sources.repos.insert(repo_name, base);
+                        }
                     }
                 } else {
-                    // Not a git repo (e.g. FUSE-mounted archive) — mark with empty URL
-                    // so the UI knows not to generate a link
                     sources.repos.insert(repo_name, String::new());
                 }
             } else {
@@ -1455,6 +1460,7 @@ pub(super) async fn context(
         repo_affinity_boost: 2.0,
         max_bridged_files: 2,
         max_bridged_chunks_per_file: 1,
+        repo_path_prefix: state.config.server.repo_path_prefix.clone(),
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2117,6 +2123,7 @@ pub(super) async fn review(
         repo_affinity_boost: 2.0,
         max_bridged_files: 3,
         max_bridged_chunks_per_file: 2,
+        repo_path_prefix: state.config.server.repo_path_prefix.clone(),
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);

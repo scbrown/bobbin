@@ -431,8 +431,8 @@ function repoLink(fp, startLine, repoHint) {
     if (!_sources.repos[repo]) return null;
     return buildUrl(_sources.repos[repo], repo, filePath, startLine);
   }
-  const template = (_sources && _sources.default_url)
-    || 'http://git.svc/stiwi/{repo}/src/branch/main/{path}#L{line}';
+  const template = _sources && _sources.default_url;
+  if (!template) return null;
   return buildUrl(template, repo, filePath, startLine);
 }
 function buildUrl(template, repo, filePath, startLine) {
@@ -452,8 +452,8 @@ function repoRootLink(repoName) {
     if (!_sources.repos[repoName]) return null;
     return _sources.repos[repoName].replace(/\/\{path\}.*$/, '').replace(/\{path\}.*$/, '').replace('{repo}', repoName);
   }
-  const template = (_sources && _sources.default_url)
-    || 'http://git.svc/stiwi/{repo}/src/branch/main/{path}#L{line}';
+  const template = _sources && _sources.default_url;
+  if (!template) return null;
   return template
     .replace(/\/\{path\}.*$/, '')
     .replace(/\{path\}.*$/, '')

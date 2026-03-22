@@ -629,6 +629,7 @@ impl BobbinMcpServer {
             repo_affinity_boost: 2.0,
             max_bridged_files: 2,
             max_bridged_chunks_per_file: 1,
+            repo_path_prefix: config.server.repo_path_prefix.clone(),
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -1098,6 +1099,7 @@ impl BobbinMcpServer {
             repo_affinity_boost: 2.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
+            repo_path_prefix: config.server.repo_path_prefix.clone(),
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
@@ -2661,7 +2663,16 @@ pub async fn run_http_server(repo_root: PathBuf, port: u16) -> Result<()> {
         );
 
     let router = axum::Router::new().nest_service("/mcp", service);
-    let addr = format!("0.0.0.0:{}", port);
+    let config_path = crate::config::Config::config_path(&repo_root);
+    let bind_host = if config_path.exists() {
+        crate::config::Config::load(&config_path)
+            .ok()
+            .and_then(|c| c.server.bind_address)
+            .unwrap_or_else(|| "0.0.0.0".to_string())
+    } else {
+        "0.0.0.0".to_string()
+    };
+    let addr = format!("{}:{}", bind_host, port);
     eprintln!("Bobbin MCP server listening on http://{}/mcp", addr);
 
     let tcp_listener = tokio::net::TcpListener::bind(&addr).await?;
