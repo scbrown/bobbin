@@ -4097,6 +4097,16 @@ async fn run_post_tool_use_failure(
     _args: PostToolUseFailureArgs,
     _output: OutputConfig,
 ) -> Result<()> {
+    // Route to remote handler if --server is set
+    if let Some(ref server_url) = _output.server {
+        return match run_post_tool_use_failure_remote(_args, server_url, &_output.role).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                eprintln!("bobbin post-tool-use-failure (remote): {:#}", e);
+                Ok(())
+            }
+        };
+    }
     // Never block on failure handling — any error exits silently
     match run_post_tool_use_failure_inner(_args).await {
         Ok(()) => Ok(()),
@@ -4409,6 +4419,230 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
             }),
         ),
     );
+
+    Ok(())
+}
+
+/// Remote-server implementation of PostToolUseFailure.
+/// Uses HTTP client to fetch file chunks and context instead of local stores.
+async fn run_post_tool_use_failure_remote(
+    args: PostToolUseFailureArgs,
+    server_url: &str,
+    role: &str,
+) -> Result<()> {
+    use crate::http::client::Client;
+
+    let hook_start = std::time::Instant::now();
+
+    // 1. Read stdin JSON
+    let input: PostToolUseFailureInput = serde_json::from_reader(std::io::stdin().lock())
+        .context("Failed to parse stdin JSON")?;
+
+    if input.error.trim().is_empty() {
+        return Ok(());
+    }
+
+    // Fast-path: Read tool directory navigation
+    if input.tool_name == "Read" {
+        if let Some(output) = try_directory_navigation(&input) {
+            let response = HookResponse {
+                hook_specific_output: HookSpecificOutput {
+                    hook_event_name: "PostToolUseFailure".to_string(),
+                    additional_context: output,
+                },
+            };
+            println!("{}", serde_json::to_string(&response)?);
+            return Ok(());
+        }
+    }
+
+    // 2. Load config for budget
+    let cwd = if input.cwd.is_empty() {
+        std::env::current_dir().context("Failed to get cwd")?
+    } else {
+        PathBuf::from(&input.cwd)
+    };
+
+    let repo_root = find_bobbin_root(&cwd);
+    let config = repo_root
+        .as_ref()
+        .map(|r| Config::load(&Config::config_path(r)).unwrap_or_default())
+        .unwrap_or_default();
+    let budget = args.budget.unwrap_or(config.hooks.budget / 2);
+
+    let command = input
+        .tool_input
+        .get("command")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let error_excerpt = if input.error.len() > 500 {
+        &input.error[..500]
+    } else {
+        &input.error
+    };
+
+    let client = Client::new(server_url);
+    let repo_affinity = detect_repo_name(&cwd);
+
+    // 3. Try error-context injection: parse file paths from build/test errors
+    let parsed = crate::errors::parse_error_output(&input.error, command);
+    let mut direct_output = String::new();
+    let mut direct_files = 0usize;
+    let mut direct_chunks = 0usize;
+    let mut lines_used = 0usize;
+
+    if input.tool_name == "Bash" && !parsed.refs.is_empty() {
+        for error_ref in &parsed.refs {
+            if lines_used >= budget || error_ref.path.is_empty() {
+                continue;
+            }
+
+            // Use read_chunk to fetch code around the error line
+            let (start, end) = if let Some(line) = error_ref.line {
+                // Fetch ~40 lines around the error
+                (line.saturating_sub(10), line + 30)
+            } else {
+                // No line number — fetch the top of the file
+                (1, 50)
+            };
+
+            if let Ok(chunk) = client.read_chunk(&error_ref.path, start, end, Some(5)).await {
+                let chunk_lines = chunk.content.lines().count();
+                if lines_used + chunk_lines + 3 <= budget {
+                    let line_info = error_ref.line
+                        .map(|l| format!(" (error at line {})", l))
+                        .unwrap_or_default();
+                    let symbol_info = error_ref.symbol.as_ref()
+                        .map(|s| format!(" — symbol: `{}`", s))
+                        .unwrap_or_default();
+
+                    direct_output.push_str(&format!(
+                        "### {}:{}-{}{}{}\n```{}\n{}\n```\n\n",
+                        chunk.file,
+                        chunk.actual_start_line,
+                        chunk.actual_end_line,
+                        line_info,
+                        symbol_info,
+                        chunk.language,
+                        chunk.content.trim_end(),
+                    ));
+                    lines_used += chunk_lines + 3;
+                    direct_chunks += 1;
+                    direct_files += 1;
+                }
+            }
+
+            // Fetch coupled/related files
+            if lines_used < budget {
+                if let Ok(related) = client.related(&error_ref.path, 3, Some(0.3)).await {
+                    for rel in &related.related {
+                        if lines_used >= budget {
+                            break;
+                        }
+                        if let Ok(rel_chunk) = client.read_chunk(&rel.path, 1, 30, None).await {
+                            let chunk_lines = rel_chunk.content.lines().count();
+                            if lines_used + chunk_lines + 3 <= budget {
+                                direct_output.push_str(&format!(
+                                    "### {} (coupled: {:.0}% co-change rate)\n```{}\n{}\n```\n\n",
+                                    rel.path,
+                                    rel.score * 100.0,
+                                    rel_chunk.language,
+                                    rel_chunk.content.trim_end(),
+                                ));
+                                lines_used += chunk_lines + 3;
+                                direct_chunks += 1;
+                                direct_files += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Direct injection or semantic search fallback
+    let (output_text, method) = if !direct_output.is_empty() {
+        let header = format!(
+            "Bobbin found {} source chunks in {} files referenced by this error:\n\n",
+            direct_chunks, direct_files,
+        );
+        (format!("{}{}", header, direct_output), "direct-remote")
+    } else {
+        // Semantic search fallback via /context endpoint
+        let query = format!(
+            "{} {} error: {}",
+            input.tool_name,
+            command,
+            &error_excerpt[..error_excerpt.len().min(200)],
+        );
+        match client.context(
+            &query,
+            Some(budget),
+            Some(0),      // depth
+            Some(0),      // max_coupled
+            Some(10),     // limit
+            None,         // coupling_threshold
+            None,         // repo
+            if role.is_empty() { None } else { Some(role) },
+            repo_affinity.as_deref(),
+        ).await {
+            Ok(ctx) if !ctx.files.is_empty() => {
+                let mut text = format!(
+                    "Bobbin found {} relevant files for this error (via semantic search):\n\n",
+                    ctx.files.len(),
+                );
+                for file in &ctx.files {
+                    for chunk in &file.chunks {
+                        text.push_str(&format!(
+                            "### {}:{}-{}\n```\n{}\n```\n\n",
+                            file.path,
+                            chunk.start_line,
+                            chunk.end_line,
+                            chunk.content.as_deref().unwrap_or("").trim_end(),
+                        ));
+                    }
+                }
+                (text, "semantic-remote")
+            }
+            _ => return Ok(()),
+        }
+    };
+
+    // 5. Output response
+    let response = HookResponse {
+        hook_specific_output: HookSpecificOutput {
+            hook_event_name: "PostToolUseFailure".to_string(),
+            additional_context: output_text,
+        },
+    };
+    println!("{}", serde_json::to_string(&response)?);
+
+    // 6. Emit metric (local if we have a repo root)
+    if let Some(ref root) = repo_root {
+        let metrics_source = crate::metrics::resolve_source(
+            None,
+            if input.session_id.is_empty() { None } else { Some(&input.session_id) },
+        );
+        crate::metrics::emit(
+            root,
+            &crate::metrics::event(
+                &metrics_source,
+                "hook_post_tool_use_failure",
+                "hook post-tool-use-failure",
+                hook_start.elapsed().as_millis() as u64,
+                serde_json::json!({
+                    "tool_name": input.tool_name,
+                    "error_excerpt": &error_excerpt[..error_excerpt.len().min(200)],
+                    "method": method,
+                    "parsed_refs": parsed.refs.len(),
+                    "is_build_error": parsed.is_build_error,
+                    "direct_files": direct_files,
+                    "direct_chunks": direct_chunks,
+                }),
+            ),
+        );
+    }
 
     Ok(())
 }
