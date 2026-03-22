@@ -26,6 +26,184 @@ pub struct TagsConfig {
     pub frontmatter: FrontmatterConfig,
     /// Code comment tag extraction config
     pub comments: CommentsConfig,
+    /// Named context bundles (`[[bundles]]`)
+    pub bundles: Vec<BundleConfig>,
+}
+
+/// A named, hierarchical, keyword-bound grouping of files and chunks.
+///
+/// Bundles are addressable knowledge anchors — stable references to concepts,
+/// features, or subsystems that can be explored at progressive disclosure levels.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BundleConfig {
+    /// Unique bundle identifier. `/` creates hierarchy (e.g. "context/pipeline").
+    pub name: String,
+    /// One-line summary shown at L0.
+    pub description: String,
+    /// Search terms that trigger this bundle.
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    /// Tag-based membership: chunks with these tags belong to the bundle.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Whole-file membership. `repo:path` for cross-repo.
+    #[serde(default)]
+    pub files: Vec<String>,
+    /// Sub-file references: `file::symbol`, `file#heading`, with optional modifiers.
+    #[serde(default)]
+    pub refs: Vec<String>,
+    /// Documentation files (sugar for files, kept for clarity).
+    #[serde(default)]
+    pub docs: Vec<String>,
+    /// Other bundles pulled in at L2 deep dive.
+    #[serde(default)]
+    pub includes: Vec<String>,
+    /// Repos this bundle spans. Omit = all repos.
+    #[serde(default)]
+    pub repos: Vec<String>,
+    /// Optional short slug override (auto-generated from name if omitted).
+    #[serde(default)]
+    pub slug: Option<String>,
+}
+
+impl BundleConfig {
+    /// Get the slug for this bundle (explicit or auto-generated from name).
+    pub fn slug(&self) -> String {
+        self.slug
+            .clone()
+            .unwrap_or_else(|| self.name.replace('/', "-"))
+    }
+
+    /// Get the parent bundle name, if any (derived from `/` in the name).
+    pub fn parent_name(&self) -> Option<&str> {
+        self.name.rsplit_once('/').map(|(parent, _)| parent)
+    }
+
+    /// Get all member file paths (union of files + docs + file portions of refs).
+    pub fn member_files(&self) -> Vec<String> {
+        let mut files: Vec<String> = self.files.clone();
+        files.extend(self.docs.iter().cloned());
+        for r in &self.refs {
+            if let Some(parsed) = BundleRef::parse(r) {
+                files.push(parsed.file_path().to_string());
+            }
+        }
+        // Deduplicate
+        files.sort();
+        files.dedup();
+        files
+    }
+}
+
+/// A parsed bundle ref: `file::symbol`, `file#heading`, or bare `file`.
+#[derive(Debug, Clone)]
+pub struct BundleRef {
+    /// Optional repo prefix (e.g. "aegis" from "aegis:src/tags.rs::resolve_effect").
+    pub repo: Option<String>,
+    /// File path portion.
+    pub file: String,
+    /// Target within the file.
+    pub target: RefTarget,
+    /// Optional modifier (e.g. "+callers", "+callees", "+impact").
+    pub modifier: Option<String>,
+}
+
+/// What part of the file a ref targets.
+#[derive(Debug, Clone)]
+pub enum RefTarget {
+    /// Whole file (bare path with no :: or #).
+    WholeFile,
+    /// Named symbol: `file::SymbolName` or `file::pattern*`.
+    Symbol(String),
+    /// Markdown heading: `file#Heading Text`.
+    Heading(String),
+}
+
+impl BundleRef {
+    /// Parse a ref string into its components.
+    ///
+    /// Syntax:
+    ///   - `file.rs` → whole file
+    ///   - `file.rs::Symbol` → named symbol
+    ///   - `file.rs::Symbol +callers` → symbol with modifier
+    ///   - `file.md#Heading` → markdown heading
+    ///   - `repo:file.rs::Symbol` → cross-repo symbol
+    pub fn parse(input: &str) -> Option<Self> {
+        if input.is_empty() {
+            return None;
+        }
+
+        // Split off modifier (e.g. " +callers")
+        let (main, modifier) = if let Some(idx) = input.find(" +") {
+            (&input[..idx], Some(input[idx + 2..].to_string()))
+        } else {
+            (input, None)
+        };
+
+        // Split off tag filter (e.g. "[domain:budget]") — store as modifier
+        let (main, modifier) = if let Some(idx) = main.find('[') {
+            let tag_filter = main[idx..].trim_end_matches(']').to_string();
+            (&main[..idx], Some(modifier.map_or(tag_filter.clone(), |m| format!("{} {}", m, tag_filter))))
+        } else {
+            (main, modifier)
+        };
+
+        // Check for repo prefix (e.g. "aegis:src/tags.rs")
+        let (repo, path_and_target) = if let Some((r, rest)) = main.split_once(':') {
+            // Disambiguate: "repo:path" vs "file::symbol" (:: has double colon)
+            // A repo prefix has exactly one colon and the part before it has no path separators
+            if !r.contains('/') && !r.contains('.') && !rest.starts_with(':') {
+                (Some(r.to_string()), rest)
+            } else {
+                (None, main)
+            }
+        } else {
+            (None, main)
+        };
+
+        // Check for symbol target (::)
+        if let Some((file, symbol)) = path_and_target.split_once("::") {
+            return Some(Self {
+                repo,
+                file: file.to_string(),
+                target: RefTarget::Symbol(symbol.to_string()),
+                modifier,
+            });
+        }
+
+        // Check for heading target (#)
+        if let Some((file, heading)) = path_and_target.split_once('#') {
+            return Some(Self {
+                repo,
+                file: file.to_string(),
+                target: RefTarget::Heading(heading.to_string()),
+                modifier,
+            });
+        }
+
+        // Bare file path
+        Some(Self {
+            repo,
+            file: path_and_target.to_string(),
+            target: RefTarget::WholeFile,
+            modifier,
+        })
+    }
+
+    /// Get the file path portion of the ref.
+    pub fn file_path(&self) -> &str {
+        &self.file
+    }
+
+    /// Format the ref for display at L0 (compact).
+    pub fn display_l0(&self) -> String {
+        let prefix = self.repo.as_ref().map_or(String::new(), |r| format!("{}:", r));
+        match &self.target {
+            RefTarget::WholeFile => format!("{}{}", prefix, self.file),
+            RefTarget::Symbol(s) => format!("{}{}::{}", prefix, self.file, s),
+            RefTarget::Heading(h) => format!("{}{}#{}", prefix, self.file, h),
+        }
+    }
 }
 
 /// Configuration for extracting tags from markdown YAML frontmatter.

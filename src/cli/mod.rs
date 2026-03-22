@@ -1,4 +1,5 @@
 mod benchmark;
+mod bundle;
 mod calibrate;
 mod completions;
 mod context;
@@ -138,6 +139,9 @@ enum Commands {
     /// Manage chunk tags (list, add rules, remove rules)
     Tag(tag::TagArgs),
 
+    /// Explore context bundles (named, hierarchical knowledge anchors)
+    Bundle(bundle::BundleArgs),
+
     /// Execute or manage user-defined convenience commands
     Run(run::RunArgs),
 
@@ -174,6 +178,7 @@ impl Commands {
             Commands::Purge(_) => "purge",
             Commands::Prime(_) => "prime",
             Commands::Tag(_) => "tag",
+            Commands::Bundle(_) => "bundle",
             Commands::Run(_) => "run",
             Commands::External(ref args) => {
                 // Leak a string so we can return &'static str
@@ -287,6 +292,7 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
         Commands::Purge(args) => purge::run(args, output).await,
         Commands::Prime(args) => prime::run(args, output).await,
         Commands::Tag(args) => tag::run(args, output).await,
+        Commands::Bundle(args) => bundle::run(args, output).await,
         // Run commands are resolved before dispatch, so this is unreachable
         Commands::Run(_) => anyhow::bail!("Nested run commands are not supported"),
         // External commands are resolved before dispatch, so this is unreachable
