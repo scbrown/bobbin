@@ -62,14 +62,22 @@ files = ["src/search/context.rs"]        # explicit file membership (optional)
 [[bundles]]
 name = "context/pipeline"
 description = "5-phase assembly: seed → coupling → bridge → filter → budget"
-tags = ["domain:context-assembly"]
-files = ["src/search/context.rs"]
-docs = ["docs/design/context-pipeline.md"]
+refs = [
+    "src/search/context.rs::ContextAssembler",     # struct
+    "src/search/context.rs::run_hybrid_search",    # the core search method
+    "src/search/context.rs::assemble",             # main entry point
+    "src/config.rs::ContextConfig",                # configuration struct
+    "docs/designs/context-bundles.md#Design",      # markdown heading reference
+]
 
 [[bundles]]
 name = "context/tags"
 description = "Tag-based scoring, pinning, and access control"
-files = ["src/tags.rs"]
+refs = [
+    "src/tags.rs::resolve_effect",                 # specific method, not whole file
+    "src/tags.rs::TagsConfig",                     # struct
+    "src/search/context.rs::apply_tag_effects",    # where effects are applied
+]
 docs = ["docs/guides/tags-playbook.md"]
 
 [[bundles]]
@@ -102,13 +110,14 @@ tags = ["domain:monitoring", "domain:comms"]
 | `description` | string | yes | One-line summary (shown at L0). |
 | `keywords` | string[] | no | Search terms that trigger this bundle. |
 | `tags` | string[] | no | Tag-based membership (chunks with these tags belong). |
-| `files` | string[] | no | File paths. Bare paths are repo-relative; `repo:path` for cross-repo. |
-| `docs` | string[] | no | Documentation files. Same `repo:path` syntax for cross-repo. |
+| `files` | string[] | no | Whole-file membership. `repo:path` for cross-repo. |
+| `refs` | string[] | no | Sub-file references: `file::symbol`, `file#heading`, with modifiers. |
+| `docs` | string[] | no | Documentation files (sugar for files, kept for clarity). |
 | `includes` | string[] | no | Other bundles pulled in at L2 deep dive. |
 | `repos` | string[] | no | Repos this bundle spans. Omit = all repos (tag/keyword match). |
 
-Membership is the **union** of tag-matched chunks + explicit files + docs. This allows
-bundles to be as precise (explicit files only) or as broad (tag-based) as needed.
+Membership is the **union** of tag-matched chunks + explicit files + refs + docs. This
+allows bundles to be as precise (a single function) or as broad (tag-based) as needed.
 
 **Hierarchy is implicit from naming**: any bundle named `X/Y` is a child of `X`.
 At L0, `bobbin bundle list` builds the tree by splitting on `/`. No explicit
@@ -147,6 +156,66 @@ WHERE (repo = 'aegis' AND file_path IN (...)) OR (repo = 'bobbin' AND file_path 
 This maps directly onto bobbin's existing multi-repo index — LanceDB already stores
 repo as a column on every chunk. No new infrastructure needed.
 
+**Sub-file references** (`refs`) are the precision tool. Instead of including an entire
+1400-line file, point at the exact functions, structs, or doc sections that matter.
+
+#### Reference syntax
+
+| Syntax | Targets | Example |
+|--------|---------|---------|
+| `file.rs` | Whole file (all chunks) | `src/tags.rs` |
+| `file.rs::Symbol` | Named symbol (function, struct, impl) | `src/tags.rs::resolve_effect` |
+| `file.md#Heading` | Markdown section by heading text | `docs/architecture.md#Design` |
+| `repo:file.rs::Symbol` | Cross-repo symbol reference | `aegis:deploy/reactor/reactor.py::process_alert` |
+
+**Resolution**: All of these map to existing LanceDB queries on indexed columns:
+
+```sql
+-- file.rs::Symbol → exact chunk lookup
+WHERE file_path = 'src/tags.rs' AND name = 'resolve_effect'
+
+-- file.md#Heading → markdown section lookup
+WHERE file_path = 'docs/architecture.md' AND name = 'Design'
+
+-- file.rs (bare) → all chunks in file (existing behavior)
+WHERE file_path = 'src/tags.rs'
+```
+
+No new indexing needed — tree-sitter and markdown parsers already produce named chunks.
+
+#### Reference modifiers
+
+Refs can carry modifiers that expand context using existing bobbin capabilities:
+
+```toml
+refs = [
+    "src/tags.rs::resolve_effect +callers",       # include functions that call this
+    "src/search/context.rs::assemble +callees",   # include functions this calls
+    "src/tags.rs::TagsConfig +impact",            # include files impacted by changes
+    "src/search/context.rs::apply_*",             # glob on symbol names
+    "src/tags.rs::*Effect*",                      # all types/functions matching pattern
+    "src/search/context.rs[domain:budget]",       # only chunks tagged domain:budget
+    "docs/architecture.md#Design..#Implementation", # heading range (all sections between)
+]
+```
+
+| Modifier | Bobbin feature | Effect |
+|----------|---------------|--------|
+| `+callers` | `find_refs` | Add functions that call this symbol |
+| `+callees` | `find_refs` | Add functions this symbol calls |
+| `+impact` | `/impact` endpoint | Add files impacted by changes to this symbol |
+| `*` glob | `list_symbols` + filter | Match multiple symbols by pattern |
+| `[tag]` | Tag index | Filter chunks within file by tag |
+| `#A..#B` | Markdown parser | Heading range (inclusive) |
+
+Modifiers are applied at L2 only. At L1, the base ref is shown with a note like
+"(+3 callers)". At L0, just the ref name.
+
+**Budget impact of refs vs files**: A `files` entry for `context.rs` costs up to 1400
+lines at L2. A `refs` entry for `context.rs::run_hybrid_search` costs ~180 lines —
+the exact function. This is the key budget efficiency win: bundles with refs deliver
+the precise code an agent needs, not entire files with irrelevant sections.
+
 ### 2. Progressive Disclosure Levels
 
 Three levels map to the existing `ContentMode` enum, applied at the bundle level:
@@ -154,8 +223,16 @@ Three levels map to the existing `ContentMode` enum, applied at the bundle level
 | Level | ContentMode | What you get | Budget cost | API param |
 |-------|-------------|-------------|-------------|-----------|
 | **L0: Map** | `None` | Bundle names + descriptions + sub-bundles | ~1 line/bundle | `level=0` |
-| **L1: Outline** | `Preview` | Key files, entry point names, first 3 lines | ~10 lines/file | `level=1` |
-| **L2: Deep** | `Full` | Full chunks, coupled files, bridged docs, includes | Full budget | `level=2` |
+| **L1: Outline** | `Preview` | Ref names + signatures + first 3 lines | ~3-10 lines/ref | `level=1` |
+| **L2: Deep** | `Full` | Full ref chunks + modifiers + includes | Full budget | `level=2` |
+
+**How disclosure works with refs:**
+
+| Level | `file.rs` (whole file) | `file.rs::func` (symbol ref) | `file.rs::func +callers` |
+|-------|----------------------|-----------------------------|-----------------------|
+| L0 | filename | filename::func | filename::func (+N callers) |
+| L1 | file + symbol list | func signature + 3 lines | func sig + caller signatures |
+| L2 | all chunks in file | full function body | full func + full caller bodies |
 
 **L0** is a simple config read — no search, no embedding, near-zero cost. An agent
 can map an entire project for the cost of reading a TOML file.
@@ -602,6 +679,10 @@ the bead title doesn't mention those terms.
 | Existing System | How Bundles Plug In |
 |----------------|---------------------|
 | **Tags** (`tags.toml`) | Bundle definitions live alongside tag rules. Tag-based membership. |
+| **Tree-sitter** | `refs` resolve `file::symbol` to indexed chunks. Already parsed at index time. |
+| **Markdown parser** | `refs` resolve `file#heading` to section chunks. Already parsed at index time. |
+| **`find_refs`** | `+callers`/`+callees` modifiers expand refs using existing cross-reference data. |
+| **`/impact`** | `+impact` modifier uses existing impact analysis for change-aware bundles. |
 | **keyword_repos** | Extended to also match bundle keywords. Same resolution path. |
 | **ContextAssembler** | Bundle membership → `extra_filter`. Budget reservation for matched bundles. |
 | **ContentMode** | L0=None, L1=Preview, L2=Full — already exists, applied at bundle level. |
@@ -659,10 +740,11 @@ source_issue:
 bundle:
   slug: "tags-resolution"
   description: "Tag resolution: glob pattern matching, rule application, effect computation"
-  files:
-    - src/tags.rs
-    - src/search/context.rs    # apply_tag_effects
-    - src/config.rs            # TagsConfig loading
+  refs:
+    - src/tags.rs::resolve_effect        # specific method
+    - src/tags.rs::resolve_tags          # tag assignment
+    - src/search/context.rs::apply_tag_effects  # where effects are applied
+    - src/config.rs::TagsConfig          # struct, not whole file
   keywords: ["tags", "glob", "pattern", "tag resolution", "tag effects"]
 
 # The "later" issue we test retrieval on
@@ -681,17 +763,29 @@ ground_truth_files:
 noise_files:
   - src/cli/hook.rs              # injection path, not relevant to gate scoring
   - src/storage/feedback.rs      # feedback system, irrelevant
+
+# For doc-guided comparison: equivalent hand-written doc
+doc_guided:
+  doc_path: "docs/architecture.md"
+  section: "Tags and Scoring"      # heading to inject
+  doc_lines: 85                     # budget consumed by the doc
 ```
 
 ### Metrics
 
-For each eval task, compare three retrieval modes:
+For each eval task, compare four retrieval modes:
 
 | Mode | Description | What it tests |
 |------|-------------|---------------|
 | **Baseline** | `/context?q=<target_query>` | How good is organic search alone? |
-| **Bundle-scoped** | `/context?q=<target_query>&bundle=<slug>` | Does scoping to bundle files improve precision? |
+| **Bundle-scoped** | `/context?q=<target_query>&bundle=<slug>` | Does scoping to bundle refs improve precision? |
 | **Bundle-injected** | Organic search + bundle keyword match | Does the bundle supplement organic results? |
+| **Doc-guided** | Inject equivalent architecture doc, then organic search with remaining budget | Is a well-written doc as effective as a bundle? |
+
+The **doc-guided** mode is the critical comparison. For each eval task, we write (or
+identify) the equivalent hand-written documentation — the architecture section, the
+"how X works" doc — and inject it into the prompt budget before running organic search.
+This directly tests: **does a bundle outperform good documentation?**
 
 Per mode:
 
@@ -700,6 +794,28 @@ Per mode:
 - **F1**: Harmonic mean
 - **Budget efficiency**: Lines on ground-truth files / total lines used
 - **Noise ratio**: `|retrieved ∩ noise_files| / |retrieved|`
+- **Navigation overhead**: Lines spent on non-code context (doc prose, file lists)
+
+The **navigation overhead** metric specifically targets the doc vs bundle comparison:
+docs spend budget on prose ("context.rs contains the pipeline, which has 5 phases..."),
+bundles spend budget on actual code (`context.rs::run_hybrid_search` body). A bundle
+with refs delivers the code directly; a doc describes where to find it.
+
+### Expected Outcomes: Bundles vs Docs
+
+| Dimension | Bundle | Doc | Why |
+|-----------|--------|-----|-----|
+| Precision (F1) | Higher | Lower | Bundle refs target exact symbols; doc tells agent to search, agent may find wrong chunks |
+| Recall (F1) | Higher | Comparable | Bundle refs guarantee inclusion; doc depends on agent's search skill |
+| Budget efficiency | Much higher | Lower | Refs cost ~180 lines for a function; doc costs ~80 lines of prose + agent still needs the code |
+| Freshness | Auto-updating | Decays | `tags.rs::resolve_effect` always resolves to current code; doc text freezes |
+| "Why" context | Weaker | Stronger | Docs explain rationale, constraints, tradeoffs; bundles show what, not why |
+| Zero-setup cost | Requires bundle def | Just write markdown | Docs are easier to create initially |
+| Cross-repo | Native | Manual | Bundle resolves `aegis:file.py::func` directly; doc says "see aegis repo" |
+
+**Key hypothesis**: Bundles with refs + minimal description > comprehensive docs alone.
+A 2-line bundle description + precise symbol refs beats a 100-line architecture doc
+because the bundle delivers code directly while the doc costs budget on navigation prose.
 
 ### Eval Task Matrix (Real Issues)
 
@@ -733,6 +849,18 @@ For eval tasks where the source and target issues are in the same subsystem, the
 improvement should be larger than for loosely related issues. This validates that
 bundles capture subsystem knowledge, not just file lists.
 
+**Hypothesis 5: Bundles with refs outperform docs on budget efficiency.**
+Doc-guided mode should have comparable recall (the doc points to the right area) but
+worse budget efficiency (80+ lines of prose consumed before any code is shown). Bundles
+with refs skip the navigation prose and deliver code directly. Expected: bundle modes
+use 30-50% less budget for the same recall.
+
+**Hypothesis 6: Docs and bundles are complementary, not competing.**
+The best result may be a bundle with a description that captures the "why" (1-2 lines)
+plus refs that deliver the "what" (precise code). This should outperform both pure
+docs (all prose) and pure refs (no rationale). The eval should show this by testing
+bundles with good descriptions vs sparse ones.
+
 ### Runner Integration
 
 ```bash
@@ -741,9 +869,11 @@ python3 -m runner.cli run-bundle-eval bundle-eval-001
 
 # Output:
 # bundle-eval-001: Tags pattern matching → gate threshold
-#   Baseline:        P=0.60  R=0.67  F1=0.63  Budget=45%  Noise=0.20
-#   Bundle-scoped:   P=0.90  R=0.67  F1=0.77  Budget=72%  Noise=0.00
-#   Bundle-injected: P=0.82  R=1.00  F1=0.90  Budget=68%  Noise=0.09
+#                    Prec   Rec    F1     Budget  Noise  NavOvhd
+#   Baseline:        0.60   0.67   0.63   45%     0.20   0 lines
+#   Bundle-scoped:   0.90   0.67   0.77   72%     0.00   2 lines
+#   Bundle-injected: 0.82   1.00   0.90   68%     0.09   2 lines
+#   Doc-guided:      0.75   0.67   0.71   52%     0.10   85 lines
 
 # Run all bundle eval tasks
 python3 -m runner.cli run-bundle-eval --all
@@ -782,7 +912,9 @@ generate these automatically from coupling data.
 
 ### Phase 1: Bundle Config + CLI (Small)
 - Add `[[bundles]]` parsing to `TagsConfig` in `tags.rs`
-- `BundleConfig` struct: name, description, keywords, tags, files, docs, includes, repos
+- `BundleConfig` struct: name, description, keywords, tags, files, refs, docs, includes, repos
+- Ref parsing: `file::symbol`, `file#heading`, `repo:file::symbol` syntax
+- Ref resolution: LanceDB queries on file_path + name columns
 - `bobbin bundle list` and `bobbin bundle show <name>` CLI commands
 - L0 (map) and L1 (outline with `list_symbols`) output
 - **No search changes yet** — this is pure config + display
