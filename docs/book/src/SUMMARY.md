@@ -21,6 +21,7 @@
 - [Tags & Effects](guides/tags.md)
 - [Watch & Automation](guides/watch-automation.md)
 - [Hooks](guides/hooks.md)
+- [Access Control (RBAC)](guides/access-control.md)
 
 # CLI Reference
 
