@@ -51,6 +51,9 @@ struct ShowArgs {
     /// Show L0 map view (sub-bundles only)
     #[arg(long)]
     map: bool,
+    /// Override repo root for file resolution (e.g. path to bobbin source checkout)
+    #[arg(long)]
+    repo_root: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -292,8 +295,12 @@ fn print_bundle_tree(bundles: &[&BundleConfig]) {
 }
 
 async fn run_show(path: PathBuf, args: ShowArgs, output: OutputConfig) -> Result<()> {
-    let repo_root = path.canonicalize().unwrap_or(path);
-    let config = load_tags_with_bundles(&repo_root);
+    let default_root = path.canonicalize().unwrap_or(path);
+    let repo_root = match &args.repo_root {
+        Some(r) => r.canonicalize().unwrap_or_else(|_| r.clone()),
+        None => default_root.clone(),
+    };
+    let config = load_tags_with_bundles(&default_root);
 
     // Resolve name: strip "b:" prefix if present, convert slug back to name
     let name = resolve_bundle_name(&args.name, &config.bundles);
@@ -563,6 +570,8 @@ async fn show_l2(
         println!("Keywords: {}", bundle.keywords.join(", "));
     }
 
+    let mut failed_reads: usize = 0;
+
     // Show refs with full content
     if !bundle.refs.is_empty() {
         println!();
@@ -589,8 +598,9 @@ async fn show_l2(
                             }
                         }
                     }
-                    Err(e) => {
-                        println!("  (unable to read: {})", e);
+                    Err(_) => {
+                        println!("  (file not found at {})", file_path.display());
+                        failed_reads += 1;
                     }
                 }
             }
@@ -616,11 +626,25 @@ async fn show_l2(
                 Ok(content) => {
                     print_with_line_numbers(&content, None, Some(100));
                 }
-                Err(e) => {
-                    println!("  (unable to read: {})", e);
+                Err(_) => {
+                    println!("  (file not found at {})", file_path.display());
+                    failed_reads += 1;
                 }
             }
         }
+    }
+
+    // Hint when files couldn't be resolved
+    if failed_reads > 0 {
+        println!();
+        println!(
+            "⚠ {} file(s) not found. Bundle files are relative to the source repo root.",
+            failed_reads
+        );
+        println!(
+            "  Try: bobbin bundle show {} --deep --repo-root /path/to/repo",
+            bundle.name
+        );
     }
 
     // Show includes (expand included bundles at L1)
