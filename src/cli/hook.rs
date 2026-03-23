@@ -1329,7 +1329,29 @@ async fn inject_context_remote(
 
             // Generate injection_id and format structured context output
             let injection_id = generate_context_injection_id(prompt);
-            let out = format_context_response(&resp, budget, hooks_cfg.show_docs, &injection_id, format_mode);
+
+            // Check for bundle keyword matches (local tags.toml, then global)
+            let mut tags_config = find_bobbin_root(&cwd)
+                .map(|root| crate::tags::TagsConfig::load_or_default(&crate::tags::TagsConfig::tags_path(&root)))
+                .unwrap_or_default();
+            if tags_config.bundles.is_empty() {
+                if let Some(global_dir) = Config::global_config_dir() {
+                    let global_tags = global_dir.join("tags.toml");
+                    if global_tags.exists() {
+                        let global = crate::tags::TagsConfig::load_or_default(&global_tags);
+                        if !global.bundles.is_empty() {
+                            tags_config.bundles = global.bundles;
+                        }
+                    }
+                }
+            }
+            let matched_bundles: Vec<(String, String)> = tags_config
+                .match_bundle_keywords(search_query)
+                .into_iter()
+                .map(|(b, _)| (b.name.clone(), b.description.clone()))
+                .collect();
+
+            let out = format_context_response_with_bundles(&resp, budget, hooks_cfg.show_docs, &injection_id, format_mode, &matched_bundles);
             print!("{}", out);
 
             // Record injected chunks in session ledger
@@ -1387,12 +1409,25 @@ async fn inject_context_remote(
 }
 
 /// Format a ContextResponse into structured text for injection.
-fn format_context_response(
+/// Format a ContextResponse into structured text for injection, with optional bundle annotations.
+fn format_context_response_with_bundles(
     resp: &crate::http::client::ContextResponse,
     budget: usize,
     show_docs: bool,
     injection_id: &str,
     format_mode: &str,
+    matched_bundles: &[(String, String)], // (name, match_reason)
+) -> String {
+    format_context_response_inner(resp, budget, show_docs, injection_id, format_mode, matched_bundles)
+}
+
+fn format_context_response_inner(
+    resp: &crate::http::client::ContextResponse,
+    budget: usize,
+    show_docs: bool,
+    injection_id: &str,
+    format_mode: &str,
+    matched_bundles: &[(String, String)],
 ) -> String {
     use std::fmt::Write;
     let mut out = String::new();
@@ -1434,6 +1469,16 @@ fn format_context_response(
                 budget,
                 injection_id,
             );
+        }
+    }
+
+    // Bundle annotations (2 lines per matched bundle, after header)
+    if !matched_bundles.is_empty() {
+        use std::fmt::Write;
+        let _ = writeln!(out);
+        for (name, description) in matched_bundles {
+            let _ = writeln!(out, "📦 bundle:{} — \"{}\"", name, description);
+            let _ = writeln!(out, "   → `bobbin bundle show {}` for full context", name);
         }
     }
 
