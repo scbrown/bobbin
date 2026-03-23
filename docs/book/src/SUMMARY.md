@@ -24,6 +24,7 @@
 - [Watch & Automation](guides/watch-automation.md)
 - [Hooks](guides/hooks.md)
 - [Access Control (RBAC)](guides/access-control.md)
+- [Context Bundles](guides/bundles.md)
 
 # CLI Reference
 
@@ -50,6 +51,7 @@
 - [hook](cli/hook.md)
 - [tour](cli/tour.md)
 - [prime](cli/prime.md)
+- [bundle](cli/bundle.md)
 
 # MCP Integration
 
