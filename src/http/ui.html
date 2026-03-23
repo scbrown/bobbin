@@ -183,6 +183,7 @@ td.mono{font-family:var(--mono)}
     <div class="tab" data-page="context">Context</div>
     <div class="tab" data-page="repos">Repos</div>
     <div class="tab" data-page="tags">Tags</div>
+    <div class="tab" data-page="bundles">Bundles</div>
     <div class="tab" data-page="beads">Beads</div>
     <div class="tab" data-page="hotspots">Hotspots</div>
     <div class="tab" data-page="feedback">Feedback</div>
@@ -365,6 +366,26 @@ td.mono{font-family:var(--mono)}
     </div>
   </div>
 
+  <!-- BUNDLES PAGE -->
+  <div class="page" id="page-bundles">
+    <h2>Context Bundles</h2>
+    <p style="color:var(--dim);margin-bottom:1rem;font-size:0.85rem">Curated knowledge anchors — named groups of files, symbols, and docs that capture a concept or subsystem.</p>
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;align-items:center">
+      <select id="bundles-repo-filter" onchange="loadBundles()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.5rem 0.75rem;color:var(--text);font-size:0.85rem">
+        <option value="">All repos</option>
+      </select>
+      <span id="bundles-count" style="color:var(--dim);font-size:0.85rem"></span>
+    </div>
+    <div class="grid grid-3" id="bundles-grid"></div>
+    <div id="bundle-detail-section" style="display:none;margin-top:1.5rem">
+      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem">
+        <h3 id="bundle-detail-title" style="margin:0"></h3>
+        <span style="color:var(--dim);cursor:pointer;font-size:0.85rem" onclick="closeBundleDetail()">[close]</span>
+      </div>
+      <div id="bundle-detail-content" class="card" style="max-height:60vh;overflow-y:auto;padding:1.25rem"></div>
+    </div>
+  </div>
+
   <!-- BEADS PAGE -->
   <div class="page" id="page-beads">
     <h2>Beads Search</h2>
@@ -430,6 +451,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.getElementById('page-' + tab.dataset.page).classList.add('active');
     if (tab.dataset.page === 'repos' && !window._reposLoaded) loadRepos();
     if (tab.dataset.page === 'tags' && !window._tagsLoaded) loadTags();
+    if (tab.dataset.page === 'bundles' && !window._bundlesLoaded) loadBundles();
     if (tab.dataset.page === 'hotspots' && !window._hotspotsLoaded) loadHotspots();
     if (tab.dataset.page === 'feedback' && !window._feedbackLoaded) loadFeedback();
   });
@@ -1114,6 +1136,137 @@ async function populateContextRepos() {
 }
 
 // -- Tags browser --
+// -- Bundles --
+async function loadBundles() {
+  window._bundlesLoaded = true;
+  const grid = document.getElementById('bundles-grid');
+  const countEl = document.getElementById('bundles-count');
+  const repoFilter = document.getElementById('bundles-repo-filter').value;
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div> Loading bundles...</div>';
+  try {
+    let url = API + '/bundles';
+    if (repoFilter) url += '?repo=' + encodeURIComponent(repoFilter);
+    const data = await fetch(url).then(r => r.json());
+    const bundles = data.bundles || [];
+    countEl.textContent = bundles.length + ' bundle' + (bundles.length !== 1 ? 's' : '');
+
+    // Populate repo filter if first load
+    if (!window._bundlesReposPopulated) {
+      window._bundlesReposPopulated = true;
+      const repos = new Set();
+      bundles.forEach(b => (b.repos || []).forEach(r => repos.add(r)));
+      const sel = document.getElementById('bundles-repo-filter');
+      repos.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r; opt.textContent = r;
+        sel.appendChild(opt);
+      });
+    }
+
+    if (bundles.length === 0) {
+      grid.innerHTML = '<div class="empty">No bundles defined. Add [[bundles]] entries to tags.toml</div>';
+      return;
+    }
+
+    // Group by parent (tree structure)
+    const roots = bundles.filter(b => !b.parent);
+    const childMap = {};
+    bundles.filter(b => b.parent).forEach(b => {
+      if (!childMap[b.parent]) childMap[b.parent] = [];
+      childMap[b.parent].push(b);
+    });
+
+    grid.innerHTML = roots.map(b => {
+      const kids = childMap[b.name] || [];
+      return `<div class="card" style="cursor:pointer" onclick="showBundleDetail('${esc(b.slug)}')">
+        <div class="card-header" style="display:flex;justify-content:space-between">
+          <span>${esc(b.name)}</span>
+          <span style="font-family:var(--mono);font-size:0.75rem">${b.file_count}f ${b.ref_count}r ${b.doc_count}d</span>
+        </div>
+        <div style="color:var(--dim);font-size:0.85rem;margin-bottom:0.5rem">${esc(b.description)}</div>
+        ${b.keywords.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:0.25rem;margin-bottom:0.5rem">${b.keywords.slice(0,5).map(k => `<span style="background:var(--surface2);padding:0.1rem 0.4rem;border-radius:3px;font-size:0.75rem;font-family:var(--mono);color:var(--accent)">${esc(k)}</span>`).join('')}${b.keywords.length > 5 ? `<span style="font-size:0.75rem;color:var(--dim)">+${b.keywords.length - 5}</span>` : ''}</div>` : ''}
+        ${b.repos.length > 0 ? `<div style="font-size:0.75rem;color:var(--dim)">repos: ${b.repos.map(r => esc(r)).join(', ')}</div>` : ''}
+        ${kids.length > 0 ? `<div style="margin-top:0.5rem;border-top:1px solid var(--border);padding-top:0.5rem">${kids.map((k,i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.15rem 0;cursor:pointer" onclick="event.stopPropagation();showBundleDetail('${esc(k.slug)}')"><span style="color:var(--accent);font-size:0.8rem">${i === kids.length-1 ? '\\u2514\\u2500\\u2500' : '\\u251C\\u2500\\u2500'} ${esc(k.name.split('/').pop())}</span><span style="font-family:var(--mono);font-size:0.7rem;color:var(--dim)">${k.file_count}f ${k.ref_count}r</span></div>`).join('')}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    grid.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+async function showBundleDetail(slug) {
+  const section = document.getElementById('bundle-detail-section');
+  const title = document.getElementById('bundle-detail-title');
+  const content = document.getElementById('bundle-detail-content');
+  section.style.display = 'block';
+  content.innerHTML = '<div class="loading"><div class="spinner"></div> Loading bundle...</div>';
+  try {
+    const data = await fetch(`${API}/bundles/${encodeURIComponent(slug)}`).then(r => r.json());
+    title.innerHTML = `<span style="font-family:var(--mono);color:var(--accent)">${esc(data.name)}</span> <span style="color:var(--dim);font-size:0.85rem">— ${esc(data.description)}</span>`;
+
+    let html = '';
+
+    // Keywords
+    if (data.keywords && data.keywords.length > 0) {
+      html += `<div style="margin-bottom:1rem"><h3 style="margin-bottom:0.4rem">Keywords</h3><div style="display:flex;flex-wrap:wrap;gap:0.3rem">${data.keywords.map(k => `<span style="background:var(--surface2);padding:0.15rem 0.5rem;border-radius:3px;font-size:0.8rem;font-family:var(--mono);color:var(--accent)">${esc(k)}</span>`).join('')}</div></div>`;
+    }
+
+    // Files
+    if (data.files && data.files.length > 0) {
+      html += `<div style="margin-bottom:1rem"><h3 style="margin-bottom:0.4rem">Files (${data.files.length})</h3>${data.files.map(f => {
+        const link = repoLink(f);
+        return `<div class="file-item">${link ? `<a class="file-path" href="${link}" target="_blank">${esc(f)}</a>` : `<span class="file-path">${esc(f)}</span>`}</div>`;
+      }).join('')}</div>`;
+    }
+
+    // Refs
+    if (data.refs && data.refs.length > 0) {
+      html += `<div style="margin-bottom:1rem"><h3 style="margin-bottom:0.4rem">Refs (${data.refs.length})</h3>${data.refs.map(r => {
+        const target = r.target ? ` <span style="color:var(--green);font-size:0.8rem">${esc(r.target)}</span>` : '';
+        const repo = r.repo ? ` <span style="color:var(--dim);font-size:0.75rem">[${esc(r.repo)}]</span>` : '';
+        return `<div style="padding:0.15rem 0"><span style="font-family:var(--mono);font-size:0.85rem;color:var(--text)">${esc(r.raw)}</span>${target}${repo}</div>`;
+      }).join('')}</div>`;
+    }
+
+    // Docs
+    if (data.docs && data.docs.length > 0) {
+      html += `<div style="margin-bottom:1rem"><h3 style="margin-bottom:0.4rem">Docs (${data.docs.length})</h3>${data.docs.map(d => `<div class="file-item"><span class="file-path">${esc(d)}</span></div>`).join('')}</div>`;
+    }
+
+    // Includes
+    if (data.includes && data.includes.length > 0) {
+      html += `<div style="margin-bottom:1rem"><h3 style="margin-bottom:0.4rem">Includes</h3>${data.includes.map(i => `<div style="padding:0.15rem 0"><span style="color:var(--accent);font-family:var(--mono);font-size:0.85rem;cursor:pointer" onclick="showBundleDetail('${esc(i)}')">${esc(i)}</span></div>`).join('')}</div>`;
+    }
+
+    // Children
+    if (data.children && data.children.length > 0) {
+      html += `<div style="margin-bottom:1rem"><h3 style="margin-bottom:0.4rem">Sub-bundles (${data.children.length})</h3>${data.children.map(c => `<div style="padding:0.2rem 0;display:flex;justify-content:space-between"><span style="color:var(--accent);font-family:var(--mono);font-size:0.85rem;cursor:pointer" onclick="showBundleDetail('${esc(c.slug)}')">${esc(c.name)}</span><span style="color:var(--dim);font-size:0.8rem">${esc(c.description)}</span></div>`).join('')}</div>`;
+    }
+
+    // Repos
+    if (data.repos && data.repos.length > 0) {
+      html += `<div><h3 style="margin-bottom:0.4rem">Repos</h3><span style="font-size:0.85rem;color:var(--dim)">${data.repos.map(r => esc(r)).join(', ')}</span></div>`;
+    }
+
+    // Member files (expanded)
+    if (data.member_files && data.member_files.length > 0) {
+      html += `<details style="margin-top:1rem"><summary style="cursor:pointer;color:var(--dim);font-size:0.85rem">All member files (${data.member_files.length})</summary><div style="margin-top:0.5rem">${data.member_files.map(f => {
+        const link = repoLink(f);
+        return `<div class="file-item">${link ? `<a class="file-path" href="${link}" target="_blank">${esc(f)}</a>` : `<span class="file-path">${esc(f)}</span>`}</div>`;
+      }).join('')}</div></details>`;
+    }
+
+    content.innerHTML = html || '<div class="empty">Empty bundle</div>';
+    section.scrollIntoView({behavior:'smooth'});
+  } catch(e) {
+    content.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+function closeBundleDetail() {
+  document.getElementById('bundle-detail-section').style.display = 'none';
+}
+
 async function loadTags() {
   window._tagsLoaded = true;
   const grid = document.getElementById('tags-grid');
@@ -1211,6 +1364,7 @@ function switchTab(page) {
   document.getElementById('page-' + page).classList.add('active');
   if (page === 'repos' && !window._reposLoaded) loadRepos();
   if (page === 'tags' && !window._tagsLoaded) loadTags();
+  if (page === 'bundles' && !window._bundlesLoaded) loadBundles();
   if (page === 'hotspots' && !window._hotspotsLoaded) loadHotspots();
   if (page === 'feedback' && !window._feedbackLoaded) loadFeedback();
 }
