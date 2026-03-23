@@ -21,6 +21,11 @@ Bobbin is a local-first code context engine — semantic search, keyword search,
 | `bobbin hook` | Claude Code hook management | `docs/book/src/guides/hooks.md` |
 | `bobbin tag` | Semantic tag management | `docs/book/src/guides/tags.md` |
 | `bobbin status` | Index stats and calibration state | `docs/book/src/cli/status.md` |
+| `bobbin bundle list` | List all context bundles (tree view) | `docs/designs/context-bundles.md` |
+| `bobbin bundle show <name>` | Show bundle contents (L1 outline, L2 with --deep) | `docs/designs/context-bundles.md` |
+| `bobbin bundle create <name>` | Create a new bundle | `docs/designs/context-bundles.md` |
+| `bobbin bundle add <name>` | Add files/refs/keywords to a bundle | `docs/designs/context-bundles.md` |
+| `bobbin bundle remove <name>` | Remove members or delete a bundle | `docs/designs/context-bundles.md` |
 
 All commands support `--json`, `--quiet`, `--verbose`, and `--help`.
 
@@ -52,6 +57,7 @@ Key sections: `[index]` file patterns, `[search]` hybrid weights, `[embedding]` 
 | Feedback | Agent ratings improve search quality | `docs/book/src/guides/feedback.md` |
 | Archive | Index structured markdown records | `docs/book/src/guides/archive.md` |
 | MCP server | Expose tools via Model Context Protocol | `docs/book/src/mcp/overview.md` |
+| Bundles | Named knowledge anchors — curated file/symbol groups with progressive disclosure (L0→L1→L2) | `docs/designs/context-bundles.md` |
 
 ## Architecture
 

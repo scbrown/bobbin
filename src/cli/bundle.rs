@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Args, Subcommand};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -23,6 +23,12 @@ enum BundleCommands {
     List(ListArgs),
     /// Show a bundle's contents (L1 outline by default, L2 with --deep)
     Show(ShowArgs),
+    /// Create a new bundle
+    Create(CreateArgs),
+    /// Add a member (file, ref, doc, keyword, tag) to a bundle
+    Add(AddArgs),
+    /// Remove a member from a bundle
+    Remove(RemoveArgs),
 }
 
 #[derive(Args)]
@@ -47,10 +53,106 @@ struct ShowArgs {
     map: bool,
 }
 
+#[derive(Args)]
+struct CreateArgs {
+    /// Bundle name (use `/` for hierarchy, e.g. "search/reranking")
+    name: String,
+    /// One-line description
+    #[arg(short, long)]
+    description: Option<String>,
+    /// Keywords (comma-separated or repeated)
+    #[arg(short, long, value_delimiter = ',')]
+    keywords: Vec<String>,
+    /// Explicit files
+    #[arg(short, long, value_delimiter = ',')]
+    files: Vec<String>,
+    /// Sub-file refs (file::symbol, file#heading)
+    #[arg(short, long, value_delimiter = ',')]
+    refs: Vec<String>,
+    /// Documentation files
+    #[arg(long, value_delimiter = ',')]
+    docs: Vec<String>,
+    /// Tags for membership
+    #[arg(short, long, value_delimiter = ',')]
+    tags: Vec<String>,
+    /// Include other bundles at L2
+    #[arg(short, long, value_delimiter = ',')]
+    includes: Vec<String>,
+    /// Repo scope
+    #[arg(long, value_delimiter = ',')]
+    repos: Vec<String>,
+    /// Custom slug override
+    #[arg(long)]
+    slug: Option<String>,
+    /// Write to global config (~/.config/bobbin/tags.toml) instead of local
+    #[arg(long)]
+    global: bool,
+}
+
+#[derive(Args)]
+struct AddArgs {
+    /// Bundle name or slug
+    name: String,
+    /// Files to add
+    #[arg(short, long, value_delimiter = ',')]
+    files: Vec<String>,
+    /// Refs to add (file::symbol, file#heading)
+    #[arg(short, long, value_delimiter = ',')]
+    refs: Vec<String>,
+    /// Docs to add
+    #[arg(long, value_delimiter = ',')]
+    docs: Vec<String>,
+    /// Keywords to add
+    #[arg(short, long, value_delimiter = ',')]
+    keywords: Vec<String>,
+    /// Tags to add
+    #[arg(short, long, value_delimiter = ',')]
+    tags: Vec<String>,
+    /// Includes to add
+    #[arg(short, long, value_delimiter = ',')]
+    includes: Vec<String>,
+    /// Write to global config
+    #[arg(long)]
+    global: bool,
+}
+
+#[derive(Args)]
+struct RemoveArgs {
+    /// Bundle name or slug
+    name: String,
+    /// Files to remove
+    #[arg(short, long, value_delimiter = ',')]
+    files: Vec<String>,
+    /// Refs to remove
+    #[arg(short, long, value_delimiter = ',')]
+    refs: Vec<String>,
+    /// Docs to remove
+    #[arg(long, value_delimiter = ',')]
+    docs: Vec<String>,
+    /// Keywords to remove
+    #[arg(short, long, value_delimiter = ',')]
+    keywords: Vec<String>,
+    /// Tags to remove
+    #[arg(short, long, value_delimiter = ',')]
+    tags: Vec<String>,
+    /// Includes to remove
+    #[arg(short, long, value_delimiter = ',')]
+    includes: Vec<String>,
+    /// Remove the entire bundle
+    #[arg(long)]
+    all: bool,
+    /// Write to global config
+    #[arg(long)]
+    global: bool,
+}
+
 pub async fn run(args: BundleArgs, output: OutputConfig) -> Result<()> {
     match args.command {
         BundleCommands::List(list_args) => run_list(args.path, list_args, output).await,
         BundleCommands::Show(show_args) => run_show(args.path, show_args, output).await,
+        BundleCommands::Create(create_args) => run_create(args.path, create_args, output).await,
+        BundleCommands::Add(add_args) => run_add(args.path, add_args, output).await,
+        BundleCommands::Remove(remove_args) => run_remove(args.path, remove_args, output).await,
     }
 }
 
@@ -540,6 +642,337 @@ async fn show_l2(
                 }
             }
         }
+    }
+
+    Ok(())
+}
+
+// === CRUD Commands (Phase 4) ===
+
+/// Resolve which tags.toml to write to: local .bobbin/tags.toml or global ~/.config/bobbin/tags.toml.
+fn resolve_tags_path(repo_root: &std::path::Path, global: bool) -> std::path::PathBuf {
+    if global {
+        Config::global_config_dir()
+            .map(|d| d.join("tags.toml"))
+            .unwrap_or_else(|| TagsConfig::tags_path(repo_root))
+    } else {
+        TagsConfig::tags_path(repo_root)
+    }
+}
+
+/// Load the tags config from the appropriate file (local or global), returning the path used.
+fn load_tags_for_write(
+    repo_root: &std::path::Path,
+    global: bool,
+) -> (TagsConfig, std::path::PathBuf) {
+    let path = resolve_tags_path(repo_root, global);
+    let config = if path.exists() {
+        TagsConfig::load_or_default(&path)
+    } else {
+        // Check if global has bundles when local doesn't exist
+        if !global {
+            if let Some(global_dir) = Config::global_config_dir() {
+                let global_path = global_dir.join("tags.toml");
+                if global_path.exists() {
+                    let gc = TagsConfig::load_or_default(&global_path);
+                    if !gc.bundles.is_empty() {
+                        eprintln!(
+                            "hint: bundles found in global config ({}). Use --global to modify those.",
+                            global_path.display()
+                        );
+                    }
+                }
+            }
+        }
+        TagsConfig::default()
+    };
+    (config, path)
+}
+
+/// Format a BundleConfig as a TOML `[[bundles]]` entry for appending.
+fn format_bundle_toml(bundle: &BundleConfig) -> String {
+    let mut lines = vec!["[[bundles]]".to_string()];
+    lines.push(format!("name = {:?}", bundle.name));
+    lines.push(format!("description = {:?}", bundle.description));
+
+    if let Some(ref slug) = bundle.slug {
+        lines.push(format!("slug = {:?}", slug));
+    }
+    if !bundle.keywords.is_empty() {
+        lines.push(format_toml_string_array("keywords", &bundle.keywords));
+    }
+    if !bundle.tags.is_empty() {
+        lines.push(format_toml_string_array("tags", &bundle.tags));
+    }
+    if !bundle.files.is_empty() {
+        lines.push(format_toml_string_array("files", &bundle.files));
+    }
+    if !bundle.refs.is_empty() {
+        lines.push(format_toml_ref_array("refs", &bundle.refs));
+    }
+    if !bundle.docs.is_empty() {
+        lines.push(format_toml_string_array("docs", &bundle.docs));
+    }
+    if !bundle.includes.is_empty() {
+        lines.push(format_toml_string_array("includes", &bundle.includes));
+    }
+    if !bundle.repos.is_empty() {
+        lines.push(format_toml_string_array("repos", &bundle.repos));
+    }
+
+    lines.join("\n")
+}
+
+/// Format a TOML string array inline or multiline depending on length.
+fn format_toml_string_array(key: &str, values: &[String]) -> String {
+    let inline = format!(
+        "{} = [{}]",
+        key,
+        values
+            .iter()
+            .map(|v| format!("{:?}", v))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    if inline.len() <= 100 {
+        inline
+    } else {
+        // Multiline
+        let mut s = format!("{} = [\n", key);
+        for v in values {
+            s.push_str(&format!("    {:?},\n", v));
+        }
+        s.push(']');
+        s
+    }
+}
+
+/// Format refs as multiline TOML array (refs tend to be long).
+fn format_toml_ref_array(key: &str, values: &[String]) -> String {
+    if values.len() == 1 {
+        format!("{} = [{:?}]", key, values[0])
+    } else {
+        let mut s = format!("{} = [\n", key);
+        for v in values {
+            s.push_str(&format!("    {:?},\n", v));
+        }
+        s.push(']');
+        s
+    }
+}
+
+async fn run_create(path: PathBuf, args: CreateArgs, output: OutputConfig) -> Result<()> {
+    let repo_root = path.canonicalize().unwrap_or(path);
+    let tags_path = resolve_tags_path(&repo_root, args.global);
+
+    // Check for duplicate
+    if tags_path.exists() {
+        let config = TagsConfig::load_or_default(&tags_path);
+        if config.find_bundle(&args.name).is_some() {
+            bail!("Bundle '{}' already exists in {}", args.name, tags_path.display());
+        }
+    }
+
+    // Validate name
+    if args.name.is_empty() || args.name.starts_with('/') || args.name.ends_with('/') {
+        bail!("Invalid bundle name '{}': must not be empty or start/end with '/'", args.name);
+    }
+
+    let description = args
+        .description
+        .unwrap_or_else(|| format!("Bundle: {}", args.name));
+
+    let bundle = BundleConfig {
+        name: args.name.clone(),
+        description: description.clone(),
+        keywords: args.keywords,
+        tags: args.tags,
+        files: args.files,
+        refs: args.refs,
+        docs: args.docs,
+        includes: args.includes,
+        repos: args.repos,
+        slug: args.slug,
+    };
+
+    // Append to file (preserves existing content and comments)
+    let toml_entry = format_bundle_toml(&bundle);
+    let mut content = if tags_path.exists() {
+        std::fs::read_to_string(&tags_path)?
+    } else {
+        if let Some(parent) = tags_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        String::new()
+    };
+
+    // Ensure trailing newline before appending
+    if !content.is_empty() && !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push('\n');
+    content.push_str(&toml_entry);
+    content.push('\n');
+
+    std::fs::write(&tags_path, &content)?;
+
+    if output.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "created": args.name,
+                "slug": bundle.slug(),
+                "path": tags_path.display().to_string(),
+            }))?
+        );
+    } else {
+        println!("✓ Created bundle '{}' (slug: {})", args.name, bundle.slug());
+        println!("  → {}", tags_path.display());
+        println!("  → `bobbin bundle show {}`", args.name);
+    }
+
+    Ok(())
+}
+
+async fn run_add(path: PathBuf, args: AddArgs, _output: OutputConfig) -> Result<()> {
+    let repo_root = path.canonicalize().unwrap_or(path);
+    let (mut config, tags_path) = load_tags_for_write(&repo_root, args.global);
+
+    let name = resolve_bundle_name(&args.name, &config.bundles);
+    let bundle = config
+        .bundles
+        .iter_mut()
+        .find(|b| b.name == name)
+        .ok_or_else(|| anyhow::anyhow!("Bundle '{}' not found", name))?;
+
+    let mut added = Vec::new();
+
+    for f in &args.files {
+        if !bundle.files.contains(f) {
+            bundle.files.push(f.clone());
+            added.push(format!("file:{}", f));
+        }
+    }
+    for r in &args.refs {
+        if !bundle.refs.contains(r) {
+            // Validate ref syntax
+            if BundleRef::parse(r).is_none() {
+                eprintln!("warning: '{}' doesn't match ref syntax (file::symbol or file#heading), adding anyway", r);
+            }
+            bundle.refs.push(r.clone());
+            added.push(format!("ref:{}", r));
+        }
+    }
+    for d in &args.docs {
+        if !bundle.docs.contains(d) {
+            bundle.docs.push(d.clone());
+            added.push(format!("doc:{}", d));
+        }
+    }
+    for k in &args.keywords {
+        if !bundle.keywords.contains(k) {
+            bundle.keywords.push(k.clone());
+            added.push(format!("keyword:{}", k));
+        }
+    }
+    for t in &args.tags {
+        if !bundle.tags.contains(t) {
+            bundle.tags.push(t.clone());
+            added.push(format!("tag:{}", t));
+        }
+    }
+    for i in &args.includes {
+        if !bundle.includes.contains(i) {
+            bundle.includes.push(i.clone());
+            added.push(format!("include:{}", i));
+        }
+    }
+
+    if added.is_empty() {
+        println!("Nothing to add (all members already present)");
+        return Ok(());
+    }
+
+    config.save(&tags_path)?;
+    println!("✓ Added {} member(s) to '{}':", added.len(), name);
+    for a in &added {
+        println!("  + {}", a);
+    }
+
+    Ok(())
+}
+
+async fn run_remove(path: PathBuf, args: RemoveArgs, _output: OutputConfig) -> Result<()> {
+    let repo_root = path.canonicalize().unwrap_or(path);
+    let (mut config, tags_path) = load_tags_for_write(&repo_root, args.global);
+
+    let name = resolve_bundle_name(&args.name, &config.bundles);
+
+    if args.all {
+        let before = config.bundles.len();
+        config.bundles.retain(|b| b.name != name);
+        if config.bundles.len() == before {
+            bail!("Bundle '{}' not found", name);
+        }
+        config.save(&tags_path)?;
+        println!("✓ Removed bundle '{}'", name);
+        return Ok(());
+    }
+
+    let bundle = config
+        .bundles
+        .iter_mut()
+        .find(|b| b.name == name)
+        .ok_or_else(|| anyhow::anyhow!("Bundle '{}' not found", name))?;
+
+    let mut removed = Vec::new();
+
+    for f in &args.files {
+        if let Some(pos) = bundle.files.iter().position(|x| x == f) {
+            bundle.files.remove(pos);
+            removed.push(format!("file:{}", f));
+        }
+    }
+    for r in &args.refs {
+        if let Some(pos) = bundle.refs.iter().position(|x| x == r) {
+            bundle.refs.remove(pos);
+            removed.push(format!("ref:{}", r));
+        }
+    }
+    for d in &args.docs {
+        if let Some(pos) = bundle.docs.iter().position(|x| x == d) {
+            bundle.docs.remove(pos);
+            removed.push(format!("doc:{}", d));
+        }
+    }
+    for k in &args.keywords {
+        if let Some(pos) = bundle.keywords.iter().position(|x| x == k) {
+            bundle.keywords.remove(pos);
+            removed.push(format!("keyword:{}", k));
+        }
+    }
+    for t in &args.tags {
+        if let Some(pos) = bundle.tags.iter().position(|x| x == t) {
+            bundle.tags.remove(pos);
+            removed.push(format!("tag:{}", t));
+        }
+    }
+    for i in &args.includes {
+        if let Some(pos) = bundle.includes.iter().position(|x| x == i) {
+            bundle.includes.remove(pos);
+            removed.push(format!("include:{}", i));
+        }
+    }
+
+    if removed.is_empty() {
+        println!("Nothing to remove (no matching members found)");
+        return Ok(());
+    }
+
+    config.save(&tags_path)?;
+    println!("✓ Removed {} member(s) from '{}':", removed.len(), name);
+    for r in &removed {
+        println!("  - {}", r);
     }
 
     Ok(())

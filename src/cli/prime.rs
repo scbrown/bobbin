@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use super::OutputConfig;
 use crate::config::Config;
 use crate::storage::VectorStore;
+use crate::tags::TagsConfig;
 use crate::types::IndexStats;
 
 /// Embedded primer documentation
@@ -147,7 +148,58 @@ pub async fn run(args: PrimeArgs, output: OutputConfig) -> Result<()> {
         );
     }
 
+    // Show available bundles
+    let tags_config = load_tags_with_bundles(&repo_root);
+    if !tags_config.bundles.is_empty() {
+        println!("\n{}", "## Context Bundles".bold());
+        println!();
+        for b in &tags_config.bundles {
+            let files = b.member_files().len();
+            let child_hint = if tags_config
+                .bundles
+                .iter()
+                .any(|c| c.parent_name() == Some(&b.name))
+            {
+                " (+children)"
+            } else {
+                ""
+            };
+            // Skip children in the top-level list
+            if b.parent_name().is_some() {
+                continue;
+            }
+            println!(
+                "  {} — {} ({} files{})",
+                b.name, b.description, files, child_hint
+            );
+        }
+        println!();
+        println!(
+            "  Use `bobbin bundle list` for tree view, `bobbin bundle show <name>` for details"
+        );
+    }
+
     Ok(())
+}
+
+/// Load tags config with bundle definitions, checking local .bobbin/ first, then global config.
+fn load_tags_with_bundles(repo_root: &std::path::Path) -> TagsConfig {
+    let local_path = TagsConfig::tags_path(repo_root);
+    let mut config = TagsConfig::load_or_default(&local_path);
+
+    if config.bundles.is_empty() {
+        if let Some(global_dir) = Config::global_config_dir() {
+            let global_tags_path = global_dir.join("tags.toml");
+            if global_tags_path.exists() {
+                let global_config = TagsConfig::load_or_default(&global_tags_path);
+                if !global_config.bundles.is_empty() {
+                    config.bundles = global_config.bundles;
+                }
+            }
+        }
+    }
+
+    config
 }
 
 /// Extract only the first two sections (title + "What Bobbin Does") for --brief.
