@@ -16,6 +16,9 @@ on:
       - 'docs/**'
       - 'README.md'
       - 'CONTRIBUTING.md'
+      - '.markdownlint-cli2.yaml'
+      - '.vale.ini'
+      - '.vale/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
