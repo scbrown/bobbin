@@ -17,6 +17,7 @@ bobbin bundle show context/pipeline --deep
 ```
 
 Bundles are particularly valuable for:
+
 - **Handoffs**: reference a bundle so the next session can load context immediately
 - **Polecat dispatch**: include `bobbin bundle show <name> --deep` in sling args
 - **Feature work**: create a bundle as you explore, then attach it to the bead with `b:<slug>`
@@ -76,7 +77,7 @@ bobbin bundle add "search/reranking" --global \
 
 If your environment has the `/bundle` skill, it automates the research-to-bundle pipeline:
 
-```
+```bash
 /bundle "context assembly pipeline"
 /bundle "reactor alert processing" --save
 ```
@@ -109,7 +110,7 @@ bobbin bundle show search/reranking --deep  # Load full context
 
 When handing off work, reference the bundle so the next session bootstraps instantly:
 
-```
+```bash
 gt handoff -s "Reranking improvements" -m "Working on bo-xyz. Bundle: search/reranking"
 ```
 

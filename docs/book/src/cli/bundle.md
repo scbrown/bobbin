@@ -33,7 +33,7 @@ bobbin bundle list --json
 
 Output shows bundle hierarchy with names, descriptions, and member counts:
 
-```
+```text
 Context Bundles (9 total):
 
   context — "Assembles relevant code for agent prompts" (1 files)

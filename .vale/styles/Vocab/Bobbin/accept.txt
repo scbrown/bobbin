@@ -4,6 +4,7 @@ bobbin
 code_block
 Docusaurus
 LanceDB
+APIs
 LLMs
 Tree-sitter
 MCP
@@ -11,6 +12,7 @@ ONNX
 SQLite
 bool
 boolean
+args
 backend
 composable
 config
@@ -23,6 +25,8 @@ deduplicates
 deduplication
 deps
 dev
+dtype
+dylib
 enum
 enums
 frontend
@@ -32,6 +36,7 @@ FSEvents
 hotspot
 hotspots
 impl
+ints
 inotify
 list_symbols
 lookups
@@ -39,12 +44,16 @@ mdbook
 middleware
 monorepo
 OAuth
+param
+params
 protoc
 read_chunk
 reindex
 repo
 repos
 rmcp
+rrf_k
+rst
 rustup
 save_session
 serverless
@@ -52,6 +61,7 @@ stderr
 stdout
 subcommand
 subcommands
+stryder
 subprocess
 systemd
 tmux
@@ -61,6 +71,7 @@ toolchain
 unstaged
 upserts
 walkthrough
+wip
 worktrees
 xcode
 zsh
