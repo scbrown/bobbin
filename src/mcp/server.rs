@@ -380,7 +380,19 @@ impl BobbinMcpServer {
         let repo_filter = req.repo.as_deref();
 
         // Build tag filter
-        let tag_filter = Self::build_tag_filter(req.tag.as_deref(), req.exclude_tag.as_deref());
+        let mut tag_filter = Self::build_tag_filter(req.tag.as_deref(), req.exclude_tag.as_deref());
+
+        // Apply bundle filter if specified
+        if let Some(ref bundle_name) = req.bundle {
+            let tags_path = crate::tags::TagsConfig::tags_path(&self.repo_root);
+            let tags_config = crate::tags::TagsConfig::load_or_default(&tags_path);
+            if let Some(bundle_filter) = tags_config.build_bundle_file_filter(bundle_name) {
+                tag_filter = Some(match tag_filter {
+                    Some(existing) => format!("{} AND {}", existing, bundle_filter),
+                    None => bundle_filter,
+                });
+            }
+        }
 
         let results: Vec<SearchResult> = match mode {
             "keyword" => vector_store
@@ -605,7 +617,19 @@ impl BobbinMcpServer {
         let embedder = Embedder::from_config(&config.embedding, &model_dir)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let extra_filter = Self::build_tag_filter(req.tag.as_deref(), req.exclude_tag.as_deref());
+        let mut extra_filter = Self::build_tag_filter(req.tag.as_deref(), req.exclude_tag.as_deref());
+
+        // Apply bundle filter if specified
+        if let Some(ref bundle_name) = req.bundle {
+            let tags_path = crate::tags::TagsConfig::tags_path(&self.repo_root);
+            let tags_config = crate::tags::TagsConfig::load_or_default(&tags_path);
+            if let Some(bundle_filter) = tags_config.build_bundle_file_filter(bundle_name) {
+                extra_filter = Some(match extra_filter {
+                    Some(existing) => format!("{} AND {}", existing, bundle_filter),
+                    None => bundle_filter,
+                });
+            }
+        }
 
         let context_config = ContextConfig {
             budget_lines: req.budget.unwrap_or(500),

@@ -404,6 +404,63 @@ impl TagsConfig {
         }
         if is_pinned { Some(max_reserve) } else { None }
     }
+
+    /// Find a bundle by name or slug.
+    pub fn find_bundle(&self, name_or_slug: &str) -> Option<&BundleConfig> {
+        let name = name_or_slug.strip_prefix("b:").unwrap_or(name_or_slug);
+        self.bundles
+            .iter()
+            .find(|b| b.name == name || b.slug() == name)
+            .or_else(|| {
+                // Try hyphens → slashes
+                let as_path = name.replace('-', "/");
+                self.bundles.iter().find(|b| b.name == as_path)
+            })
+    }
+
+    /// Build a SQL filter clause that restricts results to bundle member files.
+    /// Returns None if the bundle has no file-based membership (only tag membership).
+    pub fn build_bundle_file_filter(&self, bundle_name: &str) -> Option<String> {
+        let bundle = self.find_bundle(bundle_name)?;
+        let files = bundle.member_files();
+
+        let mut clauses: Vec<String> = Vec::new();
+
+        // File path membership
+        if !files.is_empty() {
+            let file_list: Vec<String> = files.iter().map(|f| format!("'{}'", f.replace('\'', "''"))).collect();
+            clauses.push(format!("file_path IN ({})", file_list.join(", ")));
+        }
+
+        // Tag membership
+        if !bundle.tags.is_empty() {
+            clauses.push(build_tag_include_filter(&bundle.tags));
+        }
+
+        if clauses.is_empty() {
+            None
+        } else {
+            Some(format!("({})", clauses.join(" OR ")))
+        }
+    }
+
+    /// Find bundles whose keywords match the given query (case-insensitive substring).
+    pub fn match_bundle_keywords(&self, query: &str) -> Vec<(&BundleConfig, String)> {
+        let query_lower = query.to_lowercase();
+        let mut matches: Vec<(&BundleConfig, String)> = Vec::new();
+
+        for bundle in &self.bundles {
+            for keyword in &bundle.keywords {
+                let keyword_lower = keyword.to_lowercase();
+                if query_lower.contains(&keyword_lower) {
+                    matches.push((bundle, format!("keyword:{}", keyword)));
+                    break; // One match per bundle is enough
+                }
+            }
+        }
+
+        matches
+    }
 }
 
 /// Count specificity of a role pattern: number of path segments that don't contain wildcards.

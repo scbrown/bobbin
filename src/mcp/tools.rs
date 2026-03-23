@@ -34,6 +34,10 @@ pub struct SearchRequest {
     /// Exclude chunks with these tags (comma-separated)
     #[schemars(description = "Exclude chunks tagged with these tags (comma-separated, e.g. 'test,generated')")]
     pub exclude_tag: Option<String>,
+
+    /// Scope search to a named context bundle
+    #[schemars(description = "Scope results to a named context bundle (e.g. 'context/pipeline', 'hook'). Omit to search all files.")]
+    pub bundle: Option<String>,
 }
 
 /// Response for semantic search
@@ -163,6 +167,10 @@ pub struct ContextRequest {
     /// Exclude chunks with these tags (comma-separated)
     #[schemars(description = "Exclude chunks tagged with these tags (comma-separated, e.g. 'test,generated')")]
     pub exclude_tag: Option<String>,
+
+    /// Scope context to a named context bundle
+    #[schemars(description = "Scope results to a named context bundle (e.g. 'context/pipeline', 'hook'). Omit to search all files.")]
+    pub bundle: Option<String>,
 }
 
 /// Response for context assembly

@@ -149,6 +149,8 @@ struct SearchParams {
     tag: Option<String>,
     /// Exclude chunks with these tags (comma-separated)
     exclude_tag: Option<String>,
+    /// Scope search to a named context bundle
+    bundle: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -157,6 +159,20 @@ struct SearchResponse {
     mode: String,
     count: usize,
     results: Vec<SearchResultItem>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    bundles: Vec<BundleMatchOutput>,
+}
+
+/// A bundle that matched the query keywords.
+#[derive(Serialize)]
+struct BundleMatchOutput {
+    name: String,
+    slug: String,
+    description: String,
+    #[serde(rename = "match")]
+    match_reason: String,
+    file_count: usize,
+    drill: String,
 }
 
 #[derive(Serialize)]
@@ -212,6 +228,7 @@ pub(super) async fn search(
             mode: mode.to_string(),
             count: 0,
             results: vec![],
+            bundles: vec![],
         }));
     }
 
@@ -257,6 +274,12 @@ pub(super) async fn search(
         let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
         if !tag_list.is_empty() {
             extra_filters.push(build_tag_exclude_filter(&tag_list));
+        }
+    }
+    // Apply bundle filter (scope search to bundle member files)
+    if let Some(ref bundle_name) = params.bundle {
+        if let Some(bundle_filter) = state.tags_config.build_bundle_file_filter(bundle_name) {
+            extra_filters.push(bundle_filter);
         }
     }
     // Apply tag effect exclusions (e.g. auto:init exclude=true from tags.toml)
@@ -349,11 +372,15 @@ pub(super) async fn search(
         "search"
     );
 
+    // Check for bundle keyword matches
+    let matched_bundles = find_matching_bundles(&state.tags_config, &params.q);
+
     Ok(Json(SearchResponse {
         query: params.q,
         mode: mode.to_string(),
         count: filtered.len(),
         results: filtered.iter().map(to_search_item).collect(),
+        bundles: matched_bundles,
     }))
 }
 
@@ -1315,6 +1342,8 @@ struct ContextParams {
     doc_demotion: Option<f32>,
     /// Override recency_weight (0.0=no recency, 1.0=full recency)
     recency_weight: Option<f32>,
+    /// Scope context to a named context bundle
+    bundle: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1323,6 +1352,8 @@ struct ContextResponse {
     budget: ContextBudgetInfo,
     files: Vec<ContextFileOutput>,
     summary: ContextSummaryOutput,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    bundles: Vec<BundleMatchOutput>,
 }
 
 #[derive(Serialize)]
@@ -1411,6 +1442,7 @@ pub(super) async fn context(
                 intent: None,
                 gate_boost: None,
             },
+            bundles: vec![],
         }));
     }
 
@@ -1430,6 +1462,12 @@ pub(super) async fn context(
         let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
         if !tag_list.is_empty() {
             tag_filters.push(build_tag_exclude_filter(&tag_list));
+        }
+    }
+    // Apply bundle filter (scope context to bundle member files)
+    if let Some(ref bundle_name) = params.bundle {
+        if let Some(bundle_filter) = state.tags_config.build_bundle_file_filter(bundle_name) {
+            tag_filters.push(bundle_filter);
         }
     }
     let extra_filter = if tag_filters.is_empty() {
@@ -1518,6 +1556,9 @@ pub(super) async fn context(
     summary.intent = Some(format!("{:?}", intent));
     summary.gate_boost = Some(adj.gate_boost);
 
+    // Check for bundle keyword matches
+    let matched_bundles = find_matching_bundles(&state.tags_config, &params.q);
+
     Ok(Json(ContextResponse {
         query: bundle.query,
         budget: ContextBudgetInfo {
@@ -1526,6 +1567,7 @@ pub(super) async fn context(
         },
         files: bundle.files.iter().map(to_context_file).collect(),
         summary,
+        bundles: matched_bundles,
     }))
 }
 
@@ -3860,6 +3902,22 @@ fn to_context_summary(s: &crate::search::context::ContextSummary) -> ContextSumm
         intent: None,
         gate_boost: None,
     }
+}
+
+/// Find bundles whose keywords match the query.
+fn find_matching_bundles(tags_config: &crate::tags::TagsConfig, query: &str) -> Vec<BundleMatchOutput> {
+    tags_config
+        .match_bundle_keywords(query)
+        .into_iter()
+        .map(|(bundle, match_reason)| BundleMatchOutput {
+            name: bundle.name.clone(),
+            slug: bundle.slug(),
+            description: bundle.description.clone(),
+            match_reason,
+            file_count: bundle.member_files().len(),
+            drill: format!("bobbin bundle show {}", bundle.name),
+        })
+        .collect()
 }
 
 fn parse_diff_spec(spec: Option<&str>) -> crate::index::git::DiffSpec {
