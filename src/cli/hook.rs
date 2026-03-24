@@ -719,14 +719,44 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
 
     let hooks_cfg = &config.hooks;
 
-    // Check Claude Code hooks (project-local)
-    let project_settings = repo_root.join(".claude").join("settings.json");
-    let hooks_installed = if project_settings.exists() {
-        read_settings(&project_settings)
-            .map(|s| has_bobbin_hooks(&s))
-            .unwrap_or(false)
-    } else {
-        false
+    // Check Claude Code hooks — walk up directory tree like Claude Code does.
+    // Check project-local first, then parent directories.
+    let (hooks_installed, hooks_found_at) = {
+        let mut found = false;
+        let mut found_path: Option<PathBuf> = None;
+        let mut current = repo_root.clone();
+        loop {
+            let settings = current.join(".claude").join("settings.json");
+            if settings.exists() {
+                if read_settings(&settings)
+                    .map(|s| has_bobbin_hooks(&s))
+                    .unwrap_or(false)
+                {
+                    found = true;
+                    found_path = Some(settings);
+                    break;
+                }
+            }
+            if !current.pop() {
+                break;
+            }
+        }
+        // Also check global ~/.claude/settings.json
+        if !found {
+            if let Ok(home) = std::env::var("HOME") {
+                let global = PathBuf::from(home).join(".claude").join("settings.json");
+                if global.exists() {
+                    if read_settings(&global)
+                        .map(|s| has_bobbin_hooks(&s))
+                        .unwrap_or(false)
+                    {
+                        found = true;
+                        found_path = Some(global);
+                    }
+                }
+            }
+        }
+        (found, found_path)
     };
 
     // Check git post-commit hook
@@ -777,7 +807,19 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
         println!("  Gate threshold:   {}", hooks_cfg.gate_threshold.to_string().cyan());
         println!("  Dedup enabled:    {}", if hooks_cfg.dedup_enabled { "yes".green() } else { "no".yellow() });
         println!();
-        let hooks_str = if hooks_installed { "installed".green() } else { "not installed".yellow() };
+        let hooks_str = if hooks_installed {
+            if let Some(ref p) = hooks_found_at {
+                if p.starts_with(&repo_root) {
+                    "installed".green()
+                } else {
+                    format!("installed (via {})", p.display()).green()
+                }
+            } else {
+                "installed".green()
+            }
+        } else {
+            "not installed".yellow()
+        };
         let git_str = if git_hook_installed { "installed".green() } else { "not installed".yellow() };
         println!("  Claude Code hooks: {}", hooks_str);
         println!("  Git post-commit:   {}", git_str);
