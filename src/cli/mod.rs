@@ -4,6 +4,7 @@ mod calibrate;
 mod completions;
 mod context;
 mod deps;
+mod feedback;
 mod grep;
 mod history;
 mod hook;
@@ -82,6 +83,9 @@ enum Commands {
     /// Show import dependencies for a file
     Deps(deps::DepsArgs),
 
+    /// Submit, list, and manage feedback on bobbin context injections
+    Feedback(feedback::FeedbackArgs),
+
     /// Keyword/regex search
     Grep(grep::GrepArgs),
 
@@ -159,6 +163,7 @@ impl Commands {
             Commands::Search(_) => "search",
             Commands::Context(_) => "context",
             Commands::Deps(_) => "deps",
+            Commands::Feedback(_) => "feedback",
             Commands::Grep(_) => "grep",
             Commands::Refs(_) => "refs",
             Commands::Related(_) => "related",
@@ -270,6 +275,7 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
         Commands::Search(args) => search::run(args, output).await,
         Commands::Context(args) => context::run(args, output).await,
         Commands::Deps(args) => deps::run(args, output).await,
+        Commands::Feedback(args) => feedback::run(args, output).await,
         Commands::Grep(args) => grep::run(args, output).await,
         Commands::Refs(args) => refs::run(args, output).await,
         Commands::Related(args) => related::run(args, output).await,

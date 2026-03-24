@@ -380,6 +380,47 @@ pub struct BeadResultItem {
     pub snippet: Option<String>,
 }
 
+/// A feedback record from the server
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct FeedbackRecord {
+    pub id: i64,
+    pub injection_id: String,
+    pub timestamp: String,
+    pub agent: String,
+    pub rating: String,
+    pub reason: String,
+}
+
+/// Aggregated feedback statistics from the server
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct FeedbackStats {
+    pub total_injections: u64,
+    pub total_feedback: u64,
+    pub useful: u64,
+    pub noise: u64,
+    pub harmful: u64,
+    #[serde(default)]
+    pub actioned: u64,
+    #[serde(default)]
+    pub unactioned: u64,
+    #[serde(default)]
+    pub lineage_records: u64,
+}
+
+/// A lineage record from the server
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct LineageRecord {
+    pub id: i64,
+    pub timestamp: String,
+    pub action_type: String,
+    pub bead: Option<String>,
+    pub commit_hash: Option<String>,
+    pub description: String,
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub feedback_ids: Vec<i64>,
+}
+
 /// Error response from the server
 #[derive(Deserialize)]
 struct ErrorBody {
@@ -845,6 +886,130 @@ impl Client {
     pub async fn list_http_commands(&self) -> Result<serde_json::Value> {
         let url = format!("{}/cmd", self.base_url);
         self.get_json(&url, &[]).await
+    }
+
+    /// Submit feedback on an injection via the remote server.
+    pub async fn feedback_submit(
+        &self,
+        injection_id: &str,
+        rating: &str,
+        reason: &str,
+        agent: &str,
+    ) -> Result<serde_json::Value> {
+        let url = format!("{}/feedback", self.base_url);
+        let body = serde_json::json!({
+            "injection_id": injection_id,
+            "rating": rating,
+            "reason": reason,
+            "agent": agent,
+        });
+        let resp = self
+            .http
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .context("Failed to submit feedback")?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body: ErrorBody = resp.json().await.unwrap_or(ErrorBody {
+                error: format!("HTTP {}", status),
+            });
+            anyhow::bail!("Server error ({}): {}", status, body.error);
+        }
+        resp.json().await.context("Failed to parse feedback response")
+    }
+
+    /// List feedback records via the remote server.
+    pub async fn feedback_list(
+        &self,
+        injection_id: Option<&str>,
+        rating: Option<&str>,
+        agent: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<FeedbackRecord>> {
+        let url = format!("{}/feedback", self.base_url);
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(id) = injection_id {
+            params.push(("injection_id", id.to_string()));
+        }
+        if let Some(r) = rating {
+            params.push(("rating", r.to_string()));
+        }
+        if let Some(a) = agent {
+            params.push(("agent", a.to_string()));
+        }
+        if let Some(l) = limit {
+            params.push(("limit", l.to_string()));
+        }
+        self.get_json(&url, &params).await
+    }
+
+    /// Get aggregated feedback statistics via the remote server.
+    pub async fn feedback_stats(&self) -> Result<FeedbackStats> {
+        let url = format!("{}/feedback/stats", self.base_url);
+        self.get_json::<FeedbackStats>(&url, &[]).await
+    }
+
+    /// Store a lineage record via the remote server.
+    pub async fn lineage_store(
+        &self,
+        feedback_ids: &[i64],
+        action_type: &str,
+        bead: Option<&str>,
+        commit_hash: Option<&str>,
+        description: &str,
+        agent: Option<&str>,
+    ) -> Result<LineageRecord> {
+        let url = format!("{}/feedback/lineage", self.base_url);
+        let body = serde_json::json!({
+            "feedback_ids": feedback_ids,
+            "action_type": action_type,
+            "bead": bead,
+            "commit_hash": commit_hash,
+            "description": description,
+            "agent": agent,
+        });
+        let resp = self
+            .http
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .context("Failed to store lineage")?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body: ErrorBody = resp.json().await.unwrap_or(ErrorBody {
+                error: format!("HTTP {}", status),
+            });
+            anyhow::bail!("Server error ({}): {}", status, body.error);
+        }
+        resp.json().await.context("Failed to parse lineage response")
+    }
+
+    /// List lineage records via the remote server.
+    pub async fn lineage_list(
+        &self,
+        feedback_id: Option<i64>,
+        bead: Option<&str>,
+        commit_hash: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<LineageRecord>> {
+        let url = format!("{}/feedback/lineage", self.base_url);
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(id) = feedback_id {
+            params.push(("feedback_id", id.to_string()));
+        }
+        if let Some(b) = bead {
+            params.push(("bead", b.to_string()));
+        }
+        if let Some(c) = commit_hash {
+            params.push(("commit_hash", c.to_string()));
+        }
+        if let Some(l) = limit {
+            params.push(("limit", l.to_string()));
+        }
+        self.get_json(&url, &params).await
     }
 
     /// Return the base URL (for display/logging).
