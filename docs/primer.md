@@ -20,6 +20,7 @@ Bobbin is a local-first code context engine — semantic search, keyword search,
 | `bobbin serve` | HTTP API / MCP server | `docs/book/src/mcp/overview.md` |
 | `bobbin hook` | Claude Code hook management | `docs/book/src/guides/hooks.md` |
 | `bobbin tag` | Semantic tag management | `docs/book/src/guides/tags.md` |
+| `bobbin connect <url>` | Connect to a remote server + install hooks | — |
 | `bobbin status` | Index stats and calibration state | `docs/book/src/cli/status.md` |
 | `bobbin bundle list` | List all context bundles (tree view) | `docs/designs/context-bundles.md` |
 | `bobbin bundle show <name>` | Show bundle contents (L1 outline, L2 with --deep) | `docs/designs/context-bundles.md` |
@@ -57,6 +58,7 @@ Key sections: `[index]` file patterns, `[search]` hybrid weights, `[embedding]` 
 | Feedback | Agent ratings improve search quality | `docs/book/src/guides/feedback.md` |
 | Archive | Index structured markdown records | `docs/book/src/guides/archive.md` |
 | MCP server | Expose tools via Model Context Protocol | `docs/book/src/mcp/overview.md` |
+| Forge URLs | Auto-detect GitHub/GitLab/Forgejo/Bitbucket for deep links | `[sources]` config |
 | Bundles | Named knowledge anchors — curated file/symbol groups with progressive disclosure (L0→L1→L2) | `docs/designs/context-bundles.md` |
 
 ## Architecture
@@ -76,6 +78,13 @@ When running as MCP server (`bobbin serve`): `search`, `grep`, `context`, `relat
 
 ## Quick Start
 
+**Server mode** (connect to a running bobbin server):
+```bash
+bobbin connect http://search.svc --global   # saves URL + installs hooks
+bobbin search "error handling"
+```
+
+**Local mode** (standalone, no server):
 ```bash
 bobbin init && bobbin index
 bobbin search "error handling"
