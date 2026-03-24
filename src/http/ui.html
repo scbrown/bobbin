@@ -611,6 +611,7 @@ async function doSearch() {
   const includeArchive = document.getElementById('search-archive').checked;
   const el = document.getElementById('search-results');
   el.innerHTML = '<div class="loading"><div class="spinner"></div> Searching...</div>';
+  updateDeepLink('search');
   try {
     const fetches = [fetch(`${API}/search?q=${encodeURIComponent(q)}&mode=${mode}&limit=${limit}`).then(r => r.json())];
     if (includeArchive) {
@@ -1071,6 +1072,7 @@ async function doContext() {
   const repo = document.getElementById('context-repo').value;
   const el = document.getElementById('context-results');
   el.innerHTML = '<div class="loading"><div class="spinner"></div> Assembling context...</div>';
+  updateDeepLink('context');
   try {
     let url = `${API}/context?q=${encodeURIComponent(q)}&budget=${budget}&limit=${limit}`;
     if (repo) url += `&repo=${encodeURIComponent(repo)}`;
@@ -1356,7 +1358,7 @@ function homeSearch() {
 }
 document.getElementById('home-search-q').addEventListener('keydown', e => { if (e.key === 'Enter') homeSearch(); });
 
-function switchTab(page) {
+function switchTab(page, updateHash = true) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const tab = document.querySelector(`.tab[data-page="${page}"]`);
@@ -1367,7 +1369,53 @@ function switchTab(page) {
   if (page === 'bundles' && !window._bundlesLoaded) loadBundles();
   if (page === 'hotspots' && !window._hotspotsLoaded) loadHotspots();
   if (page === 'feedback' && !window._feedbackLoaded) loadFeedback();
+  if (updateHash) updateDeepLink(page);
 }
+
+// -- Deep linking via URL hash --
+function updateDeepLink(page) {
+  let hash = '#' + page;
+  if (page === 'search') {
+    const q = document.getElementById('search-q').value.trim();
+    const mode = document.getElementById('search-mode').value;
+    if (q) {
+      const params = new URLSearchParams();
+      params.set('q', q);
+      if (mode && mode !== 'auto') params.set('mode', mode);
+      hash += '?' + params.toString();
+    }
+  } else if (page === 'context') {
+    const q = document.getElementById('context-q').value.trim();
+    if (q) hash += '?' + new URLSearchParams({q}).toString();
+  }
+  history.replaceState(null, '', hash);
+}
+
+function restoreFromHash() {
+  const hash = location.hash.slice(1); // remove #
+  if (!hash) return false;
+  const [page, queryString] = hash.split('?');
+  const validPages = ['home','search','context','repos','hotspots','tags','bundles','feedback','beads'];
+  if (!validPages.includes(page)) return false;
+
+  switchTab(page, false);
+
+  if (queryString) {
+    const params = new URLSearchParams(queryString);
+    if (page === 'search' && params.get('q')) {
+      document.getElementById('search-q').value = params.get('q');
+      if (params.get('mode')) document.getElementById('search-mode').value = params.get('mode');
+      if (typeof updateChips === 'function') updateChips();
+      doSearch();
+    } else if (page === 'context' && params.get('q')) {
+      document.getElementById('context-q').value = params.get('q');
+      doContext();
+    }
+  }
+  return true;
+}
+
+window.addEventListener('hashchange', () => restoreFromHash());
 
 async function loadHome() {
   // Stats row
@@ -1446,6 +1494,8 @@ async function loadHome() {
 loadHome();
 loadStatus();
 populateContextRepos();
+// Restore state from URL hash (deep links)
+restoreFromHash();
 </script>
 </body>
 </html>
