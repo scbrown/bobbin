@@ -159,9 +159,28 @@ pub async fn run(args: BundleArgs, output: OutputConfig) -> Result<()> {
     }
 }
 
-/// Load tags config with bundle definitions, checking local .bobbin/ first, then global config.
+/// Walk up from the given path to find a directory containing .bobbin/tags.toml.
+/// Unlike find_bobbin_root (which just needs .bobbin/ to exist), this looks for
+/// tags.toml specifically and doesn't stop at git boundaries.
+fn find_tags_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut current = start.to_path_buf();
+    loop {
+        let tags = current.join(".bobbin").join("tags.toml");
+        if tags.exists() {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
+/// Load tags config with bundle definitions, walking up directories to find tags.toml,
+/// then falling back to global config.
 fn load_tags_with_bundles(repo_root: &std::path::Path) -> TagsConfig {
-    let local_path = TagsConfig::tags_path(repo_root);
+    // First check the given path, then walk up to find tags.toml
+    let effective_root = find_tags_root(repo_root).unwrap_or_else(|| repo_root.to_path_buf());
+    let local_path = TagsConfig::tags_path(&effective_root);
     let mut config = TagsConfig::load_or_default(&local_path);
 
     // If no bundles found locally, check global config
@@ -732,7 +751,9 @@ fn resolve_tags_path(repo_root: &std::path::Path, global: bool) -> std::path::Pa
             .map(|d| d.join("tags.toml"))
             .unwrap_or_else(|| TagsConfig::tags_path(repo_root))
     } else {
-        TagsConfig::tags_path(repo_root)
+        // Walk up to find existing tags.toml, or default to given path for new files
+        let effective_root = find_tags_root(repo_root).unwrap_or_else(|| repo_root.to_path_buf());
+        TagsConfig::tags_path(&effective_root)
     }
 }
 
