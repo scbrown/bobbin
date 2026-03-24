@@ -388,6 +388,58 @@ async fn run_show(path: PathBuf, args: ShowArgs, output: OutputConfig) -> Result
 
 /// Resolve a bundle name from user input.
 /// Handles: "context", "b:context-pipeline", "context-pipeline" (slug), "context/pipeline".
+/// Normalize the file portion of a ref string, converting absolute paths to repo-relative.
+/// Handles formats like `file::symbol`, `file#heading`, and `repo:file::symbol`.
+fn normalize_ref_path(r: &str, repo_root: &std::path::Path) -> String {
+    // Check for repo: prefix (no / or . before the colon)
+    let (prefix, rest) = if let Some(colon_pos) = r.find(':') {
+        let before = &r[..colon_pos];
+        if !before.contains('/') && !before.contains('.') && !before.is_empty() {
+            // Check this isn't a :: (symbol separator)
+            if r[colon_pos..].starts_with("::") {
+                ("", r)
+            } else {
+                (before, &r[colon_pos + 1..])
+            }
+        } else {
+            ("", r)
+        }
+    } else {
+        ("", r)
+    };
+
+    // Find the delimiter (:: or #)
+    let (file_part, suffix) = if let Some(pos) = rest.find("::") {
+        (&rest[..pos], &rest[pos..])
+    } else if let Some(pos) = rest.find('#') {
+        (&rest[..pos], &rest[pos..])
+    } else {
+        (rest, "")
+    };
+
+    // Normalize the file part if absolute
+    let path = std::path::Path::new(file_part);
+    if path.is_absolute() {
+        if let Ok(rel) = path.strip_prefix(repo_root) {
+            let normalized = rel.to_string_lossy();
+            eprintln!(
+                "note: normalized absolute ref path to repo-relative: {} → {}",
+                file_part, normalized
+            );
+            return if prefix.is_empty() {
+                format!("{}{}", normalized, suffix)
+            } else {
+                format!("{}:{}{}", prefix, normalized, suffix)
+            };
+        }
+        eprintln!(
+            "warning: absolute path in ref '{}' is outside repo root, storing as-is",
+            r
+        );
+    }
+    r.to_string()
+}
+
 fn resolve_bundle_name(input: &str, bundles: &[BundleConfig]) -> String {
     // Strip b: prefix
     let name = input.strip_prefix("b:").unwrap_or(input);
@@ -871,26 +923,52 @@ async fn run_add(path: PathBuf, args: AddArgs, _output: OutputConfig) -> Result<
 
     let mut added = Vec::new();
 
+    // Helper: normalize absolute paths to repo-relative.
+    // If the path is absolute and starts with repo_root, strip the prefix.
+    let normalize_path = |p: &str| -> String {
+        let path = std::path::Path::new(p);
+        if path.is_absolute() {
+            if let Ok(rel) = path.strip_prefix(&repo_root) {
+                let normalized = rel.to_string_lossy().to_string();
+                eprintln!(
+                    "note: normalized absolute path to repo-relative: {} → {}",
+                    p, normalized
+                );
+                return normalized;
+            }
+            eprintln!(
+                "warning: absolute path '{}' is outside repo root ({}), storing as-is",
+                p,
+                repo_root.display()
+            );
+        }
+        p.to_string()
+    };
+
     for f in &args.files {
-        if !bundle.files.contains(f) {
-            bundle.files.push(f.clone());
-            added.push(format!("file:{}", f));
+        let normalized = normalize_path(f);
+        if !bundle.files.contains(&normalized) {
+            bundle.files.push(normalized.clone());
+            added.push(format!("file:{}", normalized));
         }
     }
     for r in &args.refs {
-        if !bundle.refs.contains(r) {
+        // For refs, normalize the file portion before the :: or # delimiter
+        let normalized = normalize_ref_path(r, &repo_root);
+        if !bundle.refs.contains(&normalized) {
             // Validate ref syntax
-            if BundleRef::parse(r).is_none() {
-                eprintln!("warning: '{}' doesn't match ref syntax (file::symbol or file#heading), adding anyway", r);
+            if BundleRef::parse(&normalized).is_none() {
+                eprintln!("warning: '{}' doesn't match ref syntax (file::symbol or file#heading), adding anyway", normalized);
             }
-            bundle.refs.push(r.clone());
-            added.push(format!("ref:{}", r));
+            bundle.refs.push(normalized.clone());
+            added.push(format!("ref:{}", normalized));
         }
     }
     for d in &args.docs {
-        if !bundle.docs.contains(d) {
-            bundle.docs.push(d.clone());
-            added.push(format!("doc:{}", d));
+        let normalized = normalize_path(d);
+        if !bundle.docs.contains(&normalized) {
+            bundle.docs.push(normalized.clone());
+            added.push(format!("doc:{}", normalized));
         }
     }
     for k in &args.keywords {
