@@ -3,7 +3,7 @@ use clap::Args;
 use colored::Colorize;
 use notify::{Config as NotifyConfig, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -73,15 +73,24 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
         repo_root.clone()
     };
 
-    // Repo name: explicit --repo > auto-detect from source directory name
-    let repo_name = if let Some(ref name) = args.repo {
-        name.as_str()
+    // Repo name: explicit --repo > auto-detect from git root
+    // When --repo is set, ALL files use that repo name.
+    // Otherwise, each file's repo is detected from its git root per-file in reindex_files.
+    let explicit_repo = args.repo.clone();
+    let detected_repo = if explicit_repo.is_none() {
+        detect_git_repo_name(&source_root)
     } else {
-        source_root
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("default")
+        None
     };
+    let fallback_repo = source_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("default")
+        .to_string();
+    let repo_name: &str = explicit_repo
+        .as_deref()
+        .or(detected_repo.as_deref())
+        .unwrap_or(&fallback_repo);
 
     // Write PID file
     if let Some(ref pid_path) = args.pid_file {
@@ -333,7 +342,21 @@ async fn reindex_files(
     };
     let now = chrono::Utc::now().timestamp().to_string();
 
+    // Cache directory → repo name mappings for performance
+    let mut repo_cache: HashMap<PathBuf, String> = HashMap::new();
+
     for path in paths {
+        // Detect per-file repo name from git root (with caching)
+        let dir = path.parent().unwrap_or(source_root);
+        let effective_repo = if let Some(cached) = repo_cache.get(dir) {
+            cached.clone()
+        } else {
+            let detected = detect_git_repo_name(dir)
+                .unwrap_or_else(|| repo_name.to_string());
+            repo_cache.insert(dir.to_path_buf(), detected.clone());
+            detected
+        };
+
         let rel_path = path
             .strip_prefix(source_root)
             .unwrap_or(path)
@@ -391,7 +414,7 @@ async fn reindex_files(
                 &chunks,
                 &embeddings,
                 &contexts,
-                repo_name,
+                &effective_repo,
                 &hash,
                 &now,
             )
@@ -409,6 +432,19 @@ async fn reindex_files(
     }
 
     Ok(stats)
+}
+
+/// Detect the git repo name for a directory by walking up to find `.git`.
+/// Returns the directory name containing `.git` (e.g. "moonraker" for
+/// /home/user/workspace/moonraker/src/main.rs).
+fn detect_git_repo_name(dir: &Path) -> Option<String> {
+    let mut current = dir;
+    loop {
+        if current.join(".git").exists() || current.join(".git").is_file() {
+            return current.file_name()?.to_str().map(|s| s.to_string());
+        }
+        current = current.parent()?;
+    }
 }
 
 /// Compute SHA256 hash of content.
