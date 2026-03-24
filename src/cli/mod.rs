@@ -2,6 +2,7 @@ mod benchmark;
 mod bundle;
 mod calibrate;
 mod completions;
+mod connect;
 mod context;
 mod deps;
 mod feedback;
@@ -67,6 +68,9 @@ pub struct Cli {
 enum Commands {
     /// Initialize bobbin in the current repository
     Init(init::InitArgs),
+
+    /// Connect to a remote bobbin server (configure URL + install hooks)
+    Connect(connect::ConnectArgs),
 
     /// Build or update the search index
     Index(index::IndexArgs),
@@ -158,6 +162,7 @@ impl Commands {
     fn name(&self) -> &'static str {
         match self {
             Commands::Init(_) => "init",
+            Commands::Connect(_) => "connect",
             Commands::Index(_) => "index",
             Commands::Calibrate(_) => "calibrate",
             Commands::Search(_) => "search",
@@ -270,6 +275,7 @@ impl Cli {
 async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()> {
     match command {
         Commands::Init(args) => init::run(args, output).await,
+        Commands::Connect(args) => connect::run(args, output).await,
         Commands::Index(args) => index::run(args, output).await,
         Commands::Calibrate(args) => calibrate::run(args, output).await,
         Commands::Search(args) => search::run(args, output).await,

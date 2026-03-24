@@ -450,7 +450,7 @@ pub async fn run(args: HookArgs, output: OutputConfig) -> Result<()> {
 /// Resolve the target settings.json path.
 /// --global → ~/.claude/settings.json
 /// otherwise → <git-root>/.claude/settings.json
-fn resolve_settings_path(global: bool) -> Result<PathBuf> {
+pub(super) fn resolve_settings_path(global: bool) -> Result<PathBuf> {
     if global {
         let home = std::env::var("HOME").context("HOME not set")?;
         Ok(PathBuf::from(home).join(".claude").join("settings.json"))
@@ -470,7 +470,7 @@ fn resolve_settings_path(global: bool) -> Result<PathBuf> {
 /// Build the bobbin hook entries for Claude Code settings.json.
 /// When server_url is Some, bakes BOBBIN_SERVER into the hook commands
 /// so agents don't need local initialization.
-fn bobbin_hook_entries_with_server(server_url: Option<&str>) -> serde_json::Value {
+pub(super) fn bobbin_hook_entries_with_server(server_url: Option<&str>) -> serde_json::Value {
     let prefix = match server_url {
         Some(url) => format!("BOBBIN_SERVER={} ", url),
         None => String::new(),
@@ -557,7 +557,7 @@ fn merge_hooks(settings: &mut serde_json::Value) {
     merge_hooks_with(settings, &bobbin);
 }
 
-fn merge_hooks_with(settings: &mut serde_json::Value, bobbin: &serde_json::Value) {
+pub(super) fn merge_hooks_with(settings: &mut serde_json::Value, bobbin: &serde_json::Value) {
     let bobbin_hooks = bobbin.get("hooks").unwrap().as_object().unwrap();
 
     // Ensure settings.hooks exists as an object
@@ -626,7 +626,7 @@ fn has_bobbin_hooks(settings: &serde_json::Value) -> bool {
 }
 
 /// Read a settings.json file, returning empty object if missing.
-fn read_settings(path: &Path) -> Result<serde_json::Value> {
+pub(super) fn read_settings(path: &Path) -> Result<serde_json::Value> {
     if path.exists() {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read {}", path.display()))?;
@@ -641,7 +641,7 @@ fn read_settings(path: &Path) -> Result<serde_json::Value> {
 }
 
 /// Write settings.json, creating parent directories as needed.
-fn write_settings(path: &Path, settings: &serde_json::Value) -> Result<()> {
+pub(super) fn write_settings(path: &Path, settings: &serde_json::Value) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create directory {}", parent.display()))?;
