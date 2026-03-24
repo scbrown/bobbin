@@ -589,12 +589,10 @@ pub struct RoleConfig {
 /// Example config:
 /// ```toml
 /// [sources]
-/// # Template for auto-detected git remotes. {remote_base} is the web URL
-/// # of the repo (e.g. "https://github.com/owner/repo").
-/// # Forgejo/Gitea:
-/// remote_template = "{remote_base}/src/branch/main/{path}#L{line}"
-/// # GitHub:
-/// # remote_template = "{remote_base}/blob/main/{path}#L{line}"
+/// # Override template for ALL auto-detected git remotes (optional).
+/// # If empty, bobbin auto-detects the forge type (GitHub/GitLab/Forgejo/Bitbucket)
+/// # and applies the correct URL pattern automatically.
+/// # remote_template = "{remote_base}/src/branch/main/{path}#L{line}"
 ///
 /// # Fallback template for repos with no git remote (uses {repo}, {path}, {line})
 /// default_url = ""
@@ -602,6 +600,10 @@ pub struct RoleConfig {
 /// # Per-repo overrides (full URL templates, highest priority)
 /// [sources.repos]
 /// beads = "https://github.com/scbrown/beads/blob/main/{path}#L{line}"
+///
+/// # Override forge detection for specific hosts
+/// [sources.forge_overrides]
+/// "git.internal.example.com" = "gitlab"   # github, gitlab, forgejo, bitbucket
 /// ```
 ///
 /// URL templates support `{repo}`, `{path}`, `{line}`, and `{remote_base}` placeholders.
@@ -609,8 +611,8 @@ pub struct RoleConfig {
 #[serde(default)]
 pub struct SourcesConfig {
     /// Template applied to auto-detected git remotes.
+    /// If empty, forge type is auto-detected and the correct template applied.
     /// Placeholders: {remote_base} (web base URL), {path}, {line}
-    /// Example: "{remote_base}/src/branch/main/{path}#L{line}"
     #[serde(default)]
     pub remote_template: String,
     /// Default URL template for repos not explicitly listed and without a git remote.
@@ -619,6 +621,10 @@ pub struct SourcesConfig {
     /// Per-repo URL overrides. Key = repo short name, value = URL template.
     /// These take priority over auto-detection.
     pub repos: std::collections::HashMap<String, String>,
+    /// Override forge detection for specific hosts.
+    /// Key = hostname, value = forge type ("github", "gitlab", "forgejo", "bitbucket").
+    #[serde(default)]
+    pub forge_overrides: std::collections::HashMap<String, String>,
 }
 
 impl Default for SourcesConfig {
@@ -627,6 +633,7 @@ impl Default for SourcesConfig {
             remote_template: String::new(),
             default_url: String::new(),
             repos: std::collections::HashMap::new(),
+            forge_overrides: std::collections::HashMap::new(),
         }
     }
 }

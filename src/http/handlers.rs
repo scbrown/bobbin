@@ -900,6 +900,60 @@ pub(super) async fn invoke_http_command(
 
 // -- /status --
 
+/// Known forge types with their URL patterns for file browsing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ForgeType {
+    GitHub,
+    GitLab,
+    Forgejo, // also covers Gitea
+    Bitbucket,
+}
+
+impl ForgeType {
+    /// Returns the URL template suffix for browsing a file at a line.
+    /// Template uses `{path}` and `{line}` placeholders.
+    fn file_template(&self) -> &'static str {
+        match self {
+            ForgeType::GitHub => "/blob/main/{path}#L{line}",
+            ForgeType::GitLab => "/-/blob/main/{path}#L{line}",
+            ForgeType::Forgejo => "/src/branch/main/{path}#L{line}",
+            ForgeType::Bitbucket => "/src/main/{path}#{path}-{line}",
+        }
+    }
+}
+
+/// Detect the forge type from a hostname.
+///
+/// Uses well-known SaaS hosts plus heuristics for self-hosted instances.
+fn detect_forge(host: &str) -> ForgeType {
+    let h = host.to_lowercase();
+    if h == "github.com" || h.ends_with(".github.com") {
+        return ForgeType::GitHub;
+    }
+    if h == "gitlab.com" || h.ends_with(".gitlab.com") {
+        return ForgeType::GitLab;
+    }
+    if h == "bitbucket.org" || h.ends_with(".bitbucket.org") {
+        return ForgeType::Bitbucket;
+    }
+    // Self-hosted: check if host contains forge name hints
+    if h.contains("gitlab") {
+        return ForgeType::GitLab;
+    }
+    if h.contains("bitbucket") {
+        return ForgeType::Bitbucket;
+    }
+    // Default to Forgejo/Gitea for self-hosted (most common for homelab)
+    ForgeType::Forgejo
+}
+
+/// Extract the hostname from a web base URL.
+fn host_from_url(url: &str) -> Option<&str> {
+    let rest = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://"))?;
+    // host might include port
+    Some(rest.split('/').next()?.split(':').next()?)
+}
+
 /// Extract a web base URL from a git remote URL.
 ///
 /// Converts SSH (`git@host:owner/repo.git`) and HTTPS (`https://host/owner/repo.git`)
@@ -926,13 +980,50 @@ fn web_base_from_remote(remote: &str) -> Option<String> {
     None
 }
 
+/// Build a full file-browse URL template from a base URL.
+///
+/// If `remote_template` is configured, uses it. Otherwise auto-detects the
+/// forge type from the host and applies the correct URL pattern.
+/// `forge_overrides` lets users override detection for specific hosts.
+fn build_source_url(
+    base: &str,
+    remote_template: &str,
+    repo_name: &str,
+    forge_overrides: &std::collections::HashMap<String, String>,
+) -> String {
+    if !remote_template.is_empty() {
+        return remote_template
+            .replace("{remote_base}", base)
+            .replace("{repo}", repo_name);
+    }
+
+    // Auto-detect forge type from the base URL host
+    let forge = host_from_url(base)
+        .map(|host| {
+            // Check user overrides first
+            if let Some(override_type) = forge_overrides.get(host) {
+                match override_type.to_lowercase().as_str() {
+                    "github" => ForgeType::GitHub,
+                    "gitlab" => ForgeType::GitLab,
+                    "forgejo" | "gitea" => ForgeType::Forgejo,
+                    "bitbucket" => ForgeType::Bitbucket,
+                    _ => detect_forge(host),
+                }
+            } else {
+                detect_forge(host)
+            }
+        })
+        .unwrap_or(ForgeType::Forgejo);
+
+    format!("{}{}", base.trim_end_matches('/'), forge.file_template())
+}
+
 /// Auto-detect source URLs from git remotes for all indexed repos,
 /// merged with manual overrides from config. Called once at startup.
 ///
 /// For each repo without an explicit `[sources.repos]` entry, reads its git
-/// remote origin, extracts a web base URL, and applies `remote_template`
-/// to build a browse link. If no `remote_template` is configured, repos
-/// get no auto-detected links.
+/// remote origin, extracts a web base URL, and auto-detects the forge type
+/// (GitHub/GitLab/Forgejo/Bitbucket) to build correct deep links.
 pub(super) fn resolve_sources(
     repo_root: &std::path::Path,
     config_sources: &crate::config::SourcesConfig,
@@ -953,15 +1044,13 @@ pub(super) fn resolve_sources(
                 if output.status.success() {
                     let remote = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     if let Some(base) = web_base_from_remote(&remote) {
-                        if !sources.remote_template.is_empty() {
-                            let url = sources.remote_template
-                                .replace("{remote_base}", &base)
-                                .replace("{repo}", &repo_name);
-                            sources.repos.insert(repo_name, url);
-                        } else {
-                            // No template — store base URL so UI can at least link to repo home
-                            sources.repos.insert(repo_name, base);
-                        }
+                        let url = build_source_url(
+                            &base,
+                            &sources.remote_template,
+                            &repo_name,
+                            &sources.forge_overrides,
+                        );
+                        sources.repos.insert(repo_name, url);
                     }
                 } else {
                     sources.repos.insert(repo_name, String::new());
@@ -4373,4 +4462,113 @@ async fn run_incremental_index(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_web_base_from_remote_ssh() {
+        assert_eq!(
+            web_base_from_remote("git@github.com:owner/repo.git"),
+            Some("https://github.com/owner/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_web_base_from_remote_https() {
+        assert_eq!(
+            web_base_from_remote("https://github.com/owner/repo.git"),
+            Some("https://github.com/owner/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_web_base_from_remote_http() {
+        assert_eq!(
+            web_base_from_remote("http://git.svc:3000/stiwi/bobbin"),
+            Some("http://git.svc:3000/stiwi/bobbin".to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_forge_github() {
+        assert_eq!(detect_forge("github.com"), ForgeType::GitHub);
+    }
+
+    #[test]
+    fn test_detect_forge_gitlab() {
+        assert_eq!(detect_forge("gitlab.com"), ForgeType::GitLab);
+        assert_eq!(detect_forge("gitlab.internal.corp"), ForgeType::GitLab);
+    }
+
+    #[test]
+    fn test_detect_forge_bitbucket() {
+        assert_eq!(detect_forge("bitbucket.org"), ForgeType::Bitbucket);
+    }
+
+    #[test]
+    fn test_detect_forge_selfhosted_default() {
+        // Unknown self-hosted → Forgejo
+        assert_eq!(detect_forge("git.svc"), ForgeType::Forgejo);
+        assert_eq!(detect_forge("code.internal.com"), ForgeType::Forgejo);
+    }
+
+    #[test]
+    fn test_build_source_url_auto_github() {
+        let overrides = std::collections::HashMap::new();
+        let url = build_source_url(
+            "https://github.com/owner/repo",
+            "",
+            "repo",
+            &overrides,
+        );
+        assert_eq!(url, "https://github.com/owner/repo/blob/main/{path}#L{line}");
+    }
+
+    #[test]
+    fn test_build_source_url_auto_forgejo() {
+        let overrides = std::collections::HashMap::new();
+        let url = build_source_url(
+            "http://git.svc:3000/stiwi/bobbin",
+            "",
+            "bobbin",
+            &overrides,
+        );
+        assert_eq!(url, "http://git.svc:3000/stiwi/bobbin/src/branch/main/{path}#L{line}");
+    }
+
+    #[test]
+    fn test_build_source_url_with_template_override() {
+        let overrides = std::collections::HashMap::new();
+        let url = build_source_url(
+            "https://github.com/owner/repo",
+            "{remote_base}/tree/develop/{path}#L{line}",
+            "repo",
+            &overrides,
+        );
+        assert_eq!(url, "https://github.com/owner/repo/tree/develop/{path}#L{line}");
+    }
+
+    #[test]
+    fn test_build_source_url_with_forge_override() {
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert("git.svc".to_string(), "gitlab".to_string());
+        let url = build_source_url(
+            "http://git.svc:3000/stiwi/bobbin",
+            "",
+            "bobbin",
+            &overrides,
+        );
+        // git.svc overridden to gitlab
+        assert_eq!(url, "http://git.svc:3000/stiwi/bobbin/-/blob/main/{path}#L{line}");
+    }
+
+    #[test]
+    fn test_host_from_url() {
+        assert_eq!(host_from_url("https://github.com/owner/repo"), Some("github.com"));
+        assert_eq!(host_from_url("http://git.svc:3000/stiwi/bobbin"), Some("git.svc"));
+        assert_eq!(host_from_url("not-a-url"), None);
+    }
 }
