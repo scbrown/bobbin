@@ -468,7 +468,13 @@ fn resolve_settings_path(global: bool) -> Result<PathBuf> {
 }
 
 /// Build the bobbin hook entries for Claude Code settings.json.
-fn bobbin_hook_entries() -> serde_json::Value {
+/// When server_url is Some, bakes BOBBIN_SERVER into the hook commands
+/// so agents don't need local initialization.
+fn bobbin_hook_entries_with_server(server_url: Option<&str>) -> serde_json::Value {
+    let prefix = match server_url {
+        Some(url) => format!("BOBBIN_SERVER={} ", url),
+        None => String::new(),
+    };
     json!({
         "hooks": {
             "UserPromptSubmit": [
@@ -476,7 +482,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook inject-context || true",
+                            "command": format!("{}bobbin hook inject-context || true", prefix),
                             "timeout": 10,
                             "statusMessage": "Loading code context..."
                         }
@@ -489,7 +495,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook session-context || true",
+                            "command": format!("{}bobbin hook session-context || true", prefix),
                             "timeout": 10,
                             "statusMessage": "Recovering project context..."
                         }
@@ -502,7 +508,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook post-tool-use || true",
+                            "command": format!("{}bobbin hook post-tool-use || true", prefix),
                             "timeout": 10,
                             "statusMessage": "Analyzing file changes..."
                         }
@@ -514,7 +520,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bobbin hook post-tool-use-failure || true",
+                            "command": format!("{}bobbin hook post-tool-use-failure || true", prefix),
                             "timeout": 10,
                             "statusMessage": "Searching for related context..."
                         }
@@ -523,6 +529,11 @@ fn bobbin_hook_entries() -> serde_json::Value {
             ]
         }
     })
+}
+
+/// Build hook entries without server URL (backwards-compatible).
+fn bobbin_hook_entries() -> serde_json::Value {
+    bobbin_hook_entries_with_server(None)
 }
 
 /// Check if a hook group entry contains a bobbin command.
@@ -543,6 +554,10 @@ fn is_bobbin_hook_group(group: &serde_json::Value) -> bool {
 /// Preserves non-bobbin hooks in each event array.
 fn merge_hooks(settings: &mut serde_json::Value) {
     let bobbin = bobbin_hook_entries();
+    merge_hooks_with(settings, &bobbin);
+}
+
+fn merge_hooks_with(settings: &mut serde_json::Value, bobbin: &serde_json::Value) {
     let bobbin_hooks = bobbin.get("hooks").unwrap().as_object().unwrap();
 
     // Ensure settings.hooks exists as an object
@@ -640,8 +655,26 @@ fn write_settings(path: &Path, settings: &serde_json::Value) -> Result<()> {
 async fn run_install(args: InstallArgs, output: OutputConfig) -> Result<()> {
     let settings_path = resolve_settings_path(args.global)?;
 
+    // Detect server URL to bake into hooks (for multi-agent setups)
+    let server_url = output.server.clone().or_else(|| {
+        // Check config if available
+        if let Some(repo_root) = super::find_bobbin_root() {
+            let config_path = Config::config_path(&repo_root);
+            if let Ok(config) = Config::load(&config_path) {
+                return config.server.url;
+            }
+        }
+        None
+    });
+
     let mut settings = read_settings(&settings_path)?;
-    merge_hooks(&mut settings);
+    if server_url.is_some() {
+        // Use server-aware hooks
+        let bobbin = bobbin_hook_entries_with_server(server_url.as_deref());
+        merge_hooks_with(&mut settings, &bobbin);
+    } else {
+        merge_hooks(&mut settings);
+    }
     write_settings(&settings_path, &settings)?;
 
     if output.json {
@@ -663,6 +696,9 @@ async fn run_install(args: InstallArgs, output: OutputConfig) -> Result<()> {
         println!("  SessionStart:        {}", "session-context (compact)".cyan());
         println!("  PostToolUse:         {}", "post-tool-use (Write|Edit|Bash|Grep|Glob)".cyan());
         println!("  PostToolUseFailure:  {}", "post-tool-use-failure".cyan());
+        if let Some(ref url) = server_url {
+            println!("  Server:              {}", url.cyan());
+        }
     }
 
     Ok(())

@@ -52,10 +52,7 @@ pub async fn run(args: HotspotsArgs, output: OutputConfig) -> Result<()> {
 
     let config_path = Config::config_path(&repo_root);
     if !config_path.exists() {
-        bail!(
-            "Bobbin not initialized in {}. Run `bobbin init` first.",
-            repo_root.display()
-        );
+        bail!("{}", super::not_initialized_error(&repo_root));
     }
 
     // Get churn data from git

@@ -447,6 +447,22 @@ pub fn find_bobbin_root() -> Option<std::path::PathBuf> {
     }
 }
 
+/// Generate a helpful "not initialized" error message that suggests BOBBIN_SERVER
+/// when running in a multi-agent/multi-repo setup.
+pub fn not_initialized_error(dir: &std::path::Path) -> String {
+    let mut msg = format!(
+        "Bobbin not initialized in {}. Run `bobbin init` first.",
+        dir.display()
+    );
+    if std::env::var("BOBBIN_SERVER").is_err() {
+        msg.push_str(
+            "\n\nHint: If a bobbin server is running elsewhere, set BOBBIN_SERVER=<url> \
+             or use --server <url> to connect without local initialization."
+        );
+    }
+    msg
+}
+
 /// Output configuration passed to all commands
 #[derive(Debug, Clone)]
 pub struct OutputConfig {

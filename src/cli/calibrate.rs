@@ -909,10 +909,7 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
 
     let config_path = Config::config_path(&repo_root);
     if !config_path.exists() {
-        bail!(
-            "Bobbin not initialized in {}. Run `bobbin init` first.",
-            repo_root.display()
-        );
+        bail!("{}", super::not_initialized_error(&repo_root));
     }
 
     let config = Config::load_merged(&repo_root)?;
