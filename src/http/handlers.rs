@@ -438,6 +438,8 @@ struct StatusResponse {
     status: String,
     index: crate::types::IndexStats,
     sources: crate::config::SourcesConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repo_path_prefix: Option<String>,
 }
 
 // -- /healthz (lightweight liveness probe — does NOT query the index) --
@@ -1077,6 +1079,7 @@ pub(super) async fn status(
         status: "ok".to_string(),
         index: stats,
         sources: state.resolved_sources.clone(),
+        repo_path_prefix: state.config.server.repo_path_prefix.clone(),
     }))
 }
 

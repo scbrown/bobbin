@@ -512,6 +512,7 @@ async function loadStatus() {
       fetch(API + '/metrics').then(r => r.text())
     ]);
     _sources = status.sources || null;
+    if (status.repo_path_prefix) _repoPathPrefix = status.repo_path_prefix.replace(/\/?$/, '/');
     const ix = status.index;
     document.getElementById('status-stats').innerHTML = `
       <div class="card"><div class="card-header">Files Indexed</div><div class="stat-value accent">${ix.total_files.toLocaleString()}</div></div>
@@ -536,10 +537,11 @@ async function loadStatus() {
   }
 }
 
-// Strip bobbin index prefix to get repo-relative path
-const INDEX_PREFIX = '/var/lib/bobbin/repos/';
+// Strip bobbin index prefix to get repo-relative path.
+// _repoPathPrefix is set from the /status response (dynamic, not hardcoded).
+let _repoPathPrefix = '/var/lib/bobbin/repos/'; // default until status loads
 function relPath(fp) {
-  if (fp.startsWith(INDEX_PREFIX)) return fp.slice(INDEX_PREFIX.length);
+  if (_repoPathPrefix && fp.startsWith(_repoPathPrefix)) return fp.slice(_repoPathPrefix.length);
   // Also handle relative "repos/" prefix (some chunks stored without full path)
   if (fp.startsWith('repos/')) return fp.slice(6);
   return fp;
@@ -1425,6 +1427,7 @@ async function loadHome() {
       fetch(API + '/feedback/stats').then(r => r.json()).catch(() => ({}))
     ]);
     _sources = status.sources || null;
+    if (status.repo_path_prefix) _repoPathPrefix = status.repo_path_prefix.replace(/\/?$/, '/');
     const ix = status.index;
     const repoCount = ix.languages ? new Set() : 0;
     const totalInj = fbStats.total_injections || 0;
