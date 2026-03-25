@@ -16,7 +16,7 @@ with `?` to propagate the None gracefully instead of panicking.
 </details>
 
 | Approach | Tests Pass | Precision | Recall | F1 | Duration | Cost |
-|----------|:----------:|:---------:|:------:|:--:|:--------:|-----:|
+| -------- | :--------: | :-------: | :----: | :-: | :------: | ---: |
 | no-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 5.2m | $1.04 |
 | with-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 4.6m | $1.03 |
 

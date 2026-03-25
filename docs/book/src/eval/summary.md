@@ -3,7 +3,7 @@
 ## Overall Comparison
 
 | Metric | no-bobbin | with-bobbin | with-bobbin+blame_bridging=false | with-bobbin+coupling_depth=0 | with-bobbin+doc_demotion=0.0 | with-bobbin+gate_threshold=1.0 | with-bobbin+recency_weight=0.0 | with-bobbin+semantic_weight=0.0 |
-|--------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| ------ | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
 | Runs | 30 | 36 | 3 | 3 | 3 | 3 | 3 | 4 |
 | Test Pass Rate | 66.7% | 58.3% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
 | Avg Precision | 85.1% | 90.1% | 33.3% | 55.6% | 55.6% | 77.8% | 77.8% | 23.6% |
@@ -59,7 +59,7 @@
 ## Per-Task Results
 
 | Task | Language | Difficulty | Approach | Tests | Precision | Recall | F1 | Duration | Cost |
-|------|----------|:----------:|----------|:-----:|:---------:|:------:|:--:|:--------:|-----:|
+| ---- | -------- | :--------: | -------- | :---: | :-------: | :----: | :-: | :------: | ---: |
 | cargo-001 | rust | easy | no-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 5.2m | $1.04 |
 | cargo-001 | rust | easy | with-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 4.6m | $1.03 |
 | flask-001 | — | — | no-bobbin | 0.0% | 100.0% | 33.3% | 50.0% | 1.3m | $0.00 |
