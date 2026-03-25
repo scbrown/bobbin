@@ -190,6 +190,67 @@ enabled_languages = ["markdown", "python"]
 
 This includes surrounding lines when computing each chunk's vector, improving retrieval quality.
 
+## Inline query syntax
+
+Bobbin supports inline filter syntax directly in the query string, similar to GitHub code search. Filters are extracted from the query before search runs.
+
+### Available filters
+
+| Filter | Example | Description |
+| ------ | ------- | ----------- |
+| `repo:` | `repo:aegis auth handler` | Scope to a specific repository |
+| `lang:` | `lang:rust,go error handling` | Filter by language(s), comma-separated |
+| `type:` | `type:function parse config` | Filter by chunk type (function, struct, section, etc.) |
+| `file:` | `file:*.rs connection pool` | Filter by file path (glob pattern) |
+| `group:` | `group:infra deploy pipeline` | Filter by named repo group |
+| `tag:` | `tag:domain:monitoring alert` | Include only chunks with this tag |
+| `-repo:` | `-repo:test auth flow` | Exclude a repository |
+| `-lang:` | `-lang:markdown token refresh` | Exclude a language |
+| `-tag:` | `-tag:type:changelog recent changes` | Exclude chunks with a tag |
+
+### Combining filters
+
+Multiple filters can be combined in a single query:
+
+```bash
+bobbin search "repo:aegis lang:go type:function error handling"
+bobbin search "lang:rust,python -repo:test database connection"
+```
+
+### Boolean operators
+
+Use `OR` (uppercase) to match either term, and `-` or `NOT` to exclude:
+
+```bash
+bobbin search "authentication OR authorization"
+bobbin search "database -migration"
+bobbin search "NOT deprecated connection pool"
+```
+
+### Exact phrases
+
+Wrap terms in double quotes to match an exact phrase:
+
+```bash
+bobbin search '"connection refused" retry logic'
+```
+
+### Regex patterns
+
+Use `/pattern/` syntax for regex filtering within results:
+
+```bash
+bobbin search "/fn\s+handle_.*request/"
+```
+
+### Tag filtering via API and UI
+
+The web UI exposes tag, exclude_tag, repo, and group filters as input fields below the search bar. The HTTP API accepts the same as query params:
+
+```
+GET /search?q=error+handling&repo=aegis&tag=domain:monitoring&exclude_tag=type:changelog
+```
+
 ## Advanced search features
 
 ### Recency weighting
