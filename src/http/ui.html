@@ -312,6 +312,12 @@ td.mono{font-family:var(--mono)}
         </div>
       </div>
     </div>
+    <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem;align-items:center">
+      <input type="text" id="search-repo" placeholder="repo" style="width:100px;font-size:0.8rem;padding:0.3rem 0.5rem" title="Filter by repository name">
+      <input type="text" id="search-tag" placeholder="tag" style="width:100px;font-size:0.8rem;padding:0.3rem 0.5rem" title="Include only chunks with this tag (comma-separated)">
+      <input type="text" id="search-exclude-tag" placeholder="exclude tag" style="width:110px;font-size:0.8rem;padding:0.3rem 0.5rem" title="Exclude chunks with this tag (comma-separated)">
+      <input type="text" id="search-group" placeholder="group" style="width:80px;font-size:0.8rem;padding:0.3rem 0.5rem" title="Filter by repo group name">
+    </div>
     <div id="search-results"></div>
   </div>
 
@@ -615,7 +621,16 @@ async function doSearch() {
   el.innerHTML = '<div class="loading"><div class="spinner"></div> Searching...</div>';
   updateDeepLink('search');
   try {
-    const fetches = [fetch(`${API}/search?q=${encodeURIComponent(q)}&mode=${mode}&limit=${limit}`).then(r => r.json())];
+    let searchUrl = `${API}/search?q=${encodeURIComponent(q)}&mode=${mode}&limit=${limit}`;
+    const repo = document.getElementById('search-repo').value.trim();
+    const tag = document.getElementById('search-tag').value.trim();
+    const excludeTag = document.getElementById('search-exclude-tag').value.trim();
+    const group = document.getElementById('search-group').value.trim();
+    if (repo) searchUrl += `&repo=${encodeURIComponent(repo)}`;
+    if (tag) searchUrl += `&tag=${encodeURIComponent(tag)}`;
+    if (excludeTag) searchUrl += `&exclude_tag=${encodeURIComponent(excludeTag)}`;
+    if (group) searchUrl += `&group=${encodeURIComponent(group)}`;
+    const fetches = [fetch(searchUrl).then(r => r.json())];
     if (includeArchive) {
       fetches.push(fetch(`${API}/archive/search?q=${encodeURIComponent(q)}&limit=10`).then(r => r.json()).catch(() => ({results:[]})));
     }
