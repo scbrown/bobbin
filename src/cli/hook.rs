@@ -1423,13 +1423,13 @@ async fn inject_context_remote(
                     }
                 }
             }
-            let matched_bundles: Vec<(String, String)> = tags_config
+            let matched_bundles: Vec<crate::tags::BundleConfig> = tags_config
                 .match_bundle_keywords(search_query)
                 .into_iter()
-                .map(|(b, _)| (b.name.clone(), b.description.clone()))
+                .map(|(b, _)| b.clone())
                 .collect();
 
-            let out = format_context_response_with_bundles(&resp, budget, hooks_cfg.show_docs, &injection_id, format_mode, &matched_bundles);
+            let out = format_context_response_with_bundles(&resp, budget, hooks_cfg.show_docs, &injection_id, format_mode, &matched_bundles, hooks_cfg.bundle_auto_inject, hooks_cfg.bundle_inject_lines, hooks_cfg.bundle_max_inject);
             print!("{}", out);
 
             // Record injected chunks in session ledger
@@ -1486,7 +1486,6 @@ async fn inject_context_remote(
     }
 }
 
-/// Format a ContextResponse into structured text for injection.
 /// Format a ContextResponse into structured text for injection, with optional bundle annotations.
 fn format_context_response_with_bundles(
     resp: &crate::http::client::ContextResponse,
@@ -1494,9 +1493,12 @@ fn format_context_response_with_bundles(
     show_docs: bool,
     injection_id: &str,
     format_mode: &str,
-    matched_bundles: &[(String, String)], // (name, match_reason)
+    matched_bundles: &[crate::tags::BundleConfig],
+    bundle_auto_inject: bool,
+    bundle_inject_lines: usize,
+    bundle_max_inject: usize,
 ) -> String {
-    format_context_response_inner(resp, budget, show_docs, injection_id, format_mode, matched_bundles)
+    format_context_response_inner(resp, budget, show_docs, injection_id, format_mode, matched_bundles, bundle_auto_inject, bundle_inject_lines, bundle_max_inject)
 }
 
 fn format_context_response_inner(
@@ -1505,7 +1507,10 @@ fn format_context_response_inner(
     show_docs: bool,
     injection_id: &str,
     format_mode: &str,
-    matched_bundles: &[(String, String)],
+    matched_bundles: &[crate::tags::BundleConfig],
+    bundle_auto_inject: bool,
+    bundle_inject_lines: usize,
+    bundle_max_inject: usize,
 ) -> String {
     use std::fmt::Write;
     let mut out = String::new();
@@ -1550,13 +1555,63 @@ fn format_context_response_inner(
         }
     }
 
-    // Bundle annotations (2 lines per matched bundle, after header)
+    // Bundle annotations — either inline content or signpost
     if !matched_bundles.is_empty() {
-        use std::fmt::Write;
+        let inject_count = matched_bundles.len().min(bundle_max_inject);
         let _ = writeln!(out);
-        for (name, description) in matched_bundles {
-            let _ = writeln!(out, "📦 bundle:{} — \"{}\"", name, description);
-            let _ = writeln!(out, "   → `bobbin bundle show {}` for full context", name);
+        for (i, bundle) in matched_bundles.iter().enumerate() {
+            let _ = writeln!(out, "📦 bundle:{} — \"{}\"", bundle.name, bundle.description);
+            if bundle_auto_inject && i < inject_count {
+                // Render compact inline content: refs, files, docs, sub-bundles
+                let mut lines_used = 0;
+                let max_lines = bundle_inject_lines;
+
+                // Refs (most valuable — specific symbols)
+                if !bundle.refs.is_empty() && lines_used < max_lines {
+                    let _ = writeln!(out, "   Refs:");
+                    lines_used += 1;
+                    for ref_str in &bundle.refs {
+                        if lines_used >= max_lines { break; }
+                        if let Some(parsed) = crate::tags::BundleRef::parse(ref_str) {
+                            let _ = writeln!(out, "   - {}", parsed.display_l0());
+                        } else {
+                            let _ = writeln!(out, "   - {}", ref_str);
+                        }
+                        lines_used += 1;
+                    }
+                }
+
+                // Files
+                if !bundle.files.is_empty() && lines_used < max_lines {
+                    let _ = writeln!(out, "   Files:");
+                    lines_used += 1;
+                    for f in &bundle.files {
+                        if lines_used >= max_lines { break; }
+                        let _ = writeln!(out, "   - {}", f);
+                        lines_used += 1;
+                    }
+                }
+
+                // Docs
+                if !bundle.docs.is_empty() && lines_used < max_lines {
+                    let _ = writeln!(out, "   Docs:");
+                    lines_used += 1;
+                    for d in &bundle.docs {
+                        if lines_used >= max_lines { break; }
+                        let _ = writeln!(out, "   - {}", d);
+                        lines_used += 1;
+                    }
+                }
+
+                // Includes (other bundles)
+                if !bundle.includes.is_empty() && lines_used < max_lines {
+                    let _ = writeln!(out, "   Includes: {}", bundle.includes.join(", "));
+                }
+
+                let _ = writeln!(out, "   → `bobbin bundle show {} --deep` for full source", bundle.name);
+            } else {
+                let _ = writeln!(out, "   → `bobbin bundle show {}` for full context", bundle.name);
+            }
         }
     }
 

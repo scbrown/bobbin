@@ -375,6 +375,17 @@ pub struct HooksConfig {
     /// "bd ready", "gt hook"). Matched as prefix of trimmed prompt.
     #[serde(default)]
     pub skip_prefixes: Vec<String>,
+    /// When true, matched bundles inject their member file/ref lists inline
+    /// instead of just a signpost. Default: true.
+    #[serde(default = "default_true")]
+    pub bundle_auto_inject: bool,
+    /// Maximum lines per bundle for auto-injection (default: 30).
+    /// Controls how much bundle content is included inline.
+    #[serde(default = "default_bundle_inject_lines")]
+    pub bundle_inject_lines: usize,
+    /// Maximum number of bundles to auto-inject per query (default: 2).
+    #[serde(default = "default_bundle_max_inject")]
+    pub bundle_max_inject: usize,
 }
 
 /// A rule that maps query keywords to repository names.
@@ -404,6 +415,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_bundle_inject_lines() -> usize {
+    30
+}
+
+fn default_bundle_max_inject() -> usize {
+    2
+}
+
 /// Valid format modes for injection output.
 pub const VALID_FORMAT_MODES: &[&str] = &["standard", "minimal", "verbose", "xml"];
 
@@ -423,6 +442,9 @@ impl Default for HooksConfig {
             repo_affinity_boost: 2.0,
             feedback_prompt_interval: 5,
             skip_prefixes: vec![],
+            bundle_auto_inject: true,
+            bundle_inject_lines: 30,
+            bundle_max_inject: 2,
         }
     }
 }
