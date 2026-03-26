@@ -150,6 +150,29 @@ impl MetadataStore {
         Ok(results)
     }
 
+    /// Get all coupling edges above a minimum score threshold.
+    pub fn all_coupling(&self, min_score: f32, limit: usize) -> Result<Vec<FileCoupling>> {
+        let mut stmt = self.conn.prepare(
+            r#"SELECT file_a, file_b, score, co_changes, last_co_change
+               FROM coupling
+               WHERE score >= ?1
+               ORDER BY score DESC
+               LIMIT ?2"#,
+        )?;
+        let results = stmt
+            .query_map(rusqlite::params![min_score, limit], |row| {
+                Ok(FileCoupling {
+                    file_a: row.get(0)?,
+                    file_b: row.get(1)?,
+                    score: row.get(2)?,
+                    co_changes: row.get(3)?,
+                    last_co_change: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(results)
+    }
+
     /// Clear all coupling data
     pub fn clear_coupling(&self) -> Result<()> {
         self.conn.execute("DELETE FROM coupling", [])?;

@@ -31,6 +31,8 @@ enum BundleCommands {
     Remove(RemoveArgs),
     /// Check bundle health: validate all refs/files still resolve
     Check(CheckArgs),
+    /// Suggest new bundles from coupling graph analysis
+    Suggest(SuggestArgs),
 }
 
 #[derive(Args)]
@@ -160,6 +162,19 @@ struct CheckArgs {
     repo_root: Option<PathBuf>,
 }
 
+#[derive(Args)]
+struct SuggestArgs {
+    /// Minimum coupling score to consider (default: 0.3)
+    #[arg(long, default_value_t = 0.3)]
+    threshold: f32,
+    /// Minimum cluster size to suggest (default: 3)
+    #[arg(long, default_value_t = 3)]
+    min_size: usize,
+    /// Filter to a specific repo
+    #[arg(long)]
+    repo: Option<String>,
+}
+
 pub async fn run(args: BundleArgs, output: OutputConfig) -> Result<()> {
     match args.command {
         BundleCommands::List(list_args) => run_list(args.path, list_args, output).await,
@@ -168,6 +183,7 @@ pub async fn run(args: BundleArgs, output: OutputConfig) -> Result<()> {
         BundleCommands::Add(add_args) => run_add(args.path, add_args, output).await,
         BundleCommands::Remove(remove_args) => run_remove(args.path, remove_args, output).await,
         BundleCommands::Check(check_args) => run_check(args.path, check_args, output).await,
+        BundleCommands::Suggest(suggest_args) => run_suggest(args.path, suggest_args, output).await,
     }
 }
 
@@ -1230,6 +1246,157 @@ async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Resu
     }
 
     Ok(())
+}
+
+async fn run_suggest(path: PathBuf, args: SuggestArgs, output: OutputConfig) -> Result<()> {
+    let repo_root = path.canonicalize().unwrap_or(path);
+    let config = load_tags_with_bundles(&repo_root);
+
+    // Collect all files already in bundles
+    let mut bundled_files: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for bundle in &config.bundles {
+        for f in bundle.member_files() {
+            bundled_files.insert(f);
+        }
+    }
+
+    // Load coupling data from local index store
+    let index_path = repo_root.join(".bobbin").join("index.db");
+    if !index_path.exists() {
+        bail!("No index.db found at {:?}. Run `bobbin index` first.", index_path);
+    }
+    let store = crate::storage::sqlite::MetadataStore::open(&index_path)?;
+    let edges = store.all_coupling(args.threshold, 5000)?;
+
+    if edges.is_empty() {
+        println!("No coupling data found above threshold {}. Try lowering --threshold.", args.threshold);
+        return Ok(());
+    }
+
+    // Build adjacency graph (union-find for connected components)
+    let mut adj: HashMap<String, Vec<(String, f32)>> = HashMap::new();
+    for edge in &edges {
+        adj.entry(edge.file_a.clone()).or_default().push((edge.file_b.clone(), edge.score));
+        adj.entry(edge.file_b.clone()).or_default().push((edge.file_a.clone(), edge.score));
+    }
+
+    // Find connected components via BFS
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut clusters: Vec<Vec<String>> = Vec::new();
+
+    for file in adj.keys() {
+        if visited.contains(file) {
+            continue;
+        }
+        let mut component = Vec::new();
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(file.clone());
+        visited.insert(file.clone());
+        while let Some(current) = queue.pop_front() {
+            component.push(current.clone());
+            if let Some(neighbors) = adj.get(&current) {
+                for (neighbor, _) in neighbors {
+                    if !visited.contains(neighbor) {
+                        visited.insert(neighbor.clone());
+                        queue.push_back(neighbor.clone());
+                    }
+                }
+            }
+        }
+        if component.len() >= args.min_size {
+            clusters.push(component);
+        }
+    }
+
+    // Sort clusters by size (largest first)
+    clusters.sort_by(|a, b| b.len().cmp(&a.len()));
+
+    if clusters.is_empty() {
+        println!("No file clusters found with >= {} members above coupling threshold {}.",
+            args.min_size, args.threshold);
+        return Ok(());
+    }
+
+    // For each cluster, check how many files are already bundled
+    println!("Suggested bundles from coupling analysis:\n");
+    let mut suggestion_count = 0;
+
+    for (i, cluster) in clusters.iter().enumerate() {
+        let unbundled: Vec<&String> = cluster.iter().filter(|f| !bundled_files.contains(*f)).collect();
+        let bundled_count = cluster.len() - unbundled.len();
+
+        // Skip clusters where most files are already bundled
+        if unbundled.is_empty() {
+            continue;
+        }
+
+        suggestion_count += 1;
+
+        // Try to derive a name from common path prefix
+        let common_prefix = common_path_prefix(&cluster.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        let suggested_name = if common_prefix.is_empty() {
+            format!("cluster-{}", i + 1)
+        } else {
+            common_prefix.trim_end_matches('/').replace('/', "-")
+        };
+
+        // Calculate average coupling score within cluster
+        let mut total_score = 0.0f32;
+        let mut edge_count = 0;
+        for edge in &edges {
+            if cluster.contains(&edge.file_a) && cluster.contains(&edge.file_b) {
+                total_score += edge.score;
+                edge_count += 1;
+            }
+        }
+        let avg_score = if edge_count > 0 { total_score / edge_count as f32 } else { 0.0 };
+
+        if output.json {
+            println!("  {{\"name\":\"{}\",\"files\":{},\"unbundled\":{},\"avg_coupling\":{:.2}}}",
+                suggested_name, cluster.len(), unbundled.len(), avg_score);
+        } else {
+            println!("{}. {} ({} files, {} unbundled, avg coupling: {:.2})",
+                suggestion_count, suggested_name, cluster.len(), unbundled.len(), avg_score);
+            if bundled_count > 0 {
+                println!("   Already bundled: {} files", bundled_count);
+            }
+            for f in &unbundled[..unbundled.len().min(10)] {
+                println!("   - {}", f);
+            }
+            if unbundled.len() > 10 {
+                println!("   ... and {} more", unbundled.len() - 10);
+            }
+            println!();
+        }
+    }
+
+    if suggestion_count == 0 {
+        println!("All coupled file clusters are already covered by existing bundles.");
+    } else {
+        println!("Found {} potential bundle(s). Create with:", suggestion_count);
+        println!("  bobbin bundle create \"<name>\" --global -f \"<file1>,<file2>,...\"");
+    }
+
+    Ok(())
+}
+
+/// Find the common path prefix of a set of file paths.
+fn common_path_prefix(paths: &[&str]) -> String {
+    if paths.is_empty() {
+        return String::new();
+    }
+    let first = paths[0];
+    let mut prefix_len = 0;
+    for (i, c) in first.char_indices() {
+        if paths.iter().all(|p| p.get(..=i).map(|s| s.ends_with(c)).unwrap_or(false)) {
+            if c == '/' {
+                prefix_len = i + 1;
+            }
+        } else {
+            break;
+        }
+    }
+    first[..prefix_len].to_string()
 }
 
 /// Try to count symbols in a file (best-effort, returns a hint string).
