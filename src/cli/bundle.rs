@@ -29,6 +29,8 @@ enum BundleCommands {
     Add(AddArgs),
     /// Remove a member from a bundle
     Remove(RemoveArgs),
+    /// Check bundle health: validate all refs/files still resolve
+    Check(CheckArgs),
 }
 
 #[derive(Args)]
@@ -149,6 +151,15 @@ struct RemoveArgs {
     global: bool,
 }
 
+#[derive(Args)]
+struct CheckArgs {
+    /// Check a specific bundle (default: all bundles)
+    name: Option<String>,
+    /// Override repo root for file resolution
+    #[arg(long)]
+    repo_root: Option<PathBuf>,
+}
+
 pub async fn run(args: BundleArgs, output: OutputConfig) -> Result<()> {
     match args.command {
         BundleCommands::List(list_args) => run_list(args.path, list_args, output).await,
@@ -156,6 +167,7 @@ pub async fn run(args: BundleArgs, output: OutputConfig) -> Result<()> {
         BundleCommands::Create(create_args) => run_create(args.path, create_args, output).await,
         BundleCommands::Add(add_args) => run_add(args.path, add_args, output).await,
         BundleCommands::Remove(remove_args) => run_remove(args.path, remove_args, output).await,
+        BundleCommands::Check(check_args) => run_check(args.path, check_args, output).await,
     }
 }
 
@@ -1096,6 +1108,125 @@ async fn run_remove(path: PathBuf, args: RemoveArgs, _output: OutputConfig) -> R
     println!("✓ Removed {} member(s) from '{}':", removed.len(), name);
     for r in &removed {
         println!("  - {}", r);
+    }
+
+    Ok(())
+}
+
+async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Result<()> {
+    let repo_root = args.repo_root.unwrap_or_else(|| path.canonicalize().unwrap_or(path));
+    let config = load_tags_with_bundles(&repo_root);
+
+    let bundles_to_check: Vec<&BundleConfig> = if let Some(ref name) = args.name {
+        match config.find_bundle(name) {
+            Some(b) => vec![b],
+            None => bail!("Bundle '{}' not found", name),
+        }
+    } else {
+        config.bundles.iter().collect()
+    };
+
+    if bundles_to_check.is_empty() {
+        println!("No bundles found.");
+        return Ok(());
+    }
+
+    let mut total_issues = 0usize;
+    let mut total_refs = 0usize;
+    let mut total_files = 0usize;
+    let mut bundles_healthy = 0usize;
+    let mut bundles_stale = 0usize;
+
+    for bundle in &bundles_to_check {
+        let mut issues: Vec<String> = Vec::new();
+
+        // Check files exist
+        for f in &bundle.files {
+            total_files += 1;
+            let file_path = if f.contains(':') {
+                // cross-repo ref like "repo:path" — skip, can't validate locally
+                continue;
+            } else {
+                repo_root.join(f)
+            };
+            if !file_path.exists() {
+                issues.push(format!("  ✗ file missing: {}", f));
+            }
+        }
+
+        // Check docs exist
+        for d in &bundle.docs {
+            total_files += 1;
+            let doc_path = repo_root.join(d);
+            if !doc_path.exists() {
+                issues.push(format!("  ✗ doc missing: {}", d));
+            }
+        }
+
+        // Check refs resolve
+        for ref_str in &bundle.refs {
+            total_refs += 1;
+            if let Some(parsed) = BundleRef::parse(ref_str) {
+                if parsed.file.contains(':') {
+                    continue; // cross-repo, skip
+                }
+                let file_path = repo_root.join(&parsed.file);
+                if !file_path.exists() {
+                    issues.push(format!("  ✗ ref file missing: {}", ref_str));
+                } else if let RefTarget::Symbol(ref sym) = parsed.target {
+                    // Check symbol exists in the file
+                    if let Ok(content) = std::fs::read_to_string(&file_path) {
+                        if !content.contains(sym.as_str()) {
+                            issues.push(format!("  ⚠ symbol not found: {} (in {})", sym, parsed.file));
+                        }
+                    }
+                } else if let RefTarget::Heading(ref heading) = parsed.target {
+                    if let Ok(content) = std::fs::read_to_string(&file_path) {
+                        let heading_pattern = format!("# {}", heading);
+                        if !content.lines().any(|l| l.trim_start_matches('#').trim().starts_with(heading.as_str())) {
+                            issues.push(format!("  ⚠ heading not found: {} (in {})", heading, parsed.file));
+                        }
+                        let _ = heading_pattern; // used for clarity
+                    }
+                }
+            } else {
+                issues.push(format!("  ⚠ unparseable ref: {}", ref_str));
+            }
+        }
+
+        // Check includes exist
+        for inc in &bundle.includes {
+            if config.find_bundle(inc).is_none() {
+                issues.push(format!("  ✗ included bundle not found: {}", inc));
+            }
+        }
+
+        if issues.is_empty() {
+            bundles_healthy += 1;
+        } else {
+            bundles_stale += 1;
+            total_issues += issues.len();
+            println!("⚠ {} — \"{}\"", bundle.name, bundle.description);
+            for issue in &issues {
+                println!("{}", issue);
+            }
+            println!();
+        }
+    }
+
+    // Summary
+    if output.json {
+        println!(
+            "{{\"bundles_checked\":{},\"healthy\":{},\"stale\":{},\"issues\":{},\"refs_checked\":{},\"files_checked\":{}}}",
+            bundles_to_check.len(), bundles_healthy, bundles_stale, total_issues, total_refs, total_files
+        );
+    } else {
+        println!("Bundle health: {} checked, {} healthy, {} with issues ({} total issues)",
+            bundles_to_check.len(), bundles_healthy, bundles_stale, total_issues);
+        println!("  Refs checked: {}, Files checked: {}", total_refs, total_files);
+        if bundles_stale == 0 {
+            println!("  ✓ All bundles healthy");
+        }
     }
 
     Ok(())
