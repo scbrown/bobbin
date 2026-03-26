@@ -1011,6 +1011,8 @@ async function showInjectionDetail(injectionId) {
   title.textContent = injectionId;
   content.innerHTML = '<div class="loading"><div class="spinner"></div> Loading injection detail...</div>';
   overlay.classList.add('open');
+  // Update deep link so this injection is shareable
+  history.replaceState(null, '', '#feedback?injection=' + encodeURIComponent(injectionId));
   try {
     const data = await fetch(`${API}/injections/${encodeURIComponent(injectionId)}`).then(r => {
       if (!r.ok) throw new Error(r.status === 404 ? 'Injection record not found — may have been recorded before payload logging was enabled' : `HTTP ${r.status}`);
@@ -1077,6 +1079,9 @@ async function showInjectionDetail(injectionId) {
 
 function closeDetail() {
   document.getElementById('injection-overlay').classList.remove('open');
+  // Restore plain page hash when closing overlay
+  const hash = location.hash;
+  if (hash.includes('?injection=')) history.replaceState(null, '', '#feedback');
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
 
@@ -1404,6 +1409,9 @@ function updateDeepLink(page) {
   } else if (page === 'context') {
     const q = document.getElementById('context-q').value.trim();
     if (q) hash += '?' + new URLSearchParams({q}).toString();
+  } else if (page === 'beads') {
+    const q = document.getElementById('beads-q') && document.getElementById('beads-q').value.trim();
+    if (q) hash += '?' + new URLSearchParams({q}).toString();
   }
   history.replaceState(null, '', hash);
 }
@@ -1412,7 +1420,7 @@ function restoreFromHash() {
   const hash = location.hash.slice(1); // remove #
   if (!hash) return false;
   const [page, queryString] = hash.split('?');
-  const validPages = ['home','search','context','repos','hotspots','tags','bundles','feedback','beads'];
+  const validPages = ['home','search','context','repos','hotspots','tags','bundles','feedback','beads','status'];
   if (!validPages.includes(page)) return false;
 
   switchTab(page, false);
@@ -1427,6 +1435,16 @@ function restoreFromHash() {
     } else if (page === 'context' && params.get('q')) {
       document.getElementById('context-q').value = params.get('q');
       doContext();
+    } else if (page === 'feedback' && params.get('injection')) {
+      // Deep link to specific injection detail
+      loadFeedback().then(() => showInjectionDetail(params.get('injection')));
+    } else if (page === 'beads' && params.get('q')) {
+      const el = document.getElementById('beads-q');
+      if (el) { el.value = params.get('q'); }
+      if (typeof doBeadsSearch === 'function') doBeadsSearch();
+    } else if (page === 'bundles' && params.get('name')) {
+      // Deep link to specific bundle detail
+      if (typeof showBundleDetail === 'function') showBundleDetail(params.get('name'));
     }
   }
   return true;
