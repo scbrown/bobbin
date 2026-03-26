@@ -33,6 +33,8 @@ enum BundleCommands {
     Check(CheckArgs),
     /// Suggest new bundles from coupling graph analysis
     Suggest(SuggestArgs),
+    /// Show bundle usage stats (beads with b:<slug> labels)
+    Stats(StatsArgs),
 }
 
 #[derive(Args)]
@@ -163,6 +165,12 @@ struct CheckArgs {
 }
 
 #[derive(Args)]
+struct StatsArgs {
+    /// Show stats for a specific bundle (default: all)
+    name: Option<String>,
+}
+
+#[derive(Args)]
 struct SuggestArgs {
     /// Minimum coupling score to consider (default: 0.3)
     #[arg(long, default_value_t = 0.3)]
@@ -184,6 +192,7 @@ pub async fn run(args: BundleArgs, output: OutputConfig) -> Result<()> {
         BundleCommands::Remove(remove_args) => run_remove(args.path, remove_args, output).await,
         BundleCommands::Check(check_args) => run_check(args.path, check_args, output).await,
         BundleCommands::Suggest(suggest_args) => run_suggest(args.path, suggest_args, output).await,
+        BundleCommands::Stats(stats_args) => run_stats(args.path, stats_args, output).await,
     }
 }
 
@@ -1242,6 +1251,93 @@ async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Resu
         println!("  Refs checked: {}, Files checked: {}", total_refs, total_files);
         if bundles_stale == 0 {
             println!("  ✓ All bundles healthy");
+        }
+    }
+
+    Ok(())
+}
+
+async fn run_stats(path: PathBuf, args: StatsArgs, output: OutputConfig) -> Result<()> {
+    let repo_root = path.canonicalize().unwrap_or(path);
+    let config = load_tags_with_bundles(&repo_root);
+
+    let bundles_to_check: Vec<&BundleConfig> = if let Some(ref name) = args.name {
+        match config.find_bundle(name) {
+            Some(b) => vec![b],
+            None => bail!("Bundle '{}' not found", name),
+        }
+    } else {
+        config.bundles.iter().collect()
+    };
+
+    if bundles_to_check.is_empty() {
+        println!("No bundles found.");
+        return Ok(());
+    }
+
+    // For each bundle, query bd for beads with b:<slug> label
+    let mut stats: Vec<(String, String, usize, usize, usize)> = Vec::new(); // (name, slug, open, closed, total)
+
+    for bundle in &bundles_to_check {
+        let slug = bundle.slug();
+        let label = format!("b:{}", slug);
+
+        // Try bd list with label filter (best-effort — bd might not be available)
+        let result = std::process::Command::new("bd")
+            .args(["list", "--json", "--label", &label, "--limit", "0", "--flat"])
+            .output();
+
+        match result {
+            Ok(output_cmd) if output_cmd.status.success() => {
+                let stdout = String::from_utf8_lossy(&output_cmd.stdout);
+                // Parse JSON array of issues
+                if let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
+                    let total = issues.len();
+                    let open = issues.iter().filter(|i| {
+                        let s = i.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                        s == "open" || s == "in_progress"
+                    }).count();
+                    let closed = issues.iter().filter(|i| {
+                        i.get("status").and_then(|v| v.as_str()) == Some("closed")
+                    }).count();
+                    stats.push((bundle.name.clone(), slug, open, closed, total));
+                } else {
+                    stats.push((bundle.name.clone(), slug, 0, 0, 0));
+                }
+            }
+            _ => {
+                // bd not available or failed
+                stats.push((bundle.name.clone(), slug, 0, 0, 0));
+            }
+        }
+    }
+
+    if output.json {
+        let json_stats: Vec<serde_json::Value> = stats.iter().map(|(name, slug, open, closed, total)| {
+            serde_json::json!({
+                "bundle": name,
+                "slug": slug,
+                "label": format!("b:{}", slug),
+                "open": open,
+                "closed": closed,
+                "total": total,
+            })
+        }).collect();
+        println!("{}", serde_json::to_string_pretty(&json_stats)?);
+    } else {
+        println!("Bundle usage (beads with b:<slug> labels):\n");
+        let mut any_beads = false;
+        for (name, slug, open, closed, total) in &stats {
+            if *total > 0 {
+                any_beads = true;
+                println!("  {} (b:{}) — {} total ({} open, {} closed)", name, slug, total, open, closed);
+            }
+        }
+        if !any_beads {
+            println!("  No beads found with b:<slug> labels.");
+            println!();
+            println!("  Label beads with bundle slugs to track work:");
+            println!("    bd new -t task \"description\" -l b:{}", stats.first().map(|s| s.1.as_str()).unwrap_or("context"));
         }
     }
 

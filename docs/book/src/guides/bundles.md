@@ -156,3 +156,47 @@ bobbin bundle create "context/pipeline" --global \
 ```
 
 When you `bobbin bundle show context --deep`, included bundles are expanded too.
+
+## Beads Integration
+
+Connect bundles to work items using the `b:<slug>` label convention:
+
+```bash
+# Label a bead with its bundle
+bd new -t task "Fix bridge budget overflow" -l b:context-pipeline
+bd new -t bug "Tag effects not applying" -l b:context-tags
+
+# Reference bundles in bead descriptions
+bd new -t task "Add rate limiting" --description "The /context endpoint (b:context-pipeline) needs rate limiting."
+```
+
+Any agent reading a bead with a `b:` label can instantly load context:
+```bash
+bobbin bundle show context-pipeline --deep
+```
+
+Track bundle usage across beads:
+```bash
+bobbin bundle stats              # All bundles
+bobbin bundle stats context      # Specific bundle
+```
+
+## Bundle Health
+
+Validate that bundle refs still resolve:
+
+```bash
+bobbin bundle check              # All bundles
+bobbin bundle check context      # Specific bundle
+bobbin bundle check --json       # Machine-readable for CI
+```
+
+## Auto-Discovery
+
+Find tightly-coupled file clusters that should be bundles:
+
+```bash
+bobbin bundle suggest                    # Default: coupling >= 0.3, cluster >= 3
+bobbin bundle suggest --threshold 0.5    # Stricter coupling
+bobbin bundle suggest --min-size 5       # Larger clusters only
+```
