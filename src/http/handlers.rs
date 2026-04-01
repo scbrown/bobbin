@@ -3762,13 +3762,33 @@ pub(super) async fn feedback_list(
     Ok(Json(records))
 }
 
+/// Query parameters for feedback stats endpoint.
+#[derive(Debug, Deserialize)]
+pub(super) struct FeedbackStatsParams {
+    /// Group results by "bundle" or "bead". If omitted, returns aggregated totals.
+    pub group_by: Option<String>,
+}
+
 /// GET /feedback/stats — aggregated feedback statistics
 pub(super) async fn feedback_stats(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<crate::storage::feedback::FeedbackStats>, (StatusCode, Json<ErrorBody>)> {
+    Query(params): Query<FeedbackStatsParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
     let store = open_feedback_store(&state).map_err(internal_error)?;
-    let stats = store.stats().map_err(internal_error)?;
-    Ok(Json(stats))
+    match params.group_by.as_deref() {
+        Some("bundle") => {
+            let entries = store.stats_by_bundle().map_err(internal_error)?;
+            Ok(Json(serde_json::to_value(entries).unwrap()))
+        }
+        Some("bead") => {
+            let entries = store.stats_by_bead().map_err(internal_error)?;
+            Ok(Json(serde_json::to_value(entries).unwrap()))
+        }
+        _ => {
+            let stats = store.stats().map_err(internal_error)?;
+            Ok(Json(serde_json::to_value(stats).unwrap()))
+        }
+    }
 }
 
 // -- /feedback/lineage --

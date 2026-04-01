@@ -407,6 +407,17 @@ pub struct FeedbackStats {
     pub lineage_records: u64,
 }
 
+/// Feedback statistics grouped by bundle or bead
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct GroupedStatsEntry {
+    pub key: String,
+    pub injections: u64,
+    pub feedback: u64,
+    pub useful: u64,
+    pub noise: u64,
+    pub harmful: u64,
+}
+
 /// A lineage record from the server
 #[derive(Debug, Deserialize, serde::Serialize)]
 pub struct LineageRecord {
@@ -949,6 +960,12 @@ impl Client {
     pub async fn feedback_stats(&self) -> Result<FeedbackStats> {
         let url = format!("{}/feedback/stats", self.base_url);
         self.get_json::<FeedbackStats>(&url, &[]).await
+    }
+
+    /// Get feedback statistics grouped by bundle or bead via the remote server.
+    pub async fn feedback_stats_grouped(&self, group_by: &str) -> Result<Vec<GroupedStatsEntry>> {
+        let url = format!("{}/feedback/stats", self.base_url);
+        self.get_json::<Vec<GroupedStatsEntry>>(&url, &[("group_by", group_by.to_string())]).await
     }
 
     /// Store a lineage record via the remote server.

@@ -63,6 +63,17 @@ pub struct FeedbackStats {
     pub lineage_records: u64,
 }
 
+/// Feedback statistics for a single bundle or bead grouping.
+#[derive(Debug, Serialize)]
+pub struct GroupedStatsEntry {
+    pub key: String,
+    pub injections: u64,
+    pub feedback: u64,
+    pub useful: u64,
+    pub noise: u64,
+    pub harmful: u64,
+}
+
 /// Input for recording a lineage action that resolves feedback.
 #[derive(Debug, Deserialize)]
 pub struct LineageInput {
@@ -192,17 +203,28 @@ impl FeedbackStore {
         "#,
         )?;
 
-        // Schema migration: add formatted_output column if missing
-        let has_col: bool = self.conn.query_row(
-            "SELECT COUNT(*) > 0 FROM pragma_table_info('injections') WHERE name = 'formatted_output'",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(false);
-        if !has_col {
-            self.conn.execute_batch(
-                "ALTER TABLE injections ADD COLUMN formatted_output TEXT DEFAULT '';"
-            )?;
+        // Schema migrations: add columns if missing
+        let migrations: &[(&str, &str)] = &[
+            ("formatted_output", "ALTER TABLE injections ADD COLUMN formatted_output TEXT DEFAULT '';"),
+            ("bundle_name", "ALTER TABLE injections ADD COLUMN bundle_name TEXT;"),
+            ("bead_id", "ALTER TABLE injections ADD COLUMN bead_id TEXT;"),
+        ];
+        for (col, ddl) in migrations {
+            let has_col: bool = self.conn.query_row(
+                &format!("SELECT COUNT(*) > 0 FROM pragma_table_info('injections') WHERE name = '{}'", col),
+                [],
+                |row| row.get(0),
+            ).unwrap_or(false);
+            if !has_col {
+                self.conn.execute_batch(ddl)?;
+            }
         }
+
+        // Index for bundle/bead grouping queries
+        self.conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_injections_bundle ON injections(bundle_name);
+             CREATE INDEX IF NOT EXISTS idx_injections_bead ON injections(bead_id);"
+        )?;
 
         Ok(())
     }
@@ -240,6 +262,31 @@ impl FeedbackStore {
         self.conn.execute(
             "INSERT OR REPLACE INTO injections (injection_id, timestamp, session_id, agent, query, files_json, total_chunks, budget_lines, formatted_output) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![injection_id, now, session_id, agent, query, files_json, total_chunks as i64, budget_lines as i64, formatted_output.unwrap_or("")],
+        )?;
+        Ok(())
+    }
+
+    /// Store an injection record with full metadata including bundle/bead context.
+    pub fn store_injection_full(
+        &self,
+        injection_id: &str,
+        session_id: Option<&str>,
+        agent: Option<&str>,
+        query: &str,
+        files: &[String],
+        total_chunks: usize,
+        budget_lines: usize,
+        formatted_output: Option<&str>,
+        bundle_name: Option<&str>,
+        bead_id: Option<&str>,
+    ) -> Result<()> {
+        let files_json = serde_json::to_string(files).unwrap_or_default();
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.fZ")
+            .to_string();
+        self.conn.execute(
+            "INSERT OR REPLACE INTO injections (injection_id, timestamp, session_id, agent, query, files_json, total_chunks, budget_lines, formatted_output, bundle_name, bead_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            rusqlite::params![injection_id, now, session_id, agent, query, files_json, total_chunks as i64, budget_lines as i64, formatted_output.unwrap_or(""), bundle_name, bead_id],
         )?;
         Ok(())
     }
@@ -373,6 +420,49 @@ impl FeedbackStore {
             unactioned,
             lineage_records,
         })
+    }
+
+    /// Get feedback statistics grouped by bundle name.
+    pub fn stats_by_bundle(&self) -> Result<Vec<GroupedStatsEntry>> {
+        self.stats_grouped("bundle_name")
+    }
+
+    /// Get feedback statistics grouped by bead ID.
+    pub fn stats_by_bead(&self) -> Result<Vec<GroupedStatsEntry>> {
+        self.stats_grouped("bead_id")
+    }
+
+    fn stats_grouped(&self, group_col: &str) -> Result<Vec<GroupedStatsEntry>> {
+        let sql = format!(
+            r#"SELECT
+                COALESCE(i.{col}, '(none)') as group_key,
+                COUNT(DISTINCT i.injection_id) as injections,
+                COUNT(DISTINCT f.id) as feedback,
+                COUNT(DISTINCT CASE WHEN f.rating = 'useful' THEN f.id END) as useful,
+                COUNT(DISTINCT CASE WHEN f.rating = 'noise' THEN f.id END) as noise,
+                COUNT(DISTINCT CASE WHEN f.rating = 'harmful' THEN f.id END) as harmful
+            FROM injections i
+            LEFT JOIN feedback f ON i.injection_id = f.injection_id
+            GROUP BY group_key
+            ORDER BY injections DESC"#,
+            col = group_col,
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |row| {
+            Ok(GroupedStatsEntry {
+                key: row.get(0)?,
+                injections: row.get(1)?,
+                feedback: row.get(2)?,
+                useful: row.get(3)?,
+                noise: row.get(4)?,
+                harmful: row.get(5)?,
+            })
+        })?;
+        let mut entries = Vec::new();
+        for row in rows {
+            entries.push(row?);
+        }
+        Ok(entries)
     }
 
     /// Record a lineage action that resolves one or more feedback records.
@@ -1178,5 +1268,58 @@ mod tests {
             "retry.rs should have high score from 2 useful ratings, got {}",
             retry_score
         );
+    }
+
+    #[test]
+    fn test_stats_by_bundle() {
+        let (store, _f) = temp_store();
+        let files = vec!["src/main.rs".to_string()];
+
+        // Create injections with bundle_name metadata
+        store.store_injection_full("inj-b1", None, None, "auth query", &files, 3, 100, None, Some("auth"), None).unwrap();
+        store.store_injection_full("inj-b2", None, None, "auth login", &files, 2, 100, None, Some("auth"), None).unwrap();
+        store.store_injection_full("inj-b3", None, None, "search query", &files, 4, 200, None, Some("search"), None).unwrap();
+        store.store_injection_full("inj-b4", None, None, "no bundle", &files, 1, 50, None, None, None).unwrap();
+
+        // Add feedback
+        store.store_feedback(&FeedbackInput { injection_id: "inj-b1".into(), agent: "test".into(), rating: "useful".into(), reason: String::new() }).unwrap();
+        store.store_feedback(&FeedbackInput { injection_id: "inj-b2".into(), agent: "test".into(), rating: "noise".into(), reason: String::new() }).unwrap();
+        store.store_feedback(&FeedbackInput { injection_id: "inj-b3".into(), agent: "test".into(), rating: "useful".into(), reason: String::new() }).unwrap();
+
+        let by_bundle = store.stats_by_bundle().unwrap();
+        assert!(by_bundle.len() >= 2, "should have at least auth and search groups");
+
+        let auth = by_bundle.iter().find(|e| e.key == "auth").unwrap();
+        assert_eq!(auth.injections, 2);
+        assert_eq!(auth.feedback, 2);
+        assert_eq!(auth.useful, 1);
+        assert_eq!(auth.noise, 1);
+
+        let search = by_bundle.iter().find(|e| e.key == "search").unwrap();
+        assert_eq!(search.injections, 1);
+        assert_eq!(search.useful, 1);
+    }
+
+    #[test]
+    fn test_stats_by_bead() {
+        let (store, _f) = temp_store();
+        let files = vec!["src/main.rs".to_string()];
+
+        store.store_injection_full("inj-d1", None, None, "q1", &files, 1, 100, None, None, Some("aegis-abc")).unwrap();
+        store.store_injection_full("inj-d2", None, None, "q2", &files, 1, 100, None, None, Some("aegis-abc")).unwrap();
+        store.store_injection_full("inj-d3", None, None, "q3", &files, 1, 100, None, None, Some("aegis-xyz")).unwrap();
+
+        store.store_feedback(&FeedbackInput { injection_id: "inj-d1".into(), agent: "test".into(), rating: "useful".into(), reason: String::new() }).unwrap();
+        store.store_feedback(&FeedbackInput { injection_id: "inj-d3".into(), agent: "test".into(), rating: "harmful".into(), reason: String::new() }).unwrap();
+
+        let by_bead = store.stats_by_bead().unwrap();
+        let abc = by_bead.iter().find(|e| e.key == "aegis-abc").unwrap();
+        assert_eq!(abc.injections, 2);
+        assert_eq!(abc.feedback, 1);
+        assert_eq!(abc.useful, 1);
+
+        let xyz = by_bead.iter().find(|e| e.key == "aegis-xyz").unwrap();
+        assert_eq!(xyz.injections, 1);
+        assert_eq!(xyz.harmful, 1);
     }
 }

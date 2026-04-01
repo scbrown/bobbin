@@ -51,7 +51,15 @@ enum FeedbackCommand {
     },
 
     /// Show aggregated feedback statistics
-    Stats,
+    Stats {
+        /// Group statistics by bundle name
+        #[arg(long)]
+        by_bundle: bool,
+
+        /// Group statistics by bead ID
+        #[arg(long)]
+        by_bead: bool,
+    },
 
     /// Manage lineage records (feedback → fix traceability)
     Lineage(LineageArgs),
@@ -198,24 +206,55 @@ pub async fn run(args: FeedbackArgs, output: OutputConfig) -> Result<()> {
                 eprintln!("\n{} record(s)", records.len());
             }
         }
-        FeedbackCommand::Stats => {
-            let stats = store.stats()?;
-            if output.json {
-                println!("{}", serde_json::to_string(&stats)?);
+        FeedbackCommand::Stats { by_bundle, by_bead } => {
+            if by_bundle || by_bead {
+                let entries = if by_bundle {
+                    store.stats_by_bundle()?
+                } else {
+                    store.stats_by_bead()?
+                };
+                if output.json {
+                    println!("{}", serde_json::to_string(&entries)?);
+                } else if entries.is_empty() {
+                    eprintln!("No injection data found.");
+                } else {
+                    let label = if by_bundle { "Bundle" } else { "Bead" };
+                    println!(
+                        "{:<30} {:>5} {:>5} {:>6} {:>5} {:>7}",
+                        label, "Inj", "Fb", "Good", "Noise", "Harmful"
+                    );
+                    println!("{}", "-".repeat(65));
+                    for e in &entries {
+                        println!(
+                            "{:<30} {:>5} {:>5} {:>6} {:>5} {:>7}",
+                            e.key,
+                            e.injections,
+                            e.feedback,
+                            format!("{}", e.useful).green(),
+                            format!("{}", e.noise).yellow(),
+                            format!("{}", e.harmful).red(),
+                        );
+                    }
+                }
             } else {
-                println!("Feedback Statistics");
-                println!("  Injections:  {}", stats.total_injections);
-                println!("  Feedback:    {}", stats.total_feedback);
-                println!(
-                    "  Ratings:     {} useful, {} noise, {} harmful",
-                    format!("{}", stats.useful).green(),
-                    format!("{}", stats.noise).yellow(),
-                    format!("{}", stats.harmful).red(),
-                );
-                println!(
-                    "  Lineage:     {} actioned, {} unactioned, {} records",
-                    stats.actioned, stats.unactioned, stats.lineage_records
-                );
+                let stats = store.stats()?;
+                if output.json {
+                    println!("{}", serde_json::to_string(&stats)?);
+                } else {
+                    println!("Feedback Statistics");
+                    println!("  Injections:  {}", stats.total_injections);
+                    println!("  Feedback:    {}", stats.total_feedback);
+                    println!(
+                        "  Ratings:     {} useful, {} noise, {} harmful",
+                        format!("{}", stats.useful).green(),
+                        format!("{}", stats.noise).yellow(),
+                        format!("{}", stats.harmful).red(),
+                    );
+                    println!(
+                        "  Lineage:     {} actioned, {} unactioned, {} records",
+                        stats.actioned, stats.unactioned, stats.lineage_records
+                    );
+                }
             }
         }
         FeedbackCommand::Lineage(lineage_args) => {
@@ -371,24 +410,52 @@ async fn run_remote(args: FeedbackArgs, output: OutputConfig, server_url: &str) 
                 eprintln!("\n{} record(s)", records.len());
             }
         }
-        FeedbackCommand::Stats => {
-            let stats = client.feedback_stats().await?;
-            if output.json {
-                println!("{}", serde_json::to_string(&stats)?);
+        FeedbackCommand::Stats { by_bundle, by_bead } => {
+            if by_bundle || by_bead {
+                let group_by = if by_bundle { "bundle" } else { "bead" };
+                let entries = client.feedback_stats_grouped(group_by).await?;
+                if output.json {
+                    println!("{}", serde_json::to_string(&entries)?);
+                } else if entries.is_empty() {
+                    eprintln!("No injection data found.");
+                } else {
+                    let label = if by_bundle { "Bundle" } else { "Bead" };
+                    println!(
+                        "{:<30} {:>5} {:>5} {:>6} {:>5} {:>7}",
+                        label, "Inj", "Fb", "Good", "Noise", "Harmful"
+                    );
+                    println!("{}", "-".repeat(65));
+                    for e in &entries {
+                        println!(
+                            "{:<30} {:>5} {:>5} {:>6} {:>5} {:>7}",
+                            e.key,
+                            e.injections,
+                            e.feedback,
+                            format!("{}", e.useful).green(),
+                            format!("{}", e.noise).yellow(),
+                            format!("{}", e.harmful).red(),
+                        );
+                    }
+                }
             } else {
-                println!("Feedback Statistics");
-                println!("  Injections:  {}", stats.total_injections);
-                println!("  Feedback:    {}", stats.total_feedback);
-                println!(
-                    "  Ratings:     {} useful, {} noise, {} harmful",
-                    format!("{}", stats.useful).green(),
-                    format!("{}", stats.noise).yellow(),
-                    format!("{}", stats.harmful).red(),
-                );
-                println!(
-                    "  Lineage:     {} actioned, {} unactioned, {} records",
-                    stats.actioned, stats.unactioned, stats.lineage_records
-                );
+                let stats = client.feedback_stats().await?;
+                if output.json {
+                    println!("{}", serde_json::to_string(&stats)?);
+                } else {
+                    println!("Feedback Statistics");
+                    println!("  Injections:  {}", stats.total_injections);
+                    println!("  Feedback:    {}", stats.total_feedback);
+                    println!(
+                        "  Ratings:     {} useful, {} noise, {} harmful",
+                        format!("{}", stats.useful).green(),
+                        format!("{}", stats.noise).yellow(),
+                        format!("{}", stats.harmful).red(),
+                    );
+                    println!(
+                        "  Lineage:     {} actioned, {} unactioned, {} records",
+                        stats.actioned, stats.unactioned, stats.lineage_records
+                    );
+                }
             }
         }
         FeedbackCommand::Lineage(lineage_args) => {

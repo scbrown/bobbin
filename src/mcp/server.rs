@@ -2010,48 +2010,81 @@ impl BobbinMcpServer {
     }
 
     /// Get bobbin feedback statistics
-    #[tool(description = "Get aggregated bobbin injection feedback statistics — total injections, feedback count, coverage rate, and rating breakdown (useful/noise/harmful).")]
+    #[tool(description = "Get aggregated bobbin injection feedback statistics — total injections, feedback count, coverage rate, and rating breakdown (useful/noise/harmful). Use group_by='bundle' or group_by='bead' to see per-bundle or per-bead breakdowns.")]
     async fn feedback_stats(
         &self,
-        Parameters(_req): Parameters<FeedbackStatsRequest>,
+        Parameters(req): Parameters<FeedbackStatsRequest>,
     ) -> Result<CallToolResult, McpError> {
         let store = self
             .open_feedback_store()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let stats = store
-            .stats()
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        match req.group_by.as_deref() {
+            Some("bundle") | Some("bead") => {
+                let group_by = req.group_by.as_deref().unwrap();
+                let entries = if group_by == "bundle" {
+                    store.stats_by_bundle()
+                } else {
+                    store.stats_by_bead()
+                }
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let rate = if stats.total_injections > 0 {
-            format!(
-                "{:.0}%",
-                stats.total_feedback as f64 / stats.total_injections as f64 * 100.0
-            )
-        } else {
-            "N/A".to_string()
-        };
+                if entries.is_empty() {
+                    return Ok(CallToolResult::success(vec![Content::text(
+                        "No injection data found.",
+                    )]));
+                }
 
-        let text = format!(
-            "Injections: {}\nFeedback: {} ({} coverage)\n  useful: {}\n  noise: {}\n  harmful: {}",
-            stats.total_injections,
-            stats.total_feedback,
-            rate,
-            stats.useful,
-            stats.noise,
-            stats.harmful
-        );
+                let label = if group_by == "bundle" { "Bundle" } else { "Bead" };
+                let mut lines = vec![format!(
+                    "{:<30} {:>5} {:>5} {:>6} {:>5} {:>7}",
+                    label, "Inj", "Fb", "Good", "Noise", "Harmful"
+                )];
+                for e in &entries {
+                    lines.push(format!(
+                        "{:<30} {:>5} {:>5} {:>6} {:>5} {:>7}",
+                        e.key, e.injections, e.feedback, e.useful, e.noise, e.harmful
+                    ));
+                }
+                Ok(CallToolResult::success(vec![Content::text(
+                    lines.join("\n"),
+                )]))
+            }
+            _ => {
+                let stats = store
+                    .stats()
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        // Append lineage stats if any exist
-        if stats.lineage_records > 0 || stats.actioned > 0 {
-            let text = format!(
-                "{}\nLineage: {} records\n  actioned: {}\n  unactioned: {}",
-                text, stats.lineage_records, stats.actioned, stats.unactioned
-            );
-            return Ok(CallToolResult::success(vec![Content::text(text)]));
+                let rate = if stats.total_injections > 0 {
+                    format!(
+                        "{:.0}%",
+                        stats.total_feedback as f64 / stats.total_injections as f64 * 100.0
+                    )
+                } else {
+                    "N/A".to_string()
+                };
+
+                let text = format!(
+                    "Injections: {}\nFeedback: {} ({} coverage)\n  useful: {}\n  noise: {}\n  harmful: {}",
+                    stats.total_injections,
+                    stats.total_feedback,
+                    rate,
+                    stats.useful,
+                    stats.noise,
+                    stats.harmful
+                );
+
+                if stats.lineage_records > 0 || stats.actioned > 0 {
+                    let text = format!(
+                        "{}\nLineage: {} records\n  actioned: {}\n  unactioned: {}",
+                        text, stats.lineage_records, stats.actioned, stats.unactioned
+                    );
+                    return Ok(CallToolResult::success(vec![Content::text(text)]));
+                }
+
+                Ok(CallToolResult::success(vec![Content::text(text)]))
+            }
         }
-
-        Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
     /// Record a lineage action linking feedback to a fix (commit, bead, config change)

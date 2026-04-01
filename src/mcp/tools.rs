@@ -938,9 +938,14 @@ pub struct FeedbackListRequest {
     pub limit: Option<usize>,
 }
 
-/// Request for feedback statistics (no parameters needed)
+/// Request for feedback statistics with optional grouping
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct FeedbackStatsRequest {}
+pub struct FeedbackStatsRequest {
+    /// Group results by "bundle" or "bead". If omitted, returns aggregated totals.
+    #[serde(default)]
+    #[schemars(description = "Group stats by 'bundle' or 'bead'. Omit for aggregated totals.")]
+    pub group_by: Option<String>,
+}
 
 /// Request for recording a lineage action that ties feedback to a fix
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
