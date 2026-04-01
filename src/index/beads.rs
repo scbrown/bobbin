@@ -74,7 +74,8 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
     if !config.include_closed {
         conditions.push("status NOT IN ('closed', 'deleted')".to_string());
     } else {
-        conditions.push("deleted_at IS NULL".to_string());
+        // When including closed beads, still exclude deleted ones
+        conditions.push("status != 'deleted'".to_string());
     }
     if config.max_age_days > 0 {
         conditions.push(format!(
