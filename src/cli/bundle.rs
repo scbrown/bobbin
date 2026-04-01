@@ -436,6 +436,9 @@ async fn run_show(path: PathBuf, args: ShowArgs, output: OutputConfig) -> Result
             "docs": bundle.docs,
             "beads": bundle.beads,
             "includes": bundle.includes,
+            "implements": bundle.implements,
+            "depends_on": bundle.depends_on,
+            "tests": bundle.tests,
             "repos": bundle.repos,
             "children": children,
             "member_files": bundle.member_files(),
@@ -671,6 +674,24 @@ async fn show_l1(
             } else {
                 println!("  {} (not found)", inc);
             }
+        }
+    }
+
+    // Show ontology relationships
+    let has_relationships = !bundle.implements.is_empty()
+        || !bundle.depends_on.is_empty()
+        || !bundle.tests.is_empty();
+    if has_relationships {
+        println!();
+        println!("=== Relationships ===");
+        for r in &bundle.implements {
+            println!("  implements: {}", r);
+        }
+        for r in &bundle.depends_on {
+            println!("  depends_on: {}", r);
+        }
+        for r in &bundle.tests {
+            println!("  tests: {}", r);
         }
     }
 
@@ -932,6 +953,15 @@ fn format_bundle_toml(bundle: &BundleConfig) -> String {
     if !bundle.includes.is_empty() {
         lines.push(format_toml_string_array("includes", &bundle.includes));
     }
+    if !bundle.implements.is_empty() {
+        lines.push(format_toml_string_array("implements", &bundle.implements));
+    }
+    if !bundle.depends_on.is_empty() {
+        lines.push(format_toml_string_array("depends_on", &bundle.depends_on));
+    }
+    if !bundle.tests.is_empty() {
+        lines.push(format_toml_string_array("tests", &bundle.tests));
+    }
     if !bundle.repos.is_empty() {
         lines.push(format_toml_string_array("repos", &bundle.repos));
     }
@@ -1008,6 +1038,9 @@ async fn run_create(path: PathBuf, args: CreateArgs, output: OutputConfig) -> Re
         docs: args.docs,
         beads: args.beads,
         includes: args.includes,
+        implements: Vec::new(),
+        depends_on: Vec::new(),
+        tests: Vec::new(),
         repos: args.repos,
         slug: args.slug,
     };

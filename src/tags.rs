@@ -28,6 +28,47 @@ pub struct TagsConfig {
     pub comments: CommentsConfig,
     /// Named context bundles (`[[bundles]]`)
     pub bundles: Vec<BundleConfig>,
+    /// Tag ontology: hierarchy, relationships, and domain definitions (`[ontology.tags.*]`)
+    pub ontology: OntologyConfig,
+}
+
+/// Ontology configuration: typed relationships and hierarchical classification for tags.
+///
+/// Defines parent-child and lateral relationships between tags, enabling
+/// queries to expand through the concept hierarchy (e.g., searching for
+/// "security" automatically includes "auth" and "session" chunks).
+///
+/// Example TOML:
+/// ```toml
+/// [ontology.tags.security]
+/// description = "Security-related code and infrastructure"
+///
+/// [ontology.tags.auth]
+/// parent = "security"
+/// relates_to = ["session", "token"]
+/// description = "Authentication and authorization"
+///
+/// [ontology.tags.session]
+/// parent = "auth"
+/// description = "Session management"
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct OntologyConfig {
+    /// Tag definitions with hierarchy and relationships (`[ontology.tags.<name>]`)
+    pub tags: std::collections::HashMap<String, TagDefinition>,
+}
+
+/// A tag definition within the ontology, defining hierarchy and lateral relationships.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct TagDefinition {
+    /// Parent tag (creates is-a hierarchy). Omit for root-level tags.
+    pub parent: Option<String>,
+    /// Lateral relationships to other tags (semantic neighbors, not hierarchy).
+    pub relates_to: Vec<String>,
+    /// One-line description of what this tag represents.
+    pub description: Option<String>,
 }
 
 /// A named, hierarchical, keyword-bound grouping of files and chunks.
@@ -61,6 +102,15 @@ pub struct BundleConfig {
     /// Other bundles pulled in at L2 deep dive.
     #[serde(default)]
     pub includes: Vec<String>,
+    /// Ontology: bundles this bundle implements (is-a relationship).
+    #[serde(default)]
+    pub implements: Vec<String>,
+    /// Ontology: bundles this bundle depends on (requires relationship).
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    /// Ontology: bundles this bundle tests (tests relationship).
+    #[serde(default)]
+    pub tests: Vec<String>,
     /// Repos this bundle spans. Omit = all repos.
     #[serde(default)]
     pub repos: Vec<String>,
@@ -463,6 +513,140 @@ impl TagsConfig {
         }
 
         matches
+    }
+
+    /// Expand a set of tags through the ontology hierarchy.
+    ///
+    /// For each input tag, adds all descendant tags (children, grandchildren, etc.)
+    /// from the ontology. This enables queries like "security" to match chunks tagged
+    /// with "auth", "session", or "token" if those are defined as descendants.
+    ///
+    /// Returns the expanded set (input tags + all descendants).
+    pub fn expand_tags_via_ontology(&self, tags: &[String]) -> Vec<String> {
+        if self.ontology.tags.is_empty() {
+            return tags.to_vec();
+        }
+
+        let mut expanded: BTreeSet<String> = tags.iter().cloned().collect();
+        let mut queue: Vec<String> = tags.to_vec();
+
+        while let Some(tag) = queue.pop() {
+            // Find children of this tag
+            for (child_name, child_def) in &self.ontology.tags {
+                if child_def.parent.as_deref() == Some(tag.as_str())
+                    && !expanded.contains(child_name)
+                {
+                    expanded.insert(child_name.clone());
+                    queue.push(child_name.clone());
+                }
+            }
+        }
+
+        expanded.into_iter().collect()
+    }
+
+    /// Get all ancestors of a tag (parent, grandparent, etc.) from the ontology.
+    pub fn tag_ancestors(&self, tag: &str) -> Vec<String> {
+        let mut ancestors = Vec::new();
+        let mut current = tag.to_string();
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+
+        while let Some(def) = self.ontology.tags.get(&current) {
+            if let Some(ref parent) = def.parent {
+                if seen.contains(parent) {
+                    break; // Cycle protection
+                }
+                ancestors.push(parent.clone());
+                seen.insert(parent.clone());
+                current = parent.clone();
+            } else {
+                break;
+            }
+        }
+
+        ancestors
+    }
+
+    /// Get tags related to a given tag (via `relates_to` in ontology).
+    pub fn related_tags(&self, tag: &str) -> Vec<String> {
+        self.ontology
+            .tags
+            .get(tag)
+            .map(|def| def.relates_to.clone())
+            .unwrap_or_default()
+    }
+
+    /// Build a bundle file filter that also includes ontology-expanded tags.
+    pub fn build_bundle_file_filter_with_ontology(&self, bundle_name: &str) -> Option<String> {
+        let bundle = self.find_bundle(bundle_name)?;
+        let files = bundle.member_files();
+
+        let mut clauses: Vec<String> = Vec::new();
+
+        if !files.is_empty() {
+            let file_list: Vec<String> = files
+                .iter()
+                .map(|f| format!("'{}'", f.replace('\'', "''")))
+                .collect();
+            clauses.push(format!("file_path IN ({})", file_list.join(", ")));
+        }
+
+        // Expand tags through ontology hierarchy
+        if !bundle.tags.is_empty() {
+            let expanded_tags = self.expand_tags_via_ontology(&bundle.tags);
+            clauses.push(build_tag_include_filter(&expanded_tags));
+        }
+
+        if clauses.is_empty() {
+            None
+        } else {
+            Some(format!("({})", clauses.join(" OR ")))
+        }
+    }
+}
+
+impl OntologyConfig {
+    /// Get all children of a tag (direct children only).
+    pub fn children(&self, tag: &str) -> Vec<String> {
+        self.tags
+            .iter()
+            .filter(|(_, def)| def.parent.as_deref() == Some(tag))
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    /// Get all descendants of a tag (children, grandchildren, etc.).
+    pub fn descendants(&self, tag: &str) -> Vec<String> {
+        let mut result = Vec::new();
+        let mut queue = vec![tag.to_string()];
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        seen.insert(tag.to_string());
+
+        while let Some(current) = queue.pop() {
+            for (name, def) in &self.tags {
+                if def.parent.as_deref() == Some(current.as_str()) && !seen.contains(name) {
+                    result.push(name.clone());
+                    seen.insert(name.clone());
+                    queue.push(name.clone());
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Get all root tags (tags with no parent).
+    pub fn roots(&self) -> Vec<String> {
+        self.tags
+            .iter()
+            .filter(|(_, def)| def.parent.is_none())
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    /// Check if the ontology has any definitions.
+    pub fn is_empty(&self) -> bool {
+        self.tags.is_empty()
     }
 }
 
