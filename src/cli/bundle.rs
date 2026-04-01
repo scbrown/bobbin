@@ -25,7 +25,7 @@ enum BundleCommands {
     Show(ShowArgs),
     /// Create a new bundle
     Create(CreateArgs),
-    /// Add a member (file, ref, doc, keyword, tag) to a bundle
+    /// Add a member (file, ref, doc, keyword, tag, bead) to a bundle
     Add(AddArgs),
     /// Remove a member from a bundle
     Remove(RemoveArgs),
@@ -87,6 +87,9 @@ struct CreateArgs {
     /// Include other bundles at L2
     #[arg(short, long, value_delimiter = ',')]
     includes: Vec<String>,
+    /// Bead references (rig:bead-id, e.g. "aegis:aegis-h8x")
+    #[arg(short = 'b', long, value_delimiter = ',')]
+    beads: Vec<String>,
     /// Repo scope
     #[arg(long, value_delimiter = ',')]
     repos: Vec<String>,
@@ -120,6 +123,9 @@ struct AddArgs {
     /// Includes to add
     #[arg(short, long, value_delimiter = ',')]
     includes: Vec<String>,
+    /// Bead references to add (rig:bead-id, e.g. "aegis:aegis-h8x")
+    #[arg(short = 'b', long, value_delimiter = ',')]
+    beads: Vec<String>,
     /// Write to global config
     #[arg(long)]
     global: bool,
@@ -147,6 +153,9 @@ struct RemoveArgs {
     /// Includes to remove
     #[arg(short, long, value_delimiter = ',')]
     includes: Vec<String>,
+    /// Bead references to remove
+    #[arg(short = 'b', long, value_delimiter = ',')]
+    beads: Vec<String>,
     /// Remove the entire bundle
     #[arg(long)]
     all: bool,
@@ -425,6 +434,7 @@ async fn run_show(path: PathBuf, args: ShowArgs, output: OutputConfig) -> Result
             "files": bundle.files,
             "refs": refs_json,
             "docs": bundle.docs,
+            "beads": bundle.beads,
             "includes": bundle.includes,
             "repos": bundle.repos,
             "children": children,
@@ -550,13 +560,24 @@ fn show_l0(bundle: &BundleConfig, all_bundles: &[BundleConfig]) -> Result<()> {
     let files = bundle.member_files();
     let ref_count = bundle.refs.len();
     let tag_count = bundle.tags.len();
+    let bead_count = bundle.beads.len();
     println!();
-    println!(
-        "   {} files, {} refs, {} tag memberships",
-        files.len(),
-        ref_count,
-        tag_count
-    );
+    if bead_count > 0 {
+        println!(
+            "   {} files, {} refs, {} tag memberships, {} beads",
+            files.len(),
+            ref_count,
+            tag_count,
+            bead_count
+        );
+    } else {
+        println!(
+            "   {} files, {} refs, {} tag memberships",
+            files.len(),
+            ref_count,
+            tag_count
+        );
+    }
     println!("   → `bobbin bundle show {}` for outline", bundle.name);
     println!("   → `bobbin bundle show {} --deep` for full context", bundle.name);
 
@@ -628,6 +649,15 @@ async fn show_l1(
         println!("=== Docs ({}) ===", bundle.docs.len());
         for d in &bundle.docs {
             println!("  {}", d);
+        }
+    }
+
+    // Show beads
+    if !bundle.beads.is_empty() {
+        println!();
+        println!("=== Beads ({}) ===", bundle.beads.len());
+        for b in &bundle.beads {
+            println!("  {}", b);
         }
     }
 
@@ -755,6 +785,55 @@ async fn show_l2(
         );
     }
 
+    // Show beads with content (resolve via bd show --json)
+    if !bundle.beads.is_empty() {
+        println!();
+        println!("=== Beads ({}) ===", bundle.beads.len());
+        for bead_ref in &bundle.beads {
+            println!();
+            println!("--- bead:{} ---", bead_ref);
+            // Try to resolve bead content via bd show --json
+            let bead_id = bead_ref.split(':').last().unwrap_or(bead_ref);
+            match std::process::Command::new("bd")
+                .args(["show", bead_id, "--json"])
+                .output()
+            {
+                Ok(output) if output.status.success() => {
+                    let json_str = String::from_utf8_lossy(&output.stdout);
+                    if let Ok(bead_json) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                        if let Some(title) = bead_json.get("title").and_then(|v| v.as_str()) {
+                            println!("  Title: {}", title);
+                        }
+                        if let Some(status) = bead_json.get("status").and_then(|v| v.as_str()) {
+                            println!("  Status: {}", status);
+                        }
+                        if let Some(priority) = bead_json.get("priority").and_then(|v| v.as_str()) {
+                            println!("  Priority: {}", priority);
+                        }
+                        if let Some(desc) = bead_json.get("description").and_then(|v| v.as_str()) {
+                            if !desc.is_empty() {
+                                println!();
+                                for line in desc.lines().take(30) {
+                                    println!("  {}", line);
+                                }
+                                let total_lines = desc.lines().count();
+                                if total_lines > 30 {
+                                    println!("  ... ({} more lines)", total_lines - 30);
+                                }
+                            }
+                        }
+                    } else {
+                        // Fallback: print raw output
+                        print!("{}", json_str);
+                    }
+                }
+                _ => {
+                    println!("  (could not resolve — run `bd show {}` manually)", bead_id);
+                }
+            }
+        }
+    }
+
     // Show includes (expand included bundles at L1)
     if !bundle.includes.is_empty() {
         println!();
@@ -847,6 +926,9 @@ fn format_bundle_toml(bundle: &BundleConfig) -> String {
     if !bundle.docs.is_empty() {
         lines.push(format_toml_string_array("docs", &bundle.docs));
     }
+    if !bundle.beads.is_empty() {
+        lines.push(format_toml_string_array("beads", &bundle.beads));
+    }
     if !bundle.includes.is_empty() {
         lines.push(format_toml_string_array("includes", &bundle.includes));
     }
@@ -924,6 +1006,7 @@ async fn run_create(path: PathBuf, args: CreateArgs, output: OutputConfig) -> Re
         files: args.files,
         refs: args.refs,
         docs: args.docs,
+        beads: args.beads,
         includes: args.includes,
         repos: args.repos,
         slug: args.slug,
@@ -1047,6 +1130,12 @@ async fn run_add(path: PathBuf, args: AddArgs, _output: OutputConfig) -> Result<
             added.push(format!("include:{}", i));
         }
     }
+    for b in &args.beads {
+        if !bundle.beads.contains(b) {
+            bundle.beads.push(b.clone());
+            added.push(format!("bead:{}", b));
+        }
+    }
 
     if added.is_empty() {
         println!("Nothing to add (all members already present)");
@@ -1121,6 +1210,12 @@ async fn run_remove(path: PathBuf, args: RemoveArgs, _output: OutputConfig) -> R
         if let Some(pos) = bundle.includes.iter().position(|x| x == i) {
             bundle.includes.remove(pos);
             removed.push(format!("include:{}", i));
+        }
+    }
+    for b in &args.beads {
+        if let Some(pos) = bundle.beads.iter().position(|x| x == b) {
+            bundle.beads.remove(pos);
+            removed.push(format!("bead:{}", b));
         }
     }
 
@@ -1216,6 +1311,22 @@ async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Resu
                 }
             } else {
                 issues.push(format!("  ⚠ unparseable ref: {}", ref_str));
+            }
+        }
+
+        // Check beads resolve
+        for bead_ref in &bundle.beads {
+            let bead_id = bead_ref.split(':').last().unwrap_or(bead_ref);
+            match std::process::Command::new("bd")
+                .args(["show", bead_id, "--json"])
+                .output()
+            {
+                Ok(output) if output.status.success() => {
+                    // Bead resolves OK
+                }
+                _ => {
+                    issues.push(format!("  ⚠ bead not found: {}", bead_ref));
+                }
             }
         }
 

@@ -55,6 +55,9 @@ pub struct BundleConfig {
     /// Documentation files (sugar for files, kept for clarity).
     #[serde(default)]
     pub docs: Vec<String>,
+    /// Bead references: `rig:bead-id` (e.g. "aegis:aegis-h8x").
+    #[serde(default)]
+    pub beads: Vec<String>,
     /// Other bundles pulled in at L2 deep dive.
     #[serde(default)]
     pub includes: Vec<String>,

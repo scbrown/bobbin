@@ -1603,6 +1603,17 @@ fn format_context_response_inner(
                     }
                 }
 
+                // Beads
+                if !bundle.beads.is_empty() && lines_used < max_lines {
+                    let _ = writeln!(out, "   Beads:");
+                    lines_used += 1;
+                    for b in &bundle.beads {
+                        if lines_used >= max_lines { break; }
+                        let _ = writeln!(out, "   - bead:{}", b);
+                        lines_used += 1;
+                    }
+                }
+
                 // Includes (other bundles)
                 if !bundle.includes.is_empty() && lines_used < max_lines {
                     let _ = writeln!(out, "   Includes: {}", bundle.includes.join(", "));
