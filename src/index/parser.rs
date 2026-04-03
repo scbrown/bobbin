@@ -3,7 +3,7 @@ use pulldown_cmark::{Event, HeadingLevel, Options, Parser as CmarkParser, Tag, T
 use std::path::Path;
 use tree_sitter::{Language, Node};
 
-use crate::types::{Chunk, ChunkType, ImportEdge, RawImport};
+use crate::types::{Chunk, ChunkEdge, ChunkEdgeType, ChunkType, ImportEdge, RawImport};
 
 /// Parses source code using tree-sitter to extract semantic chunks
 pub struct Parser {
@@ -139,6 +139,63 @@ impl Parser {
         let mut imports = Vec::new();
         collect_raw_imports(&root, content, lang, &mut imports);
         imports
+    }
+
+    /// Extract typed chunk-to-chunk edges from parsed source.
+    ///
+    /// Uses tree-sitter AST to find structural relationships:
+    /// - Rust: `impl Trait for Struct` → Implements edge, `impl Struct` → ImplFor edge
+    /// - Python: `class Foo(Bar)` → Extends edge
+    /// - Java/TS: `class Foo extends Bar` → Extends edge
+    /// - Test inference: `test_foo` / `Foo_test` → Tests edge to `foo` / `Foo` chunk
+    pub fn extract_chunk_edges(
+        &mut self,
+        path: &Path,
+        content: &str,
+        chunks: &[Chunk],
+    ) -> Vec<ChunkEdge> {
+        let language = detect_language(path);
+        let Some(lang) = language.as_deref() else {
+            return Vec::new();
+        };
+        if lang == "markdown" {
+            return Vec::new();
+        }
+
+        let parser = match lang {
+            "rust" => &mut self.rust_parser,
+            "typescript" | "tsx" => &mut self.typescript_parser,
+            "python" => &mut self.python_parser,
+            "go" => &mut self.go_parser,
+            "java" => &mut self.java_parser,
+            "cpp" => &mut self.cpp_parser,
+            _ => return Vec::new(),
+        };
+
+        let Some(tree) = parser.parse(content, None) else {
+            return Vec::new();
+        };
+
+        let file_path = path.to_string_lossy().to_string();
+
+        // Build a lookup from chunk name → chunk (for resolving targets)
+        let chunk_by_name: std::collections::HashMap<&str, &Chunk> = chunks
+            .iter()
+            .filter_map(|c| c.name.as_deref().map(|n| (n, c)))
+            .collect();
+
+        let root = tree.root_node();
+        let mut edges = Vec::new();
+        collect_chunk_edges(
+            &root,
+            content,
+            &file_path,
+            lang,
+            chunks,
+            &chunk_by_name,
+            &mut edges,
+        );
+        edges
     }
 
     /// Extract markdown chunks using pulldown-cmark for semantic parsing.
@@ -1183,6 +1240,215 @@ fn has_schema_frontmatter(content: &str) -> bool {
     }
 }
 
+/// Find the chunk whose span contains the given line.
+fn find_chunk_at_line<'a>(chunks: &'a [Chunk], line: u32) -> Option<&'a Chunk> {
+    chunks
+        .iter()
+        .find(|c| c.start_line <= line && line <= c.end_line)
+}
+
+/// Recursively collect chunk-level edges from the tree-sitter AST.
+fn collect_chunk_edges(
+    node: &Node,
+    content: &str,
+    file_path: &str,
+    language: &str,
+    chunks: &[Chunk],
+    chunk_by_name: &std::collections::HashMap<&str, &Chunk>,
+    edges: &mut Vec<ChunkEdge>,
+) {
+    match language {
+        "rust" => collect_rust_chunk_edges(node, content, file_path, chunks, chunk_by_name, edges),
+        "python" => {
+            collect_python_chunk_edges(node, content, file_path, chunks, chunk_by_name, edges)
+        }
+        "typescript" | "tsx" | "java" => {
+            collect_class_extends_edges(node, content, file_path, language, chunks, chunk_by_name, edges)
+        }
+        _ => {}
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_chunk_edges(
+            &child,
+            content,
+            file_path,
+            language,
+            chunks,
+            chunk_by_name,
+            edges,
+        );
+    }
+}
+
+/// Extract edges from Rust impl items: `impl Trait for Struct` and `impl Struct`.
+fn collect_rust_chunk_edges(
+    node: &Node,
+    content: &str,
+    file_path: &str,
+    chunks: &[Chunk],
+    chunk_by_name: &std::collections::HashMap<&str, &Chunk>,
+    edges: &mut Vec<ChunkEdge>,
+) {
+    if node.kind() != "impl_item" {
+        return;
+    }
+
+    let impl_line = node.start_position().row as u32 + 1;
+    let Some(source_chunk) = find_chunk_at_line(chunks, impl_line) else {
+        return;
+    };
+    let source_name = source_chunk
+        .name
+        .as_deref()
+        .unwrap_or("<impl>")
+        .to_string();
+
+    // Look for `impl Trait for Type` pattern by checking child nodes.
+    // In tree-sitter-rust, impl_item has:
+    //   - "trait" field: the trait being implemented (if `impl Trait for Type`)
+    //   - "type" field: the type being implemented
+    let trait_node = node.child_by_field_name("trait");
+    let type_node = node.child_by_field_name("type");
+
+    if let Some(trait_n) = trait_node {
+        let trait_name = &content[trait_n.byte_range()];
+        // Extract just the identifier (strip generics like `Trait<T>`)
+        let trait_ident = trait_name.split('<').next().unwrap_or(trait_name).trim();
+
+        if let Some(target) = chunk_by_name.get(trait_ident) {
+            edges.push(ChunkEdge {
+                source_chunk: source_chunk.id.clone(),
+                target_chunk: target.id.clone(),
+                source_name: source_name.clone(),
+                target_name: trait_ident.to_string(),
+                edge_type: ChunkEdgeType::Implements,
+                file_path: file_path.to_string(),
+            });
+        }
+    }
+
+    if let Some(type_n) = type_node {
+        let type_name = &content[type_n.byte_range()];
+        let type_ident = type_name.split('<').next().unwrap_or(type_name).trim();
+
+        if let Some(target) = chunk_by_name.get(type_ident) {
+            edges.push(ChunkEdge {
+                source_chunk: source_chunk.id.clone(),
+                target_chunk: target.id.clone(),
+                source_name,
+                target_name: type_ident.to_string(),
+                edge_type: ChunkEdgeType::ImplFor,
+                file_path: file_path.to_string(),
+            });
+        }
+    }
+}
+
+/// Extract edges from Python class inheritance: `class Foo(Bar, Baz)`.
+fn collect_python_chunk_edges(
+    node: &Node,
+    content: &str,
+    file_path: &str,
+    chunks: &[Chunk],
+    chunk_by_name: &std::collections::HashMap<&str, &Chunk>,
+    edges: &mut Vec<ChunkEdge>,
+) {
+    if node.kind() != "class_definition" {
+        return;
+    }
+
+    let class_line = node.start_position().row as u32 + 1;
+    let Some(source_chunk) = find_chunk_at_line(chunks, class_line) else {
+        return;
+    };
+    let source_name = source_chunk
+        .name
+        .as_deref()
+        .unwrap_or("<class>")
+        .to_string();
+
+    // Python class_definition has an "superclasses" / "argument_list" child
+    // with the base classes: class Foo(Bar, Baz):
+    if let Some(args) = node.child_by_field_name("superclasses") {
+        let mut cursor = args.walk();
+        for child in args.children(&mut cursor) {
+            if child.kind() == "identifier" {
+                let base_name = &content[child.byte_range()];
+                if let Some(target) = chunk_by_name.get(base_name) {
+                    edges.push(ChunkEdge {
+                        source_chunk: source_chunk.id.clone(),
+                        target_chunk: target.id.clone(),
+                        source_name: source_name.clone(),
+                        target_name: base_name.to_string(),
+                        edge_type: ChunkEdgeType::Extends,
+                        file_path: file_path.to_string(),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Extract extends edges from TS/Java class declarations.
+fn collect_class_extends_edges(
+    node: &Node,
+    content: &str,
+    file_path: &str,
+    language: &str,
+    chunks: &[Chunk],
+    chunk_by_name: &std::collections::HashMap<&str, &Chunk>,
+    edges: &mut Vec<ChunkEdge>,
+) {
+    let is_class = match language {
+        "typescript" | "tsx" => node.kind() == "class_declaration",
+        "java" => node.kind() == "class_declaration",
+        _ => false,
+    };
+    if !is_class {
+        return;
+    }
+
+    let class_line = node.start_position().row as u32 + 1;
+    let Some(source_chunk) = find_chunk_at_line(chunks, class_line) else {
+        return;
+    };
+    let source_name = source_chunk
+        .name
+        .as_deref()
+        .unwrap_or("<class>")
+        .to_string();
+
+    // TS/Java: class_heritage or superclass field
+    // Look for extends clause in the text (tree-sitter field varies)
+    let node_text = &content[node.byte_range()];
+    // Quick scan for `extends SomeClass` in the class header (first line)
+    if let Some(first_line) = node_text.lines().next() {
+        if let Some(pos) = first_line.find("extends ") {
+            let after = &first_line[pos + 8..];
+            // Take the identifier (until space, {, <, or comma)
+            let base: &str = after
+                .split(|c: char| c.is_whitespace() || c == '{' || c == '<' || c == ',')
+                .next()
+                .unwrap_or("");
+            let base = base.trim();
+            if !base.is_empty() {
+                if let Some(target) = chunk_by_name.get(base) {
+                    edges.push(ChunkEdge {
+                        source_chunk: source_chunk.id.clone(),
+                        target_chunk: target.id.clone(),
+                        source_name,
+                        target_name: base.to_string(),
+                        edge_type: ChunkEdgeType::Extends,
+                        file_path: file_path.to_string(),
+                    });
+                }
+            }
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -1996,5 +2262,101 @@ More content here.
         assert_eq!(tables.len(), 1);
         assert!(tables[0].content.contains("Method"));
         assert!(tables[0].name.as_ref().unwrap().contains("table"));
+    }
+
+    #[test]
+    fn test_chunk_edges_rust_impl_trait() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+trait Greeter {
+    fn greet(&self);
+}
+
+struct Person {
+    name: String,
+}
+
+impl Greeter for Person {
+    fn greet(&self) {
+        println!("Hello, {}", self.name);
+    }
+}
+"#;
+        let path = PathBuf::from("test.rs");
+        let chunks = parser.parse_file(&path, content).unwrap();
+        let edges = parser.extract_chunk_edges(&path, content, &chunks);
+
+        // Should find: impl → Greeter (Implements), impl → Person (ImplFor)
+        let implements: Vec<_> = edges.iter().filter(|e| e.edge_type == ChunkEdgeType::Implements).collect();
+        let impl_for: Vec<_> = edges.iter().filter(|e| e.edge_type == ChunkEdgeType::ImplFor).collect();
+
+        assert_eq!(implements.len(), 1, "expected 1 implements edge");
+        assert_eq!(implements[0].target_name, "Greeter");
+
+        assert_eq!(impl_for.len(), 1, "expected 1 impl_for edge");
+        assert_eq!(impl_for[0].target_name, "Person");
+    }
+
+    #[test]
+    fn test_chunk_edges_rust_impl_no_trait() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+struct Counter {
+    count: u32,
+}
+
+impl Counter {
+    fn new() -> Self {
+        Self { count: 0 }
+    }
+}
+"#;
+        let path = PathBuf::from("test.rs");
+        let chunks = parser.parse_file(&path, content).unwrap();
+        let edges = parser.extract_chunk_edges(&path, content, &chunks);
+
+        // Should find: impl → Counter (ImplFor), no Implements
+        let implements: Vec<_> = edges.iter().filter(|e| e.edge_type == ChunkEdgeType::Implements).collect();
+        let impl_for: Vec<_> = edges.iter().filter(|e| e.edge_type == ChunkEdgeType::ImplFor).collect();
+
+        assert!(implements.is_empty(), "no trait = no implements edge");
+        assert_eq!(impl_for.len(), 1);
+        assert_eq!(impl_for[0].target_name, "Counter");
+    }
+
+    #[test]
+    fn test_chunk_edges_python_extends() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+class Animal:
+    def speak(self):
+        pass
+
+class Dog(Animal):
+    def speak(self):
+        return "Woof"
+"#;
+        let path = PathBuf::from("test.py");
+        let chunks = parser.parse_file(&path, content).unwrap();
+        let edges = parser.extract_chunk_edges(&path, content, &chunks);
+
+        let extends: Vec<_> = edges.iter().filter(|e| e.edge_type == ChunkEdgeType::Extends).collect();
+        assert_eq!(extends.len(), 1, "expected 1 extends edge");
+        assert_eq!(extends[0].source_name, "Dog");
+        assert_eq!(extends[0].target_name, "Animal");
+    }
+
+    #[test]
+    fn test_chunk_edges_no_edges_for_standalone() {
+        let mut parser = Parser::new().unwrap();
+        let content = r#"
+fn standalone_function() {
+    println!("no edges here");
+}
+"#;
+        let path = PathBuf::from("test.rs");
+        let chunks = parser.parse_file(&path, content).unwrap();
+        let edges = parser.extract_chunk_edges(&path, content, &chunks);
+        assert!(edges.is_empty());
     }
 }

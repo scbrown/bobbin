@@ -179,6 +179,22 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
             }
         }
 
+        // Show chunk edge stats
+        if let Ok(edge_stats) = vector_store.get_chunk_edge_stats().await {
+            if !edge_stats.is_empty() {
+                let total: u64 = edge_stats.iter().map(|(_, c)| c).sum();
+                let breakdown: Vec<String> = edge_stats
+                    .iter()
+                    .map(|(t, c)| format!("{} {}", c, t))
+                    .collect();
+                println!(
+                    "  Chunk edges:  {} ({})",
+                    total.to_string().cyan(),
+                    breakdown.join(", ")
+                );
+            }
+        }
+
         // --- Calibration section ---
         println!("\n{}", "Calibration".bold());
         print_calibration_status(&calibration_result, stats.total_chunks);

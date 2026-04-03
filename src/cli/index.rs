@@ -366,6 +366,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     let mut pending_results: Vec<FileIndexResult> = Vec::new();
     let mut all_imports: Vec<ImportEdge> = Vec::new();
+    let mut all_chunk_edges: Vec<crate::types::ChunkEdge> = Vec::new();
 
     for file_path in &files_needing_index {
         let rel_path = file_path
@@ -452,6 +453,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 existing.sort();
                 chunk.tags = existing.join(",");
             }
+        }
+
+        // Extract chunk-level relationship edges (implements, extends, etc.)
+        if config.dependencies.enabled {
+            let file_edges = parser.extract_chunk_edges(file_path, &content, &chunks);
+            all_chunk_edges.extend(file_edges);
         }
 
         // Compute contextual embeddings for enabled languages
@@ -676,6 +683,24 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 "  Stored {} dependency edges ({} resolved)",
                 dep_count, resolved_count
             );
+        }
+    }
+
+    // Store chunk-level relationship edges
+    if !all_chunk_edges.is_empty() {
+        // Clear edges for re-indexed files
+        let edge_files: std::collections::HashSet<String> = all_chunk_edges
+            .iter()
+            .map(|e| e.file_path.clone())
+            .collect();
+        for file in &edge_files {
+            vector_store.clear_file_chunk_edges(file).await?;
+        }
+        let edge_count = all_chunk_edges.len();
+        vector_store.upsert_chunk_edges(&all_chunk_edges).await?;
+
+        if output.verbose && !output.quiet && !output.json {
+            println!("  Stored {} chunk edges", edge_count);
         }
     }
 

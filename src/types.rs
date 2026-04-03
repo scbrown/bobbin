@@ -156,6 +156,51 @@ pub struct ImportDependency {
     pub resolved: bool,
 }
 
+/// A typed relationship between two chunks (symbol-level edges).
+///
+/// Unlike `ImportDependency` (file-to-file), chunk edges link specific symbols:
+/// impl→trait, test→function, method→containing impl, etc.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkEdge {
+    /// Source chunk ID (format: "file:start_line:end_line")
+    pub source_chunk: String,
+    /// Target chunk ID
+    pub target_chunk: String,
+    /// Source chunk name (for display/query without re-reading chunks table)
+    pub source_name: String,
+    /// Target chunk name
+    pub target_name: String,
+    /// Relationship type
+    pub edge_type: ChunkEdgeType,
+    /// Source file path (denormalized for queries)
+    pub file_path: String,
+}
+
+/// Types of chunk-level relationships extracted by tree-sitter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChunkEdgeType {
+    /// impl block implements a trait (Rust: `impl Trait for Struct`)
+    Implements,
+    /// impl block targets a struct (Rust: `impl Struct`)
+    ImplFor,
+    /// Test function tests a production symbol (inferred from name/attributes)
+    Tests,
+    /// Class/struct extends another (Java/TS extends, Python inheritance)
+    Extends,
+}
+
+impl std::fmt::Display for ChunkEdgeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChunkEdgeType::Implements => write!(f, "implements"),
+            ChunkEdgeType::ImplFor => write!(f, "impl_for"),
+            ChunkEdgeType::Tests => write!(f, "tests"),
+            ChunkEdgeType::Extends => write!(f, "extends"),
+        }
+    }
+}
+
 /// Classification of a file by its role in the project.
 ///
 /// The four built-in categories cover common cases. Custom categories can be

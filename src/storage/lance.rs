@@ -16,8 +16,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::types::{
-    Chunk, ChunkType, FileMetadata, ImportDependency, IndexStats, LanguageStats, MatchType,
-    SearchResult,
+    Chunk, ChunkEdge, ChunkEdgeType, ChunkType, FileMetadata, ImportDependency, IndexStats,
+    LanguageStats, MatchType, SearchResult,
 };
 
 /// Table name for chunk storage
@@ -25,6 +25,9 @@ const TABLE_NAME: &str = "chunks";
 
 /// Table name for dependency storage
 const DEPS_TABLE_NAME: &str = "dependencies";
+
+/// Table name for chunk-level relationship edges
+const CHUNK_EDGES_TABLE_NAME: &str = "chunk_edges";
 
 /// Limit for queries that need all rows. LanceDB 0.17 defaults to limit=10
 /// (DEFAULT_TOP_K) for all queries including plain scans, so we must set an
@@ -51,6 +54,8 @@ pub struct VectorStore {
     table: Option<Table>,
     /// Dependency graph table
     deps_table: Option<Table>,
+    /// Chunk-level relationship edges table
+    chunk_edges_table: Option<Table>,
     /// Embedding dimension used by this store
     embedding_dim: i32,
     /// Whether FTS index has been created for this session
@@ -162,10 +167,46 @@ impl VectorStore {
             None
         };
 
+        let chunk_edges_table = if tables.contains(&CHUNK_EDGES_TABLE_NAME.to_string()) {
+            let t = conn
+                .open_table(CHUNK_EDGES_TABLE_NAME)
+                .execute()
+                .await
+                .context("Failed to open chunk_edges table")?;
+
+            let table_schema = t
+                .schema()
+                .await
+                .context("Failed to read chunk_edges table schema")?;
+            let expected = Self::chunk_edges_schema();
+            let on_disk: Vec<&str> = table_schema
+                .fields()
+                .iter()
+                .map(|f| f.name().as_str())
+                .collect();
+            let expected_fields: Vec<&str> =
+                expected.fields().iter().map(|f| f.name().as_str()).collect();
+
+            if on_disk != expected_fields {
+                eprintln!(
+                    "bobbin: chunk_edges table schema changed — dropping for re-creation"
+                );
+                conn.drop_table(CHUNK_EDGES_TABLE_NAME)
+                    .await
+                    .context("Failed to drop outdated chunk_edges table")?;
+                None
+            } else {
+                Some(t)
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             conn,
             table,
             deps_table,
+            chunk_edges_table,
             embedding_dim,
             fts_indexed: AtomicBool::new(false),
         })
@@ -1935,6 +1976,195 @@ impl VectorStore {
             .unwrap_or(0) as u64;
 
         Ok((total, resolved))
+    }
+
+    // ── Chunk edges (symbol-level relationships) ──────────────────────────
+
+    /// Arrow schema for the chunk_edges table
+    fn chunk_edges_schema() -> Schema {
+        Schema::new(vec![
+            Field::new("source_chunk", DataType::Utf8, false),
+            Field::new("target_chunk", DataType::Utf8, false),
+            Field::new("source_name", DataType::Utf8, false),
+            Field::new("target_name", DataType::Utf8, false),
+            Field::new("edge_type", DataType::Utf8, false),
+            Field::new("file_path", DataType::Utf8, false),
+        ])
+    }
+
+    /// Convert ChunkEdge slice to a RecordBatch
+    fn chunk_edges_to_record_batch(edges: &[ChunkEdge]) -> Result<RecordBatch> {
+        let schema = Arc::new(Self::chunk_edges_schema());
+
+        let source_chunks: Vec<&str> = edges.iter().map(|e| e.source_chunk.as_str()).collect();
+        let target_chunks: Vec<&str> = edges.iter().map(|e| e.target_chunk.as_str()).collect();
+        let source_names: Vec<&str> = edges.iter().map(|e| e.source_name.as_str()).collect();
+        let target_names: Vec<&str> = edges.iter().map(|e| e.target_name.as_str()).collect();
+        let edge_types: Vec<String> = edges.iter().map(|e| e.edge_type.to_string()).collect();
+        let edge_type_refs: Vec<&str> = edge_types.iter().map(|s| s.as_str()).collect();
+        let file_paths: Vec<&str> = edges.iter().map(|e| e.file_path.as_str()).collect();
+
+        let columns: Vec<ArrayRef> = vec![
+            Arc::new(StringArray::from(source_chunks)),
+            Arc::new(StringArray::from(target_chunks)),
+            Arc::new(StringArray::from(source_names)),
+            Arc::new(StringArray::from(target_names)),
+            Arc::new(StringArray::from(edge_type_refs)),
+            Arc::new(StringArray::from(file_paths)),
+        ];
+
+        RecordBatch::try_new(schema, columns).context("Failed to create chunk_edges record batch")
+    }
+
+    /// Insert chunk edges (batch)
+    pub async fn upsert_chunk_edges(&mut self, edges: &[ChunkEdge]) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+
+        let schema = Arc::new(Self::chunk_edges_schema());
+        let batch = Self::chunk_edges_to_record_batch(edges)?;
+
+        match &self.chunk_edges_table {
+            Some(table) => {
+                let reader = Self::batch_to_reader(batch, schema);
+                table
+                    .add(reader)
+                    .execute()
+                    .await
+                    .context("Failed to add chunk edges")?;
+            }
+            None => {
+                let reader = Self::batch_to_reader(batch, schema);
+                let table = self
+                    .conn
+                    .create_table(CHUNK_EDGES_TABLE_NAME, reader)
+                    .execute()
+                    .await
+                    .context("Failed to create chunk_edges table")?;
+                self.chunk_edges_table = Some(table);
+            }
+        }
+        Ok(())
+    }
+
+    /// Get chunk edges from a file
+    pub async fn get_chunk_edges(&self, file_path: &str) -> Result<Vec<ChunkEdge>> {
+        let table = match &self.chunk_edges_table {
+            Some(t) => t,
+            None => return Ok(Vec::new()),
+        };
+
+        let filter = format!("file_path = '{}'", file_path.replace('\'', "''"));
+        let results = table
+            .query()
+            .only_if(filter)
+            .limit(SCAN_ALL_LIMIT)
+            .execute()
+            .await
+            .context("Failed to query chunk edges")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect chunk edges")?;
+
+        Self::batches_to_chunk_edges(&batches)
+    }
+
+    /// Get all chunk edges of a specific type
+    pub async fn get_chunk_edges_by_type(&self, edge_type: ChunkEdgeType) -> Result<Vec<ChunkEdge>> {
+        let table = match &self.chunk_edges_table {
+            Some(t) => t,
+            None => return Ok(Vec::new()),
+        };
+
+        let filter = format!("edge_type = '{}'", edge_type);
+        let results = table
+            .query()
+            .only_if(filter)
+            .limit(SCAN_ALL_LIMIT)
+            .execute()
+            .await
+            .context("Failed to query chunk edges by type")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect chunk edges by type")?;
+
+        Self::batches_to_chunk_edges(&batches)
+    }
+
+    /// Clear chunk edges for a specific file
+    pub async fn clear_file_chunk_edges(&self, file_path: &str) -> Result<()> {
+        let table = match &self.chunk_edges_table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        let filter = format!("file_path = '{}'", file_path.replace('\'', "''"));
+        table
+            .delete(&filter)
+            .await
+            .context("Failed to clear file chunk edges")?;
+
+        Ok(())
+    }
+
+    /// Get chunk edge statistics: total edges by type
+    pub async fn get_chunk_edge_stats(&self) -> Result<Vec<(String, u64)>> {
+        let table = match &self.chunk_edges_table {
+            Some(t) => t,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut stats = Vec::new();
+        for edge_type in &["implements", "impl_for", "tests", "extends"] {
+            let filter = format!("edge_type = '{}'", edge_type);
+            let count = table.count_rows(Some(filter)).await.unwrap_or(0) as u64;
+            if count > 0 {
+                stats.push((edge_type.to_string(), count));
+            }
+        }
+        Ok(stats)
+    }
+
+    /// Convert RecordBatches to ChunkEdge structs
+    fn batches_to_chunk_edges(batches: &[RecordBatch]) -> Result<Vec<ChunkEdge>> {
+        let mut edges = Vec::new();
+
+        for batch in batches {
+            let source_chunks = string_column(batch, "source_chunk")?;
+            let target_chunks = string_column(batch, "target_chunk")?;
+            let source_names = string_column(batch, "source_name")?;
+            let target_names = string_column(batch, "target_name")?;
+            let edge_types = string_column(batch, "edge_type")?;
+            let file_paths = string_column(batch, "file_path")?;
+
+            for i in 0..batch.num_rows() {
+                let edge_type = match edge_types.value(i) {
+                    "implements" => ChunkEdgeType::Implements,
+                    "impl_for" => ChunkEdgeType::ImplFor,
+                    "tests" => ChunkEdgeType::Tests,
+                    "extends" => ChunkEdgeType::Extends,
+                    other => {
+                        eprintln!("Unknown chunk edge type: {}", other);
+                        continue;
+                    }
+                };
+                edges.push(ChunkEdge {
+                    source_chunk: source_chunks.value(i).to_string(),
+                    target_chunk: target_chunks.value(i).to_string(),
+                    source_name: source_names.value(i).to_string(),
+                    target_name: target_names.value(i).to_string(),
+                    edge_type,
+                    file_path: file_paths.value(i).to_string(),
+                });
+            }
+        }
+
+        Ok(edges)
     }
 
     /// Convert RecordBatches to ImportDependency structs
