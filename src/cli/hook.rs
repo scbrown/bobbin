@@ -3954,7 +3954,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                         total_files: 0, total_chunks: 0, direct_hits: 0,
                         coupled_additions: 0, bridged_additions: 0,
                         source_files: 0, doc_files: 0, top_semantic_score: 0.0,
-                        pinned_chunks: 0,
+                        pinned_chunks: 0, knowledge_additions: 0,
                     },
                 }
             }

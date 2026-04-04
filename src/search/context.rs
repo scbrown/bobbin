@@ -110,6 +110,11 @@ pub struct ContextConfig {
     pub feedback_boost_max: f32,
     /// Weight multiplier for feedback scores. Default: 0.2.
     pub feedback_boost_weight: f32,
+    /// Knowledge expansion configuration (requires `knowledge` feature).
+    /// When set, the pipeline queries Quipu for related entities after bridging.
+    pub knowledge_budget_pct: f32,
+    /// Maximum graph traversal hops for knowledge expansion. Default: 2.
+    pub knowledge_max_hops: u32,
 }
 
 impl Default for ContextConfig {
@@ -140,6 +145,8 @@ impl Default for ContextConfig {
             feedback_scores: None,
             feedback_boost_max: 0.3,
             feedback_boost_weight: 0.2,
+            knowledge_budget_pct: 15.0,
+            knowledge_max_hops: 2,
         }
     }
 }
@@ -225,6 +232,9 @@ pub struct ContextSummary {
     /// Number of pinned chunks injected
     #[serde(skip_serializing_if = "is_zero")]
     pub pinned_chunks: usize,
+    /// Number of knowledge graph chunks injected
+    #[serde(skip_serializing_if = "is_zero")]
+    pub knowledge_additions: usize,
 }
 
 /// How a file was found
@@ -237,6 +247,8 @@ pub enum FileRelevance {
     Bridged,
     /// Pinned via tag effect — bypasses relevance threshold
     Pinned,
+    /// Found via Quipu knowledge graph expansion
+    Knowledge,
 }
 
 /// How a seed chunk was discovered
@@ -276,6 +288,8 @@ pub struct ContextAssembler {
     metadata_store: MetadataStore,
     config: ContextConfig,
     git_analyzer: Option<GitAnalyzer>,
+    #[cfg(feature = "knowledge")]
+    quipu_store: Option<quipu::Store>,
 }
 
 /// Internal struct for seed search results
@@ -311,6 +325,22 @@ struct CoupledChunkInfo {
     coupled_to: String,
 }
 
+/// Internal struct for knowledge graph expansion results
+struct KnowledgeChunkInfo {
+    chunk_id: String,
+    file_path: String,
+    language: String,
+    name: Option<String>,
+    chunk_type: ChunkType,
+    start_line: u32,
+    end_line: u32,
+    content: String,
+    /// Relevance score based on graph distance and embedding similarity
+    knowledge_score: f32,
+    /// Entity IRI that led to discovering this chunk
+    discovered_via: String,
+}
+
 impl ContextAssembler {
     pub fn new(
         embedder: Embedder,
@@ -324,12 +354,21 @@ impl ContextAssembler {
             metadata_store,
             config,
             git_analyzer: None,
+            #[cfg(feature = "knowledge")]
+            quipu_store: None,
         }
     }
 
     /// Set the git analyzer for doc→source provenance bridging
     pub fn with_git_analyzer(mut self, git_analyzer: GitAnalyzer) -> Self {
         self.git_analyzer = Some(git_analyzer);
+        self
+    }
+
+    /// Set the Quipu knowledge graph store for knowledge expansion
+    #[cfg(feature = "knowledge")]
+    pub fn with_quipu_store(mut self, store: quipu::Store) -> Self {
+        self.quipu_store = Some(store);
         self
     }
 
@@ -467,8 +506,14 @@ impl ContextAssembler {
             vec![]
         };
 
+        // Phase 2e: Knowledge expansion via Quipu graph traversal
+        #[cfg(feature = "knowledge")]
+        let knowledge_chunks = self.expand_knowledge(query, &seed_results, repo).await?;
+        #[cfg(not(feature = "knowledge"))]
+        let knowledge_chunks: Vec<KnowledgeChunkInfo> = vec![];
+
         // Phase 3: Assemble with budget
-        assemble_bundle(query, &self.config, seed_results, coupled_chunks, bridged_chunks)
+        assemble_bundle(query, &self.config, seed_results, coupled_chunks, bridged_chunks, knowledge_chunks)
     }
 
     /// Collect bridge signal file paths from both doc→source and commit→source paths.
@@ -666,6 +711,136 @@ impl ContextAssembler {
         }
 
         Ok(coupled_chunks)
+    }
+
+    /// Expand seed results via Quipu knowledge graph traversal.
+    ///
+    /// For each unique seed file, looks up the file's entity in Quipu by IRI,
+    /// traverses N hops to discover related entities, scores neighbors by
+    /// embedding similarity to the query, and converts them to KnowledgeChunkInfo
+    /// items for budget allocation.
+    #[cfg(feature = "knowledge")]
+    async fn expand_knowledge(
+        &mut self,
+        query: &str,
+        seed_results: &[SeedResult],
+        repo: Option<&str>,
+    ) -> Result<Vec<KnowledgeChunkInfo>> {
+        let store = match &self.quipu_store {
+            Some(s) => s,
+            None => return Ok(vec![]),
+        };
+
+        if self.config.knowledge_budget_pct <= 0.0 {
+            return Ok(vec![]);
+        }
+
+        let max_hops = self.config.knowledge_max_hops;
+        let mut knowledge_chunks: Vec<KnowledgeChunkInfo> = Vec::new();
+
+        // Collect unique seed file paths for entity lookup
+        let seed_files: HashSet<&str> = seed_results.iter().map(|s| s.file_path.as_str()).collect();
+
+        // Use Quipu tool_context with the query to find related entities.
+        // This performs text search with link expansion — entities are returned
+        // with their types, labels, facts, and relationships.
+        let input = serde_json::json!({
+            "query": query,
+            "max_entities": 20,
+            "expand_links": max_hops > 0,
+        });
+
+        let result = match quipu::tool_context(store, &input) {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!("Knowledge graph expansion failed: {e}");
+                return Ok(vec![]);
+            }
+        };
+
+        // Parse the result — tool_context returns a JSON object with an "entities" array.
+        // Each entity has: iri, label, type, facts (array of {predicate, object}).
+        // We look for entities whose IRIs reference file paths (bobbin:code/...) and
+        // fetch those files' chunks from the vector store.
+        let entities = match result.get("entities").and_then(|e| e.as_array()) {
+            Some(arr) => arr,
+            None => return Ok(knowledge_chunks),
+        };
+
+        // Best seed score for scaling knowledge chunk scores
+        let best_seed_score = seed_results.iter().map(|s| s.score).fold(0.0_f32, f32::max);
+
+        // Score decay per hop (entities further from query get lower scores)
+        let hop_decay = 0.6_f32;
+
+        let mut files_fetched: usize = 0;
+        let max_knowledge_files = 5;
+        let max_chunks_per_file = 2;
+
+        for (idx, entity) in entities.iter().enumerate() {
+            if files_fetched >= max_knowledge_files {
+                break;
+            }
+
+            let iri = match entity.get("iri").and_then(|v| v.as_str()) {
+                Some(i) => i,
+                None => continue,
+            };
+
+            // Extract file path from bobbin:code/{repo}/{path} IRI format
+            let file_path = if let Some(path) = iri.strip_prefix("bobbin:code/") {
+                // Skip the repo segment: bobbin:code/{repo}/{path}
+                path.find('/').map(|i| &path[i + 1..]).unwrap_or(path)
+            } else if let Some(path) = iri.strip_prefix("bobbin:doc/") {
+                path.find('/').map(|i| &path[i + 1..]).unwrap_or(path)
+            } else {
+                continue;
+            };
+
+            // Skip files already in seeds
+            if seed_files.contains(file_path) {
+                continue;
+            }
+
+            let entity_label = entity
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or(iri)
+                .to_string();
+
+            // Fetch chunks from the vector store for this entity's file
+            let chunks = match self.vector_store.get_chunks_for_file(file_path, repo).await {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            if chunks.is_empty() {
+                continue;
+            }
+
+            files_fetched += 1;
+
+            // Score: base on seed relevance, decayed by position (proxy for hop distance)
+            let position_decay = hop_decay.powi((idx as i32).min(max_hops as i32));
+            let knowledge_score = best_seed_score * 0.3 * position_decay;
+
+            for chunk in chunks.into_iter().take(max_chunks_per_file) {
+                knowledge_chunks.push(KnowledgeChunkInfo {
+                    chunk_id: chunk.id.clone(),
+                    file_path: chunk.file_path.clone(),
+                    language: chunk.language.clone(),
+                    name: chunk.name.clone(),
+                    chunk_type: chunk.chunk_type,
+                    start_line: chunk.start_line,
+                    end_line: chunk.end_line,
+                    content: chunk.content.clone(),
+                    knowledge_score,
+                    discovered_via: entity_label.clone(),
+                });
+            }
+        }
+
+        Ok(knowledge_chunks)
     }
 
     /// Run hybrid search manually to avoid ownership issues with HybridSearch.
@@ -894,13 +1069,14 @@ fn format_content(content: &str, mode: ContentMode) -> Option<String> {
     }
 }
 
-/// Assemble a context bundle from seed, coupled, and bridged results (pure logic, no I/O)
+/// Assemble a context bundle from seed, coupled, bridged, and knowledge results (pure logic, no I/O)
 fn assemble_bundle(
     query: &str,
     config: &ContextConfig,
     seed_results: Vec<SeedResult>,
     coupled_chunks: Vec<CoupledChunkInfo>,
     bridged_chunks: Vec<CoupledChunkInfo>,
+    knowledge_chunks: Vec<KnowledgeChunkInfo>,
 ) -> Result<ContextBundle> {
     let budget = config.budget_lines;
     let max_chunk_lines = budget / 2; // Cap individual chunks at 50% of budget
@@ -1456,6 +1632,93 @@ fn assemble_bundle(
         }
     }
 
+    // Group knowledge chunks by file
+    let mut knowledge_files: HashMap<String, (Vec<KnowledgeChunkInfo>, HashSet<String>)> =
+        HashMap::new();
+    for chunk in knowledge_chunks {
+        // Apply the same noise path filter
+        if is_noise_path(&chunk.file_path, &chunk.language, &None) {
+            continue;
+        }
+        let entry = knowledge_files
+            .entry(chunk.file_path.clone())
+            .or_insert_with(|| (Vec::new(), HashSet::new()));
+        entry.1.insert(chunk.discovered_via.clone());
+        entry.0.push(chunk);
+    }
+
+    let mut knowledge_file_list: Vec<(String, Vec<KnowledgeChunkInfo>, HashSet<String>)> =
+        knowledge_files
+            .into_iter()
+            .map(|(path, (chunks, sources))| (path, chunks, sources))
+            .collect();
+    knowledge_file_list.sort_by(|a, b| {
+        let max_a = a.1.iter().map(|c| c.knowledge_score).fold(f32::NEG_INFINITY, f32::max);
+        let max_b = b.1.iter().map(|c| c.knowledge_score).fold(f32::NEG_INFINITY, f32::max);
+        max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut knowledge_addition_count: usize = 0;
+    let knowledge_budget = ((budget as f32) * config.knowledge_budget_pct / 100.0) as usize;
+    let mut knowledge_lines: usize = 0;
+
+    // Add knowledge chunks (entities discovered via Quipu graph traversal)
+    for (file_path, mut chunks, sources) in knowledge_file_list {
+        if used_lines >= budget || knowledge_lines >= knowledge_budget {
+            break;
+        }
+
+        chunks.sort_by_key(|c| c.start_line);
+
+        let language = chunks.first().map(|c| c.language.clone()).unwrap_or_default();
+        let file_score = chunks.iter().map(|c| c.knowledge_score).fold(f32::NEG_INFINITY, f32::max);
+
+        let mut file_chunks = Vec::new();
+        for chunk in chunks {
+            if seen_chunk_ids.contains(&chunk.chunk_id) {
+                continue;
+            }
+
+            let chunk_lines = (chunk.end_line - chunk.start_line + 1) as usize;
+            let capped_lines = chunk_lines.min(max_chunk_lines);
+
+            if used_lines + capped_lines > budget || knowledge_lines + capped_lines > knowledge_budget {
+                break;
+            }
+
+            seen_chunk_ids.insert(chunk.chunk_id.clone());
+            used_lines += capped_lines;
+            knowledge_lines += capped_lines;
+            knowledge_addition_count += 1;
+
+            file_chunks.push(ContextChunk {
+                name: chunk.name.clone(),
+                chunk_type: chunk.chunk_type,
+                start_line: chunk.start_line,
+                end_line: chunk.end_line,
+                score: chunk.knowledge_score,
+                match_type: None,
+                content: format_content(&chunk.content, config.content_mode),
+            });
+        }
+
+        if !file_chunks.is_empty() {
+            let mut coupled_to: Vec<String> = sources.into_iter().collect();
+            coupled_to.sort();
+
+            context_files.push(ContextFile {
+                path: file_path.clone(),
+                language,
+                relevance: FileRelevance::Knowledge,
+                category: classify_file_with_rules(&file_path, &config.file_type_rules),
+                score: file_score,
+                coupled_to,
+                chunks: file_chunks,
+                repo: None,
+            });
+        }
+    }
+
     let total_chunks = context_files.iter().map(|f| f.chunks.len()).sum();
     let total_files = context_files.len();
     let source_files = context_files.iter().filter(|f| f.category == FileCategory::Source || f.category == FileCategory::Test).count();
@@ -1479,6 +1742,7 @@ fn assemble_bundle(
             doc_files,
             top_semantic_score: 0.0,
             pinned_chunks: pinned_chunk_count,
+            knowledge_additions: knowledge_addition_count,
         },
     })
 }
@@ -1596,7 +1860,7 @@ mod tests {
             make_seed("c3", "c.rs", 1, 3, 0.7),  // 3 lines - fits (6+3 = 9 <= 10)
         ];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
 
         assert!(bundle.budget.used_lines <= bundle.budget.max_lines);
         assert_eq!(bundle.budget.max_lines, 10);
@@ -1635,7 +1899,7 @@ mod tests {
             make_seed("c1", "a.rs", 1, 5, 0.8), // duplicate chunk ID
         ];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
         assert_eq!(bundle.summary.total_chunks, 1);
     }
 
@@ -1669,7 +1933,7 @@ mod tests {
 
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
         assert_eq!(bundle.summary.coupled_additions, 0);
     }
 
@@ -1704,7 +1968,7 @@ mod tests {
         let seeds = vec![make_seed("c1", "a.rs", 1, 5, 0.9)];
         let coupled = vec![make_coupled("c2", "b.rs", 1, 5, 0.5, "a.rs")];
 
-        let bundle = assemble_bundle("test", &config, seeds, coupled, vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, coupled, vec![], vec![]).unwrap();
 
         assert_eq!(bundle.files.len(), 2);
         assert_eq!(bundle.files[0].relevance, FileRelevance::Direct);
@@ -1744,7 +2008,7 @@ mod tests {
             make_seed("c1", "a.rs", 1, 10, 0.9),
         ];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
         assert_eq!(bundle.files.len(), 1);
         assert_eq!(bundle.files[0].chunks[0].start_line, 1);
         assert_eq!(bundle.files[0].chunks[1].start_line, 20);
@@ -1781,7 +2045,7 @@ mod tests {
         // A chunk of 15 lines with budget of 20 - capped at 10 (50%)
         let seeds = vec![make_seed("c1", "a.rs", 1, 15, 0.9)];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
         // The chunk uses min(15, 10) = 10 lines of budget
         assert_eq!(bundle.budget.used_lines, 10);
     }
@@ -1835,7 +2099,7 @@ mod tests {
             make_seed("c1", "a.rs", 1, 5, 0.9),
         ];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
 
         // Only the function chunk should appear, not the commit
         assert_eq!(bundle.summary.total_chunks, 1);
@@ -1955,7 +2219,7 @@ mod tests {
         let normal = make_seed("n1", "normal.rs", 1, 10, 0.9);
 
         let seeds = vec![normal, pinned];
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
 
         // Pinned file should appear first despite lower score
         assert_eq!(bundle.files.len(), 2);
@@ -2016,7 +2280,7 @@ mod tests {
         pinned.is_pinned = true;
 
         let seeds = vec![pinned];
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
 
         // 15 lines exceeds 10-line pin budget reserve → not injected
         assert_eq!(bundle.summary.pinned_chunks, 0);
@@ -2055,7 +2319,7 @@ mod tests {
             make_seed("c1", "a.rs", 1, 5, 0.9),
             make_seed("c2", "b.rs", 1, 5, 0.7),
         ];
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
 
         assert_eq!(bundle.summary.pinned_chunks, 0);
         assert_eq!(bundle.budget.pinned_lines, 0);
@@ -2082,7 +2346,7 @@ mod tests {
             make_seed("c2", "b.rs", 1, 5, 0.8), // Same score as a.rs
         ];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
         assert_eq!(bundle.files.len(), 2);
         // b.rs should be first (higher score after boost)
         assert_eq!(bundle.files[0].path, "b.rs");
@@ -2106,7 +2370,7 @@ mod tests {
             make_seed("c2", "b.rs", 1, 5, 0.8),
         ];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
         assert_eq!(bundle.files.len(), 2);
         // b.rs should now be first despite lower base score
         assert_eq!(bundle.files[0].path, "b.rs");
@@ -2125,7 +2389,7 @@ mod tests {
             make_seed("c2", "b.rs", 1, 5, 0.8),
         ];
 
-        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![]).unwrap();
+        let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
         assert_eq!(bundle.files.len(), 2);
         // Original order preserved
         assert_eq!(bundle.files[0].path, "a.rs");

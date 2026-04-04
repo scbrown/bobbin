@@ -266,6 +266,9 @@ fn print_human_output(bundle: &ContextBundle) {
             FileRelevance::Pinned => {
                 format!("pinned, score: {:.4}", file.score)
             }
+            FileRelevance::Knowledge => {
+                format!("knowledge via {}, score: {:.4}", file.coupled_to.join(", "), file.score)
+            }
         };
 
         println!(
