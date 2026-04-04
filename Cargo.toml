@@ -100,7 +100,7 @@ rmcp = { version = "0.12", features = ["server", "transport-io", "transport-stre
 schemars = "1.0"
 
 # Knowledge graph (Quipu subsystem)
-quipu = { path = "/home/braino/quipu", default-features = false }
+quipu = { git = "https://github.com/scbrown/quipu", branch = "main", default-features = false }
 
 # HTTP Server
 axum = "0.8"
