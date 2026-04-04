@@ -17,6 +17,7 @@ Bobbin is a local-first code context engine built in Rust. It provides semantic 
 - **LanceDB** for primary storage: chunks, vector embeddings, and full-text search
 - **SQLite** for temporal coupling data and global metadata
 - **rmcp** for MCP server integration with AI agents
+- **Quipu** (optional, `--features knowledge`) for knowledge graph — EAVT fact store, SPARQL, SHACL validation
 
 ## Module Structure
 
@@ -117,5 +118,39 @@ User Query
                ▼
           Results
 ```
+
+## Knowledge Graph Layer (Optional)
+
+When built with `--features knowledge`, Bobbin integrates with [Quipu](https://github.com/scbrown/quipu) to add a structured knowledge layer:
+
+```text
+┌─────────────────────────────────────────────────────┐
+│                    MCP Server                        │
+│                                                      │
+│  Bobbin tools:  search, context, grep, refs, ...     │
+│  Quipu tools:   knowledge_context, knowledge_query   │
+└──────────────────────┬──────────────────────────────┘
+                       │
+        ┌──────────────┼──────────────┐
+        │              │              │
+   ┌────┴────┐    ┌────┴────┐   ┌────┴────┐
+   │ Bobbin  │    │  Shared │   │  Quipu  │
+   │  Code   │    │  ONNX   │   │Knowledge│
+   │ Search  │    │Embedder │   │  Graph  │
+   └────┬────┘    └─────────┘   └────┬────┘
+        │                            │
+   ┌────┴────┐                  ┌────┴────┐
+   │ LanceDB │                  │ SQLite  │
+   │ vectors │                  │  EAVT   │
+   │ + FTS   │                  │+ vectors│
+   └─────────┘                  └─────────┘
+```
+
+- Quipu stores facts as Entity-Attribute-Value-Time tuples in SQLite
+- Both systems share a single ONNX embedding session
+- Quipu is synchronous; async Bobbin code bridges via `spawn_blocking()`
+- MCP tools from both are registered in a single `bobbin serve` process
+
+See [Quipu Integration Guide](../guides/quipu-integration.md) and [integration plan](https://github.com/scbrown/bobbin/blob/main/docs/plans/quipu-integration.md) for details.
 
 See also: [Storage & Data Flow](storage.md) | [Embedding Pipeline](embedding.md) | [Language Support](languages.md)

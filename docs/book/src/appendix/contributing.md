@@ -69,3 +69,41 @@ The `context` command is the "everything relevant in one shot" command. It combi
 - [ ] Are there new CLI flags that `context` should also expose?
 
 **Task specs for the context command live in `docs/tasks/context-*.md`.**
+
+## Code Quality Standards
+
+### Linting
+
+Clippy is the primary Rust linter. Run it via just:
+
+```bash
+just lint            # Clippy with quiet output
+just lint verbose=true  # Full clippy output
+```
+
+All warnings should be resolved before merging.
+
+### Documentation Checks
+
+The mdbook documentation has its own quality pipeline:
+
+```bash
+just docs build      # Build the book (mdbook)
+just docs lint       # Markdown lint (markdownlint-cli2)
+just docs check      # Full pipeline: lint + vale + validate + build
+```
+
+Run `just docs check` before pushing documentation changes.
+
+### Feature Flags
+
+The `knowledge` feature enables Quipu integration. When adding code that depends on Quipu, gate it behind `#[cfg(feature = "knowledge")]`:
+
+```rust
+#[cfg(feature = "knowledge")]
+fn open_knowledge_store(&self) -> Result<quipu::Store> {
+    // ...
+}
+```
+
+This ensures Bobbin compiles cleanly with and without the feature.

@@ -25,6 +25,7 @@
 - [Hooks](guides/hooks.md)
 - [Access Control (RBAC)](guides/access-control.md)
 - [Context Bundles](guides/bundles.md)
+- [Quipu Integration](guides/quipu-integration.md)
 
 # CLI Reference
 

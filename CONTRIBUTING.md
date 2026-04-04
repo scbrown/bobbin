@@ -76,6 +76,29 @@ The `context` command is the "everything relevant in one shot" command. It combi
 
 **Task specs for the context command live in `docs/tasks/context-*.md`.**
 
+## Code Quality Standards
+
+### Linting
+
+Run `just lint` (Clippy) before every commit. All warnings should be resolved before merging.
+
+### Documentation Checks
+
+```bash
+just docs build      # Build the mdbook
+just docs lint       # Markdown lint (markdownlint-cli2)
+just docs check      # Full pipeline: lint + vale + validate + build
+```
+
+### Feature Flags
+
+The `knowledge` feature enables [Quipu](https://github.com/scbrown/quipu) integration (knowledge graph, SPARQL, MCP tools). Code that depends on Quipu must be gated behind `#[cfg(feature = "knowledge")]` so Bobbin compiles cleanly without it.
+
+```bash
+cargo build --features knowledge   # Build with Quipu
+cargo build                        # Build without Quipu (default)
+```
+
 ## Documentation Checklist
 
 When adding or modifying features, update documentation alongside code changes.

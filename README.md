@@ -56,6 +56,7 @@ Related to src/auth/middleware.rs:
 | Git coupling analysis   | ❌ | ❌ | ✅ |
 | Task-aware context      | ❌ | ❌ | ✅ |
 | MCP server (AI agents)  | ❌ | ❌ | ✅ |
+| Knowledge graph          | ❌ | ❌ | ✅ |
 | Runs 100% locally       | ✅ | ❌ | ✅ |
 | No API keys required    | ✅ | ❌ | ✅ |
 | Sub-100ms queries       | ✅ | ❌ | ✅ |
@@ -71,6 +72,8 @@ Related to src/auth/middleware.rs:
 📦 **Task-Aware Context** — `bobbin context "fix the login bug"` builds a budget-controlled bundle from search results + coupled files. Feed it straight to an AI agent.
 
 🤖 **MCP Server** — `bobbin serve` exposes 24 tools to Claude Code, Cursor, and any MCP-compatible agent.
+
+🧠 **Knowledge Graph (Quipu)** — Optional integration with [Quipu](https://github.com/scbrown/quipu) for structured knowledge alongside code. SPARQL queries, SHACL validation, and vector search over knowledge entities — all exposed as MCP tools (`knowledge_context`, `knowledge_query`). Feature-gated behind `knowledge`.
 
 🌐 **Multi-Repo** — Index multiple repositories into one database. Search across all or filter by name.
 
@@ -174,6 +177,35 @@ For automatic context injection without MCP, add hooks to `.claude/settings.json
 
 The `inject-context` hook embeds your prompt, searches the index, and injects the most relevant code snippets. A relevance gate skips injection when the best match is too weak, and session dedup avoids re-injecting unchanged context.
 
+## Architecture
+
+```text
+                    Agent / Claude Code
+                           │
+            ┌──────────────┼──────────────┐
+            │              │              │
+       ┌────┴────┐    ┌────┴────┐   ┌────┴────┐
+       │ Bobbin  │    │ Unified │   │  Quipu  │
+       │  Code   │    │ Context │   │Knowledge│
+       │ Search  │    │ Pipeline│   │  Graph  │
+       └────┬────┘    └────┬────┘   └────┬────┘
+            │              │              │
+       ┌────┴────┐         │         ┌────┴────┐
+       │ LanceDB │         │         │ SQLite  │
+       │ vectors │         │         │  EAVT   │
+       │ + FTS   │         │         │+ vectors│
+       └─────────┘         │         └─────────┘
+                           │
+                  ┌────────┴────────┐
+                  │  ONNX Embedder  │
+                  │ (shared session)│
+                  └─────────────────┘
+```
+
+Bobbin handles code indexing and search (LanceDB vectors + FTS, tree-sitter parsing, git coupling). The optional Quipu layer adds a knowledge graph (EAVT fact store, SPARQL, SHACL validation) for structured knowledge alongside code. Both share a single ONNX embedding session and are exposed through one MCP server.
+
+See the [Architecture docs](https://scbrown.github.io/bobbin/architecture/overview.html) and [Quipu integration plan](docs/plans/quipu-integration.md) for details.
+
 ## Supported Languages
 
 | Language   | Parser        | Extracted Units |
@@ -189,6 +221,27 @@ The `inject-context` hook embeds your prompt, searches the index, and injects th
 | Markdown   | pulldown-cmark| sections, tables, code blocks, YAML frontmatter |
 
 Other file types use line-based chunking with overlap.
+
+## Development
+
+All development uses `just` as the command runner:
+
+```bash
+just build           # Build (quiet output by default)
+just test            # Run tests
+just check           # Type check
+just lint            # Clippy lints
+just docs build      # Build mdbook documentation
+just docs check      # Lint + validate + build docs
+```
+
+The `knowledge` feature gate enables Quipu integration:
+
+```bash
+cargo build --features knowledge
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup and code quality standards.
 
 ## Documentation
 

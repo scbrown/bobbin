@@ -17,7 +17,8 @@ Bobbin indexes the structure, history, and meaning of your codebase, then delive
 - **Hybrid search** — semantic + keyword results fused via Reciprocal Rank Fusion. Ask in natural language or grep by pattern.
 - **Git temporal coupling** — discovers files that change together in your commit history, revealing hidden dependencies no import graph can see.
 - **Task-aware context assembly** — `bobbin context "fix the login bug"` builds a budget-controlled bundle of the most relevant code, ready for an AI agent.
-- **MCP server** — `bobbin serve` exposes 12 tools to Claude Code, Cursor, and any MCP-compatible agent.
+- **MCP server** — `bobbin serve` exposes tools to Claude Code, Cursor, and any MCP-compatible agent.
+- **Knowledge graph** — optional [Quipu](https://github.com/scbrown/quipu) integration adds structured knowledge (SPARQL, SHACL) alongside code search, exposed as `knowledge_context` and `knowledge_query` MCP tools.
 - **Claude Code hooks** — automatically injects relevant code context into every prompt, and primes new sessions with project overview and index stats.
 - **GPU-accelerated indexing** — CUDA support for 10-25x faster embedding on NVIDIA GPUs. Index 57K chunks in under 5 minutes.
 
@@ -37,7 +38,7 @@ See [Installation](getting-started/installation.md) and [Quick Start](getting-st
 | Section | What You'll Find |
 |---------|-----------------|
 | [Getting Started](getting-started/installation.md) | Installation, first index, core concepts, agent setup |
-| [Guides](guides/searching.md) | Searching, context assembly, git coupling, hooks, multi-repo |
+| [Guides](guides/searching.md) | Searching, context assembly, git coupling, Quipu integration, hooks, multi-repo |
 | [CLI Reference](cli/overview.md) | Every command with flags, examples, and output formats |
 | [MCP Integration](mcp/overview.md) | AI agent tools, client configuration, HTTP mode |
 | [Configuration](config/reference.md) | Full `.bobbin/config.toml` reference |
