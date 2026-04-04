@@ -19,9 +19,10 @@ build:
 test:
     cargo test {{cargo_flags}}
 
-# Type check without building (quiet by default, use verbose=true for full output)
+# Type check and run pre-commit hooks (quiet by default, use verbose=true for full output)
 check:
     cargo check {{cargo_flags}}
+    pre-commit run --all-files
 
 # Lint with clippy (quiet by default, use verbose=true for full output)
 lint:
@@ -89,6 +90,13 @@ setup:
         curl -LsSf https://astral.sh/uv/install.sh | sh
     fi
     echo "All dependencies satisfied."
+    # Install pre-commit hooks
+    if command -v pre-commit &>/dev/null; then
+        pre-commit install
+        echo "  pre-commit hooks installed ✓"
+    else
+        echo "  pre-commit not found — install via: uv tool install pre-commit"
+    fi
 
 # === Documentation ===
 

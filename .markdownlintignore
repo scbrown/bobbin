@@ -1,0 +1,18 @@
+# Pre-existing markdown lint violations (tracked in bobbin-qex epic)
+AGENTS.md
+PRD.md
+VISION.md
+crew/strider/CLAUDE.md
+crew/strider/baseline.md
+crew/strider/escalation.md
+docs/architecture.md
+docs/book/src/guides/bundles.md
+docs/book/src/guides/searching.md
+docs/commands.md
+docs/designs/bobbin-desirepath-integration.md
+docs/designs/bobbin-tags-annotations.md
+docs/designs/context-bundles.md
+docs/dev-log.md
+docs/primer.md
+eval/results/
+skills/bobbin/SKILL.md
