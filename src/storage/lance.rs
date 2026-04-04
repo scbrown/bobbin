@@ -16,8 +16,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::types::{
-    Chunk, ChunkEdge, ChunkEdgeType, ChunkType, FileMetadata, ImportDependency, IndexStats,
-    LanguageStats, MatchType, SearchResult,
+    Chunk, ChunkEdge, ChunkEdgeType, ChunkType, Entity, EntitySearchResult, FileMetadata,
+    ImportDependency, IndexStats, LanguageStats, MatchType, SearchResult,
 };
 
 /// Table name for chunk storage
@@ -28,6 +28,9 @@ const DEPS_TABLE_NAME: &str = "dependencies";
 
 /// Table name for chunk-level relationship edges
 const CHUNK_EDGES_TABLE_NAME: &str = "chunk_edges";
+
+/// Table name for knowledge graph entity embeddings
+const ENTITIES_TABLE_NAME: &str = "entities";
 
 /// Limit for queries that need all rows. LanceDB 0.17 defaults to limit=10
 /// (DEFAULT_TOP_K) for all queries including plain scans, so we must set an
@@ -56,6 +59,8 @@ pub struct VectorStore {
     deps_table: Option<Table>,
     /// Chunk-level relationship edges table
     chunk_edges_table: Option<Table>,
+    /// Knowledge graph entity embeddings table
+    entities_table: Option<Table>,
     /// Embedding dimension used by this store
     embedding_dim: i32,
     /// Whether FTS index has been created for this session
@@ -202,11 +207,47 @@ impl VectorStore {
             None
         };
 
+        let entities_table = if tables.contains(&ENTITIES_TABLE_NAME.to_string()) {
+            let t = conn
+                .open_table(ENTITIES_TABLE_NAME)
+                .execute()
+                .await
+                .context("Failed to open entities table")?;
+
+            let table_schema = t
+                .schema()
+                .await
+                .context("Failed to read entities table schema")?;
+            let expected = Self::entities_schema(embedding_dim);
+            let on_disk: Vec<&str> = table_schema
+                .fields()
+                .iter()
+                .map(|f| f.name().as_str())
+                .collect();
+            let expected_fields: Vec<&str> =
+                expected.fields().iter().map(|f| f.name().as_str()).collect();
+
+            if on_disk != expected_fields {
+                eprintln!(
+                    "bobbin: entities table schema changed — dropping for re-creation"
+                );
+                conn.drop_table(ENTITIES_TABLE_NAME)
+                    .await
+                    .context("Failed to drop outdated entities table")?;
+                None
+            } else {
+                Some(t)
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             conn,
             table,
             deps_table,
             chunk_edges_table,
+            entities_table,
             embedding_dim,
             fts_indexed: AtomicBool::new(false),
         })
@@ -2167,6 +2208,284 @@ impl VectorStore {
         Ok(edges)
     }
 
+    // ── Entity embeddings table ──────────────────────────────────────────
+
+    /// Build the Arrow schema for the entities table.
+    fn entities_schema(embedding_dim: i32) -> Schema {
+        Schema::new(vec![
+            Field::new("entity_iri", DataType::Utf8, false),
+            Field::new("text", DataType::Utf8, false),
+            Field::new(
+                "vector",
+                DataType::FixedSizeList(Self::vector_field(), embedding_dim),
+                false,
+            ),
+            Field::new("entity_type", DataType::Utf8, false),
+            Field::new("repo", DataType::Utf8, true),
+        ])
+    }
+
+    /// Convert Entity slice + embeddings to a RecordBatch
+    fn entities_to_record_batch(
+        entities: &[Entity],
+        embeddings: &[Vec<f32>],
+        embedding_dim: i32,
+    ) -> Result<RecordBatch> {
+        let schema = Arc::new(Self::entities_schema(embedding_dim));
+
+        let iris: Vec<&str> = entities.iter().map(|e| e.entity_iri.as_str()).collect();
+        let texts: Vec<&str> = entities.iter().map(|e| e.text.as_str()).collect();
+        let entity_types: Vec<&str> = entities.iter().map(|e| e.entity_type.as_str()).collect();
+        let repos: Vec<Option<&str>> = entities.iter().map(|e| e.repo.as_deref()).collect();
+
+        let flat_embeddings: Vec<f32> = embeddings.iter().flatten().copied().collect();
+        let embedding_values: ArrayRef = Arc::new(Float32Array::from(flat_embeddings));
+        let vector_array = FixedSizeListArray::try_new(
+            Self::vector_field(),
+            embedding_dim,
+            embedding_values,
+            None,
+        )
+        .context("Failed to create entity vector array")?;
+
+        let columns: Vec<ArrayRef> = vec![
+            Arc::new(StringArray::from(iris)),
+            Arc::new(StringArray::from(texts)),
+            Arc::new(vector_array),
+            Arc::new(StringArray::from(entity_types)),
+            Arc::new(StringArray::from(repos)),
+        ];
+
+        RecordBatch::try_new(schema, columns).context("Failed to create entities record batch")
+    }
+
+    /// Insert or update entity embeddings.
+    ///
+    /// Existing entities with matching IRIs are deleted first (upsert).
+    pub async fn upsert_entities(
+        &mut self,
+        entities: &[Entity],
+        embeddings: &[Vec<f32>],
+    ) -> Result<()> {
+        if entities.is_empty() {
+            return Ok(());
+        }
+
+        if entities.len() != embeddings.len() {
+            anyhow::bail!(
+                "Entities and embeddings must have same length: {} vs {}",
+                entities.len(),
+                embeddings.len()
+            );
+        }
+
+        let schema = Arc::new(Self::entities_schema(self.embedding_dim));
+        let batch = Self::entities_to_record_batch(entities, embeddings, self.embedding_dim)?;
+
+        match &self.entities_table {
+            Some(table) => {
+                // Delete existing entities with same IRIs (upsert)
+                let iris: Vec<&str> = entities.iter().map(|e| e.entity_iri.as_str()).collect();
+                self.delete_entities(&iris).await?;
+
+                let reader = Self::batch_to_reader(batch, schema);
+                table
+                    .add(reader)
+                    .execute()
+                    .await
+                    .context("Failed to add entities")?;
+            }
+            None => {
+                let reader = Self::batch_to_reader(batch, schema);
+                let table = self
+                    .conn
+                    .create_table(ENTITIES_TABLE_NAME, reader)
+                    .execute()
+                    .await
+                    .context("Failed to create entities table")?;
+                self.entities_table = Some(table);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Search entities by vector similarity.
+    pub async fn search_entities(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+        repo: Option<&str>,
+    ) -> Result<Vec<EntitySearchResult>> {
+        if limit == 0 {
+            return Ok(vec![]);
+        }
+
+        let table = match &self.entities_table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let mut query = table
+            .vector_search(query_embedding.to_vec())
+            .context("Failed to create entity vector search")?;
+
+        if let Some(repo_name) = repo {
+            query = query.only_if(format!("repo = '{}'", repo_name.replace('\'', "''")));
+        }
+
+        let results = match query.limit(limit).execute().await {
+            Ok(r) => r,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("k must be positive") || msg.contains("must be positive") {
+                    return Ok(vec![]);
+                }
+                return Err(e).context("Failed to execute entity vector search");
+            }
+        };
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect entity search results")?;
+
+        let mut search_results = Vec::new();
+        for batch in &batches {
+            let iris = string_column(batch, "entity_iri")?;
+            let texts = string_column(batch, "text")?;
+            let entity_types = string_column(batch, "entity_type")?;
+            let repos = string_column(batch, "repo")?;
+            let distances = batch
+                .column_by_name("_distance")
+                .context("Missing _distance column")?
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .context("_distance column has wrong type")?;
+
+            for i in 0..batch.num_rows() {
+                let distance = distances.value(i);
+                let score = 1.0 / (1.0 + distance);
+                search_results.push(EntitySearchResult {
+                    entity_iri: iris.value(i).to_string(),
+                    text: texts.value(i).to_string(),
+                    entity_type: entity_types.value(i).to_string(),
+                    repo: if repos.is_null(i) {
+                        None
+                    } else {
+                        Some(repos.value(i).to_string())
+                    },
+                    score,
+                });
+            }
+        }
+
+        Ok(search_results)
+    }
+
+    /// Get the stored embedding vector for an entity by its IRI.
+    pub async fn get_entity_embedding(&self, entity_iri: &str) -> Result<Option<Vec<f32>>> {
+        let table = match &self.entities_table {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        let filter = format!("entity_iri = '{}'", entity_iri.replace('\'', "''"));
+
+        let results = table
+            .query()
+            .only_if(filter)
+            .select(lancedb::query::Select::Columns(vec!["vector".to_string()]))
+            .limit(1)
+            .execute()
+            .await
+            .context("Failed to query entity embedding")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect entity embedding")?;
+
+        for batch in &batches {
+            if batch.num_rows() == 0 {
+                continue;
+            }
+
+            let vectors = batch
+                .column_by_name("vector")
+                .context("Missing vector column")?
+                .as_any()
+                .downcast_ref::<FixedSizeListArray>()
+                .context("vector column has wrong type")?;
+
+            let value_arr = vectors.value(0);
+            let values = value_arr
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .context("vector values have wrong type")?;
+
+            return Ok(Some(values.values().to_vec()));
+        }
+
+        Ok(None)
+    }
+
+    /// Delete entities by their IRIs.
+    pub async fn delete_entities(&self, entity_iris: &[&str]) -> Result<()> {
+        let table = match &self.entities_table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        if entity_iris.is_empty() {
+            return Ok(());
+        }
+
+        let escaped: Vec<String> = entity_iris
+            .iter()
+            .map(|iri| format!("'{}'", iri.replace('\'', "''")))
+            .collect();
+        let filter = format!("entity_iri IN ({})", escaped.join(", "));
+
+        table
+            .delete(&filter)
+            .await
+            .context("Failed to delete entities")?;
+
+        Ok(())
+    }
+
+    /// Delete all entities belonging to a specific repo.
+    pub async fn delete_entities_by_repo(&self, repo: &str) -> Result<()> {
+        let table = match &self.entities_table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        let filter = format!("repo = '{}'", repo.replace('\'', "''"));
+        table
+            .delete(&filter)
+            .await
+            .context("Failed to delete entities by repo")?;
+
+        Ok(())
+    }
+
+    /// Get total entity count.
+    pub async fn count_entities(&self) -> Result<u64> {
+        let table = match &self.entities_table {
+            Some(t) => t,
+            None => return Ok(0),
+        };
+
+        let count = table
+            .count_rows(None)
+            .await
+            .context("Failed to count entities")?;
+
+        Ok(count as u64)
+    }
+
     /// Convert RecordBatches to ImportDependency structs
     fn batches_to_deps(batches: &[RecordBatch]) -> Result<Vec<ImportDependency>> {
         let mut deps = Vec::new();
@@ -3202,5 +3521,230 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(store.count().await.unwrap(), 1);
+    }
+
+    // ── Entity table tests ──────────────────────────────────────────────
+
+    fn sample_entity(iri: &str, entity_type: &str) -> Entity {
+        Entity {
+            entity_iri: iri.to_string(),
+            text: format!("Entity content for {}", iri),
+            entity_type: entity_type.to_string(),
+            repo: Some("testrepo".to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_entities_upsert_and_count() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+        assert_eq!(store.count_entities().await.unwrap(), 0);
+
+        let entities = vec![
+            sample_entity("bobbin:code/repo/src/main.rs", "CodeModule"),
+            sample_entity("bobbin:code/repo/src/main.rs::main", "CodeSymbol"),
+        ];
+        let embeddings = vec![sample_embedding(), sample_embedding()];
+
+        store.upsert_entities(&entities, &embeddings).await.unwrap();
+        assert_eq!(store.count_entities().await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_entities_upsert_replaces_existing() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let entities = vec![sample_entity("bobbin:code/repo/src/a.rs", "CodeModule")];
+        let embeddings = vec![sample_embedding()];
+        store.upsert_entities(&entities, &embeddings).await.unwrap();
+        assert_eq!(store.count_entities().await.unwrap(), 1);
+
+        // Upsert same IRI — should replace, not duplicate
+        let updated = vec![Entity {
+            entity_iri: "bobbin:code/repo/src/a.rs".to_string(),
+            text: "Updated content".to_string(),
+            entity_type: "CodeModule".to_string(),
+            repo: Some("testrepo".to_string()),
+        }];
+        store.upsert_entities(&updated, &embeddings).await.unwrap();
+        assert_eq!(store.count_entities().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_entities_search() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let entities = vec![
+            sample_entity("bobbin:code/repo/src/a.rs", "CodeModule"),
+            sample_entity("bobbin:code/repo/src/b.rs", "CodeModule"),
+        ];
+        let embeddings = vec![sample_embedding(), sample_embedding()];
+        store.upsert_entities(&entities, &embeddings).await.unwrap();
+
+        let results = store
+            .search_entities(&sample_embedding(), 10, None)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results[0].score > 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_entities_search_with_repo_filter() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let entities = vec![
+            sample_entity("bobbin:code/repo1/a.rs", "CodeModule"),
+            Entity {
+                entity_iri: "bobbin:code/repo2/b.rs".to_string(),
+                text: "Other repo entity".to_string(),
+                entity_type: "CodeModule".to_string(),
+                repo: Some("otherrepo".to_string()),
+            },
+        ];
+        let embeddings = vec![sample_embedding(), sample_embedding()];
+        store.upsert_entities(&entities, &embeddings).await.unwrap();
+
+        let results = store
+            .search_entities(&sample_embedding(), 10, Some("testrepo"))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].entity_iri, "bobbin:code/repo1/a.rs");
+    }
+
+    #[tokio::test]
+    async fn test_entities_get_embedding() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let entities = vec![sample_entity("bobbin:code/repo/src/a.rs", "CodeModule")];
+        let emb = sample_embedding();
+        store.upsert_entities(&entities, &vec![emb.clone()]).await.unwrap();
+
+        let retrieved = store
+            .get_entity_embedding("bobbin:code/repo/src/a.rs")
+            .await
+            .unwrap();
+        assert!(retrieved.is_some());
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.len(), 384);
+        // Verify the embedding matches (within floating-point tolerance)
+        assert!((retrieved[0] - emb[0]).abs() < 1e-6);
+    }
+
+    #[tokio::test]
+    async fn test_entities_delete() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let entities = vec![
+            sample_entity("bobbin:code/repo/a.rs", "CodeModule"),
+            sample_entity("bobbin:code/repo/b.rs", "CodeModule"),
+        ];
+        let embeddings = vec![sample_embedding(), sample_embedding()];
+        store.upsert_entities(&entities, &embeddings).await.unwrap();
+        assert_eq!(store.count_entities().await.unwrap(), 2);
+
+        store
+            .delete_entities(&["bobbin:code/repo/a.rs"])
+            .await
+            .unwrap();
+        assert_eq!(store.count_entities().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_entities_delete_by_repo() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let entities = vec![
+            sample_entity("bobbin:code/repo1/a.rs", "CodeModule"),
+            Entity {
+                entity_iri: "bobbin:code/repo2/b.rs".to_string(),
+                text: "Other entity".to_string(),
+                entity_type: "CodeModule".to_string(),
+                repo: Some("otherrepo".to_string()),
+            },
+        ];
+        let embeddings = vec![sample_embedding(), sample_embedding()];
+        store.upsert_entities(&entities, &embeddings).await.unwrap();
+        assert_eq!(store.count_entities().await.unwrap(), 2);
+
+        store.delete_entities_by_repo("testrepo").await.unwrap();
+        assert_eq!(store.count_entities().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_entities_nullable_repo() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let entities = vec![Entity {
+            entity_iri: "bobbin:bundle/cross-repo-thing".to_string(),
+            text: "Cross-repo bundle".to_string(),
+            entity_type: "Bundle".to_string(),
+            repo: None,
+        }];
+        let embeddings = vec![sample_embedding()];
+        store.upsert_entities(&entities, &embeddings).await.unwrap();
+        assert_eq!(store.count_entities().await.unwrap(), 1);
+
+        let results = store
+            .search_entities(&sample_embedding(), 10, None)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].repo.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_entities_persist_across_reopen() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        {
+            let mut store = VectorStore::open(&path).await.unwrap();
+            let entities = vec![sample_entity("bobbin:code/repo/a.rs", "CodeModule")];
+            let embeddings = vec![sample_embedding()];
+            store.upsert_entities(&entities, &embeddings).await.unwrap();
+        }
+
+        {
+            let store = VectorStore::open(&path).await.unwrap();
+            assert_eq!(store.count_entities().await.unwrap(), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_entities_empty_search() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let store = VectorStore::open(&path).await.unwrap();
+        let results = store
+            .search_entities(&sample_embedding(), 10, None)
+            .await
+            .unwrap();
+        assert!(results.is_empty());
     }
 }
