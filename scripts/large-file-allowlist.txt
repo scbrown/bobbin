@@ -1,0 +1,19 @@
+# Grandfathered large files — exempt from check-file-size.sh
+# Remove entries as files are split into smaller modules.
+src/cli/hook.rs
+src/http/handlers.rs
+src/storage/lance.rs
+src/mcp/server.rs
+src/index/parser.rs
+src/reactions.rs
+src/search/context.rs
+src/tags.rs
+src/cli/calibrate.rs
+src/cli/bundle.rs
+src/cli/index.rs
+src/config.rs
+src/index/git.rs
+src/storage/feedback.rs
+src/http/client.rs
+src/mcp/tools.rs
+src/analysis/similar.rs

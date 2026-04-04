@@ -22,6 +22,7 @@ test:
 # Type check without building (quiet by default, use verbose=true for full output)
 check:
     cargo check {{cargo_flags}}
+    bash scripts/check-file-size.sh
 
 # Lint with clippy (quiet by default, use verbose=true for full output)
 lint:
