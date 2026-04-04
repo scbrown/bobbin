@@ -998,6 +998,7 @@ pub struct FeedbackLineageListRequest {
 // ── Quipu knowledge graph tools ───────────────────────────────────
 
 /// Request for knowledge graph context query
+#[cfg(feature = "knowledge")]
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct KnowledgeContextRequest {
     /// Natural language query describing what knowledge you need
@@ -1014,6 +1015,7 @@ pub struct KnowledgeContextRequest {
 }
 
 /// Request for SPARQL query against the knowledge graph
+#[cfg(feature = "knowledge")]
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct KnowledgeQueryRequest {
     /// SPARQL SELECT query

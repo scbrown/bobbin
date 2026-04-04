@@ -19,7 +19,7 @@ use rmcp::service::RequestContext;
 use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler};
 
 use super::tools::*;
-#[allow(unused_imports)]
+#[cfg(feature = "knowledge")]
 use super::tools::{KnowledgeContextRequest, KnowledgeQueryRequest};
 use crate::config::Config;
 use crate::index::Embedder;
@@ -51,9 +51,14 @@ impl BobbinMcpServer {
             );
         }
 
+        let mut tool_router = Self::tool_router();
+
+        #[cfg(feature = "knowledge")]
+        tool_router.merge(Self::knowledge_tool_router());
+
         Ok(Self {
             repo_root,
-            tool_router: Self::tool_router(),
+            tool_router,
         })
     }
 
@@ -2415,8 +2420,13 @@ impl BobbinMcpServer {
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
-    // ── Quipu knowledge graph tools ───────────────────────────────
+}
 
+// ── Quipu knowledge graph tools (behind "knowledge" feature) ─────
+
+#[cfg(feature = "knowledge")]
+#[tool_router(router = knowledge_tool_router)]
+impl BobbinMcpServer {
     /// Query the knowledge graph for entities relevant to a topic
     #[tool(description = "Query the Quipu knowledge graph for entities and facts relevant to a topic. Uses text search with link expansion to find related entities, their types, labels, and relationships. Best for: 'what services run on kota?', 'show me the traefik configuration', 'entities related to DNS'. Returns entities with their facts, labels, and types.")]
     async fn knowledge_context(

@@ -99,7 +99,7 @@ glob = "0.3"
 rmcp = { version = "0.12", features = ["server", "transport-io", "transport-streamable-http-server", "axum"] }
 schemars = "1.0"
 
-# Knowledge graph (Quipu subsystem)
+# Knowledge graph (Quipu subsystem) — behind "knowledge" feature
 quipu = { git = "https://github.com/scbrown/quipu", branch = "main", default-features = false, optional = true }
 
 # HTTP Server
@@ -109,6 +109,7 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 urlencoding = "2"
 
 [features]
+default = []
 knowledge = ["dep:quipu"]
 
 [dev-dependencies]
