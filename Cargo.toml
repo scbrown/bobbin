@@ -100,13 +100,16 @@ rmcp = { version = "0.12", features = ["server", "transport-io", "transport-stre
 schemars = "1.0"
 
 # Knowledge graph (Quipu subsystem)
-quipu = { path = "/home/braino/quipu", default-features = false }
+quipu = { git = "https://github.com/scbrown/quipu", branch = "main", default-features = false, optional = true }
 
 # HTTP Server
 axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 urlencoding = "2"
+
+[features]
+knowledge = ["dep:quipu"]
 
 [dev-dependencies]
 tempfile = "3"

@@ -70,6 +70,7 @@ impl BobbinMcpServer {
     }
 
     /// Open the Quipu knowledge graph store
+    #[cfg(feature = "knowledge")]
     fn open_quipu_store(&self) -> Result<quipu::Store> {
         let quipu_config = quipu::QuipuConfig::load(&self.repo_root);
         let db_path = if quipu_config.store_path.is_relative() {
@@ -2422,21 +2423,32 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<KnowledgeContextRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let store = self.open_quipu_store()
-            .map_err(|e| McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None))?;
+        #[cfg(feature = "knowledge")]
+        {
+            let store = self.open_quipu_store()
+                .map_err(|e| McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None))?;
 
-        let input = serde_json::json!({
-            "query": req.query,
-            "max_entities": req.max_entities.unwrap_or(20),
-            "expand_links": req.expand_links.unwrap_or(true),
-        });
+            let input = serde_json::json!({
+                "query": req.query,
+                "max_entities": req.max_entities.unwrap_or(20),
+                "expand_links": req.expand_links.unwrap_or(true),
+            });
 
-        let result = quipu::tool_context(&store, &input)
-            .map_err(|e| McpError::internal_error(format!("Knowledge graph query failed: {e}"), None))?;
+            let result = quipu::tool_context(&store, &input)
+                .map_err(|e| McpError::internal_error(format!("Knowledge graph query failed: {e}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(
-            serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string()),
-        )]))
+            Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string()),
+            )]))
+        }
+        #[cfg(not(feature = "knowledge"))]
+        {
+            let _ = req;
+            Err(McpError::internal_error(
+                "Knowledge graph tools require the 'knowledge' feature. Rebuild with: cargo build --features knowledge".to_string(),
+                None,
+            ))
+        }
     }
 
     /// Run a SPARQL query against the knowledge graph
@@ -2445,21 +2457,32 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<KnowledgeQueryRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let store = self.open_quipu_store()
-            .map_err(|e| McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None))?;
+        #[cfg(feature = "knowledge")]
+        {
+            let store = self.open_quipu_store()
+                .map_err(|e| McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None))?;
 
-        let input = serde_json::json!({
-            "query": req.query,
-            "valid_at": req.valid_at,
-            "tx": req.tx,
-        });
+            let input = serde_json::json!({
+                "query": req.query,
+                "valid_at": req.valid_at,
+                "tx": req.tx,
+            });
 
-        let result = quipu::tool_query(&store, &input)
-            .map_err(|e| McpError::internal_error(format!("SPARQL query failed: {e}"), None))?;
+            let result = quipu::tool_query(&store, &input)
+                .map_err(|e| McpError::internal_error(format!("SPARQL query failed: {e}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(
-            serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string()),
-        )]))
+            Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string()),
+            )]))
+        }
+        #[cfg(not(feature = "knowledge"))]
+        {
+            let _ = req;
+            Err(McpError::internal_error(
+                "Knowledge graph tools require the 'knowledge' feature. Rebuild with: cargo build --features knowledge".to_string(),
+                None,
+            ))
+        }
     }
 }
 
