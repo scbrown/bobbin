@@ -16,8 +16,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::types::{
-    Chunk, ChunkEdge, ChunkEdgeType, ChunkType, FileMetadata, ImportDependency, IndexStats,
-    LanguageStats, MatchType, SearchResult,
+    Chunk, ChunkEdge, ChunkEdgeType, ChunkType, Entity, EntitySearchResult, FileMetadata,
+    ImportDependency, IndexStats, LanguageStats, MatchType, SearchResult,
 };
 
 /// Table name for chunk storage
@@ -28,6 +28,9 @@ const DEPS_TABLE_NAME: &str = "dependencies";
 
 /// Table name for chunk-level relationship edges
 const CHUNK_EDGES_TABLE_NAME: &str = "chunk_edges";
+
+/// Table name for knowledge entity embeddings
+const ENTITIES_TABLE_NAME: &str = "entities";
 
 /// Limit for queries that need all rows. LanceDB 0.17 defaults to limit=10
 /// (DEFAULT_TOP_K) for all queries including plain scans, so we must set an
@@ -56,6 +59,8 @@ pub struct VectorStore {
     deps_table: Option<Table>,
     /// Chunk-level relationship edges table
     chunk_edges_table: Option<Table>,
+    /// Knowledge entity embeddings table
+    entities_table: Option<Table>,
     /// Embedding dimension used by this store
     embedding_dim: i32,
     /// Whether FTS index has been created for this session
@@ -202,11 +207,47 @@ impl VectorStore {
             None
         };
 
+        let entities_table = if tables.contains(&ENTITIES_TABLE_NAME.to_string()) {
+            let t = conn
+                .open_table(ENTITIES_TABLE_NAME)
+                .execute()
+                .await
+                .context("Failed to open entities table")?;
+
+            let table_schema = t
+                .schema()
+                .await
+                .context("Failed to read entities table schema")?;
+            let expected = Self::entities_schema(embedding_dim);
+            let on_disk: Vec<&str> = table_schema
+                .fields()
+                .iter()
+                .map(|f| f.name().as_str())
+                .collect();
+            let expected_fields: Vec<&str> =
+                expected.fields().iter().map(|f| f.name().as_str()).collect();
+
+            if on_disk != expected_fields {
+                eprintln!(
+                    "bobbin: entities table schema changed — dropping for re-creation"
+                );
+                conn.drop_table(ENTITIES_TABLE_NAME)
+                    .await
+                    .context("Failed to drop outdated entities table")?;
+                None
+            } else {
+                Some(t)
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             conn,
             table,
             deps_table,
             chunk_edges_table,
+            entities_table,
             embedding_dim,
             fts_indexed: AtomicBool::new(false),
         })
@@ -2201,6 +2242,256 @@ impl VectorStore {
         }
 
         Ok(deps)
+    }
+
+    // ── Entity embeddings methods ────────────────────────────────────
+
+    /// Arrow schema for the entities table.
+    ///
+    /// Schema: entity_iri (string), text (string), vector (f32x384),
+    /// entity_type (string), repo (string, nullable).
+    fn entities_schema(embedding_dim: i32) -> Schema {
+        Schema::new(vec![
+            Field::new("entity_iri", DataType::Utf8, false),
+            Field::new("text", DataType::Utf8, false),
+            Field::new(
+                "vector",
+                DataType::FixedSizeList(Self::vector_field(), embedding_dim),
+                false,
+            ),
+            Field::new("entity_type", DataType::Utf8, false),
+            Field::new("repo", DataType::Utf8, true),
+        ])
+    }
+
+    /// Convert Entity slice and embeddings to a RecordBatch
+    fn entities_to_record_batch(
+        entities: &[Entity],
+        embeddings: &[Vec<f32>],
+        embedding_dim: i32,
+    ) -> Result<RecordBatch> {
+        let schema = Arc::new(Self::entities_schema(embedding_dim));
+
+        let iris: Vec<&str> = entities.iter().map(|e| e.entity_iri.as_str()).collect();
+        let texts: Vec<&str> = entities.iter().map(|e| e.text.as_str()).collect();
+        let entity_types: Vec<&str> = entities.iter().map(|e| e.entity_type.as_str()).collect();
+        let repos: Vec<Option<&str>> = entities.iter().map(|e| e.repo.as_deref()).collect();
+
+        let flat_embeddings: Vec<f32> = embeddings.iter().flatten().copied().collect();
+        let embedding_values: ArrayRef = Arc::new(Float32Array::from(flat_embeddings));
+        let vector_array = FixedSizeListArray::try_new(
+            Self::vector_field(),
+            embedding_dim,
+            embedding_values,
+            None,
+        )
+        .context("Failed to create entity vector array")?;
+
+        let columns: Vec<ArrayRef> = vec![
+            Arc::new(StringArray::from(iris)),
+            Arc::new(StringArray::from(texts)),
+            Arc::new(vector_array),
+            Arc::new(StringArray::from(entity_types)),
+            Arc::new(StringArray::from(repos)),
+        ];
+
+        RecordBatch::try_new(schema, columns).context("Failed to create entities record batch")
+    }
+
+    /// Insert or replace entity embeddings (batch).
+    ///
+    /// Performs upsert by deleting existing rows with matching IRIs before inserting.
+    pub async fn upsert_entities(
+        &mut self,
+        entities: &[Entity],
+        embeddings: &[Vec<f32>],
+    ) -> Result<()> {
+        if entities.is_empty() {
+            return Ok(());
+        }
+
+        if entities.len() != embeddings.len() {
+            anyhow::bail!(
+                "upsert_entities: length mismatch — entities={}, embeddings={}",
+                entities.len(),
+                embeddings.len()
+            );
+        }
+
+        let schema = Arc::new(Self::entities_schema(self.embedding_dim));
+        let batch = Self::entities_to_record_batch(entities, embeddings, self.embedding_dim)?;
+
+        match &self.entities_table {
+            Some(table) => {
+                // Delete existing rows with matching IRIs (upsert)
+                let iris: Vec<&str> = entities.iter().map(|e| e.entity_iri.as_str()).collect();
+                self.delete_entities(&iris).await?;
+
+                let reader = Self::batch_to_reader(batch, schema);
+                table
+                    .add(reader)
+                    .execute()
+                    .await
+                    .context("Failed to add entities")?;
+            }
+            None => {
+                let reader = Self::batch_to_reader(batch, schema);
+                let table = self
+                    .conn
+                    .create_table(ENTITIES_TABLE_NAME, reader)
+                    .execute()
+                    .await
+                    .context("Failed to create entities table")?;
+                self.entities_table = Some(table);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Vector search over the entities table.
+    pub async fn search_entities(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+        entity_type: Option<&str>,
+        repo: Option<&str>,
+    ) -> Result<Vec<EntitySearchResult>> {
+        if limit == 0 {
+            return Ok(vec![]);
+        }
+
+        let table = match &self.entities_table {
+            Some(t) => t,
+            None => return Ok(vec![]),
+        };
+
+        let mut query = table
+            .vector_search(query_embedding.to_vec())
+            .context("Failed to create entity vector search")?;
+
+        // Build filter clauses
+        let mut clauses = Vec::new();
+        if let Some(et) = entity_type {
+            clauses.push(format!("entity_type = '{}'", et.replace('\'', "''")));
+        }
+        if let Some(r) = repo {
+            clauses.push(format!("repo = '{}'", r.replace('\'', "''")));
+        }
+        if !clauses.is_empty() {
+            query = query.only_if(clauses.join(" AND "));
+        }
+
+        let results = match query.limit(limit).execute().await {
+            Ok(r) => r,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("k must be positive") || msg.contains("must be positive") {
+                    return Ok(vec![]);
+                }
+                return Err(e).context("Failed to execute entity vector search");
+            }
+        };
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect entity search results")?;
+
+        Self::batches_to_entity_results(&batches)
+    }
+
+    /// Delete entities by their IRIs.
+    pub async fn delete_entities(&self, iris: &[&str]) -> Result<()> {
+        let table = match &self.entities_table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        if iris.is_empty() {
+            return Ok(());
+        }
+
+        let escaped: Vec<String> = iris
+            .iter()
+            .map(|id| format!("'{}'", id.replace('\'', "''")))
+            .collect();
+        let filter = format!("entity_iri IN ({})", escaped.join(", "));
+        table
+            .delete(&filter)
+            .await
+            .context("Failed to delete entities")?;
+
+        Ok(())
+    }
+
+    /// Delete all entities for a given repo.
+    pub async fn delete_entities_by_repo(&self, repo: &str) -> Result<()> {
+        let table = match &self.entities_table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        let filter = format!("repo = '{}'", repo.replace('\'', "''"));
+        table
+            .delete(&filter)
+            .await
+            .context("Failed to delete entities by repo")?;
+
+        Ok(())
+    }
+
+    /// Count total entities.
+    pub async fn count_entities(&self) -> Result<u64> {
+        let table = match &self.entities_table {
+            Some(t) => t,
+            None => return Ok(0),
+        };
+
+        let count = table
+            .count_rows(None)
+            .await
+            .context("Failed to count entities")?;
+        Ok(count as u64)
+    }
+
+    /// Convert RecordBatches from entity search to EntitySearchResult structs.
+    fn batches_to_entity_results(batches: &[RecordBatch]) -> Result<Vec<EntitySearchResult>> {
+        let mut results = Vec::new();
+
+        for batch in batches {
+            let iris = string_column(batch, "entity_iri")?;
+            let texts = string_column(batch, "text")?;
+            let entity_types = string_column(batch, "entity_type")?;
+            let repos = string_column(batch, "repo")?;
+
+            // LanceDB adds a _distance column for vector search results
+            let distances = batch
+                .column_by_name("_distance")
+                .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
+
+            for i in 0..batch.num_rows() {
+                let distance = distances.map(|d| d.value(i)).unwrap_or(0.0);
+                // Convert L2 distance to similarity score (1 / (1 + distance))
+                let score = 1.0 / (1.0 + distance);
+
+                results.push(EntitySearchResult {
+                    entity: Entity {
+                        entity_iri: iris.value(i).to_string(),
+                        text: texts.value(i).to_string(),
+                        entity_type: entity_types.value(i).to_string(),
+                        repo: if repos.is_null(i) {
+                            None
+                        } else {
+                            Some(repos.value(i).to_string())
+                        },
+                    },
+                    score,
+                });
+            }
+        }
+
+        Ok(results)
     }
 }
 

@@ -201,6 +201,30 @@ impl std::fmt::Display for ChunkEdgeType {
     }
 }
 
+/// A knowledge graph entity with its embedding text.
+///
+/// Entities represent knowledge graph nodes (CodeModule, CodeSymbol, Section, Bundle)
+/// that get embedded into Bobbin's LanceDB `entities` table. Quipu delegates
+/// vector search to this table via the `EmbeddingProvider` trait.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Entity {
+    /// IRI identifying this entity (e.g., "bobbin:code/repo/path::symbol")
+    pub entity_iri: String,
+    /// Text representation used for embedding (docstring, section body, etc.)
+    pub text: String,
+    /// Entity type discriminator: "CodeModule", "CodeSymbol", "Section", "Bundle"
+    pub entity_type: String,
+    /// Repository name (None for cross-repo entities like Bundles)
+    pub repo: Option<String>,
+}
+
+/// A search result from the entities table
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntitySearchResult {
+    pub entity: Entity,
+    pub score: f32,
+}
+
 /// Classification of a file by its role in the project.
 ///
 /// The four built-in categories cover common cases. Custom categories can be
