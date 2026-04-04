@@ -99,6 +99,9 @@ glob = "0.3"
 rmcp = { version = "0.12", features = ["server", "transport-io", "transport-streamable-http-server", "axum"] }
 schemars = "1.0"
 
+# Knowledge graph (Quipu subsystem)
+quipu = { path = "/home/braino/quipu", default-features = false }
+
 # HTTP Server
 axum = "0.8"
 tower = "0.5"

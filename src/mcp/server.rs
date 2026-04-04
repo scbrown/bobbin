@@ -19,6 +19,8 @@ use rmcp::service::RequestContext;
 use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler};
 
 use super::tools::*;
+#[allow(unused_imports)]
+use super::tools::{KnowledgeContextRequest, KnowledgeQueryRequest};
 use crate::config::Config;
 use crate::index::Embedder;
 use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig, FileRelevance};
@@ -65,6 +67,23 @@ impl BobbinMcpServer {
     fn open_feedback_store(&self) -> Result<FeedbackStore> {
         let db_path = Config::feedback_db_path(&self.repo_root);
         FeedbackStore::open(&db_path).context("Failed to open feedback store")
+    }
+
+    /// Open the Quipu knowledge graph store
+    fn open_quipu_store(&self) -> Result<quipu::Store> {
+        let quipu_config = quipu::QuipuConfig::load(&self.repo_root);
+        let db_path = if quipu_config.store_path.is_relative() {
+            self.repo_root.join(&quipu_config.store_path)
+        } else {
+            quipu_config.store_path.clone()
+        };
+        // Ensure parent directory exists.
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)
+                .context("Failed to create quipu store directory")?;
+        }
+        quipu::Store::open(db_path.to_string_lossy().as_ref())
+            .map_err(|e| anyhow::anyhow!("Failed to open quipu store: {e}"))
     }
 
     /// Open the vector store
@@ -2393,6 +2412,54 @@ impl BobbinMcpServer {
         }
 
         Ok(CallToolResult::success(vec![Content::text(text)]))
+    }
+
+    // ── Quipu knowledge graph tools ───────────────────────────────
+
+    /// Query the knowledge graph for entities relevant to a topic
+    #[tool(description = "Query the Quipu knowledge graph for entities and facts relevant to a topic. Uses text search with link expansion to find related entities, their types, labels, and relationships. Best for: 'what services run on kota?', 'show me the traefik configuration', 'entities related to DNS'. Returns entities with their facts, labels, and types.")]
+    async fn knowledge_context(
+        &self,
+        Parameters(req): Parameters<KnowledgeContextRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self.open_quipu_store()
+            .map_err(|e| McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None))?;
+
+        let input = serde_json::json!({
+            "query": req.query,
+            "max_entities": req.max_entities.unwrap_or(20),
+            "expand_links": req.expand_links.unwrap_or(true),
+        });
+
+        let result = quipu::tool_context(&store, &input)
+            .map_err(|e| McpError::internal_error(format!("Knowledge graph query failed: {e}"), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string()),
+        )]))
+    }
+
+    /// Run a SPARQL query against the knowledge graph
+    #[tool(description = "Execute a SPARQL SELECT query against the Quipu knowledge graph. Supports temporal queries with valid_at (what was true then?) and tx (as-of transaction). Best for precise structured queries when you know the entity IRIs or predicates. Example: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10'")]
+    async fn knowledge_query(
+        &self,
+        Parameters(req): Parameters<KnowledgeQueryRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self.open_quipu_store()
+            .map_err(|e| McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None))?;
+
+        let input = serde_json::json!({
+            "query": req.query,
+            "valid_at": req.valid_at,
+            "tx": req.tx,
+        });
+
+        let result = quipu::tool_query(&store, &input)
+            .map_err(|e| McpError::internal_error(format!("SPARQL query failed: {e}"), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string()),
+        )]))
     }
 }
 

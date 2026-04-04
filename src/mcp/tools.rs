@@ -995,3 +995,37 @@ pub struct FeedbackLineageListRequest {
     pub limit: Option<usize>,
 }
 
+// ── Quipu knowledge graph tools ───────────────────────────────────
+
+/// Request for knowledge graph context query
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct KnowledgeContextRequest {
+    /// Natural language query describing what knowledge you need
+    #[schemars(description = "Natural language query describing the knowledge graph entities you're looking for")]
+    pub query: String,
+
+    /// Maximum number of entities to return (default: 20)
+    #[schemars(description = "Maximum number of knowledge graph entities to return (default: 20)")]
+    pub max_entities: Option<usize>,
+
+    /// Whether to expand results by following links from direct hits (default: true)
+    #[schemars(description = "Expand results by following graph links from direct hits (default: true)")]
+    pub expand_links: Option<bool>,
+}
+
+/// Request for SPARQL query against the knowledge graph
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct KnowledgeQueryRequest {
+    /// SPARQL SELECT query
+    #[schemars(description = "SPARQL SELECT query to run against the knowledge graph")]
+    pub query: String,
+
+    /// Valid-at timestamp for temporal queries
+    #[schemars(description = "ISO-8601 timestamp for temporal query (what was true at this time?)")]
+    pub valid_at: Option<String>,
+
+    /// Transaction ID for as-of queries
+    #[schemars(description = "Transaction ID for point-in-time query")]
+    pub tx: Option<i64>,
+}
+
