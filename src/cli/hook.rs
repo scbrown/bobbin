@@ -5653,6 +5653,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.0,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
@@ -5696,6 +5697,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.0,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.5, true, None, "standard");
@@ -5742,6 +5744,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.85,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
 
@@ -5805,6 +5808,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.0,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
         // With high threshold, chunk content should be filtered out
@@ -6042,6 +6046,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.0,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
@@ -6094,6 +6099,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.0,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
@@ -6158,6 +6164,7 @@ mod tests {
                 doc_files: 1,
                 top_semantic_score: 0.0,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
 
@@ -6212,6 +6219,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.0,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
         // Budget 0 — should not panic and should produce empty or minimal output
@@ -6257,6 +6265,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.0,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
@@ -6302,6 +6311,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.85,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         }
     }
@@ -7079,6 +7089,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.9,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
 
@@ -7125,6 +7136,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.9,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
 
@@ -7181,6 +7193,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.9,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
 
@@ -7211,6 +7224,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.0,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
 
@@ -7260,6 +7274,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.9,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
 
@@ -7307,6 +7322,7 @@ mod tests {
                 doc_files: 0,
                 top_semantic_score: 0.9,
                 pinned_chunks: 0,
+                knowledge_additions: 0,
             },
         };
 
