@@ -69,10 +69,35 @@ bobbin:code/{repo}/{path}              # CodeModule
 bobbin:code/{repo}/{path}::{symbol}    # CodeSymbol
 ```
 
-Cross-repo relationships emerge naturally. If bobbin's AST shows
-`use quipu::Store` and quipu's AST defines `pub struct Store`, Quipu links
-them via `imports` — no special cross-repo syntax needed. An agent working
-in bobbin can traverse into quipu's type definitions through the graph.
+Cross-repo relationships emerge through **post-index reconciliation**.
+When Bobbin indexes a repo, it extracts import specifiers as unresolved
+strings (e.g., `use quipu::Store` becomes an edge to the literal
+`"quipu::Store"`). These are pushed to Quipu as dangling references.
+After any repo sync, a reconciliation pass resolves them:
+
+1. Query all entities with unresolved import edges
+2. Parse each import specifier (language-specific: Rust use paths, Python
+   module paths, Go import paths, JS/TS specifiers)
+3. SPARQL match against `CodeSymbol` entities across all repos:
+   ```sparql
+   SELECT ?target WHERE {
+     ?target a bobbin:CodeSymbol ;
+             bobbin:name "Store" ;
+             bobbin:definedIn ?mod .
+     ?mod    bobbin:repo "quipu" .
+   }
+   ```
+4. Exactly one match → assert resolved `imports` edge between entities
+5. Zero matches → leave dangling (target repo not yet indexed)
+6. Multiple matches → flag ambiguous, leave unresolved for human review
+
+This is idempotent — rerun after any repo reindex and new cross-repo
+links appear. It also handles the bootstrapping case: when repo B hasn't
+been indexed yet, dangling refs from repo A sit in Quipu waiting. Once
+repo B syncs, the next reconciliation pass resolves them automatically.
+
+An agent working in bobbin can then traverse into quipu's type
+definitions through the graph — no special cross-repo syntax needed.
 
 #### Markdown Entities (Documentation)
 
@@ -502,10 +527,10 @@ This design builds on the existing quipu-integration phases:
    Duplication is acceptable (different query patterns), but the ONNX session
    must be shared to avoid double memory cost.
 
-3. **Cross-repo entity resolution.** When bobbin indexes repo A and repo B
-   separately, how are cross-repo `imports` relationships created? Options:
-   (a) post-index reconciliation pass in Quipu, (b) Bobbin resolves during
-   index if both repos are configured, (c) lazy resolution on first query.
+3. **Cross-repo entity resolution.** Decided: post-index reconciliation in
+   Quipu. See "Tree-sitter Entities" section. Remaining question: how to
+   handle language-specific import resolution (Rust use paths vs Python
+   dotted modules vs Go import paths). Likely needs a pluggable resolver.
 
 4. **Bundle ownership model.** Who can modify a bundle? Options:
    (a) any agent (current tags.toml behavior), (b) creator + designated
