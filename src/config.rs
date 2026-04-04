@@ -1149,7 +1149,7 @@ batch_size = 32
 
     #[test]
     fn test_hooks_gate_threshold_backward_compatible() {
-        // Config with hooks section but no gate_threshold should default to 0.65
+        // Config with hooks section but no gate_threshold should default to 0.45
         let toml_str = r#"
 [hooks]
 threshold = 0.5

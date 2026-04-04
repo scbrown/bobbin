@@ -451,8 +451,8 @@ fn end_to_end_install_inject_uninstall() {
     assert_eq!(status["hooks_installed"].as_bool().unwrap(), true);
     assert_eq!(status["git_hook_installed"].as_bool().unwrap(), true);
     assert!(
-        (status["config"]["gate_threshold"].as_f64().unwrap() - 0.65).abs() < 0.01,
-        "Status JSON should include gate_threshold (default 0.65)"
+        (status["config"]["gate_threshold"].as_f64().unwrap() - 0.45).abs() < 0.01,
+        "Status JSON should include gate_threshold (default 0.45)"
     );
 
     // 7. Uninstall everything
