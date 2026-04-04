@@ -121,6 +121,33 @@ lto = true
 codegen-units = 1
 strip = true
 
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+cast_sign_loss = "warn"
+checked_conversions = "warn"
+cloned_instead_of_copied = "warn"
+doc_markdown = "warn"
+explicit_into_iter_loop = "warn"
+explicit_iter_loop = "warn"
+flat_map_option = "warn"
+fn_params_excessive_bools = "warn"
+implicit_clone = "warn"
+inefficient_to_string = "warn"
+manual_let_else = "warn"
+map_unwrap_or = "warn"
+match_wildcard_for_single_variants = "warn"
+needless_continue = "warn"
+needless_pass_by_value = "warn"
+redundant_closure_for_method_calls = "warn"
+semicolon_if_nothing_returned = "warn"
+string_add_assign = "warn"
+uninlined_format_args = "warn"
+unnested_or_patterns = "warn"
+unused_self = "warn"
+
 [[bin]]
 name = "bobbin"
 path = "src/main.rs"

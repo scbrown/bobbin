@@ -25,7 +25,7 @@ check:
 
 # Lint with clippy (quiet by default, use verbose=true for full output)
 lint:
-    cargo clippy {{cargo_flags}}
+    cargo clippy {{cargo_flags}} -- -D warnings
 
 # Build and run
 run *args:
