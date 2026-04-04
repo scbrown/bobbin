@@ -2,9 +2,9 @@
 
 ## **Executive Summary**
 
-The rapid evolution of Large Language Model (LLM) agents has precipitated a fundamental shift in software development workflows. We are moving from a paradigm of "copilots"—where AI assists with snippet completion—to "agents," where autonomous entities plan, execute, and verify complex multi-file refactoring tasks. This transition has exposed critical deficiencies in current context management architectures. Agents operating on large codebases frequently suffer from context fragmentation, amnesia regarding long-term project goals, and an inability to effectively navigate the temporal dimension of a project's history.  
-This report presents a comprehensive architectural analysis and strategic roadmap for two proposed systems designed to bridge these gaps: **'Bobbin'**, a local Retrieval-Augmented Generation (RAG) system specialized for code, documentation, git history, and tasks; and **'Tambour'**, a context injection middleware designed to orchestrate the **Beads** task management system.  
-Our analysis suggests that the convergence of "Git-as-Database" architectures (exemplified by Beads) and embedded, serverless vector search (exemplified by LanceDB and SQLite-vec) offers a potent solution to the privacy, latency, and consistency challenges plaguing cloud-based agentic workflows. By keeping the context local, versioned, and structurally coupled to the codebase, these tools enable a new class of "Vibe Coding" where agents maintain deep, persistent awareness of project state without data exfiltration.  
+The rapid evolution of Large Language Model (LLM) agents has precipitated a fundamental shift in software development workflows. We are moving from a paradigm of "copilots"—where AI assists with snippet completion—to "agents," where autonomous entities plan, execute, and verify complex multi-file refactoring tasks. This transition has exposed critical deficiencies in current context management architectures. Agents operating on large codebases frequently suffer from context fragmentation, amnesia regarding long-term project goals, and an inability to effectively navigate the temporal dimension of a project's history.
+This report presents a comprehensive architectural analysis and strategic roadmap for two proposed systems designed to bridge these gaps: **'Bobbin'**, a local Retrieval-Augmented Generation (RAG) system specialized for code, documentation, git history, and tasks; and **'Tambour'**, a context injection middleware designed to orchestrate the **Beads** task management system.
+Our analysis suggests that the convergence of "Git-as-Database" architectures (exemplified by Beads) and embedded, serverless vector search (exemplified by LanceDB and SQLite-vec) offers a potent solution to the privacy, latency, and consistency challenges plaguing cloud-based agentic workflows. By keeping the context local, versioned, and structurally coupled to the codebase, these tools enable a new class of "Vibe Coding" where agents maintain deep, persistent awareness of project state without data exfiltration.
 The report is structured into four primary movements. First, we dissect the existing landscape of local code intelligence, evaluating competitors like Bloop and Sourcegraph Cody to define the operational environment for Bobbin. Second, we architect Bobbin, proposing a novel integration of AST-based chunking and temporal git forensics. Third, we analyze the Beads task manager ecosystem, identifying the middleware gap that Tambour must fill. Finally, we define Tambour’s architecture as an active context orchestrator using the Model Context Protocol (MCP), creating a symbiotic loop between task planning and code execution.
 
 ## **Part I: The Operational Environment for Local Code Intelligence**
@@ -13,16 +13,16 @@ The domain of "Code Intelligence"—the ability for a system to semantically und
 
 ### **1.1 The Shift to Local RAG**
 
-The primary driver for local RAG (Retrieval-Augmented Generation) is the latency-privacy trade-off. Cloud-based embeddings require shipping intellectual property to third-party endpoints, introducing latency that breaks the "flow" of agentic loops. Local RAG systems, by contrast, perform embedding, indexing, and retrieval on the developer's machine (or a local developer server).  
+The primary driver for local RAG (Retrieval-Augmented Generation) is the latency-privacy trade-off. Cloud-based embeddings require shipping intellectual property to third-party endpoints, introducing latency that breaks the "flow" of agentic loops. Local RAG systems, by contrast, perform embedding, indexing, and retrieval on the developer's machine (or a local developer server).
 Current market leaders in this space employ diverse architectures:
 
-* **Bloop:** A Rust-based semantic code search engine that uses **Tantivy** for full-text search and **Qdrant** for vector search. Bloop’s architecture emphasizes the Rust ecosystem for performance, leveraging **Tree-sitter** for precise code navigation.  
-* **Sourcegraph Cody:** While often cloud-connected, Cody creates a local context using **SCIP** (SCIP Code Intelligence Protocol), a language-agnostic index format that replaces the older LSIF standard. Cody combines local IDE context with remote search, using heuristics to rank snippets.  
+* **Bloop:** A Rust-based semantic code search engine that uses **Tantivy** for full-text search and **Qdrant** for vector search. Bloop’s architecture emphasizes the Rust ecosystem for performance, leveraging **Tree-sitter** for precise code navigation.
+* **Sourcegraph Cody:** While often cloud-connected, Cody creates a local context using **SCIP** (SCIP Code Intelligence Protocol), a language-agnostic index format that replaces the older LSIF standard. Cody combines local IDE context with remote search, using heuristics to rank snippets.
 * **Cursor:** An AI-native editor that indexes the codebase locally into a vector store to enable "chat with codebase" features. It chunks files based on code structure (functions/classes) rather than arbitrary text windows.
 
 ### **1.2 The "Vibe Coding" Phenomenon**
 
-A critical cultural shift relevant to this landscape is "Vibe Coding," a term popularized by Andrej Karpathy and echoed in the Beads manifesto by Steve Yegge. It refers to a workflow where the human developer acts as an orchestrator or manager, guiding AI agents that do the heavy lifting of implementation. In this model, the "context" is not just the code currently open in the editor; it is the entire history of the project, the active task list, and the architectural decisions made weeks ago.  
+A critical cultural shift relevant to this landscape is "Vibe Coding," a term popularized by Andrej Karpathy and echoed in the Beads manifesto by Steve Yegge. It refers to a workflow where the human developer acts as an orchestrator or manager, guiding AI agents that do the heavy lifting of implementation. In this model, the "context" is not just the code currently open in the editor; it is the entire history of the project, the active task list, and the architectural decisions made weeks ago.
 Existing tools often fail here because they treat code as a static snapshot. They lack "temporal awareness"—the understanding of how code has changed over time—and "task awareness"—the understanding of *why* changes are being made. This is the precise market gap Bobbin and Tambour are positioned to fill.
 
 ## **![Image][image1]Part II: Bobbin \- Defining the Local Context Engine**
@@ -37,31 +37,31 @@ To achieve "exhaustive detail" in retrieval, Bobbin cannot rely on simple text c
 
 Standard RAG pipelines chunk text by token count (e.g., 500 tokens with overlap). For code, this is disastrous, often splitting functions in half or separating a function signature from its body. **Tree-sitter**, an incremental parsing system, allows Bobbin to generate a Concrete Syntax Tree (CST) for the codebase.
 
-* **Mechanism:** Bobbin will use Tree-sitter to identify "foldable" regions—classes, functions, and interfaces. Each region becomes a chunk.  
+* **Mechanism:** Bobbin will use Tree-sitter to identify "foldable" regions—classes, functions, and interfaces. Each region becomes a chunk.
 * **Tagging:** Unlike Ctags (used in early Aider versions), Tree-sitter provides richer context, allowing identifying not just the definition but the *references* and *scope*.
 
 #### **Embedding Strategy & Vector Database**
 
 The choice of embedding model and database is critical for a *local* system running on consumer hardware (e.g., Apple Silicon or standard x86 laptops).
 
-* **Model:** The **all-MiniLM-L6-v2** model is the industry standard for efficiency, available in ONNX format for fast CPU inference. For higher accuracy in code specifically, **Voyage-code-3** or **Alibaba's BGE** models (quantized) offer better semantic understanding of programming constructs.  
+* **Model:** The **all-MiniLM-L6-v2** model is the industry standard for efficiency, available in ONNX format for fast CPU inference. For higher accuracy in code specifically, **Voyage-code-3** or **Alibaba's BGE** models (quantized) offer better semantic understanding of programming constructs.
 * **Database:** Bobbin should reject the client-server model of Qdrant or Chroma in favor of an **embedded** architecture. **LanceDB** is the superior choice here. It uses the Lance columnar format, persists data to local disk (making it git-friendly if necessary), and requires no separate process management (serverless). Alternatively, **SQLite-vec** offers vector search directly within SQLite, which would align beautifully with the Beads architecture (discussed in Part III), creating a unified "single-file" database for both tasks and vectors.
 
 ### **2.2 Component 2: The "Git Time-Machine" (Temporal Indexing)**
 
 A unique value proposition for Bobbin is the integration of **Git Forensics**. Most RAG systems only see the HEAD of the main branch. They lack the context of *how* the code evolved.
 
-* **Temporal Coupling:** Bobbin will index the "logical coupling" of files—files that frequently change together in the same commit are implicitly linked. If an agent modifies UserAuth.ts, Bobbin can recommend checking UserAuthTests.ts and AuthConfig.json not because they are semantically similar (vector distance), but because they are *temporally coupled* in the commit history.  
+* **Temporal Coupling:** Bobbin will index the "logical coupling" of files—files that frequently change together in the same commit are implicitly linked. If an agent modifies UserAuth.ts, Bobbin can recommend checking UserAuthTests.ts and AuthConfig.json not because they are semantically similar (vector distance), but because they are *temporally coupled* in the commit history.
 * **Mechanism:** Bobbin runs a background analysis (similar to the tool code-maat) to build a weighted graph of file associations. This graph is fed into the retrieval ranking algorithm.
 
 ### **2.3 Component 3: Task & Doc Integration**
 
 Bobbin unifies the "What" (Code) with the "Why" (Tasks) and the "How" (Docs).
 
-* **Docs:** Markdown files in the repo are indexed with a different chunking strategy (header-based) to provide high-level architectural guidance.  
+* **Docs:** Markdown files in the repo are indexed with a different chunking strategy (header-based) to provide high-level architectural guidance.
 * **Tasks:** Bobbin connects to the **Beads** database (JSONL/SQLite). This allows queries like "Show me code relevant to the blocking issues of the current Epic."
 
-**System Architecture and Data Flow**  
+**System Architecture and Data Flow**
 Bobbin functions as a centralized "Headless Context Server" that ingests data from three primary streams: the Git Graph (History), the File System (Code/Docs), and the Beads Database (Tasks). These inputs are processed through specialized pipelines. Code and documentation are parsed via Tree-sitter to extract structural chunks, while the Git history is analyzed by a forensics engine to determine temporal coupling. These processed artifacts are then embedded and stored in an embedded LanceDB vector store for semantic retrieval, or an SQLite database for relational metadata. The entire system exposes a unified query interface via MCP or CLI, allowing agents to retrieve a holistic view of the project state without managing individual data sources.
 
 ## **Part III: The Beads Ecosystem \- The Foundation for Tambour**
@@ -72,15 +72,15 @@ To understand **Tambour** (the proposed middleware), one must first deeply under
 
 The core innovation of Beads is its rejection of SaaS (Jira, Linear) in favor of a local, distributed data model backed by Git.
 
-* **Data Structure:** Issues are stored as individual lines in a .beads/issues.jsonl file. This format—JSON Lines—is append-only friendly and diff-friendly.  
-* **Caching Layer:** To ensure performance, Beads maintains a local SQLite database that acts as a read-cache. The system hydrates this cache from the JSONL file on demand.  
+* **Data Structure:** Issues are stored as individual lines in a .beads/issues.jsonl file. This format—JSON Lines—is append-only friendly and diff-friendly.
+* **Caching Layer:** To ensure performance, Beads maintains a local SQLite database that acts as a read-cache. The system hydrates this cache from the JSONL file on demand.
 * **Synchronization:** Sync is achieved via standard Git commands (push, pull). Conflict resolution is handled by the AI itself or by the append-only nature of the log, with IDs generated via hashes to prevent collisions.
 
 ### **3.2 The Agentic Workflow**
 
 Beads is designed for the "Shift Left" paradigm where agents (like Claude Code) plan and execute.
 
-* **Graph Structure:** Unlike a flat TODO list, Beads issues form a **Directed Acyclic Graph (DAG)**. Issues can block other issues. This allows agents to perform topological sorts to determine "Ready Work"—the set of tasks that are unblocked and actionable.  
+* **Graph Structure:** Unlike a flat TODO list, Beads issues form a **Directed Acyclic Graph (DAG)**. Issues can block other issues. This allows agents to perform topological sorts to determine "Ready Work"—the set of tasks that are unblocked and actionable.
 * **Permanence:** Because the database is in Git, the agent has a perfect "memory" of past decisions, refactors, and closed bugs. It solves the context window "amnesia" problem by externalizing state into a structured, queryable form.
 
 ### **3.3 The Middleware Gap**
@@ -99,24 +99,24 @@ Tambour operates as a daemon or a set of hooks that intercepts the agent's lifec
 
 The **Model Context Protocol (MCP)**, championed by Anthropic, is the ideal transport layer for Tambour.
 
-* **Tambour as an MCP Server:** Tambour exposes tools (get\_ready\_tasks, update\_status) and resources (task\_graph) to the agent via MCP.  
-* **Dynamic Resources:** Instead of just static text, Tambour can expose a dynamic "prompt resource" that changes based on the state of the repo. For example, an MCP resource tambour://current\_context could dynamically aggregate:  
-  1. The active task from Beads.  
-  2. The relevant docs from Bobbin.  
+* **Tambour as an MCP Server:** Tambour exposes tools (get\_ready\_tasks, update\_status) and resources (task\_graph) to the agent via MCP.
+* **Dynamic Resources:** Instead of just static text, Tambour can expose a dynamic "prompt resource" that changes based on the state of the repo. For example, an MCP resource tambour://current\_context could dynamically aggregate:
+  1. The active task from Beads.
+  2. The relevant docs from Bobbin.
   3. The blocking dependencies.
 
 #### **Hook-Based Triggers**
 
 Tambour leverages Git hooks to maintain synchronization and trigger agent alerts.
 
-* post-checkout: When the user switches branches, Tambour immediately re-hydrates the Beads cache and pushes a "Context Shift" event to the agent, updating its active task list to match the new branch.  
+* post-checkout: When the user switches branches, Tambour immediately re-hydrates the Beads cache and pushes a "Context Shift" event to the agent, updating its active task list to match the new branch.
 * pre-push: Tambour verifies that all "In Progress" tasks linked to the commits are marked as "Completed," acting as a quality gate.
 
 ### **4.2 Context Injection Strategy**
 
 Tambour's value proposition is its ability to "inject" context. It does this by creating a "System Prompt Overlay" that acts as the agent's subconscious.
 
-* **The "Ready Front":** Tambour continuously calculates the "Ready Front"—the leading edge of the task graph. When an agent starts a session, Tambour injects a summary: *"You are working on Epic E-1. The current unblocked task is T-45 (Fix Login Handler). Note: T-45 is blocked by T-42, which was completed in commit a1b2c3."*.  
+* **The "Ready Front":** Tambour continuously calculates the "Ready Front"—the leading edge of the task graph. When an agent starts a session, Tambour injects a summary: *"You are working on Epic E-1. The current unblocked task is T-45 (Fix Login Handler). Note: T-45 is blocked by T-42, which was completed in commit a1b2c3."*.
 * **Cycle Detection:** If an agent creates a circular dependency (Task A blocks B, B blocks A), Tambour detects this in the graph and immediately intervenes, preventing the agent from entering a deadlock loop.
 
 ## **![Image][image2]Part V: Synergy & Competitive Analysis**
@@ -125,8 +125,8 @@ Tambour's value proposition is its ability to "inject" context. It does this by 
 
 Used together, these two systems create a powerful feedback loop.
 
-1. **Planning:** The agent uses **Tambour** to define the plan in Beads.  
-2. **Context:** When the agent picks a task, **Bobbin** uses the task description to perform a semantic search for relevant code.  
+1. **Planning:** The agent uses **Tambour** to define the plan in Beads.
+2. **Context:** When the agent picks a task, **Bobbin** uses the task description to perform a semantic search for relevant code.
 3. **Refining:** **Tambour** uses the temporal coupling data from **Bobbin** to warn the agent: *"You are modifying Payment.ts. History shows PaymentTest.ts usually changes with this file. Did you forget to update the test?"*
 
 ### **5.2 Competitive Landscape Summary**
@@ -141,7 +141,7 @@ Used together, these two systems create a powerful feedback loop.
 
 **Unique Value Proposition (UVP):**
 
-* **Bobbin:** The only system that treats **Git History** as a first-class retrieval source equal to code and docs, enabling "Temporal RAG."  
+* **Bobbin:** The only system that treats **Git History** as a first-class retrieval source equal to code and docs, enabling "Temporal RAG."
 * **Tambour:** The only middleware specifically designed to "drive" an agent using a structured, git-backed task graph (Beads), solving the "Lazy Agent" problem.
 
 ## **Part VI: Implementation Roadmap**
@@ -150,25 +150,25 @@ For the engineering team tasked with building these systems, we recommend the fo
 
 ### **6.1 Technology Stack Recommendations**
 
-* **Language:** **Rust**. The dominance of Rust in the local tooling space (Bloop, Qdrant, LanceDB, Tree-sitter bindings) is overwhelming. It offers the memory safety required for a long-running daemon and the performance for indexing large repos.  
-* **Vector Store:** **LanceDB**. Its embedded nature and ability to store data in the repo directory (.lancedb) aligns with the "Git as Database" philosophy of Beads.  
+* **Language:** **Rust**. The dominance of Rust in the local tooling space (Bloop, Qdrant, LanceDB, Tree-sitter bindings) is overwhelming. It offers the memory safety required for a long-running daemon and the performance for indexing large repos.
+* **Vector Store:** **LanceDB**. Its embedded nature and ability to store data in the repo directory (.lancedb) aligns with the "Git as Database" philosophy of Beads.
 * **Protocol:** **MCP (Model Context Protocol)**. This is the future-proof choice for integrating with Claude, Cursor, and other next-gen editors.
 
 ### **![Image][image3]6.2 Phase 1: The "Spooling" (MVP)**
 
-* **Goal:** Build the Bobbin indexer.  
-* **Deliverable:** A CLI tool (bobbin index) that runs Tree-sitter on the repo, generates embeddings via ONNX (MiniLM), and stores them in a local LanceDB instance.  
+* **Goal:** Build the Bobbin indexer.
+* **Deliverable:** A CLI tool (bobbin index) that runs Tree-sitter on the repo, generates embeddings via ONNX (MiniLM), and stores them in a local LanceDB instance.
 * **Integration:** A simple MCP server that exposes a search\_code tool.
 
 ### **6.3 Phase 2: The "Needle" (Middleware)**
 
-* **Goal:** Build the Tambour daemon.  
-* **Deliverable:** A background process that watches the Beads SQLite DB. When bd ready changes, it updates an MCP resource.  
+* **Goal:** Build the Tambour daemon.
+* **Deliverable:** A background process that watches the Beads SQLite DB. When bd ready changes, it updates an MCP resource.
 * **Hooks:** Install post-commit hooks to auto-update the Beads graph.
 
 ### **6.4 Phase 3: The "Weave" (Temporal coupling)**
 
-* **Goal:** Implement the Git Forensics module in Bobbin.  
+* **Goal:** Implement the Git Forensics module in Bobbin.
 * **Deliverable:** An analysis pipeline that parses git log, builds the coupling graph, and boosts search results based on temporal proximity.
 
 ## **![Image][image4]Conclusion**

@@ -1028,4 +1028,3 @@ pub struct KnowledgeQueryRequest {
     #[schemars(description = "Transaction ID for point-in-time query")]
     pub tx: Option<i64>,
 }
-

@@ -5,9 +5,9 @@
 [17:01:30] Budget: $5.00 per run
 [17:01:30] Approaches: with-bobbin + 6 ablation variants
 [17:01:30] Estimated runs: 4 tasks × 7 approaches × 3 attempts = 84 runs
-[17:01:30] 
+[17:01:30]
 [17:01:30] Bobbin version: bobbin 0.1.0
-[17:01:30] 
+[17:01:30]
 [17:01:30] === Running ruff-001: with-bobbin + 6 ablations × 3 attempts ===
 Running task ruff-001: 21 runs (7 approaches × 3 attempts) [run 20260302-170130-6caa]
   Ablation variants: ['with-bobbin+semantic_weight=0.0', 'with-bobbin+coupling_depth=0', 'with-bobbin+recency_weight=0.0', 'with-bobbin+doc_demotion=0.0', 'with-bobbin+gate_threshold=1.0', 'with-bobbin+blame_bridging=false']
@@ -7718,7 +7718,7 @@ Running task ruff-001: 21 runs (7 approaches × 3 attempts) [run 20260302-170130
 
 Done: 21/21 runs passed tests [run 20260302-170130-6caa]
 [19:22:35] Completed ruff-001
-[19:22:35] 
+[19:22:35]
 [19:22:35] === Running cargo-001: with-bobbin + 6 ablations × 3 attempts ===
 Running task cargo-001: 21 runs (7 approaches × 3 attempts) [run 20260302-192235-ef76]
   Ablation variants: ['with-bobbin+semantic_weight=0.0', 'with-bobbin+coupling_depth=0', 'with-bobbin+recency_weight=0.0', 'with-bobbin+doc_demotion=0.0', 'with-bobbin+gate_threshold=1.0', 'with-bobbin+blame_bridging=false']

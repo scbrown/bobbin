@@ -3,7 +3,7 @@
 [16:36:49] Attempts: 3 per approach
 [16:36:49] Model: claude-sonnet-4-5-20250929
 [16:36:49] Budget: $5.00 per run
-[16:36:49] 
+[16:36:49]
 [16:36:49] === PHASE 1: No-injection baseline ===
 [16:36:49] Running ruff-001 (no-bobbin, 3 attempts)...
 Running task ruff-001: 3 runs (1 approaches × 3 attempts) [run 20260302-163649-bdef]
