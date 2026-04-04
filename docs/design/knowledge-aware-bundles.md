@@ -307,20 +307,188 @@ pub enum ContextSource {
 }
 ```
 
-### Primitive Synergies
+### Dual-Layer Architecture
 
-This design composes existing primitives rather than inventing new ones:
+Bobbin's index and Quipu's graph are parallel computations over the same
+codebase. They answer fundamentally different questions:
 
-| Bobbin Primitive | Quipu Primitive | Synergy |
-|-----------------|-----------------|---------|
-| Tree-sitter chunking | Episode ingest | AST nodes become episode nodes |
-| ONNX embedder (384-dim) | Vector storage | Shared `EmbeddingProvider` trait, single model |
-| Git coupling scores | RDF predicates | `co_changed_with(file_a, file_b, score)` as facts |
-| Bridge mode (blame chain) | `prov:wasGeneratedBy` | Closed provenance loops: code → doc → episode → fact → code |
-| Feedback system | SHACL validation | Feedback on injected knowledge trains entity quality |
-| Impact analysis (coupling + semantic) | Graph projection (PageRank, paths) | Impact = coupling + semantic + graph topology |
-| Hotspot detection | Temporal entity history | Hotspot = high churn in code entity + many related incidents |
-| `ContextBundle` output shape | `KnowledgeContext` output shape | Designed to interleave — unify into single type |
+- **Quipu** (structure layer): "What entities *relate to* this entity?"
+- **Bobbin** (similarity layer): "What code is *similar to* this query?"
+
+Neither subsumes the other. The index is not just a source of entities to
+push into the graph — it remains a live computation that enriches graph
+queries at runtime. The architecture is dual-layer by design.
+
+```text
+┌─────────────────────────────────────────────────┐
+│              Agent / Context Query               │
+└──────────────────────┬──────────────────────────┘
+                       │
+          ┌─��──────────┼────────────┐
+          │                         │
+   ┌──────┴──────┐          ┌──────┴──────┐
+   │   Bobbin    │          │    Quipu    │
+   │ Similarity  │◄────────►│  Structure  │
+   │   Layer     │  fused   │   Layer     │
+   ├─────────────┤ ranking  ├─────────────┤
+   │ Embeddings  │          │ EAVT facts  │
+   │ Coupling    │          │ SPARQL      │
+   │ FTS index   │          │ Subgraphs   │
+   │ Feedback    │          │ Provenance  │
+   │ Hotspots    │          │ Temporality │
+   └─────────────┘          └─────────────┘
+```
+
+#### Semantic Search as Graph Entry Point
+
+An agent doesn't always start from a named entity. Often it has a natural
+language query: "how does context assembly handle coupling expansion?"
+
+Bobbin's vector search finds the top chunks by embedding similarity. Those
+chunks map to entities in Quipu. The agent enters the graph from
+semantically relevant nodes and traverses outward. **Bobbin is the front
+door to the graph.**
+
+```text
+"certificate renewal failing"
+  → Bobbin vector search → top 5 chunks
+  → Map chunks to Quipu entities (by IRI)
+  → Traverse: CodeSymbol/renew_cert --configures--> SystemdService/certbot
+                                    --depends_on--> LXCContainer/dns
+  → Agent has: relevant code + operational topology
+```
+
+Without the embedding layer, the agent would need to know the exact entity
+name to start traversal. With it, fuzzy natural language queries become
+graph entry points.
+
+#### Embedding-Guided Graph Traversal
+
+When expanding from a bundle, Quipu returns ALL neighbors at each hop.
+That's potentially hundreds of entities — too many to include in context.
+
+Bobbin's embeddings rank which neighbors are most relevant to the current
+query. The graph provides candidate structure; embeddings provide relevance
+scoring within that structure.
+
+```text
+Expand Bundle/traefik-config at depth 2:
+  → Quipu returns 47 entities within 2 hops
+  → Bobbin scores each entity's content against the query embedding
+  → Top 10 by semantic relevance make it into context
+  → Agent gets structurally connected AND semantically relevant results
+```
+
+This is more powerful than either layer alone:
+- Pure graph traversal returns too many irrelevant neighbors
+- Pure semantic search misses structurally important but lexically distant code
+- Combined: structure narrows candidates, semantics ranks them
+
+#### Coupling Scores as Weighted Graph Edges
+
+Git co-change coupling is a signal that exists nowhere in source code or
+ASTs. Two files might have no import relationship but always change
+together — a hidden dependency that only history reveals.
+
+Bobbin pushes coupling scores to Quipu as weighted edges:
+
+```text
+CodeModule/src/search/context.rs
+  --co_changed_with {score: 0.82}--> CodeModule/src/cli/context.rs
+  --co_changed_with {score: 0.45}--> CodeModule/src/search/hybrid.rs
+```
+
+These edges enrich graph algorithms:
+
+- **Shortest path** weighted by coupling finds the strongest change
+  propagation routes, not just the shortest structural path
+- **PageRank** over coupling-weighted edges identifies files that are
+  central to change patterns, not just central to the import graph
+- **Community detection** on coupling edges discovers natural module
+  boundaries that may differ from the directory structure
+- **Impact analysis** becomes: structural distance (graph) + coupling
+  strength (weighted edges) + semantic similarity (embeddings) — three
+  independent signals fused into one prediction
+
+#### Semantic Anomaly Detection
+
+Comparing embedding distance against graph distance reveals structural
+gaps and stale relationships:
+
+| Embedding Distance | Graph Distance | Signal |
+|-------------------|----------------|--------|
+| Close | Far/disconnected | **Missing relationship.** These entities are semantically similar but nobody has linked them. Candidate for `bundle suggest` or auto-discovery. |
+| Far | Close (direct edge) | **Stale or wrong relationship.** An edge exists but the content has diverged. Flag for review. |
+| Close | Close | Healthy — structure matches semantics. |
+| Far | Far | Unrelated — no action needed. |
+
+This gives `bundle suggest` a new signal beyond coupling clusters: "these
+entities should probably be in the same bundle because their embeddings
+are similar, even though they have no structural relationship yet."
+
+It also enables graph hygiene: periodic scans for anomalies surface
+relationships that need human attention.
+
+#### Content-Aware Graph Queries
+
+SPARQL excels at structural queries. Embeddings excel at semantic matching.
+The combination enables queries neither can answer alone:
+
+> "Entities structurally related to traefik AND semantically similar to
+> 'certificate renewal'"
+
+Query pattern:
+1. Quipu: `SELECT ?entity WHERE { aegis:traefik ?rel ?entity }` → structural neighbors
+2. Bobbin: score each neighbor's content against "certificate renewal" embedding
+3. Return: neighbors ranked by semantic relevance
+
+This is the query pattern for incident correlation. A service event
+mentions "certificate renewal failure." The agent queries for traefik's
+structural neighbors (code files, configs, services), then ranks them by
+semantic similarity to the incident description. The most relevant code
+surfaces without the agent knowing which file handles certs.
+
+#### Feedback Loop into Graph Quality
+
+Bobbin's feedback system rates context injections as useful, noise, or
+harmful. When knowledge entities from Quipu are included in context:
+
+- **Useful ratings** reinforce the entity and its relationships — increase
+  their weight in future context assembly
+- **Noise ratings** suggest the entity was included but irrelevant — the
+  traversal path that reached it may need pruning or the relationship
+  may be too loose
+- **Harmful ratings** flag the entity for review — its content may be
+  stale, its relationships wrong, or its provenance suspect
+
+Over time, the graph gets better through agent usage. Entities that
+consistently produce helpful context gain authority. Entities that produce
+noise lose ranking weight. The feedback store in Bobbin (per-file scores)
+maps directly to entity quality scores in Quipu.
+
+```text
+Bobbin feedback: "src/traefik/config.rs injection was useful"
+  → Map to entity: CodeModule/aegis/src/traefik/config.rs
+  → Increment entity quality score in Quipu
+  → Next traversal: this entity ranks higher as a neighbor
+```
+
+### Primitive Synergy Summary
+
+| Bobbin Primitive | Quipu Primitive | Combined Capability |
+|-----------------|-----------------|---------------------|
+| Vector embeddings | Entity IRIs | Semantic search as graph entry point |
+| Embedding scoring | Graph traversal | Relevance-guided neighbor expansion |
+| Git coupling scores | Weighted RDF edges | Coupling-aware graph algorithms |
+| Embedding distance | Graph distance | Anomaly detection (missing/stale edges) |
+| Keyword FTS | SPARQL FILTER | Content-aware structural queries |
+| Feedback scores | Entity quality | Usage-driven graph quality improvement |
+| Tree-sitter chunking | Episode ingest | AST nodes become graph entities |
+| ONNX embedder (384-dim) | Vector storage | Shared `EmbeddingProvider`, single model |
+| Bridge mode (blame) | `prov:wasGeneratedBy` | Closed provenance loops |
+| Impact analysis | Graph projection | Three-signal impact prediction |
+| Hotspot detection | Temporal history | Churn + incident correlation |
+| `ContextBundle` shape | `KnowledgeContext` shape | Unified interleaved output |
 
 #### Provenance Loops
 
@@ -331,7 +499,7 @@ closed loops:
 ```text
 CodeFile (in Bobbin index)
   → git blame → CommitEntry → changed DocumentSection
-  → episode provenance → KnowledgeEntity created from that section
+  �� episode provenance → KnowledgeEntity created from that section
   → entity facts → relates back to CodeFile
 ```
 
@@ -341,7 +509,7 @@ that explains it, or from knowledge to the code that implements it.
 #### Graph Projection for Impact Analysis
 
 Bobbin's impact analysis currently uses coupling + semantic similarity.
-With code entities in Quipu, it gains graph topology:
+With code entities in Quipu, it gains graph topology as a third signal:
 
 ```text
 ImpactScore = w1 * coupling_score       (git co-change frequency)
@@ -350,7 +518,9 @@ ImpactScore = w1 * coupling_score       (git co-change frequency)
 ```
 
 Quipu's `ProjectedGraph` (petgraph DiGraph) enables PageRank over code
-entities — identifying structurally central files that changes ripple through.
+entities — identifying structurally central files that changes ripple
+through. Combined with coupling weights on edges, this finds impact paths
+that pure structural or pure historical analysis would miss.
 
 ### Bundle CRUD
 
