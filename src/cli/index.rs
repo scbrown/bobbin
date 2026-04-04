@@ -594,8 +594,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                         Ok(couplings) => {
                             let mut count = 0;
                             metadata_store.begin_transaction()?;
-                            for coupling in couplings {
-                                if metadata_store.upsert_coupling(&coupling).is_ok() {
+                            for coupling in &couplings {
+                                if metadata_store.upsert_coupling(coupling).is_ok() {
                                     count += 1;
                                 }
                             }
@@ -610,6 +610,36 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
                             if output.verbose && !output.quiet && !output.json {
                                 println!("  Stored {} coupling relations", count);
+                            }
+
+                            // Push coupling scores to Quipu as weighted edges
+                            #[cfg(feature = "knowledge")]
+                            if !couplings.is_empty() {
+                                let t_quipu = Instant::now();
+                                match crate::knowledge::coupling::push_coupling_to_quipu(
+                                    &couplings,
+                                    repo_name,
+                                    &repo_root,
+                                ) {
+                                    Ok((_tx_id, triple_count)) => {
+                                        if output.verbose && !output.quiet && !output.json {
+                                            println!(
+                                                "  Pushed {} coupling triples to Quipu ({}ms)",
+                                                triple_count,
+                                                t_quipu.elapsed().as_millis()
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        if !output.quiet && !output.json {
+                                            println!(
+                                                "{} Failed to push coupling to Quipu: {}",
+                                                "!".yellow(),
+                                                e
+                                            );
+                                        }
+                                    }
+                                }
                             }
                         }
                         Err(e) => {

@@ -9,6 +9,8 @@ pub mod config;
 mod errors;
 mod http;
 mod index;
+#[cfg(feature = "knowledge")]
+mod knowledge;
 mod mcp;
 mod metrics;
 pub mod reactions;
