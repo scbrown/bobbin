@@ -324,7 +324,7 @@ queries at runtime. The architecture is dual-layer by design.
 │              Agent / Context Query               │
 └──────────────────────┬──────────────────────────┘
                        │
-          ┌─��──────────┼────────────┐
+          ┌────────────┼────────────┐
           │                         │
    ┌──────┴──────┐          ┌──────┴──────┐
    │   Bobbin    │          │    Quipu    │
@@ -337,6 +337,46 @@ queries at runtime. The architecture is dual-layer by design.
    │ Feedback    │          │ Provenance  │
    │ Hotspots    │          │ Temporality │
    └─────────────┘          └─────────────┘
+```
+
+#### Embedding Ownership: Bobbin is the Authority
+
+Embeddings are derived data — rebuildable from source text at any time.
+By the core principle of this design (rebuildable data belongs in the
+index layer, durable knowledge belongs in the graph), **all embeddings
+live in Bobbin's LanceDB**. Quipu stores no embeddings of its own when
+the knowledge feature is enabled.
+
+Quipu delegates vector search to Bobbin via the `EmbeddingProvider` trait
+(`Arc<dyn EmbeddingProvider>`), which is already designed for this. Since
+quipu is linked as a crate dependency of bobbin (behind the `knowledge`
+feature flag), delegation is an in-process function call — no network
+hop, no serialization overhead.
+
+```text
+Quipu needs vector search:
+  → Calls EmbeddingProvider::embed_batch() via Arc<dyn>
+  → Bobbin's LanceDB performs ANN search (~1-5ms)
+  → Results returned in-process
+  → Quipu uses results for graph entry / neighbor ranking
+```
+
+This means:
+- **Entity sync** pushes only facts and relationships to Quipu — no
+  embedding data, keeping transactions lean
+- **One LanceDB instance** serves both chunk-level search (Bobbin's
+  existing use case) and entity-level search (new knowledge use case)
+- **Rebuilding embeddings** doesn't require touching the knowledge graph
+- **Quipu's SQLite vector fallback** remains for standalone mode (no
+  Bobbin), using brute-force cosine similarity for small deployments
+
+The granularity difference is handled by LanceDB schema:
+- Bobbin's `chunks` table: chunk-level embeddings (sub-file granularity)
+- Bobbin's `entities` table: entity-level embeddings (CodeModule,
+  CodeSymbol, Section, Bundle — one embedding per knowledge graph entity)
+
+Both tables share the same ONNX model (all-MiniLM-L6-v2, 384-dim) and
+the same `Embedder` instance.
 ```
 
 #### Semantic Search as Graph Entry Point
