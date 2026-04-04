@@ -23,6 +23,7 @@ test:
 check:
     cargo check {{cargo_flags}}
     pre-commit run --all-files
+    bash scripts/check-file-size.sh --all
 
 # Lint with clippy (quiet by default, use verbose=true for full output)
 lint:

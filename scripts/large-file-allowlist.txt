@@ -1,0 +1,36 @@
+# Grandfathered large files — existing before file size enforcement (bobbin-qex.2)
+# Remove entries as files are split down to size.
+src/access.rs
+src/analysis/complexity.rs
+src/analysis/impact.rs
+src/analysis/refs.rs
+src/analysis/similar.rs
+src/cli/bundle.rs
+src/cli/calibrate.rs
+src/cli/feedback.rs
+src/cli/grep.rs
+src/cli/hook.rs
+src/cli/index.rs
+src/cli/run.rs
+src/cli/search.rs
+src/cli/status.rs
+src/cli/tour.rs
+src/cli/watch.rs
+src/config.rs
+src/http/client.rs
+src/http/handlers.rs
+src/index/embedder.rs
+src/index/git.rs
+src/index/parser.rs
+src/index/resolver.rs
+src/mcp/server.rs
+src/mcp/tools.rs
+src/reactions.rs
+src/search/context.rs
+src/search/query.rs
+src/storage/feedback.rs
+src/storage/lance.rs
+src/tags.rs
+src/types.rs
+tests/cli_hook_handlers.rs
+tests/cli_hook_install.rs
