@@ -660,6 +660,49 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     profile.git_coupling_ms = t_coupling.elapsed().as_millis();
 
+    // Push markdown entities (Document, Section, CodeExample, Definition) to Quipu
+    #[cfg(feature = "knowledge")]
+    {
+        let md_files: Vec<(String, String)> = current_files
+            .iter()
+            .filter(|p| p.ends_with(".md") || p.ends_with(".markdown"))
+            .filter_map(|rel_path| {
+                let full_path = source_root.join(rel_path);
+                std::fs::read_to_string(&full_path)
+                    .ok()
+                    .map(|content| (rel_path.clone(), content))
+            })
+            .collect();
+
+        if !md_files.is_empty() {
+            let t_md_entities = Instant::now();
+            match crate::knowledge::markdown::push_markdown_entities_to_quipu(
+                &md_files,
+                repo_name,
+                &repo_root,
+            ) {
+                Ok((_tx_id, entity_count)) => {
+                    if output.verbose && !output.quiet && !output.json {
+                        println!(
+                            "  Pushed {} markdown entities to Quipu ({}ms)",
+                            entity_count,
+                            t_md_entities.elapsed().as_millis()
+                        );
+                    }
+                }
+                Err(e) => {
+                    if !output.quiet && !output.json {
+                        println!(
+                            "{} Failed to push markdown entities to Quipu: {}",
+                            "!".yellow(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     // Analyze and store import dependencies
     let t_deps = Instant::now();
     let mut dep_count: usize = 0;
