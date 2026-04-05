@@ -7,6 +7,9 @@ use super::OutputConfig;
 use crate::config::Config;
 use crate::tags::{BundleConfig, BundleRef, RefTarget, TagsConfig};
 
+#[cfg(feature = "knowledge")]
+use crate::knowledge::bundles as kb;
+
 #[derive(Args)]
 pub struct BundleArgs {
     #[command(subcommand)]
@@ -247,7 +250,64 @@ fn load_tags_with_bundles(repo_root: &std::path::Path) -> TagsConfig {
 
 async fn run_list(path: PathBuf, args: ListArgs, output: OutputConfig) -> Result<()> {
     let repo_root = path.canonicalize().unwrap_or(path);
-    let config = load_tags_with_bundles(&repo_root);
+
+    // Try Quipu path when knowledge feature is enabled
+    #[cfg(feature = "knowledge")]
+    if let Ok(store) = kb::open_quipu_store(&repo_root) {
+        return run_list_quipu(&store, args, output);
+    }
+
+    run_list_tags(&repo_root, args, output)
+}
+
+#[cfg(feature = "knowledge")]
+fn run_list_quipu(
+    store: &quipu::Store,
+    _args: ListArgs,
+    output: OutputConfig,
+) -> Result<()> {
+    let bundles = kb::list_bundles(store)?;
+
+    if bundles.is_empty() {
+        if output.json {
+            println!("{{\"bundles\":[]}}");
+        } else {
+            println!("No bundles in Quipu. Create with: bobbin bundle create <name>");
+        }
+        return Ok(());
+    }
+
+    if output.json {
+        let json_bundles: Vec<serde_json::Value> = bundles
+            .iter()
+            .map(|b| {
+                serde_json::json!({
+                    "name": b.name,
+                    "slug": b.slug.as_deref().unwrap_or(""),
+                    "description": b.description.as_deref().unwrap_or(""),
+                    "member_count": b.member_count,
+                    "source": "quipu",
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({ "bundles": json_bundles }))?
+        );
+        return Ok(());
+    }
+
+    println!("Context Bundles ({} total, Quipu-backed):\n", bundles.len());
+    for b in &bundles {
+        let desc = b.description.as_deref().unwrap_or("");
+        println!("  {} — \"{}\" ({} members)", b.name, desc, b.member_count);
+    }
+
+    Ok(())
+}
+
+fn run_list_tags(repo_root: &std::path::Path, args: ListArgs, output: OutputConfig) -> Result<()> {
+    let config = load_tags_with_bundles(repo_root);
 
     let bundles = &config.bundles;
     if bundles.is_empty() {
@@ -365,7 +425,298 @@ async fn run_show(path: PathBuf, args: ShowArgs, output: OutputConfig) -> Result
         Some(r) => r.canonicalize().unwrap_or_else(|_| r.clone()),
         None => default_root.clone(),
     };
-    let config = load_tags_with_bundles(&default_root);
+
+    // Try Quipu path when knowledge feature is enabled
+    #[cfg(feature = "knowledge")]
+    if let Ok(store) = kb::open_quipu_store(&default_root) {
+        let name = args.name.strip_prefix("b:").unwrap_or(&args.name);
+        if args.deep {
+            return run_show_quipu_deep(&store, name, &repo_root, output);
+        }
+        return run_show_quipu(&store, name, &repo_root, args.map, output);
+    }
+
+    run_show_tags(&default_root, &repo_root, args, output).await
+}
+
+#[cfg(feature = "knowledge")]
+fn run_show_quipu(
+    store: &quipu::Store,
+    name: &str,
+    repo_root: &std::path::Path,
+    map_view: bool,
+    output: OutputConfig,
+) -> Result<()> {
+    let detail = kb::show_bundle(store, name)?;
+    let repo_name = kb::detect_repo_name(repo_root);
+
+    if output.json {
+        let members_json: Vec<serde_json::Value> = detail
+            .members
+            .iter()
+            .map(|m| {
+                serde_json::json!({
+                    "iri": m.iri,
+                    "relationship": m.relationship,
+                    "display": kb::display_member_iri(&m.iri),
+                    "file_path": kb::file_path_from_iri(&m.iri, &repo_name),
+                })
+            })
+            .collect();
+        let json = serde_json::json!({
+            "name": detail.name,
+            "slug": detail.slug,
+            "description": detail.description,
+            "keywords": detail.keywords,
+            "tags": detail.tags,
+            "beads": detail.beads,
+            "members": members_json,
+            "source": "quipu",
+        });
+        println!("{}", serde_json::to_string_pretty(&json)?);
+        return Ok(());
+    }
+
+    let desc = detail.description.as_deref().unwrap_or("");
+    println!(
+        "📦 bundle:{} — \"{}\" [Quipu]",
+        detail.name, desc
+    );
+    println!();
+
+    if !detail.keywords.is_empty() {
+        println!("Keywords: {}", detail.keywords.join(", "));
+    }
+    if !detail.tags.is_empty() {
+        println!("Tags: {}", detail.tags.join(", "));
+    }
+
+    if map_view {
+        // L0: just summary
+        let contains_count = detail
+            .members
+            .iter()
+            .filter(|m| m.relationship == "contains")
+            .count();
+        let includes_count = detail
+            .members
+            .iter()
+            .filter(|m| m.relationship == "includes")
+            .count();
+        println!();
+        println!(
+            "   {} members, {} included bundles",
+            contains_count, includes_count
+        );
+        return Ok(());
+    }
+
+    // L1: outline
+    let contains: Vec<_> = detail
+        .members
+        .iter()
+        .filter(|m| m.relationship == "contains")
+        .collect();
+    let includes: Vec<_> = detail
+        .members
+        .iter()
+        .filter(|m| m.relationship == "includes")
+        .collect();
+    let deps: Vec<_> = detail
+        .members
+        .iter()
+        .filter(|m| m.relationship == "depends_on")
+        .collect();
+
+    if !contains.is_empty() {
+        println!();
+        println!("=== Members ({}) ===", contains.len());
+        for m in &contains {
+            let display = kb::display_member_iri(&m.iri);
+            println!("  {}", display);
+        }
+    }
+
+    if !includes.is_empty() {
+        println!();
+        println!("=== Includes ===");
+        for m in &includes {
+            let display = kb::display_member_iri(&m.iri);
+            println!("  {}", display);
+        }
+    }
+
+    if !deps.is_empty() {
+        println!();
+        println!("=== Depends On ===");
+        for m in &deps {
+            let display = kb::display_member_iri(&m.iri);
+            println!("  {}", display);
+        }
+    }
+
+    if !detail.beads.is_empty() {
+        println!();
+        println!("=== Beads ({}) ===", detail.beads.len());
+        for b in &detail.beads {
+            println!("  {}", b);
+        }
+    }
+
+    println!();
+    println!(
+        "→ `bobbin bundle show {} --deep` for full context",
+        detail.name
+    );
+
+    Ok(())
+}
+
+#[cfg(feature = "knowledge")]
+fn run_show_quipu_deep(
+    store: &quipu::Store,
+    name: &str,
+    repo_root: &std::path::Path,
+    output: OutputConfig,
+) -> Result<()> {
+    let (detail, deep_relations) = kb::show_bundle_deep(store, name)?;
+    let repo_name = kb::detect_repo_name(repo_root);
+
+    if output.json {
+        let members_json: Vec<serde_json::Value> = detail
+            .members
+            .iter()
+            .map(|m| {
+                serde_json::json!({
+                    "iri": m.iri,
+                    "relationship": m.relationship,
+                    "display": kb::display_member_iri(&m.iri),
+                })
+            })
+            .collect();
+        let deep_json: Vec<serde_json::Value> = deep_relations
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "source": r.source_iri,
+                    "predicate": r.predicate,
+                    "target": r.target_iri,
+                    "target_label": r.target_label,
+                    "target_type": r.target_type,
+                })
+            })
+            .collect();
+        let json = serde_json::json!({
+            "name": detail.name,
+            "description": detail.description,
+            "members": members_json,
+            "deep_relations": deep_json,
+            "source": "quipu",
+        });
+        println!("{}", serde_json::to_string_pretty(&json)?);
+        return Ok(());
+    }
+
+    let desc = detail.description.as_deref().unwrap_or("");
+    println!(
+        "📦 bundle:{} — \"{}\" [DEEP, Quipu]",
+        detail.name, desc
+    );
+    println!();
+
+    // Show members with file content where possible
+    let contains: Vec<_> = detail
+        .members
+        .iter()
+        .filter(|m| m.relationship == "contains")
+        .collect();
+
+    if !contains.is_empty() {
+        println!("=== Members ({}) ===", contains.len());
+        for m in &contains {
+            let display = kb::display_member_iri(&m.iri);
+            println!();
+            println!("--- {} ---", display);
+
+            // Try to show file content
+            if let Some(file_path) = kb::file_path_from_iri(&m.iri, &repo_name) {
+                let full_path = repo_root.join(&file_path);
+                match std::fs::read_to_string(&full_path) {
+                    Ok(content) => {
+                        print_with_line_numbers(&content, None, Some(100));
+                    }
+                    Err(_) => {
+                        println!("  (file not found at {})", full_path.display());
+                    }
+                }
+            }
+
+            // Show deep relations from this member
+            let member_relations: Vec<_> = deep_relations
+                .iter()
+                .filter(|r| r.source_iri == m.iri)
+                .collect();
+            if !member_relations.is_empty() {
+                println!();
+                println!("  Related entities:");
+                for r in &member_relations {
+                    let pred_short = r
+                        .predicate
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(&r.predicate);
+                    let fallback_display = kb::display_member_iri(&r.target_iri);
+                    let target_display = r
+                        .target_label
+                        .as_deref()
+                        .unwrap_or(&fallback_display);
+                    let type_hint = r
+                        .target_type
+                        .as_ref()
+                        .map(|t| format!(" [{}]", kb::display_member_iri(t)))
+                        .unwrap_or_default();
+                    println!("    --{}--> {}{}", pred_short, target_display, type_hint);
+                }
+            }
+        }
+    }
+
+    // Show includes expanded
+    let includes: Vec<_> = detail
+        .members
+        .iter()
+        .filter(|m| m.relationship == "includes")
+        .collect();
+    if !includes.is_empty() {
+        println!();
+        println!("=== Included Bundles ===");
+        for inc in &includes {
+            let inc_name = inc
+                .iri
+                .strip_prefix(&format!("{}bundle/", kb::bundle_iri("")).replace("bundle/bundle/", "bundle/"))
+                .unwrap_or(&inc.iri);
+            println!();
+            println!("--- included: {} ---", kb::display_member_iri(&inc.iri));
+            if let Ok(inc_detail) = kb::show_bundle(store, inc_name) {
+                for m in &inc_detail.members {
+                    if m.relationship == "contains" {
+                        println!("  {}", kb::display_member_iri(&m.iri));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn run_show_tags(
+    default_root: &std::path::Path,
+    repo_root: &std::path::Path,
+    args: ShowArgs,
+    output: OutputConfig,
+) -> Result<()> {
+    let config = load_tags_with_bundles(default_root);
 
     // Resolve name: strip "b:" prefix if present, convert slug back to name
     let name = resolve_bundle_name(&args.name, &config.bundles);
@@ -449,8 +800,8 @@ async fn run_show(path: PathBuf, args: ShowArgs, output: OutputConfig) -> Result
 
     match level {
         0 => show_l0(bundle, &config.bundles),
-        1 => show_l1(bundle, &config.bundles, &repo_root).await,
-        2 => show_l2(bundle, &config.bundles, &repo_root).await,
+        1 => show_l1(bundle, &config.bundles, repo_root).await,
+        2 => show_l2(bundle, &config.bundles, repo_root).await,
         _ => unreachable!(),
     }
 }
@@ -1009,41 +1360,97 @@ fn format_toml_ref_array(key: &str, values: &[String]) -> String {
 
 async fn run_create(path: PathBuf, args: CreateArgs, output: OutputConfig) -> Result<()> {
     let repo_root = path.canonicalize().unwrap_or(path);
-    let tags_path = resolve_tags_path(&repo_root, args.global);
-
-    // Check for duplicate
-    if tags_path.exists() {
-        let config = TagsConfig::load_or_default(&tags_path);
-        if config.find_bundle(&args.name).is_some() {
-            bail!("Bundle '{}' already exists in {}", args.name, tags_path.display());
-        }
-    }
 
     // Validate name
     if args.name.is_empty() || args.name.starts_with('/') || args.name.ends_with('/') {
-        bail!("Invalid bundle name '{}': must not be empty or start/end with '/'", args.name);
+        bail!(
+            "Invalid bundle name '{}': must not be empty or start/end with '/'",
+            args.name
+        );
     }
 
     let description = args
         .description
+        .clone()
         .unwrap_or_else(|| format!("Bundle: {}", args.name));
 
     let bundle = BundleConfig {
         name: args.name.clone(),
         description: description.clone(),
-        keywords: args.keywords,
-        tags: args.tags,
-        files: args.files,
-        refs: args.refs,
-        docs: args.docs,
-        beads: args.beads,
-        includes: args.includes,
+        keywords: args.keywords.clone(),
+        tags: args.tags.clone(),
+        files: args.files.clone(),
+        refs: args.refs.clone(),
+        docs: args.docs.clone(),
+        beads: args.beads.clone(),
+        includes: args.includes.clone(),
         implements: Vec::new(),
         depends_on: Vec::new(),
         tests: Vec::new(),
-        repos: args.repos,
-        slug: args.slug,
+        repos: args.repos.clone(),
+        slug: args.slug.clone(),
     };
+
+    // Try Quipu path when knowledge feature is enabled
+    #[cfg(feature = "knowledge")]
+    if !args.global {
+        if let Ok(mut store) = kb::open_quipu_store(&repo_root) {
+            // Check for duplicate
+            if kb::bundle_exists(&store, &args.name)? {
+                bail!("Bundle '{}' already exists in Quipu", args.name);
+            }
+
+            let repo_name = kb::detect_repo_name(&repo_root);
+            let (tx_id, count) = kb::create_bundle(&mut store, &bundle, &repo_name)?;
+
+            if output.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "created": args.name,
+                        "slug": bundle.slug(),
+                        "source": "quipu",
+                        "tx_id": tx_id,
+                        "triples": count,
+                    }))?
+                );
+            } else {
+                println!(
+                    "✓ Created bundle '{}' in Quipu (slug: {}, {} triples)",
+                    args.name,
+                    bundle.slug(),
+                    count
+                );
+                println!("  → `bobbin bundle show {}`", args.name);
+            }
+
+            return Ok(());
+        }
+    }
+
+    // Fall back to tags.toml
+    run_create_tags(&repo_root, args, bundle, output)
+}
+
+fn run_create_tags(
+    repo_root: &std::path::Path,
+    args: CreateArgs,
+    bundle: BundleConfig,
+    output: OutputConfig,
+) -> Result<()> {
+    let tags_path = resolve_tags_path(repo_root, args.global);
+
+    // Check for duplicate
+    if tags_path.exists() {
+        let config = TagsConfig::load_or_default(&tags_path);
+        if config.find_bundle(&args.name).is_some() {
+            bail!(
+                "Bundle '{}' already exists in {}",
+                args.name,
+                tags_path.display()
+            );
+        }
+    }
 
     // Append to file (preserves existing content and comments)
     let toml_entry = format_bundle_toml(&bundle);
@@ -1076,7 +1483,11 @@ async fn run_create(path: PathBuf, args: CreateArgs, output: OutputConfig) -> Re
             }))?
         );
     } else {
-        println!("✓ Created bundle '{}' (slug: {})", args.name, bundle.slug());
+        println!(
+            "✓ Created bundle '{}' (slug: {})",
+            args.name,
+            bundle.slug()
+        );
         println!("  → {}", tags_path.display());
         println!("  → `bobbin bundle show {}`", args.name);
     }
@@ -1086,7 +1497,44 @@ async fn run_create(path: PathBuf, args: CreateArgs, output: OutputConfig) -> Re
 
 async fn run_add(path: PathBuf, args: AddArgs, _output: OutputConfig) -> Result<()> {
     let repo_root = path.canonicalize().unwrap_or(path);
-    let (mut config, tags_path) = load_tags_for_write(&repo_root, args.global);
+
+    // Try Quipu path when knowledge feature is enabled
+    #[cfg(feature = "knowledge")]
+    if !args.global {
+        if let Ok(mut store) = kb::open_quipu_store(&repo_root) {
+            let name = args.name.strip_prefix("b:").unwrap_or(&args.name).to_string();
+            if !kb::bundle_exists(&store, &name)? {
+                bail!("Bundle '{}' not found in Quipu", name);
+            }
+
+            let repo_name = kb::detect_repo_name(&repo_root);
+            let (_, count) = kb::add_members(
+                &mut store,
+                &name,
+                &args.files,
+                &args.refs,
+                &args.docs,
+                &args.keywords,
+                &args.tags,
+                &args.includes,
+                &args.beads,
+                &repo_name,
+            )?;
+
+            if count == 0 {
+                println!("Nothing to add");
+            } else {
+                println!("✓ Added {} triple(s) to '{}' in Quipu", count, name);
+            }
+            return Ok(());
+        }
+    }
+
+    run_add_tags(&repo_root, args)
+}
+
+fn run_add_tags(repo_root: &std::path::Path, args: AddArgs) -> Result<()> {
+    let (mut config, tags_path) = load_tags_for_write(repo_root, args.global);
 
     let name = resolve_bundle_name(&args.name, &config.bundles);
     let bundle = config
@@ -1097,12 +1545,10 @@ async fn run_add(path: PathBuf, args: AddArgs, _output: OutputConfig) -> Result<
 
     let mut added = Vec::new();
 
-    // Helper: normalize absolute paths to repo-relative.
-    // If the path is absolute and starts with repo_root, strip the prefix.
     let normalize_path = |p: &str| -> String {
         let path = std::path::Path::new(p);
         if path.is_absolute() {
-            if let Ok(rel) = path.strip_prefix(&repo_root) {
+            if let Ok(rel) = path.strip_prefix(repo_root) {
                 let normalized = rel.to_string_lossy().to_string();
                 eprintln!(
                     "note: normalized absolute path to repo-relative: {} → {}",
@@ -1127,12 +1573,13 @@ async fn run_add(path: PathBuf, args: AddArgs, _output: OutputConfig) -> Result<
         }
     }
     for r in &args.refs {
-        // For refs, normalize the file portion before the :: or # delimiter
-        let normalized = normalize_ref_path(r, &repo_root);
+        let normalized = normalize_ref_path(r, repo_root);
         if !bundle.refs.contains(&normalized) {
-            // Validate ref syntax
             if BundleRef::parse(&normalized).is_none() {
-                eprintln!("warning: '{}' doesn't match ref syntax (file::symbol or file#heading), adding anyway", normalized);
+                eprintln!(
+                    "warning: '{}' doesn't match ref syntax (file::symbol or file#heading), adding anyway",
+                    normalized
+                );
             }
             bundle.refs.push(normalized.clone());
             added.push(format!("ref:{}", normalized));
@@ -1186,7 +1633,50 @@ async fn run_add(path: PathBuf, args: AddArgs, _output: OutputConfig) -> Result<
 
 async fn run_remove(path: PathBuf, args: RemoveArgs, _output: OutputConfig) -> Result<()> {
     let repo_root = path.canonicalize().unwrap_or(path);
-    let (mut config, tags_path) = load_tags_for_write(&repo_root, args.global);
+
+    // Try Quipu path when knowledge feature is enabled
+    #[cfg(feature = "knowledge")]
+    if !args.global {
+        if let Ok(mut store) = kb::open_quipu_store(&repo_root) {
+            let name = args.name.strip_prefix("b:").unwrap_or(&args.name).to_string();
+
+            if args.all {
+                let retracted = kb::remove_bundle(&mut store, &name)?;
+                if retracted == 0 {
+                    bail!("Bundle '{}' not found in Quipu", name);
+                }
+                println!("✓ Removed bundle '{}' from Quipu ({} facts retracted)", name, retracted);
+                return Ok(());
+            }
+
+            let repo_name = kb::detect_repo_name(&repo_root);
+            let retracted = kb::remove_members(
+                &mut store,
+                &name,
+                &args.files,
+                &args.refs,
+                &args.docs,
+                &args.keywords,
+                &args.tags,
+                &args.includes,
+                &args.beads,
+                &repo_name,
+            )?;
+
+            if retracted == 0 {
+                println!("Nothing to remove");
+            } else {
+                println!("✓ Retracted {} fact(s) from '{}' in Quipu", retracted, name);
+            }
+            return Ok(());
+        }
+    }
+
+    run_remove_tags(&repo_root, args)
+}
+
+fn run_remove_tags(repo_root: &std::path::Path, args: RemoveArgs) -> Result<()> {
+    let (mut config, tags_path) = load_tags_for_write(repo_root, args.global);
 
     let name = resolve_bundle_name(&args.name, &config.bundles);
 
@@ -1267,8 +1757,99 @@ async fn run_remove(path: PathBuf, args: RemoveArgs, _output: OutputConfig) -> R
 }
 
 async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Result<()> {
-    let repo_root = args.repo_root.unwrap_or_else(|| path.canonicalize().unwrap_or(path));
-    let config = load_tags_with_bundles(&repo_root);
+    let repo_root = args
+        .repo_root
+        .clone()
+        .unwrap_or_else(|| path.canonicalize().unwrap_or(path));
+
+    // Try Quipu path when knowledge feature is enabled
+    #[cfg(feature = "knowledge")]
+    if let Ok(store) = kb::open_quipu_store(&repo_root) {
+        return run_check_quipu(&store, &repo_root, args.name.as_deref(), output);
+    }
+
+    run_check_tags(&repo_root, args, output)
+}
+
+#[cfg(feature = "knowledge")]
+fn run_check_quipu(
+    store: &quipu::Store,
+    repo_root: &std::path::Path,
+    name: Option<&str>,
+    output: OutputConfig,
+) -> Result<()> {
+    let repo_name = kb::detect_repo_name(repo_root);
+
+    let bundles_to_check: Vec<String> = if let Some(name) = name {
+        vec![name.to_string()]
+    } else {
+        kb::list_bundles(store)?
+            .into_iter()
+            .map(|b| b.name)
+            .collect()
+    };
+
+    if bundles_to_check.is_empty() {
+        println!("No bundles found in Quipu.");
+        return Ok(());
+    }
+
+    let mut total_issues = 0usize;
+    let mut bundles_healthy = 0usize;
+    let mut bundles_stale = 0usize;
+    let mut total_members = 0usize;
+
+    for bundle_name in &bundles_to_check {
+        let issues = kb::check_bundle(store, bundle_name, repo_root, &repo_name)?;
+        total_members += kb::show_bundle(store, bundle_name)
+            .map(|d| d.members.len())
+            .unwrap_or(0);
+
+        if issues.is_empty() {
+            bundles_healthy += 1;
+        } else {
+            bundles_stale += 1;
+            total_issues += issues.len();
+            println!("⚠ {}", bundle_name);
+            for issue in &issues {
+                let severity = match issue.severity {
+                    kb::IssueSeverity::Error => "✗",
+                    kb::IssueSeverity::Warning => "⚠",
+                };
+                println!("  {} {}", severity, issue.issue);
+            }
+            println!();
+        }
+    }
+
+    if output.json {
+        println!(
+            "{{\"bundles_checked\":{},\"healthy\":{},\"stale\":{},\"issues\":{},\"members_checked\":{},\"source\":\"quipu\"}}",
+            bundles_to_check.len(), bundles_healthy, bundles_stale, total_issues, total_members
+        );
+    } else {
+        println!(
+            "Bundle health (Quipu): {} checked, {} healthy, {} with issues ({} total issues)",
+            bundles_to_check.len(),
+            bundles_healthy,
+            bundles_stale,
+            total_issues
+        );
+        println!("  Members checked: {}", total_members);
+        if bundles_stale == 0 {
+            println!("  ✓ All bundles healthy");
+        }
+    }
+
+    Ok(())
+}
+
+fn run_check_tags(
+    repo_root: &std::path::Path,
+    args: CheckArgs,
+    output: OutputConfig,
+) -> Result<()> {
+    let config = load_tags_with_bundles(repo_root);
 
     let bundles_to_check: Vec<&BundleConfig> = if let Some(ref name) = args.name {
         match config.find_bundle(name) {
@@ -1297,7 +1878,6 @@ async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Resu
         for f in &bundle.files {
             total_files += 1;
             let file_path = if f.contains(':') {
-                // cross-repo ref like "repo:path" — skip, can't validate locally
                 continue;
             } else {
                 repo_root.join(f)
@@ -1321,25 +1901,37 @@ async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Resu
             total_refs += 1;
             if let Some(parsed) = BundleRef::parse(ref_str) {
                 if parsed.file.contains(':') {
-                    continue; // cross-repo, skip
+                    continue;
                 }
                 let file_path = repo_root.join(&parsed.file);
                 if !file_path.exists() {
                     issues.push(format!("  ✗ ref file missing: {}", ref_str));
                 } else if let RefTarget::Symbol(ref sym) = parsed.target {
-                    // Check symbol exists in the file
                     if let Ok(content) = std::fs::read_to_string(&file_path) {
                         if !content.contains(sym.as_str()) {
-                            issues.push(format!("  ⚠ symbol not found: {} (in {})", sym, parsed.file));
+                            issues.push(format!(
+                                "  ⚠ symbol not found: {} (in {})",
+                                sym, parsed.file
+                            ));
                         }
                     }
                 } else if let RefTarget::Heading(ref heading) = parsed.target {
                     if let Ok(content) = std::fs::read_to_string(&file_path) {
                         let heading_pattern = format!("# {}", heading);
-                        if !content.lines().any(|l| l.trim_start_matches('#').trim().starts_with(heading.as_str())) {
-                            issues.push(format!("  ⚠ heading not found: {} (in {})", heading, parsed.file));
+                        if !content
+                            .lines()
+                            .any(|l| {
+                                l.trim_start_matches('#')
+                                    .trim()
+                                    .starts_with(heading.as_str())
+                            })
+                        {
+                            issues.push(format!(
+                                "  ⚠ heading not found: {} (in {})",
+                                heading, parsed.file
+                            ));
                         }
-                        let _ = heading_pattern; // used for clarity
+                        let _ = heading_pattern;
                     }
                 }
             } else {
@@ -1354,9 +1946,7 @@ async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Resu
                 .args(["show", bead_id, "--json"])
                 .output()
             {
-                Ok(output) if output.status.success() => {
-                    // Bead resolves OK
-                }
+                Ok(out) if out.status.success() => {}
                 _ => {
                     issues.push(format!("  ⚠ bead not found: {}", bead_ref));
                 }
@@ -1383,16 +1973,23 @@ async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Resu
         }
     }
 
-    // Summary
     if output.json {
         println!(
             "{{\"bundles_checked\":{},\"healthy\":{},\"stale\":{},\"issues\":{},\"refs_checked\":{},\"files_checked\":{}}}",
             bundles_to_check.len(), bundles_healthy, bundles_stale, total_issues, total_refs, total_files
         );
     } else {
-        println!("Bundle health: {} checked, {} healthy, {} with issues ({} total issues)",
-            bundles_to_check.len(), bundles_healthy, bundles_stale, total_issues);
-        println!("  Refs checked: {}, Files checked: {}", total_refs, total_files);
+        println!(
+            "Bundle health: {} checked, {} healthy, {} with issues ({} total issues)",
+            bundles_to_check.len(),
+            bundles_healthy,
+            bundles_stale,
+            total_issues
+        );
+        println!(
+            "  Refs checked: {}, Files checked: {}",
+            total_refs, total_files
+        );
         if bundles_stale == 0 {
             println!("  ✓ All bundles healthy");
         }
@@ -1490,6 +2087,31 @@ async fn run_stats(path: PathBuf, args: StatsArgs, output: OutputConfig) -> Resu
 
 async fn run_suggest(path: PathBuf, args: SuggestArgs, output: OutputConfig) -> Result<()> {
     let repo_root = path.canonicalize().unwrap_or(path);
+
+    // When knowledge feature is enabled, get existing Quipu bundles for filtering
+    #[cfg(feature = "knowledge")]
+    let quipu_bundled_iris: std::collections::HashSet<String> = {
+        if let Ok(store) = kb::open_quipu_store(&repo_root) {
+            let repo_name = kb::detect_repo_name(&repo_root);
+            let bundles = kb::list_bundles(&store).unwrap_or_default();
+            let mut iris = std::collections::HashSet::new();
+            for b in &bundles {
+                if let Ok(detail) = kb::show_bundle(&store, &b.name) {
+                    for m in &detail.members {
+                        if m.relationship == "contains" {
+                            if let Some(fp) = kb::file_path_from_iri(&m.iri, &repo_name) {
+                                iris.insert(fp);
+                            }
+                        }
+                    }
+                }
+            }
+            iris
+        } else {
+            std::collections::HashSet::new()
+        }
+    };
+
     let config = load_tags_with_bundles(&repo_root);
 
     // Collect all files already in bundles
@@ -1499,6 +2121,10 @@ async fn run_suggest(path: PathBuf, args: SuggestArgs, output: OutputConfig) -> 
             bundled_files.insert(f);
         }
     }
+
+    // Also include files from Quipu bundles when knowledge is enabled
+    #[cfg(feature = "knowledge")]
+    bundled_files.extend(quipu_bundled_iris);
 
     // Load coupling data from local index store
     let index_path = repo_root.join(".bobbin").join("index.db");
