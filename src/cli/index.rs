@@ -367,6 +367,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let mut pending_results: Vec<FileIndexResult> = Vec::new();
     let mut all_imports: Vec<ImportEdge> = Vec::new();
     let mut all_chunk_edges: Vec<crate::types::ChunkEdge> = Vec::new();
+    #[cfg(feature = "knowledge")]
+    let mut file_entity_infos: Vec<crate::knowledge::entities::FileEntityInfo> = Vec::new();
 
     for file_path in &files_needing_index {
         let rel_path = file_path
@@ -465,6 +467,15 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         let t_ctx = Instant::now();
         let contexts = build_context_windows(&chunks, &content, &config.embedding.context);
         profile.context_ms += t_ctx.elapsed().as_millis();
+
+        // Collect entity info for Quipu sync (before chunks are consumed)
+        #[cfg(feature = "knowledge")]
+        {
+            let lang = chunks.first().map(|c| c.language.as_str()).unwrap_or("unknown");
+            file_entity_infos.push(
+                crate::knowledge::entities::collect_file_entities(&rel_path, lang, &chunks),
+            );
+        }
 
         pending_results.push(FileIndexResult {
             path: rel_path,
@@ -735,6 +746,46 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     }
 
     profile.deps_ms = t_deps.elapsed().as_millis();
+
+    // Push code entities to Quipu knowledge graph
+    #[cfg(feature = "knowledge")]
+    if !file_entity_infos.is_empty() {
+        let t_entities = Instant::now();
+        if output.verbose && !output.quiet && !output.json {
+            println!("  Syncing code entities to Quipu...");
+        }
+
+        match crate::knowledge::entities::push_entities_to_quipu(
+            &file_entity_infos,
+            &all_imports,
+            &all_chunk_edges,
+            repo_name,
+            &repo_root,
+        ) {
+            Ok((_tx_id, entity_count)) => {
+                if output.verbose && !output.quiet && !output.json {
+                    if entity_count > 0 {
+                        println!(
+                            "  Pushed {} entity triples to Quipu ({}ms)",
+                            entity_count,
+                            t_entities.elapsed().as_millis()
+                        );
+                    } else {
+                        println!("  Entities up to date ({}ms)", t_entities.elapsed().as_millis());
+                    }
+                }
+            }
+            Err(e) => {
+                if !output.quiet && !output.json {
+                    println!(
+                        "{} Failed to sync entities to Quipu: {}",
+                        "!".yellow(),
+                        e
+                    );
+                }
+            }
+        }
+    }
 
     // Index git commits as searchable chunks
     let t_commits = Instant::now();
