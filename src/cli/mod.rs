@@ -13,6 +13,7 @@ mod hotspots;
 mod impact;
 mod index;
 mod log;
+mod migrate_bundles;
 mod ontology;
 mod prime;
 mod purge;
@@ -154,6 +155,9 @@ enum Commands {
     /// Navigate the tag ontology: hierarchy, relationships, and domain concepts
     Ontology(ontology::OntologyArgs),
 
+    /// Migrate [[bundles]] from tags.toml to Quipu knowledge graph
+    MigrateBundles(migrate_bundles::MigrateBundlesArgs),
+
     /// Execute or manage user-defined convenience commands
     Run(run::RunArgs),
 
@@ -194,6 +198,7 @@ impl Commands {
             Commands::Tag(_) => "tag",
             Commands::Bundle(_) => "bundle",
             Commands::Ontology(_) => "ontology",
+            Commands::MigrateBundles(_) => "migrate-bundles",
             Commands::Run(_) => "run",
             Commands::External(ref args) => {
                 // Leak a string so we can return &'static str
@@ -311,6 +316,7 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
         Commands::Tag(args) => tag::run(args, output).await,
         Commands::Bundle(args) => bundle::run(args, output).await,
         Commands::Ontology(args) => ontology::run(args, output).await,
+        Commands::MigrateBundles(args) => migrate_bundles::run(args, output).await,
         // Run commands are resolved before dispatch, so this is unreachable
         Commands::Run(_) => anyhow::bail!("Nested run commands are not supported"),
         // External commands are resolved before dispatch, so this is unreachable
