@@ -1257,9 +1257,32 @@ async function doContext() {
       }).join('');
     }
     el.innerHTML = html;
+    // Knowledge context: show entity graph if quipu is configured
+    if (_quipuEndpoint && typeof customElements !== 'undefined' && customElements.get('quipu-graph')) {
+      fetchContextKnowledge(q, el);
+    }
   } catch(e) {
     el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
   }
+}
+async function fetchContextKnowledge(query, container) {
+  try {
+    const resp = await fetch(_quipuEndpoint.replace(/\/$/, '') + '/spotlight', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: query, confidence: 0.3})
+    });
+    const data = await resp.json();
+    const annotations = data.annotations || [];
+    if (annotations.length === 0) return;
+    let section = '<div style="margin-top:1.5rem;border-top:1px solid var(--border);padding-top:1rem">';
+    section += `<h3 style="color:var(--accent2);font-size:0.9rem;margin-bottom:0.5rem">Knowledge Context (${annotations.length} entities)</h3>`;
+    section += '<div class="entity-badges" style="margin-bottom:0.75rem">' + annotations.map(a =>
+      `<a class="entity-badge" href="${esc(quipuEntityUrl(a.iri))}" target="_blank"><span class="badge-type">${esc(a.entity_type)}</span> ${esc(a.surface)}</a>`
+    ).join('') + '</div>';
+    section += '<quipu-graph endpoint="' + esc(_quipuEndpoint) + '" query="SELECT ?s ?p ?o WHERE { ?s ?p ?o . ?s rdfs:label ?l . FILTER(regex(?l, &quot;' + esc(query) + '&quot;, &quot;i&quot;)) } LIMIT 50" height="300px"></quipu-graph>';
+    section += '</div>';
+    container.insertAdjacentHTML('beforeend', section);
+  } catch(e) { /* graceful degradation */ }
 }
 document.getElementById('context-q').addEventListener('keydown', e => { if (e.key === 'Enter') doContext(); });
 
