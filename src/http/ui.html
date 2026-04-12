@@ -71,6 +71,12 @@ h3{font-size:0.95rem;font-weight:600;margin-bottom:0.5rem;color:var(--dim)}
   overflow:hidden;max-height:80px;line-height:1.4;margin-top:0.25rem;
   background:var(--bg);padding:0.5rem;border-radius:4px}
 .result-lines{font-size:0.75rem;color:var(--dim)}
+.entity-badges{display:flex;flex-wrap:wrap;gap:0.35rem;margin-top:0.35rem}
+.entity-badge{display:inline-flex;align-items:center;gap:0.3rem;font-size:0.7rem;padding:2px 8px;
+  border-radius:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  text-decoration:none;transition:border-color 0.15s,background 0.15s}
+.entity-badge:hover{border-color:var(--accent);background:var(--surface)}
+.entity-badge .badge-type{color:var(--dim);font-size:0.65rem}
 
 /* Lang bars */
 .lang-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin:0.5rem 0}
@@ -641,9 +647,16 @@ async function doSearch() {
       el.innerHTML = '<div class="empty">No results found</div>';
       return;
     }
+    // Spotlight entity annotations
+    const annotations = data.spotlight_annotations || [];
     // Normalize scores relative to top result
     const maxScore = results.length > 0 ? Math.max(...results.map(r => r.score)) : 1;
-    let html = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${results.length} results (${mode} mode)${archiveResults.length > 0 ? ` + ${archiveResults.length} archive` : ''}</div>`;
+    let html = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${results.length} results (${mode} mode)${archiveResults.length > 0 ? ` + ${archiveResults.length} archive` : ''}${annotations.length > 0 ? ` — ${annotations.length} entities` : ''}</div>`;
+    if (annotations.length > 0) {
+      html += '<div class="entity-badges" style="margin-bottom:0.75rem">' + annotations.map(a =>
+        `<a class="entity-badge" href="${esc(quipuEntityUrl(a.iri))}" target="_blank" title="${esc(a.surface)} (${(a.confidence * 100).toFixed(0)}% confidence)"><span class="badge-type">${esc(a.entity_type)}</span> ${esc(a.surface)}</a>`
+      ).join('') + '</div>';
+    }
     html += results.map(res => {
       const rel = relPath(res.file_path);
       const link = repoLink(res.file_path, res.start_line, res.repo);
@@ -1002,6 +1015,7 @@ document.addEventListener('click', e => {
 });
 
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function quipuEntityUrl(iri) { return `http://quipu.svc/entity/${encodeURIComponent(iri)}`; }
 
 // -- Injection detail overlay --
 async function showInjectionDetail(injectionId) {

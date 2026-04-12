@@ -54,6 +54,16 @@ pub(super) struct SearchResponse {
     results: Vec<SearchResultItem>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     bundles: Vec<BundleMatchOutput>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    spotlight_annotations: Vec<SpotlightHit>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub(super) struct SpotlightHit {
+    surface: String,
+    iri: String,
+    entity_type: String,
+    confidence: f32,
 }
 
 #[derive(Serialize)]
@@ -110,6 +120,7 @@ pub(super) async fn search(
             count: 0,
             results: vec![],
             bundles: vec![],
+            spotlight_annotations: vec![],
         }));
     }
 
@@ -256,12 +267,20 @@ pub(super) async fn search(
     // Check for bundle keyword matches
     let matched_bundles = find_matching_bundles(&state.tags_config, &params.q);
 
+    // Call Quipu spotlight API if configured (non-blocking on failure)
+    let spotlight_annotations = if let Some(ref endpoint) = state.config.quipu_endpoint {
+        fetch_spotlight(endpoint, &params.q).await
+    } else {
+        vec![]
+    };
+
     Ok(Json(SearchResponse {
         query: params.q,
         mode: mode.to_string(),
         count: filtered.len(),
         results: filtered.iter().map(to_search_item).collect(),
         bundles: matched_bundles,
+        spotlight_annotations,
     }))
 }
 
@@ -406,6 +425,43 @@ async fn execute_or_search(
     let mut merged: Vec<SearchResult> = best_by_id.into_values().collect();
     merged.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     Ok(merged)
+}
+
+/// Call Quipu's spotlight API to get entity annotations for a query.
+/// Returns empty vec on any error (graceful degradation).
+async fn fetch_spotlight(endpoint: &str, query: &str) -> Vec<SpotlightHit> {
+    #[derive(Deserialize)]
+    struct SpotlightResponse {
+        #[serde(default)]
+        annotations: Vec<SpotlightHit>,
+    }
+
+    let url = format!("{}/spotlight", endpoint.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .unwrap_or_default();
+
+    match client
+        .post(&url)
+        .json(&serde_json::json!({ "text": query, "confidence": 0.3 }))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => resp
+            .json::<SpotlightResponse>()
+            .await
+            .map(|r| r.annotations)
+            .unwrap_or_default(),
+        Ok(resp) => {
+            tracing::debug!(status = %resp.status(), "spotlight API non-success");
+            vec![]
+        }
+        Err(e) => {
+            tracing::debug!(error = %e, "spotlight API unreachable");
+            vec![]
+        }
+    }
 }
 
 fn to_search_item(r: &crate::types::SearchResult) -> SearchResultItem {
