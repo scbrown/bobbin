@@ -62,6 +62,7 @@ pub(super) struct SearchResponse {
 pub(super) struct SpotlightHit {
     surface: String,
     iri: String,
+    #[serde(alias = "type")]
     entity_type: String,
     confidence: f32,
 }
