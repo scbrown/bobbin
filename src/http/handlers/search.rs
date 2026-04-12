@@ -54,6 +54,18 @@ pub(super) struct SearchResponse {
     results: Vec<SearchResultItem>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     bundles: Vec<BundleMatchOutput>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    spotlight_annotations: Vec<SpotlightAnnotation>,
+}
+
+/// An entity annotation from the Quipu spotlight API.
+#[derive(Serialize, Clone)]
+pub(super) struct SpotlightAnnotation {
+    surface: String,
+    iri: String,
+    entity_type: String,
+    confidence: f32,
+    entity_url: String,
 }
 
 #[derive(Serialize)]
@@ -110,6 +122,7 @@ pub(super) async fn search(
             count: 0,
             results: vec![],
             bundles: vec![],
+            spotlight_annotations: vec![],
         }));
     }
 
@@ -256,12 +269,22 @@ pub(super) async fn search(
     // Check for bundle keyword matches
     let matched_bundles = find_matching_bundles(&state.tags_config, &params.q);
 
+    // Spotlight: annotate query with knowledge entities when quipu is configured
+    #[cfg(feature = "knowledge")]
+    let spotlight_annotations = match state.config.quipu_endpoint.as_deref() {
+        Some(ep) => call_spotlight(ep, &params.q).await,
+        None => vec![],
+    };
+    #[cfg(not(feature = "knowledge"))]
+    let spotlight_annotations: Vec<SpotlightAnnotation> = vec![];
+
     Ok(Json(SearchResponse {
         query: params.q,
         mode: mode.to_string(),
         count: filtered.len(),
         results: filtered.iter().map(to_search_item).collect(),
         bundles: matched_bundles,
+        spotlight_annotations,
     }))
 }
 
@@ -406,6 +429,78 @@ async fn execute_or_search(
     let mut merged: Vec<SearchResult> = best_by_id.into_values().collect();
     merged.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     Ok(merged)
+}
+
+// ---------------------------------------------------------------------------
+// Quipu spotlight integration (knowledge feature)
+// ---------------------------------------------------------------------------
+
+/// Call the Quipu `/spotlight` API to annotate a query with entity mentions.
+/// Returns an empty vec on any failure (network, parse, timeout) so search
+/// always succeeds even when Quipu is unavailable.
+#[cfg(feature = "knowledge")]
+async fn call_spotlight(endpoint: &str, query: &str) -> Vec<SpotlightAnnotation> {
+    use serde::Deserialize as De;
+
+    #[derive(De)]
+    struct SpotlightResponse {
+        #[serde(default)]
+        annotations: Vec<RawAnnotation>,
+    }
+    #[derive(De)]
+    struct RawAnnotation {
+        surface: String,
+        iri: String,
+        #[serde(rename = "type")]
+        entity_type: String,
+        confidence: f32,
+    }
+
+    let url = format!("{}/spotlight", endpoint.trim_end_matches('/'));
+    let body = serde_json::json!({ "text": query, "confidence": 0.5 });
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .unwrap_or_default();
+
+    let base = endpoint.trim_end_matches('/');
+    match client.post(&url).json(&body).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            match resp.json::<SpotlightResponse>().await {
+                Ok(data) => data
+                    .annotations
+                    .into_iter()
+                    .map(|a| {
+                        let entity_url = format!(
+                            "{}/entity/{}",
+                            base,
+                            urlencoding::encode(&a.iri)
+                        );
+                        SpotlightAnnotation {
+                            surface: a.surface,
+                            iri: a.iri,
+                            entity_type: a.entity_type,
+                            confidence: a.confidence,
+                            entity_url,
+                        }
+                    })
+                    .collect(),
+                Err(e) => {
+                    tracing::debug!(error = %e, "spotlight response parse failed");
+                    vec![]
+                }
+            }
+        }
+        Ok(resp) => {
+            tracing::debug!(status = %resp.status(), "spotlight returned non-success");
+            vec![]
+        }
+        Err(e) => {
+            tracing::debug!(error = %e, "spotlight call failed");
+            vec![]
+        }
+    }
 }
 
 fn to_search_item(r: &crate::types::SearchResult) -> SearchResultItem {

@@ -19,6 +19,11 @@ pub struct Config {
     pub sources: SourcesConfig,
     pub groups: Vec<GroupConfig>,
     pub file_types: Vec<FileTypeRule>,
+    /// Optional Quipu knowledge graph endpoint (e.g. "http://quipu.svc").
+    /// When set and the `knowledge` feature is enabled, search results are
+    /// annotated with entity spotlight data from the Quipu `/spotlight` API.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quipu_endpoint: Option<String>,
 }
 
 /// Configuration for remote server (thin-client mode)

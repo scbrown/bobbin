@@ -97,6 +97,14 @@ h3{font-size:0.95rem;font-weight:600;margin-bottom:0.5rem;color:var(--dim)}
 .bead-title{font-size:0.9rem}
 .bead-meta{font-size:0.75rem;color:var(--dim);margin-top:0.25rem}
 
+/* Entity badges (Quipu spotlight) */
+.entity-badges{display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.75rem}
+.entity-badge{display:inline-flex;align-items:center;gap:0.3rem;font-size:0.75rem;font-family:var(--mono);
+  padding:2px 8px;border-radius:4px;background:rgba(130,80,223,0.15);color:#b794f6;border:1px solid rgba(130,80,223,0.3);
+  text-decoration:none;transition:all 0.15s}
+.entity-badge:hover{background:rgba(130,80,223,0.25);border-color:rgba(130,80,223,0.5);text-decoration:none}
+.entity-badge .badge-type{font-size:0.65rem;color:var(--dim);text-transform:uppercase}
+
 /* Autocomplete */
 .search-wrap{position:relative;flex:1;display:flex}
 .search-wrap input{width:100%}
@@ -643,7 +651,13 @@ async function doSearch() {
     }
     // Normalize scores relative to top result
     const maxScore = results.length > 0 ? Math.max(...results.map(r => r.score)) : 1;
+    const annotations = data.spotlight_annotations || [];
     let html = `<div style="color:var(--dim);margin-bottom:0.75rem;font-size:0.85rem">${results.length} results (${mode} mode)${archiveResults.length > 0 ? ` + ${archiveResults.length} archive` : ''}</div>`;
+    if (annotations.length > 0) {
+      html += '<div class="entity-badges">' + annotations.map(a =>
+        `<a class="entity-badge" href="${esc(a.entity_url)}" target="_blank" title="${esc(a.iri)} (${Math.round(a.confidence * 100)}%)"><span class="badge-type">${esc(a.entity_type)}</span> ${esc(a.surface)}</a>`
+      ).join('') + '</div>';
+    }
     html += results.map(res => {
       const rel = relPath(res.file_path);
       const link = repoLink(res.file_path, res.start_line, res.repo);
