@@ -1,0 +1,37 @@
+# Bobbin-Quipu Type Mapping
+# Maps Bobbin's data model to Quipu's ontology (Drupal RDF module pattern).
+# Changes here only require a config reload, not code changes.
+
+[quipu]
+endpoint = "http://quipu.svc"
+
+[mappings.code_symbol]
+bobbin_type = "CodeSymbol"
+quipu_type = "aegis:SoftwareComponent"
+match_by = "name"
+
+[mappings.code_module]
+bobbin_type = "CodeModule"
+quipu_type = "aegis:CodeRepository"
+match_by = "path"
+
+[mappings.function]
+bobbin_type = "Function"
+quipu_type = "aegis:SoftwareComponent"
+match_by = "name"
+
+[mappings.struct]
+bobbin_type = "Struct"
+quipu_type = "aegis:SoftwareComponent"
+match_by = "name"
+
+[mappings.documentation]
+bobbin_type = "Documentation"
+quipu_type = "aegis:DesignDoc"
+match_by = "path"
+
+[annotations]
+# Which Quipu relationships to surface on Bobbin search results
+show_predicates = ["aegis:dependsOn", "aegis:ownedBy", "aegis:runsOn", "aegis:connects_to"]
+max_depth = 1
+spotlight_confidence = 0.3

@@ -771,9 +771,32 @@ async function doSearch() {
       `).join('');
     }
     el.innerHTML = html;
+    // Inject JSON-LD annotations for machine-readable entity data
+    injectJsonLd(annotations);
   } catch(e) {
     el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`;
   }
+}
+
+function injectJsonLd(annotations) {
+  // Remove any previous JSON-LD blocks
+  document.querySelectorAll('script[data-bobbin-jsonld]').forEach(s => s.remove());
+  if (!annotations || annotations.length === 0) return;
+  const jsonLd = {
+    '@context': { '@vocab': 'https://schema.org/', 'quipu': 'https://quipu.dev/ontology#' },
+    '@graph': annotations.map(a => ({
+      '@type': 'Thing',
+      '@id': quipuEntityUrl(a.iri),
+      'name': a.surface,
+      'quipu:entityType': a.entity_type,
+      'quipu:confidence': a.confidence
+    }))
+  };
+  const script = document.createElement('script');
+  script.type = 'application/ld+json';
+  script.setAttribute('data-bobbin-jsonld', 'true');
+  script.textContent = JSON.stringify(jsonLd, null, 2);
+  document.head.appendChild(script);
 }
 
 // Repos
