@@ -32,6 +32,8 @@ pub(super) struct StatusResponse {
     sources: crate::config::SourcesConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
     repo_path_prefix: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quipu_endpoint: Option<String>,
 }
 
 pub(super) async fn status(
@@ -49,6 +51,7 @@ pub(super) async fn status(
         index: stats,
         sources: state.resolved_sources.clone(),
         repo_path_prefix: state.config.server.repo_path_prefix.clone(),
+        quipu_endpoint: state.config.quipu_endpoint.clone(),
     }))
 }
 

@@ -192,6 +192,7 @@ td.mono{font-family:var(--mono)}
     <div class="tab" data-page="bundles">Bundles</div>
     <div class="tab" data-page="beads">Beads</div>
     <div class="tab" data-page="hotspots">Hotspots</div>
+    <div class="tab" data-page="knowledge">Knowledge</div>
     <div class="tab" data-page="feedback">Feedback</div>
     <div class="tab" data-page="status">Status</div>
   </div>
@@ -439,6 +440,22 @@ td.mono{font-family:var(--mono)}
     <p style="color:var(--dim);margin-bottom:1rem;font-size:0.85rem">Files with highest churn + complexity. Candidates for refactoring.</p>
     <div id="hotspots-table"></div>
   </div>
+
+  <div class="page" id="page-knowledge">
+    <h2>Knowledge Graph</h2>
+    <p style="color:var(--dim);margin-bottom:1rem;font-size:0.85rem">Explore the Quipu knowledge graph. Search for entities or browse the graph.</p>
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
+      <input id="knowledge-q" class="search-input" style="flex:1" placeholder="Search entities (e.g. proxmox, dns, reactor)...">
+      <button class="btn" onclick="knowledgeSearch()">Explore</button>
+      <a id="knowledge-popout" class="btn" style="text-decoration:none;display:none" target="_blank">Pop out</a>
+    </div>
+    <div id="knowledge-graph" style="min-height:400px;background:var(--bg);border:1px solid var(--border);border-radius:8px;position:relative">
+      <div id="knowledge-placeholder" style="display:flex;align-items:center;justify-content:center;height:400px;color:var(--dim)">
+        Loading knowledge graph...
+      </div>
+    </div>
+    <div id="knowledge-entities" style="margin-top:1rem"></div>
+  </div>
 </main>
 
 <!-- Injection detail overlay -->
@@ -466,8 +483,72 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tab.dataset.page === 'bundles' && !window._bundlesLoaded) loadBundles();
     if (tab.dataset.page === 'hotspots' && !window._hotspotsLoaded) loadHotspots();
     if (tab.dataset.page === 'feedback' && !window._feedbackLoaded) loadFeedback();
+    if (tab.dataset.page === 'knowledge' && !window._knowledgeLoaded) loadKnowledge();
   });
 });
+
+// Knowledge tab — Quipu web components
+let _quipuEndpoint = null;
+function loadKnowledge() {
+  window._knowledgeLoaded = true;
+  // Detect quipu endpoint from status response
+  fetch(API + '/status').then(r => r.json()).then(data => {
+    _quipuEndpoint = (data.config && data.config.quipu_endpoint) || null;
+    if (!_quipuEndpoint) {
+      document.getElementById('knowledge-placeholder').textContent = 'Quipu endpoint not configured (set quipu_endpoint in config.toml)';
+      return;
+    }
+    document.getElementById('knowledge-popout').href = _quipuEndpoint;
+    document.getElementById('knowledge-popout').style.display = '';
+    // Load quipu web components script
+    const script = document.createElement('script');
+    script.src = _quipuEndpoint.replace(/\/$/, '') + '/quipu-components.js';
+    script.onload = () => initKnowledgeGraph();
+    script.onerror = () => {
+      document.getElementById('knowledge-placeholder').textContent = 'Could not load Quipu components — is quipu.svc running?';
+    };
+    document.head.appendChild(script);
+  }).catch(() => {
+    document.getElementById('knowledge-placeholder').textContent = 'Could not reach Bobbin API';
+  });
+}
+function initKnowledgeGraph() {
+  const container = document.getElementById('knowledge-graph');
+  const placeholder = document.getElementById('knowledge-placeholder');
+  if (typeof customElements.get('quipu-graph') !== 'undefined') {
+    placeholder.style.display = 'none';
+    const graph = document.createElement('quipu-graph');
+    graph.setAttribute('endpoint', _quipuEndpoint);
+    graph.setAttribute('height', '400px');
+    container.appendChild(graph);
+  } else {
+    placeholder.textContent = 'Quipu graph component not available';
+  }
+}
+function knowledgeSearch() {
+  const q = document.getElementById('knowledge-q').value.trim();
+  if (!q || !_quipuEndpoint) return;
+  const graph = document.querySelector('#knowledge-graph quipu-graph');
+  if (graph) {
+    graph.setAttribute('query', `SELECT ?s ?p ?o WHERE { ?s ?p ?o . ?s rdfs:label ?l . FILTER(regex(?l, "${q}", "i")) } LIMIT 50`);
+  }
+  // Also fetch spotlight for entity list
+  fetch(_quipuEndpoint.replace(/\/$/, '') + '/spotlight', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: q, confidence: 0.3})
+  }).then(r => r.json()).then(data => {
+    const el = document.getElementById('knowledge-entities');
+    const annotations = data.annotations || [];
+    if (annotations.length === 0) {
+      el.innerHTML = '<div style="color:var(--dim);font-size:0.85rem">No entities found</div>';
+      return;
+    }
+    el.innerHTML = '<div class="entity-badges">' + annotations.map(a =>
+      `<a class="entity-badge" href="${esc(quipuEntityUrl(a.iri))}" target="_blank" title="${(a.confidence * 100).toFixed(0)}% confidence"><span class="badge-type">${esc(a.entity_type)}</span> ${esc(a.surface)}</a>`
+    ).join('') + '</div>';
+  }).catch(() => {});
+}
+document.getElementById('knowledge-q').addEventListener('keydown', e => { if (e.key === 'Enter') knowledgeSearch(); });
 
 // Keyboard shortcut: Enter to search
 const searchInput = document.getElementById('search-q');
