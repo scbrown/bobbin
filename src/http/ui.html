@@ -493,7 +493,7 @@ function loadKnowledge() {
   window._knowledgeLoaded = true;
   // Detect quipu endpoint from status response
   fetch(API + '/status').then(r => r.json()).then(data => {
-    _quipuEndpoint = (data.config && data.config.quipu_endpoint) || null;
+    _quipuEndpoint = data.quipu_endpoint || null;
     if (!_quipuEndpoint) {
       document.getElementById('knowledge-placeholder').textContent = 'Quipu endpoint not configured (set quipu_endpoint in config.toml)';
       return;
