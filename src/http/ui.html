@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bobbin</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%234a9eff'/%3E%3Ctext x='8' y='12' font-family='monospace' font-size='11' font-weight='bold' fill='white' text-anchor='middle'%3Eb%3C/text%3E%3C/svg%3E">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -1351,7 +1352,7 @@ async function loadBundles() {
         <div style="color:var(--dim);font-size:0.85rem;margin-bottom:0.5rem">${esc(b.description)}</div>
         ${b.keywords.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:0.25rem;margin-bottom:0.5rem">${b.keywords.slice(0,5).map(k => `<span style="background:var(--surface2);padding:0.1rem 0.4rem;border-radius:3px;font-size:0.75rem;font-family:var(--mono);color:var(--accent)">${esc(k)}</span>`).join('')}${b.keywords.length > 5 ? `<span style="font-size:0.75rem;color:var(--dim)">+${b.keywords.length - 5}</span>` : ''}</div>` : ''}
         ${b.repos.length > 0 ? `<div style="font-size:0.75rem;color:var(--dim)">repos: ${b.repos.map(r => esc(r)).join(', ')}</div>` : ''}
-        ${kids.length > 0 ? `<div style="margin-top:0.5rem;border-top:1px solid var(--border);padding-top:0.5rem">${kids.map((k,i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.15rem 0;cursor:pointer" onclick="event.stopPropagation();showBundleDetail('${esc(k.slug)}')"><span style="color:var(--accent);font-size:0.8rem">${i === kids.length-1 ? '\\u2514\\u2500\\u2500' : '\\u251C\\u2500\\u2500'} ${esc(k.name.split('/').pop())}</span><span style="font-family:var(--mono);font-size:0.7rem;color:var(--dim)">${k.file_count}f ${k.ref_count}r</span></div>`).join('')}</div>` : ''}
+        ${kids.length > 0 ? `<div style="margin-top:0.5rem;border-top:1px solid var(--border);padding-top:0.5rem">${kids.map((k,i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.15rem 0;cursor:pointer" onclick="event.stopPropagation();showBundleDetail('${esc(k.slug)}')"><span style="color:var(--accent);font-size:0.8rem">${i === kids.length-1 ? '└──' : '├──'} ${esc(k.name.split('/').pop())}</span><span style="font-family:var(--mono);font-size:0.7rem;color:var(--dim)">${k.file_count}f ${k.ref_count}r</span></div>`).join('')}</div>` : ''}
       </div>`;
     }).join('');
   } catch(e) {
@@ -1561,7 +1562,7 @@ function restoreFromHash() {
   const hash = location.hash.slice(1); // remove #
   if (!hash) return false;
   const [page, queryString] = hash.split('?');
-  const validPages = ['home','search','context','repos','hotspots','tags','bundles','feedback','beads','status'];
+  const validPages = ['home','search','context','repos','hotspots','tags','bundles','feedback','beads','knowledge','status'];
   if (!validPages.includes(page)) return false;
 
   switchTab(page, false);
