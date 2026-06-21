@@ -195,6 +195,107 @@ proves valuable.
   (reuse `calibration-sweep-results.md` harness).
 - Gate on injection-quality metrics; ship default weight only if it wins.
 
+## Standalone Quipu value: episodes → PageRank
+
+PPR is not a Bobbin-only signal borrowed by Quipu. For Quipu as a standalone
+knowledge graph it fulfils a **capability already in the design** (see alignment
+below) and turns the episode-accretion model into emergent importance.
+
+### What episodes are
+
+An **episode** (`src/episode/mod.rs`) is the unit of agent-extracted knowledge:
+
+| Field | Meaning |
+|-------|---------|
+| `name` | Episode identifier |
+| `episode_body` | Optional raw text the extraction came from |
+| `source` | Provenance actor (e.g. `aegis/ellie`) → `prov:wasGeneratedBy` |
+| `group_id` | Partition / namespace (multi-project) |
+| `nodes[]` | Entities: `name`, `type`, `description`, `properties{}` |
+| `edges[]` | Relationships: `source`, `target`, `relation` |
+| `shapes` | Optional SHACL validated at write time |
+
+On ingest: optional **entity resolution** (dedupe against existing entities by
+embedding similarity; `strict_mode` rejects near-duplicates) → convert to Turtle
+→ **SHACL gate** → write via `ingest_rdf` with a **bitemporal** timestamp and
+provenance. Every fact traces back to an episode.
+
+### The episodes that come in (Gas Town / aegis)
+
+- **Operational events** — `koror-rebuild`: node recovered, edge `rebuilt_on`.
+- **Bead work** — task completion: entities = bead, files, services; edges =
+  `touches`, `depends_on`, `resolved_by`.
+- **Infra observations** — topology: `traefik runsOn kota`, `forgejo runsOn koror`.
+- **Deploy episodes** — `deploy-v3`: app version bump, `runs_on` host.
+- **Code archaeology** — `CodeModule` / `CodeSymbol` entities, import edges.
+
+Each episode is a small subgraph stitched into the growing graph. Over many
+episodes, entities **accrete** connectivity — `kota` referenced by dozens of
+deploy/rebuild episodes becomes highly connected.
+
+### How they're queried today
+
+SPARQL (structured), bitemporal time-travel (`valid_at` / `as_of_tx`), vector +
+hybrid search, the context pipeline / `unified_search` (seed + link expansion),
+impact BFS (+ counterfactual `speculate`), and graph projection (`in_degree`,
+SCC, shortest path).
+
+**The gap:** every one of these treats connectivity as flat. Vector search
+ignores structure entirely; impact BFS orders by *hops*, not importance; link
+expansion keeps neighbors by a crude score. Nothing answers *which entities
+matter most* in the accreted episode graph, or *which are most relevant to a
+query through multi-hop connection*.
+
+### Where PageRank plays in
+
+Episode accretion means the **link structure itself encodes importance** — and
+PageRank reads it:
+
+- **Global PageRank = emergent importance.** No single episode declares `kota`
+  central; it becomes central because dozens of episodes point at it. PageRank
+  surfaces that emergent property. Powers a "top entities" panel, node sizing in
+  the web UI graph explorer, per-type centrality in the schema inspector.
+- **Personalized PageRank = query-relevant multi-hop.** Seed with the entities a
+  query matches (vector/text), walk the episode graph, rank neighbors by
+  connectivity to the seeds. "traefik issues" surfaces `kota`, the cert service,
+  the bead that last touched it — even when not textually similar.
+
+Feeds existing surfaces: **context pipeline** (rank which expanded links to keep
+in budget), **impact** (order blast radius by importance not depth), and an
+**episode-aware** delta ("which entities did this episode make more central?")
+that ties provenance to importance.
+
+Plus two things only Quipu can do:
+
+- **Temporal PageRank** — run `as_of` past times: "`kota`'s importance rose after
+  the rebuild episodes." Importance *trajectory*, not just a snapshot.
+- **Counterfactual PageRank** — via `speculate()`: "if we retire `koror`, how
+  does importance redistribute?"
+
+### Alignment with existing Quipu PageRank ideas
+
+This **fulfils intent already written down** — it is not a bolt-on:
+
+- `docs/design/vision.md` §9 "Graph Projection for Algorithms" explicitly lists
+  **PageRank** among target algorithms, and says *"Results write back as triples."*
+- `docs/design/vision.md` Projection trait sketch includes
+  `fn page_rank(&self, config: PageRankConfig) -> HashMap<NodeId, f64>;`.
+- `docs/design/vision.md` "Stolen From" table: *"Graph algorithms (PageRank,
+  Louvain, etc.) | Neo4j GDS | **Pure functions over Projection API**."*
+- `src/graph.rs:2` module doc names PageRank as an intended algorithm.
+- README / CHANGELOG / book all advertise "centrality", but only `in_degree()`
+  ships — a documented capability gap.
+
+Two alignments matter for the build:
+
+1. **Pure functions over the Projection API** — exactly the plan's recommended
+   shape (`personalized_pagerank(edges, seeds, …)`, no `Store` coupling). The
+   architecture proposed here already matches Quipu's stated design philosophy.
+2. **Results write back as triples** — a Quipu-native twist HippoRAG lacks. A
+   PageRank run can persist `quipu:pageRank` scores as **bitemporal facts**:
+   queryable in SPARQL, time-travelable, and usable as inputs to datalog rules.
+   PageRank becomes *part of the knowledge graph*, not an ephemeral computation.
+
 ## Open questions (for ian / Stiwi)
 
 1. **Scope v1 to knowledge only (Phases 1-2), or push through to code fusion
