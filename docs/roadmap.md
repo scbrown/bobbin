@@ -65,3 +65,7 @@ See `docs/plans/backlog.md` for detailed exploration of each feature.
 - [ ] Semantic commit indexing
 - [ ] Refactoring planner (rename, move, extract)
 - [ ] Cross-repo temporal coupling
+- [ ] PageRank / Personalized PageRank ranking signal — compose git coupling,
+      import deps, and symbol edges into a graph-proximity signal fused into RRF.
+      See `docs/plans/ppr-ranking-signal.md` (Quipu owns the primitive; Bobbin
+      consumes it). Motivated by the HippoRAG comparison.
