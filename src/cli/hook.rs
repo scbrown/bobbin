@@ -536,13 +536,32 @@ fn bobbin_hook_entries() -> serde_json::Value {
     bobbin_hook_entries_with_server(None)
 }
 
+/// Check whether a shell command invokes `bobbin hook ...`.
+///
+/// Project-level hooks (e.g. the quarterdeck shared config) rarely use the
+/// bare `bobbin hook ...` form. They wrap it with env-var prefixes, absolute
+/// paths, and `|| true` suffixes, e.g.:
+///   `BOBBIN_SERVER=http://search.svc /home/me/.local/bin/bobbin hook inject-context || true`
+/// A plain `starts_with("bobbin hook ")` check misses all of these, which made
+/// `bobbin hook status` report "not installed" for working project hooks (GH#10).
+///
+/// We look for the `bobbin hook ` token at a command boundary (start of string
+/// or preceded by `/`, whitespace, or an env-assignment `=`) so paths like
+/// `/usr/bin/bobbin hook` match while a different binary such as `mybobbin`
+/// does not.
+fn command_invokes_bobbin_hook(cmd: &str) -> bool {
+    cmd.match_indices("bobbin hook ").any(|(i, _)| {
+        i == 0 || matches!(cmd.as_bytes()[i - 1], b'/' | b' ' | b'\t' | b'=')
+    })
+}
+
 /// Check if a hook group entry contains a bobbin command.
 fn is_bobbin_hook_group(group: &serde_json::Value) -> bool {
     if let Some(hooks) = group.get("hooks").and_then(|h| h.as_array()) {
         hooks.iter().any(|h| {
             h.get("command")
                 .and_then(|c| c.as_str())
-                .map(|c| c.starts_with("bobbin hook "))
+                .map(command_invokes_bobbin_hook)
                 .unwrap_or(false)
         })
     } else {
@@ -5523,6 +5542,58 @@ mod tests {
     use super::*;
     use crate::search::context::*;
     use crate::types::{ChunkType, MatchType, classify_file};
+
+    #[test]
+    fn test_command_invokes_bobbin_hook_bare() {
+        assert!(command_invokes_bobbin_hook("bobbin hook inject-context"));
+    }
+
+    #[test]
+    fn test_command_invokes_bobbin_hook_wrapped() {
+        // Project-level / quarterdeck form: env prefix + absolute path + suffix (GH#10)
+        assert!(command_invokes_bobbin_hook(
+            "BOBBIN_SERVER=http://search.svc /home/me/.local/bin/bobbin hook inject-context || true"
+        ));
+        assert!(command_invokes_bobbin_hook("/usr/bin/bobbin hook session-context"));
+        assert!(command_invokes_bobbin_hook("FOO=bar bobbin hook post-tool-use"));
+    }
+
+    #[test]
+    fn test_command_invokes_bobbin_hook_negatives() {
+        assert!(!command_invokes_bobbin_hook("bobbin search foo"));
+        assert!(!command_invokes_bobbin_hook("echo bobbin hooked")); // not "hook "
+        assert!(!command_invokes_bobbin_hook("/opt/mybobbin hook x")); // different binary
+        assert!(!command_invokes_bobbin_hook("notbobbin hook x"));
+    }
+
+    #[test]
+    fn test_has_bobbin_hooks_detects_wrapped_project_command() {
+        // Regression for GH#10: project-level hooks with wrapped commands
+        // were reported as "not installed".
+        let settings = json!({
+            "hooks": {
+                "UserPromptSubmit": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "BOBBIN_SERVER=http://search.svc /home/me/.local/bin/bobbin hook inject-context || true"
+                    }]
+                }]
+            }
+        });
+        assert!(has_bobbin_hooks(&settings));
+    }
+
+    #[test]
+    fn test_has_bobbin_hooks_false_for_unrelated() {
+        let settings = json!({
+            "hooks": {
+                "UserPromptSubmit": [{
+                    "hooks": [{ "type": "command", "command": "some-other-tool run" }]
+                }]
+            }
+        });
+        assert!(!has_bobbin_hooks(&settings));
+    }
 
     #[test]
     fn test_hook_config_output_serialization() {
