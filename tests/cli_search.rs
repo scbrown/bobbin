@@ -179,3 +179,51 @@ fn search_empty_index_returns_empty_index_message() {
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(json["error"], "empty_index");
 }
+
+// ─── --type validation (bo-92t) ─────────────────────────────────────────────
+
+/// bo-92t: an invalid `--type` value must error (non-zero exit) and name the
+/// valid types, rather than silently returning "No results found". A silent
+/// false-empty on a bad filter masked a P0 verification signal (hq-2q7).
+#[test]
+fn search_invalid_type_errors_with_valid_list() {
+    let project = TestProject::new();
+    TestProject::bobbin_cmd()
+        .arg("init")
+        .arg(project.path())
+        .output()
+        .expect("init failed");
+
+    TestProject::bobbin_cmd()
+        .args(["search", "anything", "--type", "bogus"])
+        .arg(project.path())
+        .assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("Unknown chunk type")
+                .and(predicate::str::contains("function"))
+                .and(predicate::str::contains("commit")),
+        );
+}
+
+/// bo-92t companion: `--type bead` is a VALID alias for the issue chunk type, so
+/// it must NOT be rejected as invalid. (The empty results observed in hq-2q7 came
+/// from no indexed beads — see bo-f61 — not from an invalid filter.)
+#[test]
+fn search_type_bead_is_valid_alias() {
+    let project = TestProject::new();
+    TestProject::bobbin_cmd()
+        .arg("init")
+        .arg(project.path())
+        .output()
+        .expect("init failed");
+
+    // No index yet, so this returns the empty-index message, NOT an
+    // "Unknown chunk type" error — proving `bead` parses as a valid type.
+    TestProject::bobbin_cmd()
+        .args(["search", "anything", "--type", "bead"])
+        .arg(project.path())
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Unknown chunk type").not());
+}

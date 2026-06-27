@@ -94,6 +94,52 @@ fn index_incremental_skips_unchanged_files() {
     assert_eq!(json["files_indexed"], 0, "no files should be re-indexed");
 }
 
+/// bo-f61: a no-change re-index with commits enabled must still fall through and
+/// index git commits, instead of taking the `total_files == 0` up-to-date fast
+/// path (which previously skipped the commits + beads blocks entirely). The beads
+/// block shares the exact same early-return gate, so this exercises that gate
+/// without requiring Dolt infrastructure.
+#[test]
+fn index_zero_files_still_indexes_commits() {
+    let project = TestProject::new();
+    project.write_rust_fixtures();
+    project.git_commit("initial");
+    project.bobbin_init();
+
+    // First index establishes file hashes (skip if ONNX runtime unavailable).
+    if !project.bobbin_index() { return };
+
+    // Enable commit indexing in the project config (generated config disables it).
+    let config_path = project.path().join(".bobbin/config.toml");
+    let cfg = std::fs::read_to_string(&config_path).unwrap();
+    assert!(cfg.contains("commits_enabled = false"), "expected commits disabled in generated config");
+    let cfg = cfg.replace("commits_enabled = false", "commits_enabled = true");
+    std::fs::write(&config_path, cfg).unwrap();
+
+    // Re-index with NO changed source files. Pre-fix this returned "up_to_date"
+    // and skipped commits; now it must fall through to the commits block.
+    let output = TestProject::bobbin_cmd()
+        .args(["--json", "index"])
+        .arg(project.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(
+        json["status"], "indexed",
+        "0-file index with commits enabled must fall through, not fast-return up_to_date"
+    );
+    assert_eq!(json["files_indexed"], 0, "no source files changed");
+    assert!(
+        json["commits_indexed"].as_u64().unwrap_or(0) >= 1,
+        "commits should be indexed on the 0-file pass, got {:?}",
+        json["commits_indexed"]
+    );
+}
+
 #[test]
 fn index_incremental_reindexes_modified_file() {
     let project = TestProject::new();
