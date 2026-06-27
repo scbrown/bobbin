@@ -33,8 +33,33 @@ enum BundleCommands {
     Check(CheckArgs),
     /// Suggest new bundles from coupling graph analysis
     Suggest(SuggestArgs),
+    /// Suggest files to ADD to an existing bundle, from its beads' changesets
+    /// (workflow telemetry, GH#9 Layer 2)
+    Additions(AdditionsArgs),
+    /// Report bundle drift: files frequently touched but missing, and dead
+    /// members never touched (GH#9 Layer 2)
+    Drift(DriftArgs),
     /// Show bundle usage stats (beads with b:<slug> labels)
     Stats(StatsArgs),
+}
+
+#[derive(Args)]
+struct AdditionsArgs {
+    /// Bundle name or slug
+    name: String,
+    /// Minimum fraction of the bundle's beads that must touch a file to suggest
+    /// it (0.0-1.0). Default: 0.5
+    #[arg(long, default_value = "0.5")]
+    min_fraction: f32,
+}
+
+#[derive(Args)]
+struct DriftArgs {
+    /// Bundle name or slug (omit to report drift for all bundles)
+    name: Option<String>,
+    /// Fraction threshold for "frequently touched but missing". Default: 0.6
+    #[arg(long, default_value = "0.6")]
+    missing_threshold: f32,
 }
 
 #[derive(Args)]
@@ -201,6 +226,8 @@ pub async fn run(args: BundleArgs, output: OutputConfig) -> Result<()> {
         BundleCommands::Remove(remove_args) => run_remove(args.path, remove_args, output).await,
         BundleCommands::Check(check_args) => run_check(args.path, check_args, output).await,
         BundleCommands::Suggest(suggest_args) => run_suggest(args.path, suggest_args, output).await,
+        BundleCommands::Additions(a) => run_additions(args.path, a, output).await,
+        BundleCommands::Drift(d) => run_drift(args.path, d, output).await,
         BundleCommands::Stats(stats_args) => run_stats(args.path, stats_args, output).await,
     }
 }
@@ -1488,6 +1515,225 @@ async fn run_stats(path: PathBuf, args: StatsArgs, output: OutputConfig) -> Resu
     Ok(())
 }
 
+/// Frequency analysis of a bundle's bead changesets vs its current members.
+#[derive(Debug, Default, PartialEq)]
+struct BundleFreq {
+    /// Non-member files touched by >= threshold of the bundle's beads: (file, bead_count).
+    additions: Vec<(String, usize)>,
+    /// Member files never touched by any of the bundle's beads.
+    dead: Vec<String>,
+    /// Number of the bundle's beads that had a recorded changeset.
+    total_beads: usize,
+}
+
+/// Pure frequency analysis (GH#9 Layer 2). Given each bundle bead's touched-file
+/// set, the current member files, and a minimum fraction, compute suggested
+/// additions (non-member files touched by >= min_fraction of beads, ranked
+/// desc) and dead members (member files touched by no bead).
+fn compute_bundle_freq(
+    bead_changesets: &[(String, Vec<String>)],
+    member_files: &std::collections::HashSet<String>,
+    min_fraction: f32,
+) -> BundleFreq {
+    use std::collections::{BTreeMap, BTreeSet};
+    let mut file_beads: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut total_beads = 0usize;
+    for (bead, files) in bead_changesets {
+        if files.is_empty() {
+            continue;
+        }
+        total_beads += 1;
+        let unique: BTreeSet<&String> = files.iter().collect();
+        for f in unique {
+            file_beads.entry(f.clone()).or_default().insert(bead.clone());
+        }
+    }
+    // No changeset data → nothing to suggest and nothing can be judged "dead".
+    if total_beads == 0 {
+        return BundleFreq::default();
+    }
+    let threshold = ((min_fraction * total_beads as f32).ceil() as usize).max(1);
+    let mut additions: Vec<(String, usize)> = file_beads
+        .iter()
+        .filter(|(f, beads)| !member_files.contains(*f) && beads.len() >= threshold)
+        .map(|(f, beads)| (f.clone(), beads.len()))
+        .collect();
+    additions.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+    let mut dead: Vec<String> = member_files
+        .iter()
+        .filter(|f| !file_beads.contains_key(*f))
+        .cloned()
+        .collect();
+    dead.sort();
+
+    BundleFreq {
+        additions,
+        dead,
+        total_beads,
+    }
+}
+
+/// Resolve the set of bead IDs associated with a bundle: declared members
+/// (`bundle.beads`, "rig:bead-id") plus beads linked to it via
+/// `bead_lineage.bundle_slugs`.
+fn bundle_bead_ids(
+    bundle: &BundleConfig,
+    store: &crate::storage::MetadataStore,
+    slug: &str,
+) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let mut ids: BTreeSet<String> = BTreeSet::new();
+    for b in &bundle.beads {
+        let id = b.split_once(':').map(|(_, id)| id).unwrap_or(b);
+        ids.insert(id.to_string());
+    }
+    if let Ok(rows) = store.list_bead_lineage(None, None, 100_000) {
+        for r in rows {
+            if let Some(bs) = &r.bundle_slugs {
+                if bs
+                    .split(',')
+                    .any(|s| s.trim() == slug || s.trim() == bundle.name)
+                {
+                    ids.insert(r.bead_id);
+                }
+            }
+        }
+    }
+    ids.into_iter().collect()
+}
+
+/// For each bead, the union of files it touched across its lineage rows.
+fn gather_changesets(
+    bead_ids: &[String],
+    store: &crate::storage::MetadataStore,
+) -> Vec<(String, Vec<String>)> {
+    bead_ids
+        .iter()
+        .map(|bid| {
+            let mut files = std::collections::BTreeSet::new();
+            if let Ok(rows) = store.list_bead_lineage(Some(bid), None, 1000) {
+                for r in rows {
+                    for f in r.touched_files {
+                        files.insert(f);
+                    }
+                }
+            }
+            (bid.clone(), files.into_iter().collect::<Vec<_>>())
+        })
+        .collect()
+}
+
+async fn run_additions(path: PathBuf, args: AdditionsArgs, output: OutputConfig) -> Result<()> {
+    let repo_root = path.canonicalize().unwrap_or(path);
+    let config = load_tags_with_bundles(&repo_root);
+    let bundle = config
+        .find_bundle(&args.name)
+        .ok_or_else(|| anyhow::anyhow!("Bundle '{}' not found", args.name))?;
+    let store = crate::storage::MetadataStore::open(&Config::db_path(&repo_root))?;
+    let slug = bundle.slug();
+    let bead_ids = bundle_bead_ids(bundle, &store, &slug);
+    let changesets = gather_changesets(&bead_ids, &store);
+    let member_files: std::collections::HashSet<String> =
+        bundle.member_files().into_iter().collect();
+    let freq = compute_bundle_freq(&changesets, &member_files, args.min_fraction);
+
+    if output.json {
+        let additions: Vec<_> = freq
+            .additions
+            .iter()
+            .map(|(f, n)| serde_json::json!({"file": f, "beads": n}))
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "bundle": bundle.name,
+                "beads_with_changesets": freq.total_beads,
+                "additions": additions,
+            }))?
+        );
+    } else if !output.quiet {
+        if freq.total_beads == 0 {
+            println!(
+                "No bead changesets recorded for bundle '{}' yet (link beads or index commits with Bead-ID trailers).",
+                bundle.name
+            );
+        } else {
+            println!(
+                "Suggested additions for {} (based on {} beads):",
+                bundle.name, freq.total_beads
+            );
+            if freq.additions.is_empty() {
+                println!("  (no files above the {:.0}% threshold)", args.min_fraction * 100.0);
+            }
+            for (f, n) in &freq.additions {
+                let pct = (*n as f32 / freq.total_beads as f32) * 100.0;
+                println!("  {}  — touched in {}/{} beads ({:.0}%)", f, n, freq.total_beads, pct);
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn run_drift(path: PathBuf, args: DriftArgs, output: OutputConfig) -> Result<()> {
+    let repo_root = path.canonicalize().unwrap_or(path);
+    let config = load_tags_with_bundles(&repo_root);
+    let store = crate::storage::MetadataStore::open(&Config::db_path(&repo_root))?;
+
+    let targets: Vec<&BundleConfig> = match &args.name {
+        Some(n) => vec![config
+            .find_bundle(n)
+            .ok_or_else(|| anyhow::anyhow!("Bundle '{}' not found", n))?],
+        None => config.bundles.iter().collect(),
+    };
+
+    let mut report = Vec::new();
+    for bundle in targets {
+        let slug = bundle.slug();
+        let bead_ids = bundle_bead_ids(bundle, &store, &slug);
+        let changesets = gather_changesets(&bead_ids, &store);
+        let member_files: std::collections::HashSet<String> =
+            bundle.member_files().into_iter().collect();
+        let freq = compute_bundle_freq(&changesets, &member_files, args.missing_threshold);
+        report.push((bundle.name.clone(), freq));
+    }
+
+    if output.json {
+        let items: Vec<_> = report
+            .iter()
+            .map(|(name, f)| {
+                serde_json::json!({
+                    "bundle": name,
+                    "beads_with_changesets": f.total_beads,
+                    "missing": f.additions.iter().map(|(file,n)| serde_json::json!({"file":file,"beads":n})).collect::<Vec<_>>(),
+                    "dead": f.dead,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({"bundles": items}))?);
+    } else if !output.quiet {
+        for (name, f) in &report {
+            if f.total_beads == 0 {
+                println!("{}: no bead changesets yet", name);
+                continue;
+            }
+            let status = if f.additions.is_empty() && f.dead.is_empty() {
+                "ok"
+            } else {
+                "drift"
+            };
+            println!("{} [{}] — {} beads", name, status, f.total_beads);
+            for (file, n) in &f.additions {
+                println!("  + missing: {}  (touched in {}/{} beads)", file, n, f.total_beads);
+            }
+            for file in &f.dead {
+                println!("  - dead member: {} (never touched)", file);
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn run_suggest(path: PathBuf, args: SuggestArgs, output: OutputConfig) -> Result<()> {
     let repo_root = path.canonicalize().unwrap_or(path);
     let config = load_tags_with_bundles(&repo_root);
@@ -1812,5 +2058,43 @@ fn print_heading_section(content: &str, target_heading: &str) {
 
     if !in_section {
         println!("  (heading '{}' not found)", target_heading);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_compute_bundle_freq_additions_and_dead() {
+        // 3 beads. weights.rs touched by all 3, scorer.rs by 2, main.rs by 1.
+        // Bundle members: weights.rs (touched) + legacy.rs (never touched → dead).
+        let changesets = vec![
+            ("b1".into(), vec!["src/weights.rs".into(), "src/scorer.rs".into()]),
+            ("b2".into(), vec!["src/weights.rs".into(), "src/scorer.rs".into(), "src/main.rs".into()]),
+            ("b3".into(), vec!["src/weights.rs".into()]),
+        ];
+        let members: HashSet<String> =
+            ["src/weights.rs".to_string(), "src/legacy.rs".to_string()].into_iter().collect();
+
+        // min_fraction 0.5 → threshold ceil(1.5)=2 beads.
+        let freq = compute_bundle_freq(&changesets, &members, 0.5);
+        assert_eq!(freq.total_beads, 3);
+        // scorer.rs (2/3, non-member) suggested; main.rs (1/3) below threshold;
+        // weights.rs excluded (already a member).
+        assert_eq!(freq.additions, vec![("src/scorer.rs".to_string(), 2)]);
+        // legacy.rs is a member never touched → dead.
+        assert_eq!(freq.dead, vec!["src/legacy.rs".to_string()]);
+    }
+
+    #[test]
+    fn test_compute_bundle_freq_no_lineage() {
+        let members: HashSet<String> = ["a.rs".to_string()].into_iter().collect();
+        let freq = compute_bundle_freq(&[], &members, 0.6);
+        assert_eq!(freq.total_beads, 0);
+        assert!(freq.additions.is_empty());
+        // With no lineage, nothing is flagged dead (avoids false "dead" noise).
+        assert!(freq.dead.is_empty());
     }
 }
