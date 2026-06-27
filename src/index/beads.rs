@@ -48,6 +48,19 @@ fn metadata_is_meaningful(metadata: &str) -> bool {
     !(t.is_empty() || t == "{}" || t == "null")
 }
 
+/// True if a bead carries any excluded label (case-insensitive). Used to keep
+/// sensitive beads (e.g. `security`, `escalation`) out of the index entirely.
+fn bead_excluded(labels: &[String], exclude_labels: &[String]) -> bool {
+    if exclude_labels.is_empty() {
+        return false;
+    }
+    labels.iter().any(|l| {
+        exclude_labels
+            .iter()
+            .any(|x| x.eq_ignore_ascii_case(l))
+    })
+}
+
 /// Assemble the embeddable text for a bead from its fields, comments, and labels.
 ///
 /// Kept as a pure function so the content layout can be unit-tested without a
@@ -238,15 +251,18 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
             .push(comment);
     }
 
-    // Convert to Chunks
+    // Convert to Chunks, skipping beads with excluded labels (e.g. security).
     let chunks: Vec<Chunk> = issues
         .into_iter()
-        .map(|issue| {
+        .filter_map(|issue| {
+            let labels = labels_by_issue.get(&issue.id).cloned().unwrap_or_default();
+            if bead_excluded(&labels, &config.exclude_labels) {
+                return None;
+            }
             let issue_comments: Vec<&CommentRow> = comments_by_issue
                 .get(&issue.id)
                 .cloned()
                 .unwrap_or_default();
-            let labels = labels_by_issue.get(&issue.id).cloned().unwrap_or_default();
 
             let content = build_bead_content(&issue, &issue_comments, &labels);
 
@@ -256,7 +272,7 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
             hasher.update(id_input.as_bytes());
             let id = hex::encode(hasher.finalize());
 
-            Chunk {
+            Some(Chunk {
                 id,
                 file_path: format!("beads:{}:{}", rig, issue.id),
                 chunk_type: ChunkType::Issue,
@@ -266,7 +282,7 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
                 content,
                 language: "beads".to_string(),
                 tags: labels.join(","),
-            }
+            })
         })
         .collect();
 
@@ -422,6 +438,16 @@ mod tests {
         let issue = sample_issue(); // metadata = ""
         let content = build_bead_content(&issue, &[], &[]);
         assert!(!content.contains("Metadata:"));
+    }
+
+    #[test]
+    fn test_bead_excluded_by_label() {
+        let exclude = vec!["security".to_string(), "escalation".to_string()];
+        assert!(bead_excluded(&["security".to_string()], &exclude));
+        assert!(bead_excluded(&["Escalation".to_string()], &exclude)); // case-insensitive
+        assert!(bead_excluded(&["pitch".to_string(), "security".to_string()], &exclude));
+        assert!(!bead_excluded(&["pitch".to_string()], &exclude));
+        assert!(!bead_excluded(&["security".to_string()], &[])); // empty = no exclusion
     }
 
     #[test]

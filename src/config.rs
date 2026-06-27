@@ -501,6 +501,10 @@ pub struct BeadsConfig {
     pub include_closed: bool,
     /// Skip beads older than this many days (0 = no limit)
     pub max_age_days: u32,
+    /// Exclude beads carrying any of these labels (e.g. ["security", "escalation"]).
+    /// Defense-in-depth: keeps sensitive beads out of the index entirely, so they
+    /// can never surface regardless of access rules. Case-insensitive.
+    pub exclude_labels: Vec<String>,
 }
 
 impl Default for BeadsConfig {
@@ -514,6 +518,7 @@ impl Default for BeadsConfig {
             include_comments: true,
             include_closed: false,
             max_age_days: 90,
+            exclude_labels: vec![],
         }
     }
 }
