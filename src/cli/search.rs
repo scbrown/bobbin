@@ -18,7 +18,9 @@ pub struct SearchArgs {
     /// The search query
     query: String,
 
-    /// Filter by chunk type (function, method, class, struct, enum, interface, module, impl, trait, commit)
+    /// Filter by chunk type: function, method, class, struct, enum, interface,
+    /// module, impl, trait, doc, section, table, code_block, commit, issue
+    /// (alias: bead), other.
     #[arg(long, short = 't')]
     r#type: Option<String>,
 

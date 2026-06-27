@@ -24,7 +24,9 @@ pub struct GrepArgs {
     #[arg(long, short = 'E')]
     regex: bool,
 
-    /// Filter by chunk type (function, method, class, struct, enum, interface, module, impl, trait)
+    /// Filter by chunk type: function, method, class, struct, enum, interface,
+    /// module, impl, trait, doc, section, table, code_block, commit, issue
+    /// (alias: bead), other.
     #[arg(long, short = 't')]
     r#type: Option<String>,
 

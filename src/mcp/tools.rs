@@ -11,8 +11,8 @@ pub struct SearchRequest {
     #[schemars(description = "Natural language search query describing the code you're looking for")]
     pub query: String,
 
-    /// Filter by chunk type (function, method, class, struct, enum, interface, module, impl, trait)
-    #[schemars(description = "Filter by code element type: function, method, class, struct, enum, interface, module, impl, trait")]
+    /// Filter by chunk type (incl. commit, issue/bead, doc)
+    #[schemars(description = "Filter by chunk type: function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block, commit, issue (alias: bead), other")]
     pub r#type: Option<String>,
 
     /// Maximum number of results (default: 10)
@@ -84,7 +84,7 @@ pub struct GrepRequest {
     pub regex: Option<bool>,
 
     /// Filter by chunk type
-    #[schemars(description = "Filter by code element type: function, method, class, struct, enum, interface, module, impl, trait")]
+    #[schemars(description = "Filter by chunk type: function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block, commit, issue (alias: bead), other")]
     pub r#type: Option<String>,
 
     /// Maximum number of results (default: 10)
