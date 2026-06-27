@@ -836,6 +836,41 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                                 } else {
                                     commits_indexed = commit_chunks.len();
 
+                                    // Auto-associate beads → commits for workflow
+                                    // telemetry (GH#9). Only explicit Bead* trailers
+                                    // are recorded; runs over newly-indexed commits.
+                                    let mut lineage_recorded = 0usize;
+                                    for entry in &commit_entries {
+                                        for bead_id in
+                                            crate::index::git::extract_bead_refs(&entry.trailers)
+                                        {
+                                            if metadata_store
+                                                .record_bead_lineage(
+                                                    &crate::storage::sqlite::NewBeadLineage {
+                                                        bead_id,
+                                                        commit_sha: Some(entry.hash.clone()),
+                                                        touched_files: entry.files.clone(),
+                                                        action_type: Some("commit".to_string()),
+                                                        ..Default::default()
+                                                    },
+                                                )
+                                                .is_ok()
+                                            {
+                                                lineage_recorded += 1;
+                                            }
+                                        }
+                                    }
+                                    if lineage_recorded > 0
+                                        && output.verbose
+                                        && !output.quiet
+                                        && !output.json
+                                    {
+                                        println!(
+                                            "  Recorded {} bead→commit lineage links",
+                                            lineage_recorded
+                                        );
+                                    }
+
                                     // Track the latest commit for incremental indexing
                                     if let Some(latest) = commit_entries.first() {
                                         metadata_store

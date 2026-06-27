@@ -624,6 +624,28 @@ fn parse_trailers(raw: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Extract bead references a commit declares, for workflow-telemetry lineage
+/// (GH#9 auto-association). High-precision by design: only explicit `Bead*`
+/// trailers (e.g. `Bead-ID: bo-abc`, `Bead: aegis-h8x`), so incidental
+/// `word-word` tokens in the message never pollute the lineage table.
+///
+/// A trailer value may list several ids separated by commas/whitespace; a
+/// leading `b:` (bundle/bead label form) is stripped.
+pub fn extract_bead_refs(trailers: &[(String, String)]) -> Vec<String> {
+    let mut ids: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (key, value) in trailers {
+        if key.to_lowercase().contains("bead") {
+            for tok in value.split([',', ' ', '\t', ';']) {
+                let t = tok.trim().trim_start_matches("b:");
+                if !t.is_empty() {
+                    ids.insert(t.to_string());
+                }
+            }
+        }
+    }
+    ids.into_iter().collect()
+}
+
 /// Format unix timestamp as YYYY-MM-DD
 fn format_timestamp(timestamp: i64) -> String {
     // Simple date formatting without external crate
@@ -1472,5 +1494,27 @@ filename src/main.rs
         assert_eq!(&entries[3].commit_hash, first_commit); // line 4 unchanged
         assert_eq!(&entries[4].commit_hash, first_commit); // line 5 unchanged
         assert_eq!(&entries[2].commit_hash, second_commit); // line 3 modified
+    }
+
+    #[test]
+    fn test_extract_bead_refs_from_trailers() {
+        let trailers = vec![
+            ("Bead-ID".to_string(), "bo-abc123".to_string()),
+            ("Co-Authored-By".to_string(), "Someone <x@y.z>".to_string()),
+            ("Bead".to_string(), "aegis-h8x, b:bo-def".to_string()),
+        ];
+        let ids = extract_bead_refs(&trailers);
+        assert!(ids.contains(&"bo-abc123".to_string()));
+        assert!(ids.contains(&"aegis-h8x".to_string()));
+        assert!(ids.contains(&"bo-def".to_string())); // `b:` stripped
+        // Non-bead trailers ignored.
+        assert!(!ids.iter().any(|i| i.contains("Someone")));
+        assert_eq!(ids.len(), 3);
+    }
+
+    #[test]
+    fn test_extract_bead_refs_none_when_no_bead_trailers() {
+        let trailers = vec![("Signed-off-by".to_string(), "x".to_string())];
+        assert!(extract_bead_refs(&trailers).is_empty());
     }
 }
