@@ -24,13 +24,14 @@ This matters because:
 
 ## How bobbin computes coupling
 
-During `bobbin index`, if `[git].coupling_enabled` is true (the default), bobbin walks the last N commits (controlled by `coupling_depth`, default 1000) and records which files change together. The coupling score between two files is:
+During `bobbin index`, if `[git].coupling_enabled` is true (the default), bobbin walks the last N commits (controlled by `coupling_depth`, default 5000) and records which files change together. The coupling score between two files blends how often they co-change with how recently they last did:
 
 ```text
-score = co_changes / min(changes_a, changes_b)
+score = 0.7 * (co_changes / max_co_changes) + 0.3 * recency
+recency = 1 / (1 + days_since_last_co_change / 30)
 ```
 
-Where `co_changes` is the number of commits touching both files, and `changes_a`/`changes_b` are their individual commit counts. A pair needs at least `coupling_threshold` (default 3) co-changes to be stored.
+Where `co_changes` is the number of commits touching both files, and `max_co_changes` is the largest co-change count seen across all pairs in the repo (so the frequency term is normalized to 0.0–1.0). The `recency` term is ~1.0 for a pair that changed together today and ~0.5 at 30 days, so a hot pair that has gone quiet decays below a pair that still co-changes. A pair needs at least `coupling_threshold` (default 3) co-changes to be stored.
 
 ## Finding related files
 
@@ -43,10 +44,11 @@ bobbin related src/auth.rs
 Output lists files ranked by coupling score, highest first:
 
 ```text
-src/session.rs         0.82  (shared 41 of 50 commits)
-src/middleware/auth.rs 0.64  (shared 32 of 50 commits)
-tests/auth_test.rs     0.58  (shared 29 of 50 commits)
-src/config.rs          0.24  (shared 12 of 50 commits)
+Related to src/auth.rs:
+1. src/session.rs (score: 0.82) - Co-changed 41 times
+2. src/middleware/auth.rs (score: 0.64) - Co-changed 32 times
+3. tests/auth_test.rs (score: 0.58) - Co-changed 29 times
+4. src/config.rs (score: 0.24) - Co-changed 12 times
 ```
 
 ### Filtering by strength
