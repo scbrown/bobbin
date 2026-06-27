@@ -27,6 +27,21 @@ enum OntologyCommands {
     List(ListArgs),
     /// Show the full ontology tree
     Tree(TreeArgs),
+    /// Infer candidate ontology concepts from git coupling communities (GH#14 D5)
+    Infer(InferArgs),
+}
+
+#[derive(Args)]
+struct InferArgs {
+    /// Minimum coupling score for edges. Default: 0.3
+    #[arg(long, default_value = "0.3")]
+    threshold: f32,
+    /// Minimum cluster size to propose as a concept. Default: 3
+    #[arg(long, default_value = "3")]
+    min_size: usize,
+    /// Max concepts to print. Default: 20
+    #[arg(long, default_value = "20")]
+    limit: usize,
 }
 
 #[derive(Args)]
@@ -72,7 +87,161 @@ pub async fn run(args: OntologyArgs, output: OutputConfig) -> Result<()> {
         OntologyCommands::Path(a) => run_path(&config, &a, &output),
         OntologyCommands::List(a) => run_list(&config, &a, &output),
         OntologyCommands::Tree(a) => run_tree(&config, &a, &output),
+        OntologyCommands::Infer(a) => run_infer(&repo_root, &config, &a, &output),
     }
+}
+
+/// A candidate ontology concept inferred from a coupling community.
+#[derive(Debug, PartialEq)]
+struct InferredConcept {
+    name: String,
+    parent: Option<String>,
+    members: Vec<String>,
+}
+
+/// Cluster coupling edges into connected components (BFS), keeping components
+/// with at least `min_size` files.
+fn cluster_coupling(
+    edges: &[crate::types::FileCoupling],
+    min_size: usize,
+) -> Vec<Vec<String>> {
+    use std::collections::{HashMap, HashSet, VecDeque};
+    let mut adj: HashMap<String, Vec<String>> = HashMap::new();
+    for e in edges {
+        adj.entry(e.file_a.clone()).or_default().push(e.file_b.clone());
+        adj.entry(e.file_b.clone()).or_default().push(e.file_a.clone());
+    }
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut clusters: Vec<Vec<String>> = Vec::new();
+    // Deterministic iteration order.
+    let mut keys: Vec<&String> = adj.keys().collect();
+    keys.sort();
+    for start in keys {
+        if visited.contains(start) {
+            continue;
+        }
+        let mut component = Vec::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(start.clone());
+        visited.insert(start.clone());
+        while let Some(cur) = queue.pop_front() {
+            component.push(cur.clone());
+            if let Some(neis) = adj.get(&cur) {
+                for n in neis {
+                    if visited.insert(n.clone()) {
+                        queue.push_back(n.clone());
+                    }
+                }
+            }
+        }
+        if component.len() >= min_size {
+            component.sort();
+            clusters.push(component);
+        }
+    }
+    clusters.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a[0].cmp(&b[0])));
+    clusters
+}
+
+/// Derive a concept name + parent from the common directory prefix of files.
+/// e.g. files under `src/search/hybrid/*` → (name="hybrid", parent=Some("search")).
+fn concept_name_from_paths(files: &[String]) -> (String, Option<String>) {
+    let dir_components: Vec<Vec<&str>> = files
+        .iter()
+        .map(|f| {
+            let mut parts: Vec<&str> = f.split('/').collect();
+            parts.pop(); // drop filename
+            parts.into_iter().filter(|p| !p.is_empty()).collect()
+        })
+        .collect();
+    if dir_components.is_empty() {
+        return ("cluster".to_string(), None);
+    }
+    let mut common: Vec<&str> = dir_components[0].clone();
+    for dc in &dir_components[1..] {
+        let n = common.iter().zip(dc.iter()).take_while(|(a, b)| a == b).count();
+        common.truncate(n);
+    }
+    match common.len() {
+        0 => ("cluster".to_string(), None),
+        1 => (common[0].to_string(), None),
+        n => (common[n - 1].to_string(), Some(common[n - 2].to_string())),
+    }
+}
+
+fn infer_concepts(clusters: &[Vec<String>]) -> Vec<InferredConcept> {
+    let mut concepts = Vec::new();
+    for (i, cluster) in clusters.iter().enumerate() {
+        let (mut name, parent) = concept_name_from_paths(cluster);
+        if name == "cluster" {
+            name = format!("cluster-{}", i + 1);
+        }
+        concepts.push(InferredConcept {
+            name,
+            parent,
+            members: cluster.clone(),
+        });
+    }
+    concepts
+}
+
+fn run_infer(
+    repo_root: &std::path::Path,
+    config: &TagsConfig,
+    args: &InferArgs,
+    output: &OutputConfig,
+) -> Result<()> {
+    let store = crate::storage::MetadataStore::open(&crate::config::Config::db_path(repo_root))?;
+    let edges = store.all_coupling(args.threshold, 5000)?;
+    if edges.is_empty() {
+        if !output.quiet {
+            println!(
+                "No coupling data above threshold {} — index a repo with git history first.",
+                args.threshold
+            );
+        }
+        return Ok(());
+    }
+    let clusters = cluster_coupling(&edges, args.min_size);
+    let concepts: Vec<InferredConcept> = infer_concepts(&clusters)
+        .into_iter()
+        // Don't re-propose concepts already named in the ontology.
+        .filter(|c| !config.ontology.tags.contains_key(&c.name))
+        .take(args.limit)
+        .collect();
+
+    if output.json {
+        let items: Vec<_> = concepts
+            .iter()
+            .map(|c| serde_json::json!({"name": c.name, "parent": c.parent, "members": c.members}))
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({"concepts": items}))?);
+    } else if !output.quiet {
+        if concepts.is_empty() {
+            println!(
+                "No new concepts inferred (>= {} co-changing files above coupling {}).",
+                args.min_size, args.threshold
+            );
+            return Ok(());
+        }
+        println!(
+            "Inferred {} candidate ontology concept(s) from coupling communities.",
+            concepts.len()
+        );
+        println!("Review and adopt into .bobbin/tags.toml:\n");
+        for c in &concepts {
+            println!("[ontology.tags.{}]", c.name);
+            if let Some(parent) = &c.parent {
+                println!("parent = \"{}\"", parent);
+            }
+            println!("# {} co-changing files:", c.members.len());
+            for m in &c.members {
+                println!("#   {}", m);
+            }
+            println!();
+        }
+    }
+    Ok(())
 }
 
 fn load_tags_config(repo_root: &std::path::Path) -> TagsConfig {
@@ -428,5 +597,67 @@ fn build_tree_json(ontology: &OntologyConfig, root: Option<&str>) -> serde_json:
         roots.sort();
         let trees: Vec<serde_json::Value> = roots.iter().map(|r| node_json(ontology, r)).collect();
         serde_json::json!(trees)
+    }
+}
+
+#[cfg(test)]
+mod infer_tests {
+    use super::*;
+    use crate::types::FileCoupling;
+
+    fn edge(a: &str, b: &str, score: f32) -> FileCoupling {
+        FileCoupling {
+            file_a: a.to_string(),
+            file_b: b.to_string(),
+            score,
+            co_changes: 5,
+            last_co_change: 0,
+        }
+    }
+
+    #[test]
+    fn test_concept_name_from_paths_common_dir() {
+        let files = vec![
+            "src/search/hybrid/a.rs".to_string(),
+            "src/search/hybrid/b.rs".to_string(),
+        ];
+        let (name, parent) = concept_name_from_paths(&files);
+        assert_eq!(name, "hybrid");
+        assert_eq!(parent.as_deref(), Some("search"));
+    }
+
+    #[test]
+    fn test_concept_name_from_paths_divergent() {
+        let files = vec!["src/a.rs".to_string(), "tests/b.rs".to_string()];
+        let (name, parent) = concept_name_from_paths(&files);
+        assert_eq!(name, "cluster");
+        assert_eq!(parent, None);
+    }
+
+    #[test]
+    fn test_cluster_coupling_components() {
+        // Two disjoint communities.
+        let edges = vec![
+            edge("src/auth/a.rs", "src/auth/b.rs", 0.9),
+            edge("src/auth/b.rs", "src/auth/c.rs", 0.8),
+            edge("src/db/x.rs", "src/db/y.rs", 0.7),
+        ];
+        let clusters = cluster_coupling(&edges, 3);
+        // auth cluster has 3 files (kept); db cluster has 2 (dropped, < min_size).
+        assert_eq!(clusters.len(), 1);
+        assert_eq!(clusters[0].len(), 3);
+    }
+
+    #[test]
+    fn test_infer_concepts_names_cluster() {
+        let clusters = vec![vec![
+            "src/auth/a.rs".to_string(),
+            "src/auth/b.rs".to_string(),
+            "src/auth/c.rs".to_string(),
+        ]];
+        let concepts = infer_concepts(&clusters);
+        assert_eq!(concepts.len(), 1);
+        assert_eq!(concepts[0].name, "auth");
+        assert_eq!(concepts[0].members.len(), 3);
     }
 }
