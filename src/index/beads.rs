@@ -31,6 +31,43 @@ struct BeadRow {
     notes: String,
 }
 
+/// Assemble the embeddable text for a bead from its fields, comments, and labels.
+///
+/// Kept as a pure function so the content layout can be unit-tested without a
+/// live Dolt connection.
+fn build_bead_content(issue: &BeadRow, comments: &[&CommentRow], labels: &[String]) -> String {
+    let mut content = format!("{}\n\n{}", issue.title, issue.description);
+
+    if !issue.notes.is_empty() {
+        content.push_str("\n\nNotes:\n");
+        content.push_str(&issue.notes);
+    }
+
+    // Labels (e.g. `b:<slug>`, `pitch`) — valuable for semantic + filtered search.
+    if !labels.is_empty() {
+        content.push_str("\n\nLabels: ");
+        content.push_str(&labels.join(", "));
+    }
+
+    // Append metadata
+    content.push_str(&format!(
+        "\n\nStatus: {} | Priority: P{} | Assignee: {}",
+        issue.status,
+        issue.priority,
+        issue.assignee.as_deref().unwrap_or("unassigned")
+    ));
+
+    // Append comments
+    if !comments.is_empty() {
+        content.push_str("\n\nComments:");
+        for c in comments {
+            content.push_str(&format!("\n--- {} ---\n{}", c.author, c.text));
+        }
+    }
+
+    content
+}
+
 /// A comment on a bead
 #[derive(Debug)]
 struct CommentRow {
@@ -142,6 +179,29 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
         vec![]
     };
 
+    // Fetch labels (e.g. `b:<slug>`, `pitch`) so they're searchable. The labels
+    // table is part of the same Dolt schema used by live enrichment below.
+    let mut labels_by_issue: HashMap<String, Vec<String>> = HashMap::new();
+    {
+        let issue_ids: Vec<&str> = issues.iter().map(|i| i.id.as_str()).collect();
+        if !issue_ids.is_empty() {
+            let placeholders: Vec<String> = issue_ids
+                .iter()
+                .map(|id| format!("'{}'", id.replace('\'', "''")))
+                .collect();
+            let labels_query = format!(
+                "SELECT issue_id, label FROM labels WHERE issue_id IN ({})",
+                placeholders.join(", ")
+            );
+            // Best-effort: a missing labels table should not fail bead indexing.
+            let label_rows: Vec<(String, String)> =
+                conn.query(&labels_query).await.unwrap_or_default();
+            for (issue_id, label) in label_rows {
+                labels_by_issue.entry(issue_id).or_default().push(label);
+            }
+        }
+    }
+
     // Group comments by issue_id
     let mut comments_by_issue: std::collections::HashMap<String, Vec<&CommentRow>> =
         std::collections::HashMap::new();
@@ -156,28 +216,13 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
     let chunks: Vec<Chunk> = issues
         .into_iter()
         .map(|issue| {
-            let mut content = format!("{}\n\n{}", issue.title, issue.description);
+            let issue_comments: Vec<&CommentRow> = comments_by_issue
+                .get(&issue.id)
+                .cloned()
+                .unwrap_or_default();
+            let labels = labels_by_issue.get(&issue.id).cloned().unwrap_or_default();
 
-            if !issue.notes.is_empty() {
-                content.push_str("\n\nNotes:\n");
-                content.push_str(&issue.notes);
-            }
-
-            // Append metadata
-            content.push_str(&format!(
-                "\n\nStatus: {} | Priority: P{} | Assignee: {}",
-                issue.status,
-                issue.priority,
-                issue.assignee.as_deref().unwrap_or("unassigned")
-            ));
-
-            // Append comments
-            if let Some(issue_comments) = comments_by_issue.get(&issue.id) {
-                content.push_str("\n\nComments:");
-                for c in issue_comments {
-                    content.push_str(&format!("\n--- {} ---\n{}", c.author, c.text));
-                }
-            }
+            let content = build_bead_content(&issue, &issue_comments, &labels);
 
             // Generate deterministic ID
             let id_input = format!("beads:{}:{}", rig, issue.id);
@@ -194,7 +239,7 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
                 end_line: 0,
                 content,
                 language: "beads".to_string(),
-                tags: String::new(),
+                tags: labels.join(","),
             }
         })
         .collect();
@@ -314,6 +359,52 @@ mod tests {
 
         assert_eq!(id1, id2);
         assert_eq!(id1.len(), 64);
+    }
+
+    fn sample_issue() -> BeadRow {
+        BeadRow {
+            id: "aegis-0a9".to_string(),
+            title: "Fix the widget".to_string(),
+            description: "The widget is broken.".to_string(),
+            status: "open".to_string(),
+            priority: 1,
+            assignee: Some("strider".to_string()),
+            notes: "investigated already".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_build_bead_content_includes_labels() {
+        let issue = sample_issue();
+        let labels = vec!["pitch".to_string(), "b:search".to_string()];
+        let content = build_bead_content(&issue, &[], &labels);
+        assert!(content.contains("Fix the widget"));
+        assert!(content.contains("The widget is broken."));
+        assert!(content.contains("Notes:\ninvestigated already"));
+        assert!(content.contains("Labels: pitch, b:search"));
+        assert!(content.contains("Status: open | Priority: P1 | Assignee: strider"));
+    }
+
+    #[test]
+    fn test_build_bead_content_no_labels_no_comments() {
+        let issue = sample_issue();
+        let content = build_bead_content(&issue, &[], &[]);
+        assert!(!content.contains("Labels:"));
+        assert!(!content.contains("Comments:"));
+        assert!(content.contains("Assignee: strider"));
+    }
+
+    #[test]
+    fn test_build_bead_content_includes_comments() {
+        let issue = sample_issue();
+        let c = CommentRow {
+            issue_id: "aegis-0a9".to_string(),
+            author: "ian".to_string(),
+            text: "looks good".to_string(),
+        };
+        let content = build_bead_content(&issue, &[&c], &[]);
+        assert!(content.contains("Comments:"));
+        assert!(content.contains("--- ian ---\nlooks good"));
     }
 
     #[test]
