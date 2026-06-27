@@ -15,6 +15,7 @@ mod impact;
 mod index;
 mod log;
 mod ontology;
+mod predict;
 mod prime;
 mod purge;
 mod init;
@@ -98,6 +99,9 @@ enum Commands {
 
     /// Reconcile features, code changes, and bugs into one change_event view
     Reconcile(reconcile::ReconcileArgs),
+
+    /// Predict co-changed files, bug risk, and bundle from a bead or files
+    Predict(predict::PredictArgs),
 
     /// Keyword/regex search
     Grep(grep::GrepArgs),
@@ -183,6 +187,7 @@ impl Commands {
             Commands::Feedback(_) => "feedback",
             Commands::Bead(_) => "bead",
             Commands::Reconcile(_) => "reconcile",
+            Commands::Predict(_) => "predict",
             Commands::Grep(_) => "grep",
             Commands::Refs(_) => "refs",
             Commands::Related(_) => "related",
@@ -299,6 +304,7 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
         Commands::Feedback(args) => feedback::run(args, output).await,
         Commands::Bead(args) => bead::run(args, output).await,
         Commands::Reconcile(args) => reconcile::run(args, output).await,
+        Commands::Predict(args) => predict::run(args, output).await,
         Commands::Grep(args) => grep::run(args, output).await,
         Commands::Refs(args) => refs::run(args, output).await,
         Commands::Related(args) => related::run(args, output).await,
