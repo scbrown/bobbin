@@ -70,6 +70,8 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/tags", get(tags::tags))
         .route("/bundles", get(tags::bundles_list))
         .route("/bundles/{name}", get(tags::bundles_show))
+        .route("/ontology", get(tags::ontology_list))
+        .route("/ontology/{tag}", get(tags::ontology_show))
         .route("/suggest", get(admin::suggest))
         .route("/repos/{name}/files", get(admin::list_repo_files))
         .route("/commands", get(commands::list_commands))

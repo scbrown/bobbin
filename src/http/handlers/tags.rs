@@ -291,6 +291,98 @@ pub(super) async fn bundles_show(
     }))
 }
 
+// ---------------------------------------------------------------------------
+// Ontology endpoints (GH#14 — domain-aware queries over REST)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub(super) struct OntologyTagItem {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent: Option<String>,
+    relates_to: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    children: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub(super) struct OntologyListResponse {
+    tags: Vec<OntologyTagItem>,
+    roots: Vec<String>,
+    total: usize,
+}
+
+/// GET /ontology — list the tag ontology (hierarchy + relationships).
+pub(super) async fn ontology_list(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<OntologyListResponse>, (StatusCode, Json<ErrorBody>)> {
+    let ont = &state.tags_config.ontology;
+    let mut tags: Vec<OntologyTagItem> = ont
+        .tags
+        .iter()
+        .map(|(name, def)| OntologyTagItem {
+            name: name.clone(),
+            parent: def.parent.clone(),
+            relates_to: def.relates_to.clone(),
+            description: def.description.clone(),
+            children: ont.children(name),
+        })
+        .collect();
+    tags.sort_by(|a, b| a.name.cmp(&b.name));
+    let total = tags.len();
+    Ok(Json(OntologyListResponse {
+        tags,
+        roots: ont.roots(),
+        total,
+    }))
+}
+
+#[derive(Serialize)]
+pub(super) struct OntologyTagDetail {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent: Option<String>,
+    relates_to: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    /// Direct children.
+    children: Vec<String>,
+    /// Parent chain (nearest first).
+    ancestors: Vec<String>,
+    /// All transitive descendants.
+    descendants: Vec<String>,
+    /// Lateral `relates_to` neighbors.
+    related: Vec<String>,
+    /// Full search expansion (self + descendants) — what `tag=<name>` matches.
+    expansion: Vec<String>,
+}
+
+/// GET /ontology/{tag} — show a tag's hierarchy, relationships, and the search
+/// expansion that an ontology-aware query for this tag resolves to.
+pub(super) async fn ontology_show(
+    State(state): State<Arc<AppState>>,
+    Path(tag): Path<String>,
+) -> Result<Json<OntologyTagDetail>, (StatusCode, Json<ErrorBody>)> {
+    let cfg = &state.tags_config;
+    let ont = &cfg.ontology;
+    let def = ont.tags.get(&tag).ok_or_else(|| {
+        bad_request(format!("Ontology tag '{}' not found", tag))
+    })?;
+
+    Ok(Json(OntologyTagDetail {
+        name: tag.clone(),
+        parent: def.parent.clone(),
+        relates_to: def.relates_to.clone(),
+        description: def.description.clone(),
+        children: ont.children(&tag),
+        ancestors: cfg.tag_ancestors(&tag),
+        descendants: ont.descendants(&tag),
+        related: cfg.related_tags(&tag),
+        expansion: cfg.expand_tags_via_ontology(std::slice::from_ref(&tag)),
+    }))
+}
+
 /// Resolve bundle name from URL path segment.
 fn resolve_bundle_name_http(input: &str, bundles: &[BundleConfig]) -> String {
     let name = input.strip_prefix("b:").unwrap_or(input);
