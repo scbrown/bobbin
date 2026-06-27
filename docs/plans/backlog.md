@@ -160,9 +160,11 @@ so plans should include confidence levels.
 
 ## Pending follow-up beads (file once central beads_bobbin schema migration clears)
 
-> `bd create` is currently blocked by the schema migration (0041_split_dependencies_target)
-> on central beads_bobbin (maldoon owns the fix). Tracking here so nothing is lost;
-> convert to beads when the data plane is back. Captured 2026-06-26 by strider.
+> Captured 2026-06-26 by strider while `bd create` was blocked by the schema migration.
+> **Now filed as beads** (maldoon cleared the schema same day via fresh-init v52 + reimport):
+> bo-7kr (FTS verify/deploy, P2), bo-uu5 (PPR wiring, P3 pitch), bo-fdd (telemetry
+> auto-association, P3 pitch), bo-bf5 (telemetry layers 2-5, P3 pitch), bo-q82 (ontology
+> auto-discovery, P3 pitch). Kept here as a human-readable index.
 
 - **FTS 500 bug** (GitHub scbrown/bobbin#21) — FIXED IN CODE on main (157a14a):
   self-healing FTS index (rebuild+retry on error) + watch rebuilds FTS after
