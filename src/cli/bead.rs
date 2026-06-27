@@ -8,7 +8,9 @@ use std::process::Command;
 use super::OutputConfig;
 use crate::config::Config;
 use crate::index::Parser;
-use crate::storage::sqlite::{BeadLineageRecord, MetadataStore, NewBeadLineage, TouchedSymbol};
+use crate::storage::sqlite::{
+    BeadLineageRecord, MetadataStore, NewBeadLineage, NewBugCausality, PriorTouch, TouchedSymbol,
+};
 
 #[derive(Args)]
 pub struct BeadArgs {
@@ -51,6 +53,19 @@ enum BeadCommand {
         /// Commit-ish to link (default: HEAD).
         #[arg(long, default_value = "HEAD")]
         commit: String,
+    },
+
+    /// Reconstruct bug causality: for each bug bead, infer which prior commit
+    /// most likely introduced the bug it fixed (per file) and populate the
+    /// `bug_causality` table. Idempotent — safe to run periodically. (bo-s1kb)
+    ReconstructCausality {
+        /// Restrict to a single bug bead id (default: all bug beads in lineage).
+        #[arg(long)]
+        bug: Option<String>,
+
+        /// Max bug beads to process when scanning all (default: 200).
+        #[arg(long, default_value = "200")]
+        limit: usize,
     },
 
     /// Show recorded lineage for a bead (or recent lineage across all beads)
@@ -196,6 +211,10 @@ pub async fn run(args: BeadArgs, output: OutputConfig) -> Result<()> {
 
         BeadCommand::AutoLink { commit } => {
             run_auto_link(&repo_root, &store, &commit, &output)?;
+        }
+
+        BeadCommand::ReconstructCausality { bug, limit } => {
+            run_reconstruct_causality(&store, bug.as_deref(), limit, &output)?;
         }
 
         BeadCommand::History {
@@ -470,6 +489,197 @@ fn find_bead_id(text: &str) -> Option<String> {
     None
 }
 
+/// A reconstructed culprit for one file of a bug's fix (bo-s1kb).
+#[derive(Debug, Clone, PartialEq)]
+struct CausalityCandidate {
+    file: String,
+    culprit_sha: String,
+    culprit_bead_id: String,
+    confidence: f64,
+}
+
+#[derive(Serialize)]
+struct CausalityOutput {
+    bug_id: String,
+    rows: usize,
+}
+
+/// Reconstruct bug causality and populate `bug_causality` (bo-s1kb).
+///
+/// For each bug bead: gather the files its fix touched, find the most-recent
+/// prior commit touching each such file (the candidate culprit), score
+/// confidence by how much of the fix's changeset that commit overlaps, and
+/// upsert one row per (bug, culprit, file). Idempotent via the table's UNIQUE
+/// constraint, so periodic re-runs refresh rather than duplicate.
+///
+/// Scope (v1): the recency+overlap heuristic over `bead_lineage`. Git-blame
+/// sharpening of the exact introducing commit and `change_events` outcome
+/// labeling are deferred (see bo-s1kb design notes) — neither blocks the
+/// supervised signal this table provides.
+fn run_reconstruct_causality(
+    store: &MetadataStore,
+    bug: Option<&str>,
+    limit: usize,
+    output: &OutputConfig,
+) -> Result<()> {
+    // Resolve the set of bug beads to process.
+    let bug_ids: Vec<String> = match bug {
+        Some(b) => vec![b.to_string()],
+        None => store
+            .distinct_lineage_bead_ids()?
+            .into_iter()
+            .filter(|(id, ty)| is_bug_bead(id, ty.as_deref()))
+            .map(|(id, _)| id)
+            .take(limit)
+            .collect(),
+    };
+
+    let mut results: Vec<CausalityOutput> = Vec::new();
+    for bug_id in &bug_ids {
+        // The bug's own fix changeset: all files it touched, plus the earliest
+        // timestamp (the boundary before which a culprit must have landed).
+        let fix_rows = store.list_bead_lineage(Some(bug_id), None, 1000)?;
+        if fix_rows.is_empty() {
+            continue;
+        }
+        let mut fix_files: Vec<String> = Vec::new();
+        for r in &fix_rows {
+            for f in &r.touched_files {
+                if !fix_files.contains(f) {
+                    fix_files.push(f.clone());
+                }
+            }
+        }
+        let before = fix_rows
+            .iter()
+            .map(|r| r.created_at.as_str())
+            .min()
+            .unwrap_or("")
+            .to_string();
+        if fix_files.is_empty() || before.is_empty() {
+            continue;
+        }
+
+        // Candidate culprits: prior commits touching the same files, excluding
+        // the bug's own lineage rows.
+        let prior: Vec<PriorTouch> = store
+            .prior_lineage_touching_files(&fix_files, &before)?
+            .into_iter()
+            .filter(|t| &t.bead_id != bug_id)
+            .collect();
+
+        let candidates = reconstruct_culprits(&fix_files, &prior);
+        for c in &candidates {
+            store.record_bug_causality(&NewBugCausality {
+                bug_id: bug_id.clone(),
+                culprit_sha: Some(c.culprit_sha.clone()),
+                culprit_bead_id: Some(c.culprit_bead_id.clone()),
+                file: Some(c.file.clone()),
+                confidence: Some(c.confidence),
+            })?;
+        }
+        if !candidates.is_empty() {
+            results.push(CausalityOutput {
+                bug_id: bug_id.clone(),
+                rows: candidates.len(),
+            });
+        }
+    }
+
+    if output.json {
+        println!("{}", serde_json::to_string_pretty(&results)?);
+    } else if !output.quiet {
+        let total: usize = results.iter().map(|r| r.rows).sum();
+        if results.is_empty() {
+            println!("{}", "No bug causality reconstructed.".dimmed());
+        } else {
+            for r in &results {
+                println!(
+                    "{} {} {} culprit row{}",
+                    "✓".green(),
+                    r.bug_id.cyan(),
+                    r.rows,
+                    if r.rows == 1 { "" } else { "s" },
+                );
+            }
+            println!(
+                "{} {} bug(s), {} causality row(s) recorded",
+                "•".dimmed(),
+                results.len(),
+                total
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Is `bead_id` a bug? Trusts the lineage `bead_type` column when present,
+/// else falls back to `bd show` (best-effort; unknown → not a bug).
+fn is_bug_bead(bead_id: &str, lineage_type: Option<&str>) -> bool {
+    if let Some(t) = lineage_type {
+        if !t.is_empty() {
+            return t.eq_ignore_ascii_case("bug");
+        }
+    }
+    bead_json(bead_id)
+        .and_then(|v| {
+            v.get("issue_type")
+                .and_then(|t| t.as_str())
+                .map(|t| t.eq_ignore_ascii_case("bug"))
+        })
+        .unwrap_or(false)
+}
+
+/// Pure causality heuristic (bo-s1kb): given the files a bug's fix touched and
+/// the prior commits that touched those files (most-recent first), pick the
+/// most-recent prior commit per file as that file's culprit and score
+/// confidence by the fraction of the fix's files that commit also touched
+/// (concentrated blame ⇒ higher confidence). Deterministic ordering: confidence
+/// desc, then file asc.
+fn reconstruct_culprits(fix_files: &[String], prior: &[PriorTouch]) -> Vec<CausalityCandidate> {
+    use std::collections::{HashMap, HashSet};
+    let fix_set: HashSet<&str> = fix_files.iter().map(|s| s.as_str()).collect();
+
+    // commit_sha → set of fix-files it touched (overlap breadth).
+    let mut overlap: HashMap<&str, HashSet<&str>> = HashMap::new();
+    // file → most-recent prior touch (prior is already DESC by time).
+    let mut chosen: HashMap<&str, &PriorTouch> = HashMap::new();
+    for t in prior {
+        let sha = match t.commit_sha.as_deref() {
+            Some(s) if !s.is_empty() => s,
+            _ => continue,
+        };
+        if !fix_set.contains(t.file.as_str()) {
+            continue;
+        }
+        overlap.entry(sha).or_default().insert(t.file.as_str());
+        chosen.entry(t.file.as_str()).or_insert(t);
+    }
+
+    let n = fix_files.len().max(1) as f64;
+    let mut out: Vec<CausalityCandidate> = chosen
+        .into_iter()
+        .map(|(file, t)| {
+            let sha = t.commit_sha.clone().unwrap_or_default();
+            let breadth = overlap.get(sha.as_str()).map(|s| s.len()).unwrap_or(1) as f64;
+            CausalityCandidate {
+                file: file.to_string(),
+                culprit_sha: sha,
+                culprit_bead_id: t.bead_id.clone(),
+                confidence: (breadth / n).clamp(0.1, 0.95),
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.file.cmp(&b.file))
+    });
+    out
+}
+
 /// Files changed in a commit plus aggregate line counts, via `git show
 /// --numstat`. Each numstat line is `added<TAB>deleted<TAB>path`; binary files
 /// emit `-` for added/deleted and contribute 0. Paths are repo-relative.
@@ -613,6 +823,73 @@ mod tests {
     fn test_extract_bead_id_none() {
         assert_eq!(extract_bead_id("just a normal commit", None), None);
         assert_eq!(extract_bead_id("just a normal commit", Some("main")), None);
+    }
+
+    fn touch(bead: &str, sha: &str, file: &str, at: &str) -> PriorTouch {
+        PriorTouch {
+            bead_id: bead.to_string(),
+            commit_sha: Some(sha.to_string()),
+            file: file.to_string(),
+            created_at: at.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_reconstruct_culprits_picks_most_recent() {
+        let fix_files = vec!["src/a.rs".to_string()];
+        // Two prior commits touched a.rs; the more recent (DESC-first) wins.
+        let prior = vec![
+            touch("bo-new", "sha_new", "src/a.rs", "2026-06-20T00:00:00Z"),
+            touch("bo-old", "sha_old", "src/a.rs", "2026-06-01T00:00:00Z"),
+        ];
+        let got = reconstruct_culprits(&fix_files, &prior);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].culprit_sha, "sha_new");
+        assert_eq!(got[0].culprit_bead_id, "bo-new");
+        // Single fix file fully overlapped → max confidence.
+        assert!((got[0].confidence - 0.95).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_reconstruct_culprits_confidence_scales_with_overlap() {
+        let fix_files = vec![
+            "src/a.rs".to_string(),
+            "src/b.rs".to_string(),
+            "src/c.rs".to_string(),
+            "src/d.rs".to_string(),
+        ];
+        // sha_wide touched 2 of the 4 fix files; sha_narrow touched only 1.
+        let prior = vec![
+            touch("bo-wide", "sha_wide", "src/a.rs", "2026-06-10T00:00:00Z"),
+            touch("bo-wide", "sha_wide", "src/b.rs", "2026-06-10T00:00:00Z"),
+            touch("bo-narrow", "sha_narrow", "src/c.rs", "2026-06-09T00:00:00Z"),
+        ];
+        let got = reconstruct_culprits(&fix_files, &prior);
+        // a.rs and b.rs → sha_wide (2/4 = 0.5); c.rs → sha_narrow (1/4 = 0.25).
+        let a = got.iter().find(|c| c.file == "src/a.rs").unwrap();
+        let c = got.iter().find(|c| c.file == "src/c.rs").unwrap();
+        assert_eq!(a.culprit_sha, "sha_wide");
+        assert!((a.confidence - 0.5).abs() < 1e-9);
+        assert!((c.confidence - 0.25).abs() < 1e-9);
+        // Sorted by confidence desc → wider-blame culprit first.
+        assert!(got[0].confidence >= got[got.len() - 1].confidence);
+    }
+
+    #[test]
+    fn test_reconstruct_culprits_ignores_unrelated_files_and_empty_sha() {
+        let fix_files = vec!["src/a.rs".to_string()];
+        let prior = vec![
+            // Touches a file the fix didn't → ignored.
+            touch("bo-x", "sha_x", "src/other.rs", "2026-06-10T00:00:00Z"),
+            // Empty sha → skipped.
+            PriorTouch {
+                bead_id: "bo-y".to_string(),
+                commit_sha: None,
+                file: "src/a.rs".to_string(),
+                created_at: "2026-06-11T00:00:00Z".to_string(),
+            },
+        ];
+        assert!(reconstruct_culprits(&fix_files, &prior).is_empty());
     }
 }
 
