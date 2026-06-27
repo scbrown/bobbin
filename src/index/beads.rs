@@ -29,6 +29,23 @@ struct BeadRow {
     priority: i32,
     assignee: Option<String>,
     notes: String,
+    /// Raw `metadata` JSON column (may be empty/`{}`).
+    metadata: String,
+}
+
+/// Stable content hash for a bead chunk, used for incremental indexing
+/// (skip re-embedding beads whose assembled content is unchanged).
+pub fn content_hash(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// True if a bead `metadata` JSON string carries meaningful content worth
+/// indexing (i.e. not empty, `{}`, or `null`).
+fn metadata_is_meaningful(metadata: &str) -> bool {
+    let t = metadata.trim();
+    !(t.is_empty() || t == "{}" || t == "null")
 }
 
 /// Assemble the embeddable text for a bead from its fields, comments, and labels.
@@ -47,6 +64,12 @@ fn build_bead_content(issue: &BeadRow, comments: &[&CommentRow], labels: &[Strin
     if !labels.is_empty() {
         content.push_str("\n\nLabels: ");
         content.push_str(&labels.join(", "));
+    }
+
+    // Structured metadata JSON (guidance/lineage records, source refs, etc.).
+    if metadata_is_meaningful(&issue.metadata) {
+        content.push_str("\n\nMetadata:\n");
+        content.push_str(issue.metadata.trim());
     }
 
     // Append metadata
@@ -127,16 +150,18 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
         format!(" WHERE {}", conditions.join(" AND "))
     };
 
-    // Fetch issues
+    // Fetch issues. `metadata` is a JSON column — CAST to text so the driver
+    // returns a String; COALESCE guards against NULL.
     let issues_query = format!(
-        "SELECT id, title, description, status, priority, assignee, notes FROM issues{}",
+        "SELECT id, title, description, status, priority, assignee, notes, \
+         CAST(COALESCE(metadata, JSON_OBJECT()) AS CHAR) FROM issues{}",
         where_clause
     );
     let issues: Vec<BeadRow> = conn
         .query_map(
             &issues_query,
-            |(id, title, description, status, priority, assignee, notes): (
-                String, String, String, String, i32, Option<String>, String,
+            |(id, title, description, status, priority, assignee, notes, metadata): (
+                String, String, String, String, i32, Option<String>, String, Option<String>,
             )| {
                 BeadRow {
                     id,
@@ -146,6 +171,7 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
                     priority,
                     assignee,
                     notes,
+                    metadata: metadata.unwrap_or_default(),
                 }
             },
         )
@@ -370,7 +396,40 @@ mod tests {
             priority: 1,
             assignee: Some("strider".to_string()),
             notes: "investigated already".to_string(),
+            metadata: String::new(),
         }
+    }
+
+    #[test]
+    fn test_metadata_is_meaningful() {
+        assert!(!metadata_is_meaningful(""));
+        assert!(!metadata_is_meaningful("  {}  "));
+        assert!(!metadata_is_meaningful("null"));
+        assert!(metadata_is_meaningful(r#"{"source":"T1"}"#));
+    }
+
+    #[test]
+    fn test_build_bead_content_includes_metadata() {
+        let mut issue = sample_issue();
+        issue.metadata = r#"{"source":"guidance-T1","ref":"doc#42"}"#.to_string();
+        let content = build_bead_content(&issue, &[], &[]);
+        assert!(content.contains("Metadata:"));
+        assert!(content.contains("guidance-T1"));
+    }
+
+    #[test]
+    fn test_build_bead_content_skips_empty_metadata() {
+        let issue = sample_issue(); // metadata = ""
+        let content = build_bead_content(&issue, &[], &[]);
+        assert!(!content.contains("Metadata:"));
+    }
+
+    #[test]
+    fn test_content_hash_stable_and_sensitive() {
+        let a = content_hash("hello");
+        assert_eq!(a, content_hash("hello"));
+        assert_ne!(a, content_hash("hello!"));
+        assert_eq!(a.len(), 64);
     }
 
     #[test]

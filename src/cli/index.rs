@@ -889,54 +889,126 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
         match crate::index::beads::fetch_beads(&beads_config).await {
             Ok(bead_chunks) if !bead_chunks.is_empty() => {
-                let embed_texts: Vec<String> =
-                    bead_chunks.iter().map(|c| c.content.clone()).collect();
-                let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
+                let now = chrono::Utc::now().timestamp().to_string();
 
-                match embed.embed_batch(&embed_refs).await {
-                    Ok(embeddings) => {
-                        let contexts = vec![None; bead_chunks.len()];
-                        let now = chrono::Utc::now().timestamp().to_string();
+                // --force: drop all previously-tracked bead hashes so every bead
+                // re-embeds from scratch.
+                if args.force {
+                    let stale: Vec<String> = metadata_store
+                        .get_all_indexed_files()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|p| p.starts_with("beads:"))
+                        .collect();
+                    if !stale.is_empty() {
+                        metadata_store.delete_file_hashes(&stale).ok();
+                    }
+                }
 
-                        // Delete existing bead chunks (re-index all beads each time)
-                        let bead_ids: Vec<String> =
-                            bead_chunks.iter().map(|c| c.id.clone()).collect();
-                        vector_store.delete(&bead_ids).await.ok();
+                // Incremental: only (re)embed beads whose assembled content hash
+                // changed since the last index. Bead chunk file_paths are
+                // `beads:<rig>:<id>` — a namespace distinct from source files, so
+                // they share the file_hashes table without collision.
+                let mut to_index = Vec::new();
+                let mut current_paths: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
+                let mut new_hashes: Vec<(String, String)> = Vec::new();
+                for c in &bead_chunks {
+                    current_paths.insert(c.file_path.clone());
+                    let h = crate::index::beads::content_hash(&c.content);
+                    let unchanged = metadata_store
+                        .get_file_hash(&c.file_path)
+                        .ok()
+                        .flatten()
+                        .as_deref()
+                        == Some(h.as_str());
+                    if !unchanged {
+                        to_index.push(c.clone());
+                    }
+                    new_hashes.push((c.file_path.clone(), h));
+                }
 
-                        // Use distinct repo name for beads issues so they don't collide
-                        // with source code repos that happen to be named "beads"
-                        if let Err(e) = vector_store
-                            .insert(
-                                &bead_chunks,
-                                &embeddings,
-                                &contexts,
-                                "beads-issues",
-                                "beads",
-                                &now,
-                            )
-                            .await
-                        {
+                // Remove beads that no longer appear (closed / aged-out / deleted).
+                let removed: Vec<String> = metadata_store
+                    .get_all_indexed_files()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|p| p.starts_with("beads:") && !current_paths.contains(p))
+                    .collect();
+                if !removed.is_empty() {
+                    vector_store.delete_by_file(&removed).await.ok();
+                    metadata_store.delete_file_hashes(&removed).ok();
+                }
+
+                if to_index.is_empty() {
+                    if output.verbose && !output.quiet && !output.json {
+                        println!(
+                            "  Beads up to date ({} unchanged, {} removed)",
+                            bead_chunks.len(),
+                            removed.len()
+                        );
+                    }
+                } else {
+                    let embed_texts: Vec<String> =
+                        to_index.iter().map(|c| c.content.clone()).collect();
+                    let embed_refs: Vec<&str> =
+                        embed_texts.iter().map(|s| s.as_str()).collect();
+
+                    match embed.embed_batch(&embed_refs).await {
+                        Ok(embeddings) => {
+                            let contexts = vec![None; to_index.len()];
+
+                            // Replace just the changed bead chunks.
+                            let bead_ids: Vec<String> =
+                                to_index.iter().map(|c| c.id.clone()).collect();
+                            vector_store.delete(&bead_ids).await.ok();
+
+                            // Distinct repo name so bead issues don't collide with
+                            // source repos that happen to be named "beads".
+                            if let Err(e) = vector_store
+                                .insert(
+                                    &to_index,
+                                    &embeddings,
+                                    &contexts,
+                                    "beads-issues",
+                                    "beads",
+                                    &now,
+                                )
+                                .await
+                            {
+                                if !output.quiet && !output.json {
+                                    println!(
+                                        "{} Failed to store bead chunks: {}",
+                                        "!".yellow(),
+                                        e
+                                    );
+                                }
+                            } else {
+                                beads_indexed = to_index.len();
+                                // Persist hashes only after a successful insert.
+                                let hash_refs: Vec<(&str, &str)> = new_hashes
+                                    .iter()
+                                    .map(|(p, h)| (p.as_str(), h.as_str()))
+                                    .collect();
+                                metadata_store.set_file_hashes_bulk(&hash_refs).ok();
+                                if output.verbose && !output.quiet && !output.json {
+                                    println!(
+                                        "  Indexed {} beads ({} unchanged, {} removed)",
+                                        beads_indexed,
+                                        bead_chunks.len() - beads_indexed,
+                                        removed.len()
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
                             if !output.quiet && !output.json {
                                 println!(
-                                    "{} Failed to store bead chunks: {}",
+                                    "{} Failed to embed beads: {}",
                                     "!".yellow(),
                                     e
                                 );
                             }
-                        } else {
-                            beads_indexed = bead_chunks.len();
-                            if output.verbose && !output.quiet && !output.json {
-                                println!("  Indexed {} beads", beads_indexed);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        if !output.quiet && !output.json {
-                            println!(
-                                "{} Failed to embed beads: {}",
-                                "!".yellow(),
-                                e
-                            );
                         }
                     }
                 }
