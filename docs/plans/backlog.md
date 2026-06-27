@@ -155,3 +155,30 @@ so plans should include confidence levels.
 | Test Coverage Mapping | High | Medium | Strong (coupling exists) | P2 |
 | Refactoring Planner | High | Large | Good (impact + refs exist) | P2 |
 | Cross-Repo Coupling | Medium | Large | Partial (multi-repo exists) | P3 |
+
+---
+
+## Pending follow-up beads (file once central beads_bobbin schema migration clears)
+
+> `bd create` is currently blocked by the schema migration (0041_split_dependencies_target)
+> on central beads_bobbin (maldoon owns the fix). Tracking here so nothing is lost;
+> convert to beads when the data plane is back. Captured 2026-06-26 by strider.
+
+- **FTS 500 bug** (GitHub scbrown/bobbin#21) — live keyword/`--type` search returns
+  500 `Failed to collect FTS results`. Likely cause of "search is empty" reports.
+  Investigate FTS index health after the Lance compaction/prune change (#16). **High.**
+- **PPR ranking — final wiring + tuning** — add `ppr_weight` to `ContextConfig`, fold
+  `search::ppr::ppr_multiplier` into the score-adjust chain (`context.rs` ~972-1010),
+  then tune weight/seed-count against the eval harness. Primitive + quipu side already
+  landed. Needs a populated coupling graph. **P2.**
+- **#9 telemetry Layer 1.5 — auto-association** — populate `bead_lineage` automatically:
+  post-commit hook / commit-message bead-ID detection during indexing (git `CommitEntry`
+  already carries trailers + files). Makes Layers 2-5 useful. **P2.**
+- **#9 telemetry Layers 2-5** — bundle suggest/drift (freq over `bead_lineage`),
+  association mining, predictive priming, graph enrichment. Need bead-data accumulation.
+  GitHub #9 stays open until done. **P2-P3.**
+- **#14 ontology auto-discovery (D5)** — mine embedding clusters + coupling communities
+  to suggest ontology nodes. Feeds from #9 telemetry. **P3.**
+- **Incremental bead `updated_at` caveat** — the central `issues.updated_at` mass-bump
+  (from the stuck migration) will make every bead look freshly changed once indexing
+  resumes; verify recency signals after maldoon resolves the working set.
