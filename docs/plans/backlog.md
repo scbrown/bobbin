@@ -164,9 +164,11 @@ so plans should include confidence levels.
 > on central beads_bobbin (maldoon owns the fix). Tracking here so nothing is lost;
 > convert to beads when the data plane is back. Captured 2026-06-26 by strider.
 
-- **FTS 500 bug** (GitHub scbrown/bobbin#21) — live keyword/`--type` search returns
-  500 `Failed to collect FTS results`. Likely cause of "search is empty" reports.
-  Investigate FTS index health after the Lance compaction/prune change (#16). **High.**
+- **FTS 500 bug** (GitHub scbrown/bobbin#21) — FIXED IN CODE on main (157a14a):
+  self-healing FTS index (rebuild+retry on error) + watch rebuilds FTS after
+  compaction. Root cause: missing/stale FTS index (swallowed create error +
+  compaction invalidation) → every FTS query 500'd. **Awaiting search.svc redeploy**
+  (routed to dearing→malcolm/infra) to take effect + live verification; #21 left open.
 - **PPR ranking — final wiring + tuning** — add `ppr_weight` to `ContextConfig`, fold
   `search::ppr::ppr_multiplier` into the score-adjust chain (`context.rs` ~972-1010),
   then tune weight/seed-count against the eval harness. Primitive + quipu side already
