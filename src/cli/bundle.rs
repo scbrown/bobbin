@@ -536,6 +536,30 @@ fn normalize_ref_path(r: &str, repo_root: &std::path::Path) -> String {
     r.to_string()
 }
 
+/// Normalize an absolute file path to repo-relative when it lives under
+/// `repo_root`. Plain file members (not refs) use this; `bundle create` and
+/// `bundle add` share it so both store portable repo-relative paths (GH#6 —
+/// originally fixed only on add/remove, leaving `create` storing absolute paths).
+fn normalize_path(p: &str, repo_root: &std::path::Path) -> String {
+    let path = std::path::Path::new(p);
+    if path.is_absolute() {
+        if let Ok(rel) = path.strip_prefix(repo_root) {
+            let normalized = rel.to_string_lossy().to_string();
+            eprintln!(
+                "note: normalized absolute path to repo-relative: {} → {}",
+                p, normalized
+            );
+            return normalized;
+        }
+        eprintln!(
+            "warning: absolute path '{}' is outside repo root ({}), storing as-is",
+            p,
+            repo_root.display()
+        );
+    }
+    p.to_string()
+}
+
 fn resolve_bundle_name(input: &str, bundles: &[BundleConfig]) -> String {
     // Strip b: prefix
     let name = input.strip_prefix("b:").unwrap_or(input);
@@ -1060,9 +1084,23 @@ async fn run_create(path: PathBuf, args: CreateArgs, output: OutputConfig) -> Re
         description: description.clone(),
         keywords: args.keywords,
         tags: args.tags,
-        files: args.files,
-        refs: args.refs,
-        docs: args.docs,
+        // Normalize absolute paths to repo-relative so created bundles stay
+        // portable, matching `bundle add` (GH#6 regression — bo-w990).
+        files: args
+            .files
+            .iter()
+            .map(|f| normalize_path(f, &repo_root))
+            .collect(),
+        refs: args
+            .refs
+            .iter()
+            .map(|r| normalize_ref_path(r, &repo_root))
+            .collect(),
+        docs: args
+            .docs
+            .iter()
+            .map(|d| normalize_path(d, &repo_root))
+            .collect(),
         beads: args.beads,
         includes: args.includes,
         implements: Vec::new(),
@@ -1124,30 +1162,8 @@ async fn run_add(path: PathBuf, args: AddArgs, _output: OutputConfig) -> Result<
 
     let mut added = Vec::new();
 
-    // Helper: normalize absolute paths to repo-relative.
-    // If the path is absolute and starts with repo_root, strip the prefix.
-    let normalize_path = |p: &str| -> String {
-        let path = std::path::Path::new(p);
-        if path.is_absolute() {
-            if let Ok(rel) = path.strip_prefix(&repo_root) {
-                let normalized = rel.to_string_lossy().to_string();
-                eprintln!(
-                    "note: normalized absolute path to repo-relative: {} → {}",
-                    p, normalized
-                );
-                return normalized;
-            }
-            eprintln!(
-                "warning: absolute path '{}' is outside repo root ({}), storing as-is",
-                p,
-                repo_root.display()
-            );
-        }
-        p.to_string()
-    };
-
     for f in &args.files {
-        let normalized = normalize_path(f);
+        let normalized = normalize_path(f, &repo_root);
         if !bundle.files.contains(&normalized) {
             bundle.files.push(normalized.clone());
             added.push(format!("file:{}", normalized));
@@ -1166,7 +1182,7 @@ async fn run_add(path: PathBuf, args: AddArgs, _output: OutputConfig) -> Result<
         }
     }
     for d in &args.docs {
-        let normalized = normalize_path(d);
+        let normalized = normalize_path(d, &repo_root);
         if !bundle.docs.contains(&normalized) {
             bundle.docs.push(normalized.clone());
             added.push(format!("doc:{}", normalized));
@@ -2096,5 +2112,57 @@ mod tests {
         assert!(freq.additions.is_empty());
         // With no lineage, nothing is flagged dead (avoids false "dead" noise).
         assert!(freq.dead.is_empty());
+    }
+
+    #[test]
+    fn test_normalize_path_strips_repo_root() {
+        let root = std::path::Path::new("/repo/root");
+        assert_eq!(normalize_path("/repo/root/src/a.rs", root), "src/a.rs");
+        // Already-relative paths are untouched.
+        assert_eq!(normalize_path("src/a.rs", root), "src/a.rs");
+        // Outside the repo → stored as-is (can't be made portable).
+        assert_eq!(normalize_path("/elsewhere/b.rs", root), "/elsewhere/b.rs");
+    }
+
+    // GH#6 regression: `bundle create` must store repo-relative paths, not the
+    // absolute paths passed on the CLI (bo-w990 — was only fixed on add/remove).
+    #[tokio::test]
+    async fn test_bundle_create_normalizes_absolute_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let abs_file = root.join("src/foo.rs").to_string_lossy().to_string();
+        let abs_ref = format!("{}::my_symbol", root.join("src/bar.rs").to_string_lossy());
+        let abs_doc = root.join("docs/guide.md").to_string_lossy().to_string();
+
+        let args = CreateArgs {
+            name: "test-bundle".to_string(),
+            description: None,
+            keywords: vec![],
+            files: vec![abs_file],
+            refs: vec![abs_ref],
+            docs: vec![abs_doc],
+            tags: vec![],
+            includes: vec![],
+            beads: vec![],
+            repos: vec![],
+            slug: None,
+            global: false,
+        };
+        let output = OutputConfig {
+            json: false,
+            quiet: true,
+            verbose: false,
+            server: None,
+            role: String::new(),
+        };
+
+        run_create(root.clone(), args, output).await.unwrap();
+
+        let tags_path = resolve_tags_path(&root, false);
+        let config = TagsConfig::load(&tags_path).unwrap();
+        let bundle = config.find_bundle("test-bundle").unwrap();
+        assert_eq!(bundle.files, vec!["src/foo.rs".to_string()]);
+        assert_eq!(bundle.refs, vec!["src/bar.rs::my_symbol".to_string()]);
+        assert_eq!(bundle.docs, vec!["docs/guide.md".to_string()]);
     }
 }
