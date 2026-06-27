@@ -1120,16 +1120,23 @@ impl VectorStore {
             return Ok(());
         }
 
-        let escaped_ids: Vec<String> = chunk_ids
-            .iter()
-            .map(|id| format!("'{}'", id.replace('\'', "''")))
-            .collect();
-        let filter = format!("id IN ({})", escaped_ids.join(", "));
-
-        table
-            .delete(&filter)
-            .await
-            .context("Failed to delete chunks")?;
+        // Batch the IN clause: a single `id IN (...)` with hundreds/thousands of
+        // literals overflows LanceDB/datafusion's expression handling and fails
+        // ("Failed to delete chunks"). This bit large bead batches (e.g. 632
+        // beads) — insert()'s upsert delete failed, so those beads never stored.
+        // Chunking keeps each filter small and reliable.
+        const DELETE_BATCH: usize = 100;
+        for batch in chunk_ids.chunks(DELETE_BATCH) {
+            let escaped_ids: Vec<String> = batch
+                .iter()
+                .map(|id| format!("'{}'", id.replace('\'', "''")))
+                .collect();
+            let filter = format!("id IN ({})", escaped_ids.join(", "));
+            table
+                .delete(&filter)
+                .await
+                .context("Failed to delete chunks")?;
+        }
 
         Ok(())
     }
@@ -1160,16 +1167,19 @@ impl VectorStore {
             return Ok(());
         }
 
-        let escaped_paths: Vec<String> = file_paths
-            .iter()
-            .map(|p| format!("'{}'", p.replace('\'', "''")))
-            .collect();
-        let filter = format!("file_path IN ({})", escaped_paths.join(", "));
-
-        table
-            .delete(&filter)
-            .await
-            .context("Failed to delete chunks by file")?;
+        // Batch the IN clause (see delete() — large IN overflows the query engine).
+        const DELETE_BATCH: usize = 100;
+        for batch in file_paths.chunks(DELETE_BATCH) {
+            let escaped_paths: Vec<String> = batch
+                .iter()
+                .map(|p| format!("'{}'", p.replace('\'', "''")))
+                .collect();
+            let filter = format!("file_path IN ({})", escaped_paths.join(", "));
+            table
+                .delete(&filter)
+                .await
+                .context("Failed to delete chunks by file")?;
+        }
 
         Ok(())
     }
@@ -3184,6 +3194,45 @@ mod tests {
         // Get file paths filtered by repo
         let paths_a = store.get_all_file_paths(Some("repo_a")).await.unwrap();
         assert_eq!(paths_a.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_delete_large_batch_no_in_clause_overflow() {
+        // Regression: a single `id IN (...)` with hundreds of ids overflowed the
+        // query engine ("Failed to delete chunks"), so large bead batches (632)
+        // failed to store via insert()'s upsert-delete. delete() now batches.
+        let dir = tempdir().unwrap();
+        let mut store = VectorStore::open(&dir.path().join("vectors")).await.unwrap();
+
+        let n = 250usize; // > DELETE_BATCH (100) -> exercises multi-batch delete
+        let chunks: Vec<Chunk> = (0..n)
+            .map(|i| Chunk {
+                id: format!("c{i}"),
+                file_path: format!("beads:rig:bo-{i}"),
+                chunk_type: ChunkType::Issue,
+                name: Some(format!("bead {i}")),
+                start_line: 0,
+                end_line: 0,
+                content: format!("bead content {i}"),
+                language: "beads".to_string(),
+                tags: String::new(),
+            })
+            .collect();
+        let embs: Vec<Vec<f32>> = (0..n).map(|_| sample_embedding()).collect();
+        store
+            .insert(&chunks, &embs, &no_contexts(n), "beads-issues", "beads", "100")
+            .await
+            .expect("insert 250 beads should succeed (upsert-delete batched)");
+
+        // Delete all 250 by id — must not overflow the IN clause.
+        let ids: Vec<String> = (0..n).map(|i| format!("c{i}")).collect();
+        store.delete(&ids).await.expect("batched delete of 250 ids");
+
+        // Re-insert should also succeed (upsert path deletes 250 first).
+        store
+            .insert(&chunks, &embs, &no_contexts(n), "beads-issues", "beads", "101")
+            .await
+            .expect("re-insert 250 beads should succeed");
     }
 
     #[tokio::test]
