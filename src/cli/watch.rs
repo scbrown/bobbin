@@ -304,6 +304,15 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
                                 eprintln!("  {} Prune error: {}", "!".yellow(), e);
                             }
                         }
+                        // Compaction/prune can invalidate the FTS index, which
+                        // otherwise surfaces as a 500 on the next keyword/hybrid
+                        // search (GH#21). Rebuild it proactively so it stays valid
+                        // and covers rows added since the last build.
+                        if let Err(e) = vector_store.rebuild_fts_index().await {
+                            if !output.quiet {
+                                eprintln!("  {} FTS reindex error: {}", "!".yellow(), e);
+                            }
+                        }
                         if !output.quiet {
                             println!(
                                 "  {} Compacted lance dataset ({} files since last)",

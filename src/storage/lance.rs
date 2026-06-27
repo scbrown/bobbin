@@ -668,27 +668,67 @@ impl VectorStore {
             None => return Ok(vec![]),
         };
 
+        let combined = Self::combine_filters(repo, filter);
+
+        // First attempt. `full_text_search` requires a valid FTS index — if the
+        // index is missing or was invalidated (e.g. by compaction/prune, see
+        // #16), the query fails. Rather than surface a 500, self-heal: rebuild
+        // the FTS index over current rows and retry once. This also fixes the
+        // case where ensure_fts_index() marked the index ready after a failed
+        // create, and refreshes coverage of rows added since the last build.
+        match Self::run_fts_query(table, query, limit, combined.as_deref()).await {
+            Ok(batches) => Self::batches_to_fts_results(&batches),
+            Err(first_err) => {
+                if self.rebuild_fts_index().await.is_err() {
+                    return Err(first_err).context("Failed to collect FTS results");
+                }
+                let batches = Self::run_fts_query(table, query, limit, combined.as_deref())
+                    .await
+                    .context("Failed to collect FTS results after index rebuild")?;
+                Self::batches_to_fts_results(&batches)
+            }
+        }
+    }
+
+    /// Execute a single FTS query and collect its result batches.
+    async fn run_fts_query(
+        table: &lancedb::Table,
+        query: &str,
+        limit: usize,
+        filter: Option<&str>,
+    ) -> Result<Vec<RecordBatch>> {
         let mut q = table
             .query()
             .full_text_search(FullTextSearchQuery::new(query.to_string()));
-
-        let combined = Self::combine_filters(repo, filter);
-        if let Some(ref f) = combined {
-            q = q.only_if(f.clone());
+        if let Some(f) = filter {
+            q = q.only_if(f.to_string());
         }
-
         let results = q
             .limit(limit)
             .execute()
             .await
             .context("Failed to execute FTS search")?;
-
-        let batches: Vec<RecordBatch> = results
+        results
             .try_collect()
             .await
-            .context("Failed to collect FTS results")?;
+            .context("Failed to collect FTS results")
+    }
 
-        Self::batches_to_fts_results(&batches)
+    /// Force-(re)build the FTS index over the `content` column, replacing any
+    /// existing index. Used to self-heal a missing/stale index.
+    pub async fn rebuild_fts_index(&self) -> Result<()> {
+        let table = match &self.table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+        table
+            .create_index(&["content"], Index::FTS(FtsIndexBuilder::default()))
+            .replace(true)
+            .execute()
+            .await
+            .context("Failed to (re)build FTS index")?;
+        self.fts_indexed.store(true, Ordering::Relaxed);
+        Ok(())
     }
 
     /// Combine repo and extra filter into a single SQL WHERE clause.
@@ -3144,6 +3184,46 @@ mod tests {
         // Get file paths filtered by repo
         let paths_a = store.get_all_file_paths(Some("repo_a")).await.unwrap();
         assert_eq!(paths_a.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_fts_search_survives_compaction() {
+        // Regression for GH#21: keyword/FTS search 500'd ("Failed to collect FTS
+        // results") when the FTS index was missing or invalidated by compaction.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let chunk = Chunk {
+            id: "c1".to_string(),
+            file_path: "src/auth.rs".to_string(),
+            chunk_type: ChunkType::Function,
+            name: Some("authenticate".to_string()),
+            start_line: 1,
+            end_line: 10,
+            content: "fn authenticate(user: &str) -> bool { validate_token(user) }".to_string(),
+            language: "rust".to_string(),
+            tags: String::new(),
+        };
+        store
+            .insert(&[chunk], &[sample_embedding()], &no_contexts(1), "repo", "h", "100")
+            .await
+            .unwrap();
+
+        // FTS works initially.
+        let r1 = store.search_fts("authenticate", 10, None).await.unwrap();
+        assert_eq!(r1.len(), 1, "FTS should find the chunk before compaction");
+
+        // Compaction can invalidate the FTS index; search must still succeed
+        // (self-heal rebuild) rather than 500.
+        store.compact().await.unwrap();
+        let r2 = store.search_fts("authenticate", 10, None).await.unwrap();
+        assert_eq!(r2.len(), 1, "FTS should still work after compaction");
+
+        // Explicit rebuild is idempotent and keeps search working.
+        store.rebuild_fts_index().await.unwrap();
+        let r3 = store.search_fts("validate_token", 10, None).await.unwrap();
+        assert_eq!(r3.len(), 1, "FTS should work after explicit rebuild");
     }
 
     #[tokio::test]
