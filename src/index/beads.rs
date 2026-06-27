@@ -151,8 +151,12 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
         conditions.push("status != 'deleted'".to_string());
     }
     if config.max_age_days > 0 {
+        // Age bounds CLOSED beads only — an OPEN bead is active work and must be
+        // indexed regardless of age. Previously this applied to all beads, so
+        // rigs whose open beads are all older than max_age_days (e.g.
+        // beads_goldblum: 632 open, none <90d) indexed ZERO beads.
         conditions.push(format!(
-            "created_at >= DATE_SUB(NOW(), INTERVAL {} DAY)",
+            "(status NOT IN ('closed', 'deleted') OR created_at >= DATE_SUB(NOW(), INTERVAL {} DAY))",
             config.max_age_days
         ));
     }
