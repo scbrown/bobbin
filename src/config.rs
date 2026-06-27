@@ -274,7 +274,9 @@ pub struct SearchConfig {
     pub rrf_k: f32,
     /// Demotion factor for Documentation/Config files in search ranking.
     /// Applied as a multiplier to RRF scores: 1.0 = no demotion, 0.0 = full demotion.
-    /// Source/Test files are unaffected. Default: 0.5 (halve doc/config scores).
+    /// Source/Test files are unaffected. Default: 0.3 (demote doc/config to 30%).
+    /// This is the single source of truth — `ContextConfig::doc_demotion` defaults
+    /// to the same value and every assembly path overrides it from here.
     pub doc_demotion: f32,
     /// Personalized PageRank ranking weight (0.0 = disabled). Requires the
     /// `knowledge` feature + a populated Quipu coupling graph. Bounded boost:
@@ -1113,6 +1115,24 @@ coupling_depth = 500
         assert!((config.search.doc_demotion - 0.3).abs() < f32::EPSILON);
     }
 
+    // bo-b0nn: doc_demotion has one source of truth. SearchConfig is canonical;
+    // ContextConfig::default() must match it so the two never drift (a stale 0.5
+    // comment + a 0.5 ContextConfig default previously disagreed with the 0.3
+    // effective default).
+    #[test]
+    fn test_doc_demotion_single_source_of_truth() {
+        let search_default = SearchConfig::default().doc_demotion;
+        let context_default = crate::search::context::ContextConfig::default().doc_demotion;
+        assert!(
+            (search_default - 0.3).abs() < f32::EPSILON,
+            "SearchConfig::doc_demotion default should be 0.3, got {search_default}"
+        );
+        assert!(
+            (search_default - context_default).abs() < f32::EPSILON,
+            "ContextConfig default ({context_default}) must match SearchConfig ({search_default})"
+        );
+    }
+
     #[test]
     fn test_search_config_custom() {
         let toml_str = r#"
@@ -1151,6 +1171,20 @@ semantic_weight = 0.8
         assert_eq!(config.hooks.min_prompt_length, 20);
         assert!((config.hooks.gate_threshold - 0.45).abs() < f32::EPSILON);
         assert!(config.hooks.dedup_enabled);
+        assert!((config.hooks.repo_affinity_boost - 2.0).abs() < f32::EPSILON);
+    }
+
+    // bo-ruuc: repo_affinity_boost must be configurable and parsed from [hooks];
+    // `bobbin context` now sources it from config.hooks.repo_affinity_boost rather
+    // than a hardcoded 2.0.
+    #[test]
+    fn test_hooks_repo_affinity_boost_custom() {
+        let toml_str = r#"
+[hooks]
+repo_affinity_boost = 3.5
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!((config.hooks.repo_affinity_boost - 3.5).abs() < f32::EPSILON);
     }
 
     #[test]

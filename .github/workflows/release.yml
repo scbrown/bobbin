@@ -91,10 +91,15 @@ jobs:
         run: |
           ORT_TAG="v${{ matrix.ort_version }}"
           ORT_TARBALL="${{ matrix.ort_asset }}-${{ matrix.ort_version }}.tgz"
-          curl -sL "https://github.com/microsoft/onnxruntime/releases/download/${ORT_TAG}/${ORT_TARBALL}" \
+          # --fail so a missing/renamed asset errors here, not 2 steps later.
+          curl -sSL --fail "https://github.com/microsoft/onnxruntime/releases/download/${ORT_TAG}/${ORT_TARBALL}" \
             -o /tmp/ort.tgz
           mkdir -p /tmp/ort-extracted
-          tar xzf /tmp/ort.tgz -C /tmp/ort-extracted --strip-components=1
+          # NOTE: do NOT use --strip-components here. The osx-x86_64 tarball entries
+          # carry a leading "./" component (others don't), so strip-components=1 would
+          # remove "." and leave the lib one level too deep. Extract verbatim and let
+          # the Package step locate lib/ wherever it lands. See bo-ewk.
+          tar xzf /tmp/ort.tgz -C /tmp/ort-extracted
 
       - name: Package
         shell: bash
@@ -103,11 +108,26 @@ jobs:
           mkdir -p "$STAGING/lib"
           cp target/${{ matrix.target }}/release/bobbin "$STAGING/"
 
-          # Bundle ONNX Runtime shared library from extracted tarball
-          find /tmp/ort-extracted/lib -maxdepth 1 -name "libonnxruntime*" \
-            -not -name "*providers*" -not -type d | while read f; do
+          # Bundle ONNX Runtime shared library from extracted tarball.
+          # Locate the lib/ dir regardless of how deep the tarball nests it
+          # (osx-x86_64 nests one level deeper — see bo-ewk).
+          ORT_LIB_DIR=$(find /tmp/ort-extracted -type d -name lib | head -1)
+          if [ -z "$ORT_LIB_DIR" ]; then
+            echo "ERROR: no lib/ dir found under /tmp/ort-extracted" >&2
+            find /tmp/ort-extracted -maxdepth 2 >&2
+            exit 1
+          fi
+          copied=0
+          for f in $(find "$ORT_LIB_DIR" -maxdepth 1 -name "libonnxruntime*" \
+            -not -name "*providers*" -not -name "*.pc" -not -type d); do
             cp "$f" "$STAGING/lib/"
+            copied=$((copied + 1))
           done
+          if [ "$copied" -eq 0 ]; then
+            echo "ERROR: no libonnxruntime* libraries copied from $ORT_LIB_DIR" >&2
+            ls -la "$ORT_LIB_DIR" >&2
+            exit 1
+          fi
 
           tar czvf "${STAGING}.tar.gz" "$STAGING"
 

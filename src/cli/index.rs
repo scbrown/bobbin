@@ -301,7 +301,16 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     let total_files = files_needing_index.len();
 
-    if total_files == 0 {
+    // Beads/commits indexing can run even with 0 changed source files (a dedicated
+    // `--include-beads` pass, or a no-change incremental). Compute those flags up
+    // front so the up-to-date fast path only fires when there is genuinely nothing
+    // else to do; otherwise fall through (the file-embedding loops below are no-ops
+    // at 0 files) so beads/commits still index. See bo-f61.
+    let commits_enabled = config.git.commits_enabled;
+    let include_beads =
+        (args.include_beads || config.beads.enabled) && !config.beads.databases.is_empty();
+
+    if total_files == 0 && !commits_enabled && !include_beads {
         if output.json {
             let json_output = IndexOutput {
                 status: "up_to_date".to_string(),
@@ -739,7 +748,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     // Index git commits as searchable chunks
     let t_commits = Instant::now();
     let mut commits_indexed: usize = 0;
-    if config.git.commits_enabled {
+    if commits_enabled {
         if output.verbose && !output.quiet && !output.json {
             println!("  Indexing git commits...");
         }
@@ -913,8 +922,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     // Index beads from Dolt if enabled
     let mut beads_indexed: usize = 0;
-    let include_beads = args.include_beads || config.beads.enabled;
-    if include_beads && !config.beads.databases.is_empty() {
+    if include_beads {
         if !output.quiet && !output.json {
             println!("  Indexing beads from Dolt...");
         }

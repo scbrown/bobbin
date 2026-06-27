@@ -120,7 +120,10 @@ impl BobbinMcpServer {
             "commit" => Ok(ChunkType::Commit),
             "issue" | "bead" => Ok(ChunkType::Issue),
             "other" => Ok(ChunkType::Other),
-            _ => anyhow::bail!("Unknown chunk type '{}'", s),
+            _ => anyhow::bail!(
+                "Unknown chunk type '{}'. Valid types: function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block, commit, issue, other",
+                s
+            ),
         }
     }
 
