@@ -118,7 +118,17 @@ Install a post-commit git hook that runs `bobbin index` after each commit.
 bobbin hook install-git-hook
 ```
 
-Creates or appends to `.git/hooks/post-commit`. The hook re-indexes only files changed in the commit.
+Creates or appends to `.git/hooks/post-commit`. The hook re-indexes only files
+changed in the commit, and runs `bobbin bead auto-link --commit HEAD` to record
+the commit's bead lineage automatically — capturing workflow telemetry without a
+manual `bobbin bead link`. The bead id is read from the commit message (a
+`Bead: <id>` trailer or a `(bo-xxxx)` token in the subject) or, failing that, the
+branch name; commits with no bead id are skipped. The link is idempotent, so an
+amend or rebase will not create duplicate lineage rows.
+
+> **Re-install after upgrading.** Hooks installed before the bead auto-link
+> integration only re-index. Re-run `bobbin hook install-git-hook` to refresh
+> the managed section; `bobbin hook status` flags a stale hook.
 
 ### uninstall-git-hook
 
