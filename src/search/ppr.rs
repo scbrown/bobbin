@@ -119,4 +119,51 @@ mod tests {
         let w = 0.4;
         assert!(ppr_multiplier(0.2, w) < ppr_multiplier(0.8, w));
     }
+
+    // End-to-end: build a tiny co_changed_with graph in Quipu and verify
+    // Personalized PageRank (seeded at the top hit) ranks a coupled file above
+    // an unrelated one — and that the fusion is neutral at weight 0.
+    #[cfg(feature = "knowledge")]
+    #[test]
+    fn test_compute_code_ppr_favors_coupled_over_unrelated() {
+        use crate::knowledge::coupling::code_module_iri;
+
+        let mut store = quipu::Store::open_in_memory().unwrap();
+        let repo = "myrepo";
+        let seed = code_module_iri(repo, "src/seed.rs");
+        let coupled = code_module_iri(repo, "src/coupled.rs");
+        let turtle = format!(
+            "@prefix bobbin: <https://bobbin.dev/> .\n\
+             <{seed}> bobbin:co_changed_with <{coupled}> .\n\
+             <{coupled}> bobbin:co_changed_with <{seed}> .\n"
+        );
+        quipu::tool_knot(
+            &mut store,
+            &serde_json::json!({
+                "turtle": turtle,
+                "timestamp": "2026-01-01T00:00:00Z",
+                "actor": "test",
+                "source": "test",
+            }),
+        )
+        .unwrap();
+
+        let candidates = vec![
+            ("src/seed.rs".to_string(), 1.0_f32),
+            ("src/coupled.rs".to_string(), 0.1_f32),
+            ("src/unrelated.rs".to_string(), 0.1_f32),
+        ];
+        // seed_k = 1 → personalize on the top hit (seed.rs).
+        let scores = compute_code_ppr(&store, &candidates, repo, 1, 0.85);
+
+        let coupled_s = scores.get("src/coupled.rs").copied().unwrap_or(0.0);
+        let unrelated_s = scores.get("src/unrelated.rs").copied().unwrap_or(0.0);
+        assert!(
+            coupled_s > unrelated_s,
+            "PPR seeded at seed.rs should rank coupled.rs ({coupled_s}) above unrelated.rs ({unrelated_s})"
+        );
+
+        // Neutrality: weight 0 yields an identity multiplier regardless of score.
+        assert_eq!(ppr_multiplier(coupled_s, 0.0), 1.0);
+    }
 }

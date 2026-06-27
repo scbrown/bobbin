@@ -91,6 +91,11 @@ pub struct ContextConfig {
     pub repo_affinity: Option<String>,
     /// Score multiplier for files matching `repo_affinity`. Default: 2.0.
     pub repo_affinity_boost: f32,
+    /// Personalized PageRank ranking weight (0.0 = disabled). When > 0 and a
+    /// Quipu store is wired in (`knowledge` feature), results get a bounded
+    /// graph-connectivity boost seeded by the top hybrid hits:
+    /// `score *= 1.0 + ppr_weight * ppr_score`.
+    pub ppr_weight: f32,
     /// Maximum number of bridged files to fetch chunks for. Default: 3.
     /// Prevents bridge explosion from doc→source blame chains.
     pub max_bridged_files: usize,
@@ -139,6 +144,7 @@ impl Default for ContextConfig {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            ppr_weight: 0.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
@@ -979,6 +985,47 @@ impl ContextAssembler {
         let ft_rules = &self.config.file_type_rules;
         let repo_affinity = self.config.repo_affinity.as_deref();
         let repo_affinity_boost = self.config.repo_affinity_boost;
+
+        // Personalized PageRank ranking signal (GH companion ppr-ranking-signal.md).
+        // Seed PPR with the current candidate files and fold a bounded
+        // connectivity multiplier into the final score. Disabled (empty map) when
+        // ppr_weight == 0, no `knowledge` feature, or no Quipu store wired in.
+        let ppr_weight = self.config.ppr_weight;
+        let ppr_scores: std::collections::HashMap<String, f32> = {
+            #[cfg(feature = "knowledge")]
+            {
+                if ppr_weight > 0.0 {
+                    if let Some(ref store) = self.quipu_store {
+                        let candidates: Vec<(String, f32)> = scores
+                            .values()
+                            .map(|(r, s)| (r.file_path.clone(), *s))
+                            .collect();
+                        let repo = self
+                            .config
+                            .repo_affinity
+                            .clone()
+                            .or_else(|| scores.values().find_map(|(r, _)| r.repo.clone()))
+                            .unwrap_or_default();
+                        crate::search::ppr::compute_code_ppr(
+                            store,
+                            &candidates,
+                            &repo,
+                            crate::search::ppr::DEFAULT_SEED_K,
+                            crate::search::ppr::DEFAULT_DAMPING,
+                        )
+                    } else {
+                        std::collections::HashMap::new()
+                    }
+                } else {
+                    std::collections::HashMap::new()
+                }
+            }
+            #[cfg(not(feature = "knowledge"))]
+            {
+                std::collections::HashMap::new()
+            }
+        };
+
         let mut combined: Vec<_> = scores
             .into_values()
             .map(|(mut result, score)| {
@@ -999,7 +1046,7 @@ impl ContextAssembler {
                 };
                 let after_recency = apply_recency_boost(adjusted_score, result.indexed_at, recency_hl, recency_w);
                 // Repo affinity: soft boost for files from the agent's current repo
-                let final_score = if let Some(affinity) = repo_affinity {
+                let after_affinity = if let Some(affinity) = repo_affinity {
                     if result.repo.as_deref() == Some(affinity) {
                         after_recency * repo_affinity_boost
                     } else {
@@ -1007,6 +1054,14 @@ impl ContextAssembler {
                     }
                 } else {
                     after_recency
+                };
+                // Bounded PPR connectivity boost (no-op when ppr_weight == 0 or
+                // the file has no PPR score).
+                let final_score = if ppr_weight > 0.0 {
+                    let ppr = ppr_scores.get(&result.file_path).copied().unwrap_or(0.0);
+                    after_affinity * crate::search::ppr::ppr_multiplier(ppr, ppr_weight)
+                } else {
+                    after_affinity
                 };
                 (result, final_score)
             })
@@ -1848,6 +1903,7 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            ppr_weight: 0.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
@@ -1888,6 +1944,7 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            ppr_weight: 0.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
@@ -1925,6 +1982,7 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            ppr_weight: 0.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
@@ -1959,6 +2017,7 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            ppr_weight: 0.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
@@ -1997,6 +2056,7 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            ppr_weight: 0.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
@@ -2036,6 +2096,7 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            ppr_weight: 0.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
@@ -2072,6 +2133,7 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            ppr_weight: 0.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
@@ -2206,6 +2268,7 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            ppr_weight: 0.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
@@ -2268,6 +2331,7 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            ppr_weight: 0.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
@@ -2309,6 +2373,7 @@ mod tests {
             file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: 2.0,
+            ppr_weight: 0.0,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,

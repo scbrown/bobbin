@@ -269,6 +269,11 @@ pub struct SearchConfig {
     /// Applied as a multiplier to RRF scores: 1.0 = no demotion, 0.0 = full demotion.
     /// Source/Test files are unaffected. Default: 0.5 (halve doc/config scores).
     pub doc_demotion: f32,
+    /// Personalized PageRank ranking weight (0.0 = disabled). Requires the
+    /// `knowledge` feature + a populated Quipu coupling graph. Bounded boost:
+    /// `score *= 1.0 + ppr_weight * ppr_score`.
+    #[serde(default)]
+    pub ppr_weight: f32,
 }
 
 impl Default for SearchConfig {
@@ -280,6 +285,7 @@ impl Default for SearchConfig {
             recency_weight: 0.3,
             rrf_k: 60.0,
             doc_demotion: 0.3,
+            ppr_weight: 0.0,
         }
     }
 }

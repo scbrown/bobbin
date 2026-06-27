@@ -1516,6 +1516,12 @@ def _parse_float_list(value: str) -> list[float]:
     help="Comma-separated RRF k values to test.",
 )
 @click.option(
+    "--ppr-weights",
+    default="0.0",
+    help="Comma-separated ppr_weight values to test (requires a knowledge-feature "
+    "bobbin build + populated Quipu coupling graph). 0.0 = PPR off.",
+)
+@click.option(
     "--output",
     "-o",
     default=None,
@@ -1535,6 +1541,7 @@ def calibrate(
     semantic_weights: str,
     doc_demotions: str,
     rrf_ks: str,
+    ppr_weights: str,
     output: str | None,
     json_output: str | None,
     index_timeout: int,
@@ -1590,10 +1597,11 @@ def calibrate(
         sys.exit(1)
 
     # Build parameter grid
+    ppr_values = _parse_float_list(ppr_weights)
     sw_values = _parse_float_list(semantic_weights)
     dd_values = _parse_float_list(doc_demotions)
     k_values = _parse_float_list(rrf_ks)
-    configs = build_param_grid(sw_values, dd_values, k_values)
+    configs = build_param_grid(sw_values, dd_values, k_values, ppr_values)
 
     click.echo(
         f"Calibrating {len(tasks)} tasks × {len(configs)} configs "

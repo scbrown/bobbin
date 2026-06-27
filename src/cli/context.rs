@@ -54,6 +54,11 @@ pub struct ContextArgs {
     #[arg(long)]
     rrf_k: Option<f32>,
 
+    /// Personalized PageRank ranking weight (0.0=off). Requires a build with
+    /// the `knowledge` feature + a populated Quipu coupling graph.
+    #[arg(long)]
+    ppr_weight: Option<f32>,
+
     /// Filter to specific repository
     #[arg(long, short = 'r')]
     repo: Option<String>,
@@ -192,6 +197,7 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
         recency_weight: cal_rw.unwrap_or(config.search.recency_weight),
         rrf_k: args.rrf_k.unwrap_or(cal_rrf.unwrap_or(config.search.rrf_k)),
+        ppr_weight: args.ppr_weight.unwrap_or(config.search.ppr_weight),
         bridge_mode: BridgeMode::default(),
         bridge_boost_factor: 0.3,
         extra_filter,
@@ -206,7 +212,30 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
             ..ContextConfig::default()
     };
 
+    let ppr_enabled = args.ppr_weight.unwrap_or(config.search.ppr_weight) > 0.0;
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+
+    // Wire the Quipu store so the PPR ranking signal can run (knowledge build only).
+    #[cfg(feature = "knowledge")]
+    if ppr_enabled {
+        let quipu_config = quipu::QuipuConfig::load(&repo_root);
+        let qpath = if quipu_config.store_path.is_relative() {
+            repo_root.join(&quipu_config.store_path)
+        } else {
+            quipu_config.store_path.clone()
+        };
+        match quipu::Store::open(qpath.to_string_lossy().as_ref()) {
+            Ok(store) => assembler = assembler.with_quipu_store(store),
+            Err(e) => {
+                if !output.quiet && !output.json {
+                    eprintln!("  {} PPR enabled but Quipu store unavailable: {}", "!".yellow(), e);
+                }
+            }
+        }
+    }
+    #[cfg(not(feature = "knowledge"))]
+    let _ = ppr_enabled;
+
     let mut bundle = assembler
         .assemble(&args.query, args.repo.as_deref())
         .await

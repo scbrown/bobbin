@@ -40,10 +40,14 @@ class ParamConfig:
     semantic_weight: float
     doc_demotion: float
     rrf_k: float
+    ppr_weight: float = 0.0
 
     @property
     def label(self) -> str:
-        return f"sw={self.semantic_weight:.2f}_dd={self.doc_demotion:.2f}_k={self.rrf_k:.1f}"
+        base = f"sw={self.semantic_weight:.2f}_dd={self.doc_demotion:.2f}_k={self.rrf_k:.1f}"
+        if self.ppr_weight > 0.0:
+            base += f"_ppr={self.ppr_weight:.2f}"
+        return base
 
 
 @dataclass
@@ -89,6 +93,7 @@ class CalibrationReport:
                 "semantic_weight": config.semantic_weight,
                 "doc_demotion": config.doc_demotion,
                 "rrf_k": config.rrf_k,
+                "ppr_weight": config.ppr_weight,
                 "tasks": n,
                 "avg_precision": round(avg_precision, 4),
                 "avg_recall": round(avg_recall, 4),
@@ -213,8 +218,12 @@ def _run_bobbin_context(
         str(config.doc_demotion),
         "--rrf-k",
         str(config.rrf_k),
-        query,
     ]
+    # Only pass --ppr-weight when enabled, so calibrate still works against
+    # older bobbin binaries that lack the flag.
+    if config.ppr_weight > 0.0:
+        cmd += ["--ppr-weight", str(config.ppr_weight)]
+    cmd.append(query)
     t0 = time.monotonic()
     try:
         result = subprocess.run(
@@ -429,13 +438,15 @@ def build_param_grid(
     semantic_weights: list[float] | None = None,
     doc_demotions: list[float] | None = None,
     rrf_ks: list[float] | None = None,
+    ppr_weights: list[float] | None = None,
 ) -> list[ParamConfig]:
     """Build parameter grid from value lists."""
     sw = semantic_weights or [0.5, 0.6, 0.7, 0.8, 0.9]
     dd = doc_demotions or [0.3, 0.5, 0.7, 1.0]
     k = rrf_ks or [20.0, 40.0, 60.0, 80.0]
+    ppr = ppr_weights or [0.0]
 
     return [
-        ParamConfig(semantic_weight=s, doc_demotion=d, rrf_k=r)
-        for s, d, r in product(sw, dd, k)
+        ParamConfig(semantic_weight=s, doc_demotion=d, rrf_k=r, ppr_weight=p)
+        for s, d, r, p in product(sw, dd, k, ppr)
     ]
