@@ -277,7 +277,10 @@ async fn run_remote(args: SearchArgs, output: OutputConfig, server_url: &str) ->
         SearchMode::Keyword => "keyword",
     };
 
-    let role = crate::access::RepoFilter::resolve_role(None);
+    // Use the already-resolved role (honors --role, then env). Previously this
+    // re-resolved with None, so `bobbin search --role X` was ignored in
+    // thin-client/server mode and always used the env role.
+    let role = output.role.clone();
     let resp = client
         .search(
             &args.query,
