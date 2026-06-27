@@ -11,6 +11,8 @@ pub struct Config {
     pub embedding: EmbeddingConfig,
     pub search: SearchConfig,
     pub git: GitConfig,
+    pub context: ContextTuning,
+    pub feedback: FeedbackTuning,
     pub dependencies: DependencyConfig,
     pub hooks: HooksConfig,
     pub beads: BeadsConfig,
@@ -346,6 +348,67 @@ impl Default for GitConfig {
     }
 }
 
+
+/// Tuning knobs for context assembly — the bridging + knowledge-expansion
+/// pipeline that is Bobbin's core differentiator. These were previously
+/// hardcoded (and inconsistent) at each context call site; surfacing them in
+/// `[context]` lets operators tune behavior without recompiling. Defaults match
+/// the tuned production values used by the hook + HTTP injection paths.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ContextTuning {
+    /// Score multiplier for bridge-boosted files: `final_score *= (1.0 + factor)`.
+    /// Only used in Boost/BoostInject bridge modes. Default: 0.3.
+    pub bridge_boost_factor: f32,
+    /// Maximum number of bridged files to fetch chunks for. Default: 2.
+    /// Prevents bridge explosion from doc→source blame chains.
+    pub max_bridged_files: usize,
+    /// Maximum chunks per bridged file (first N by start_line). Default: 1.
+    pub max_bridged_chunks_per_file: usize,
+    /// Minimum temporal-coupling score (float, 0.0–1.0) for a coupled file to be
+    /// included in context. DISTINCT from `git.coupling_threshold` (an integer
+    /// minimum co-change *count* applied during indexing). Default: 0.1.
+    pub coupling_threshold: f32,
+    /// Percentage of the line budget reserved for knowledge-graph expansion
+    /// (requires the `knowledge` feature). Default: 15.0.
+    pub knowledge_budget_pct: f32,
+    /// Maximum graph-traversal hops for knowledge expansion. Default: 2.
+    pub knowledge_max_hops: u32,
+}
+
+impl Default for ContextTuning {
+    fn default() -> Self {
+        Self {
+            bridge_boost_factor: 0.3,
+            max_bridged_files: 2,
+            max_bridged_chunks_per_file: 1,
+            coupling_threshold: 0.1,
+            knowledge_budget_pct: 15.0,
+            knowledge_max_hops: 2,
+        }
+    }
+}
+
+/// Tuning knobs for cross-agent feedback boosting. Files rated "useful" by other
+/// agents for similar queries get a bounded score boost during context assembly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FeedbackTuning {
+    /// Maximum feedback boost multiplier. Actual boost is
+    /// `min(score * boost_weight, boost_max)`. Default: 0.3 (30% max).
+    pub boost_max: f32,
+    /// Weight multiplier applied to raw feedback scores. Default: 0.2.
+    pub boost_weight: f32,
+}
+
+impl Default for FeedbackTuning {
+    fn default() -> Self {
+        Self {
+            boost_max: 0.3,
+            boost_weight: 0.2,
+        }
+    }
+}
 
 /// Configuration for Claude Code hooks integration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1131,6 +1194,58 @@ coupling_depth = 500
             (search_default - context_default).abs() < f32::EPSILON,
             "ContextConfig default ({context_default}) must match SearchConfig ({search_default})"
         );
+    }
+
+    // bo-qlfu: context-assembly knobs are config-backed via [context]/[feedback].
+    #[test]
+    fn test_context_tuning_defaults() {
+        let c = Config::default();
+        assert!((c.context.bridge_boost_factor - 0.3).abs() < f32::EPSILON);
+        assert_eq!(c.context.max_bridged_files, 2);
+        assert_eq!(c.context.max_bridged_chunks_per_file, 1);
+        assert!((c.context.coupling_threshold - 0.1).abs() < f32::EPSILON);
+        assert!((c.context.knowledge_budget_pct - 15.0).abs() < f32::EPSILON);
+        assert_eq!(c.context.knowledge_max_hops, 2);
+        assert!((c.feedback.boost_max - 0.3).abs() < f32::EPSILON);
+        assert!((c.feedback.boost_weight - 0.2).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_context_tuning_custom() {
+        let toml_str = r#"
+[context]
+bridge_boost_factor = 0.5
+max_bridged_files = 4
+max_bridged_chunks_per_file = 3
+coupling_threshold = 0.25
+knowledge_budget_pct = 20.0
+knowledge_max_hops = 3
+
+[feedback]
+boost_max = 0.4
+boost_weight = 0.15
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!((config.context.bridge_boost_factor - 0.5).abs() < f32::EPSILON);
+        assert_eq!(config.context.max_bridged_files, 4);
+        assert_eq!(config.context.max_bridged_chunks_per_file, 3);
+        assert!((config.context.coupling_threshold - 0.25).abs() < f32::EPSILON);
+        assert!((config.context.knowledge_budget_pct - 20.0).abs() < f32::EPSILON);
+        assert_eq!(config.context.knowledge_max_hops, 3);
+        assert!((config.feedback.boost_max - 0.4).abs() < f32::EPSILON);
+        assert!((config.feedback.boost_weight - 0.15).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_legacy_config_without_context_sections() {
+        // Config predating [context]/[feedback] must fall back to defaults.
+        let toml_str = r#"
+[search]
+semantic_weight = 0.8
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.context.max_bridged_files, 2);
+        assert!((config.feedback.boost_max - 0.3).abs() < f32::EPSILON);
     }
 
     #[test]

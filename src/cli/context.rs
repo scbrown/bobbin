@@ -38,9 +38,9 @@ pub struct ContextArgs {
     #[arg(long, short = 'n', default_value = "20")]
     limit: usize,
 
-    /// Min coupling score threshold
-    #[arg(long, default_value = "0.1")]
-    coupling_threshold: f32,
+    /// Min coupling score threshold (overrides `[context].coupling_threshold`)
+    #[arg(long)]
+    coupling_threshold: Option<f32>,
 
     /// Override semantic weight (0.0=keyword-only, 1.0=semantic-only)
     #[arg(long)]
@@ -189,7 +189,7 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         budget_lines: args.budget,
         depth: args.depth,
         max_coupled: args.max_coupled,
-        coupling_threshold: args.coupling_threshold,
+        coupling_threshold: args.coupling_threshold.unwrap_or(config.context.coupling_threshold),
         semantic_weight: args.semantic_weight.unwrap_or(cal_sw.unwrap_or(config.search.semantic_weight)),
         content_mode,
         search_limit: args.limit,
@@ -199,15 +199,19 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         rrf_k: args.rrf_k.unwrap_or(cal_rrf.unwrap_or(config.search.rrf_k)),
         ppr_weight: args.ppr_weight.unwrap_or(config.search.ppr_weight),
         bridge_mode: BridgeMode::default(),
-        bridge_boost_factor: 0.3,
+        bridge_boost_factor: config.context.bridge_boost_factor,
         extra_filter,
         tags_config: None,
         role: None,
         file_type_rules: vec![],
             repo_affinity: None,
             repo_affinity_boost: config.hooks.repo_affinity_boost,
-            max_bridged_files: 3,
-            max_bridged_chunks_per_file: 2,
+            max_bridged_files: config.context.max_bridged_files,
+            max_bridged_chunks_per_file: config.context.max_bridged_chunks_per_file,
+            knowledge_budget_pct: config.context.knowledge_budget_pct,
+            knowledge_max_hops: config.context.knowledge_max_hops,
+            feedback_boost_max: config.feedback.boost_max,
+            feedback_boost_weight: config.feedback.boost_weight,
             repo_path_prefix: config.server.repo_path_prefix.clone(),
             ..ContextConfig::default()
     };

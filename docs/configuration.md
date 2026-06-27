@@ -93,6 +93,35 @@ coupling_depth = 5000
 
 # Minimum number of co-changes required to establish a coupling link
 coupling_threshold = 3
+
+[context]
+# Score multiplier for bridge-boosted files: final_score *= (1.0 + factor).
+# Only used in boost / boost_inject bridge modes.
+bridge_boost_factor = 0.3
+
+# Max bridged files to fetch chunks for (prevents doc->source bridge explosion)
+max_bridged_files = 2
+
+# Max chunks kept per bridged file (first N by start line)
+max_bridged_chunks_per_file = 1
+
+# Minimum temporal-coupling SCORE (float 0.0-1.0) for a coupled file to enter
+# context. Distinct from [git].coupling_threshold (an integer co-change COUNT).
+coupling_threshold = 0.1
+
+# Percent of the line budget reserved for knowledge-graph expansion
+# (requires the `knowledge` feature build)
+knowledge_budget_pct = 15.0
+
+# Max graph-traversal hops for knowledge expansion
+knowledge_max_hops = 2
+
+[feedback]
+# Maximum feedback boost multiplier. Actual boost = min(score * boost_weight, boost_max).
+boost_max = 0.3
+
+# Weight multiplier applied to raw cross-agent feedback scores
+boost_weight = 0.2
 ```
 
 ## Section Reference
@@ -156,3 +185,25 @@ Controls temporal coupling analysis from git history.
 | `coupling_enabled` | bool | `true` | Enable temporal coupling analysis |
 | `coupling_depth` | int | `5000` | How many commits back to analyze |
 | `coupling_threshold` | int | `3` | Minimum co-changes to establish a coupling relationship |
+
+### `[context]`
+
+Tunes context assembly — the bridging + knowledge-expansion pipeline that is Bobbin's core differentiator. These knobs were previously hardcoded (and inconsistent) at each call site; surfacing them here lets you tune behavior without recompiling. Defaults match the tuned production values used by the hook and HTTP injection paths. CLI/HTTP request parameters still override these per-call.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `bridge_boost_factor` | float | `0.3` | Score multiplier for bridge-boosted files: `final_score *= (1.0 + factor)`. Only used in `boost`/`boost_inject` bridge modes. |
+| `max_bridged_files` | int | `2` | Max bridged files to fetch chunks for. Prevents bridge explosion from doc→source blame chains. |
+| `max_bridged_chunks_per_file` | int | `1` | Max chunks kept per bridged file (first N by start line). |
+| `coupling_threshold` | float | `0.1` | Minimum coupling **score** (0.0–1.0) for a coupled file to enter context. Distinct from `[git].coupling_threshold`, which is an integer co-change **count** applied during indexing. |
+| `knowledge_budget_pct` | float | `15.0` | Percent of the line budget reserved for knowledge-graph expansion (requires the `knowledge` feature). |
+| `knowledge_max_hops` | int | `2` | Max graph-traversal hops for knowledge expansion. |
+
+### `[feedback]`
+
+Tunes cross-agent feedback boosting. Files rated "useful" by other agents for similar queries get a bounded score boost during context assembly.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `boost_max` | float | `0.3` | Maximum feedback boost multiplier. Actual boost is `min(score * boost_weight, boost_max)`. |
+| `boost_weight` | float | `0.2` | Weight multiplier applied to raw feedback scores. |
