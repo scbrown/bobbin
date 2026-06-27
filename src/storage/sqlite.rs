@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::types::FileCoupling;
@@ -74,6 +75,41 @@ impl MetadataStore {
         "#,
         )?;
 
+        self.migrate_bead_lineage()?;
+
+        Ok(())
+    }
+
+    /// Idempotently add columns introduced after the initial bead_lineage schema
+    /// (telemetry Phase 0, bo-xrsy). SQLite has no `ADD COLUMN IF NOT EXISTS`, so
+    /// we inspect `PRAGMA table_info` and only ALTER for genuinely-missing
+    /// columns. Errors other than the additions themselves propagate — we do not
+    /// blind-try-and-ignore. `bundle_slugs` already exists in the base schema and
+    /// is intentionally absent here (this migration only adds new columns).
+    fn migrate_bead_lineage(&self) -> Result<()> {
+        let mut existing = std::collections::HashSet::new();
+        {
+            let mut stmt = self.conn.prepare("PRAGMA table_info(bead_lineage)")?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+            for r in rows {
+                existing.insert(r?);
+            }
+        }
+        // (column, SQL type) — additive only.
+        let additions = [
+            ("feature_id", "TEXT"),
+            ("lines_added", "INTEGER"),
+            ("lines_deleted", "INTEGER"),
+            ("touched_symbols", "TEXT"),
+        ];
+        for (col, ty) in additions {
+            if !existing.contains(col) {
+                self.conn.execute(
+                    &format!("ALTER TABLE bead_lineage ADD COLUMN {} {}", col, ty),
+                    [],
+                )?;
+            }
+        }
         Ok(())
     }
 
@@ -270,10 +306,13 @@ impl MetadataStore {
     pub fn record_bead_lineage(&self, rec: &NewBeadLineage) -> Result<i64> {
         let touched_files_json = serde_json::to_string(&rec.touched_files)
             .unwrap_or_else(|_| "[]".to_string());
+        let touched_symbols_json = serde_json::to_string(&rec.touched_symbols)
+            .unwrap_or_else(|_| "[]".to_string());
         self.conn.execute(
             r#"INSERT INTO bead_lineage
-                   (bead_id, bead_type, commit_sha, bundle_slugs, touched_files, action_type)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
+                   (bead_id, bead_type, commit_sha, bundle_slugs, touched_files, action_type,
+                    feature_id, lines_added, lines_deleted, touched_symbols)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"#,
             rusqlite::params![
                 rec.bead_id,
                 rec.bead_type,
@@ -281,6 +320,10 @@ impl MetadataStore {
                 rec.bundle_slugs,
                 touched_files_json,
                 rec.action_type,
+                rec.feature_id,
+                rec.lines_added,
+                rec.lines_deleted,
+                touched_symbols_json,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -295,7 +338,8 @@ impl MetadataStore {
         limit: usize,
     ) -> Result<Vec<BeadLineageRecord>> {
         let mut sql = String::from(
-            "SELECT id, created_at, bead_id, bead_type, commit_sha, bundle_slugs, touched_files, action_type
+            "SELECT id, created_at, bead_id, bead_type, commit_sha, bundle_slugs, touched_files, action_type,
+                    feature_id, lines_added, lines_deleted, touched_symbols
              FROM bead_lineage",
         );
         let mut conditions: Vec<String> = Vec::new();
@@ -323,6 +367,10 @@ impl MetadataStore {
                 let touched_files = touched_json
                     .and_then(|j| serde_json::from_str::<Vec<String>>(&j).ok())
                     .unwrap_or_default();
+                let symbols_json: Option<String> = row.get(11)?;
+                let touched_symbols = symbols_json
+                    .and_then(|j| serde_json::from_str::<Vec<TouchedSymbol>>(&j).ok())
+                    .unwrap_or_default();
                 Ok(BeadLineageRecord {
                     id: row.get(0)?,
                     created_at: row.get(1)?,
@@ -332,11 +380,26 @@ impl MetadataStore {
                     bundle_slugs: row.get(5)?,
                     touched_files,
                     action_type: row.get(7)?,
+                    feature_id: row.get(8)?,
+                    lines_added: row.get(9)?,
+                    lines_deleted: row.get(10)?,
+                    touched_symbols,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
+}
+
+/// A symbol touched by a commit's changeset (telemetry Phase 0, bo-xrsy).
+/// Carries file attribution so the reconcile/predict loops (bo-mu4m/bo-6i55) can
+/// map a bead to the named entities it changed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TouchedSymbol {
+    pub file: String,
+    pub symbol: String,
+    /// Chunk kind (function | method | struct | ...), from the parser.
+    pub kind: String,
 }
 
 /// Input for recording a bead lineage entry. `id`/`created_at` are assigned by
@@ -349,6 +412,14 @@ pub struct NewBeadLineage {
     pub bundle_slugs: Option<String>,
     pub touched_files: Vec<String>,
     pub action_type: Option<String>,
+    /// Feature ancestor resolved via bd dep-walk (edge E1 'implements').
+    pub feature_id: Option<String>,
+    /// Aggregate lines added across the changeset (numstat).
+    pub lines_added: Option<i64>,
+    /// Aggregate lines deleted across the changeset (numstat).
+    pub lines_deleted: Option<i64>,
+    /// Named symbols touched by the changeset (best-effort parse).
+    pub touched_symbols: Vec<TouchedSymbol>,
 }
 
 /// A stored bead→commit lineage record.
@@ -362,6 +433,10 @@ pub struct BeadLineageRecord {
     pub bundle_slugs: Option<String>,
     pub touched_files: Vec<String>,
     pub action_type: Option<String>,
+    pub feature_id: Option<String>,
+    pub lines_added: Option<i64>,
+    pub lines_deleted: Option<i64>,
+    pub touched_symbols: Vec<TouchedSymbol>,
 }
 
 #[cfg(test)]
@@ -564,6 +639,14 @@ mod tests {
                 bundle_slugs: Some("search-reranking".to_string()),
                 touched_files: vec!["src/search/weights.rs".to_string(), "src/a.rs".to_string()],
                 action_type: Some("linked".to_string()),
+                feature_id: Some("bo-feat".to_string()),
+                lines_added: Some(42),
+                lines_deleted: Some(7),
+                touched_symbols: vec![TouchedSymbol {
+                    file: "src/search/weights.rs".to_string(),
+                    symbol: "rerank".to_string(),
+                    kind: "function".to_string(),
+                }],
             })
             .unwrap();
 
@@ -573,6 +656,13 @@ mod tests {
         assert_eq!(all[0].commit_sha.as_deref(), Some("deadbeef"));
         assert_eq!(all[0].touched_files.len(), 2);
         assert!(all[0].touched_files.contains(&"src/a.rs".to_string()));
+        // New telemetry Phase 0 fields round-trip through record -> list.
+        assert_eq!(all[0].feature_id.as_deref(), Some("bo-feat"));
+        assert_eq!(all[0].lines_added, Some(42));
+        assert_eq!(all[0].lines_deleted, Some(7));
+        assert_eq!(all[0].touched_symbols.len(), 1);
+        assert_eq!(all[0].touched_symbols[0].symbol, "rerank");
+        assert_eq!(all[0].touched_symbols[0].kind, "function");
 
         // Filter by bead id
         let by_bead = store.list_bead_lineage(Some("bo-abc"), None, 10).unwrap();
@@ -582,6 +672,71 @@ mod tests {
         // Filter by commit
         let by_commit = store.list_bead_lineage(None, Some("deadbeef"), 10).unwrap();
         assert_eq!(by_commit.len(), 1);
+    }
+
+    #[test]
+    fn test_bead_lineage_migration_idempotent() {
+        // Opening the same DB twice must not error or duplicate columns: the
+        // second open re-runs migrate_bead_lineage against an already-migrated
+        // table.
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("migrate.db");
+        {
+            let _store = MetadataStore::open(&db_path).unwrap();
+        }
+        let store = MetadataStore::open(&db_path).unwrap();
+
+        // The new columns exist exactly once.
+        let cols: Vec<String> = {
+            let mut stmt = store
+                .conn
+                .prepare("PRAGMA table_info(bead_lineage)")
+                .unwrap();
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(1))
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            rows
+        };
+        for expected in ["feature_id", "lines_added", "lines_deleted", "touched_symbols"] {
+            assert_eq!(
+                cols.iter().filter(|c| c.as_str() == expected).count(),
+                1,
+                "column {expected} should exist exactly once"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bead_lineage_migrates_legacy_table() {
+        // A DB created with only the original columns (pre-bo-xrsy) must gain the
+        // new columns on next open, and existing rows survive with NULL telemetry.
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("legacy.db");
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute_batch(
+                r#"CREATE TABLE bead_lineage (
+                       id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+                       bead_id TEXT NOT NULL,
+                       bead_type TEXT,
+                       commit_sha TEXT,
+                       bundle_slugs TEXT,
+                       touched_files TEXT,
+                       action_type TEXT
+                   );
+                   INSERT INTO bead_lineage (bead_id, commit_sha) VALUES ('bo-old', 'cafe');"#,
+            )
+            .unwrap();
+        }
+        let store = MetadataStore::open(&db_path).unwrap();
+        let rows = store.list_bead_lineage(Some("bo-old"), None, 10).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].feature_id, None);
+        assert_eq!(rows[0].lines_added, None);
+        assert!(rows[0].touched_symbols.is_empty());
     }
 
     #[test]
