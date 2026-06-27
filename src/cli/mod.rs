@@ -1,3 +1,4 @@
+mod bead;
 mod benchmark;
 mod bundle;
 mod calibrate;
@@ -91,6 +92,9 @@ enum Commands {
     /// Submit, list, and manage feedback on bobbin context injections
     Feedback(feedback::FeedbackArgs),
 
+    /// Record and inspect bead→commit workflow lineage (telemetry)
+    Bead(bead::BeadArgs),
+
     /// Keyword/regex search
     Grep(grep::GrepArgs),
 
@@ -173,6 +177,7 @@ impl Commands {
             Commands::Context(_) => "context",
             Commands::Deps(_) => "deps",
             Commands::Feedback(_) => "feedback",
+            Commands::Bead(_) => "bead",
             Commands::Grep(_) => "grep",
             Commands::Refs(_) => "refs",
             Commands::Related(_) => "related",
@@ -287,6 +292,7 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
         Commands::Context(args) => context::run(args, output).await,
         Commands::Deps(args) => deps::run(args, output).await,
         Commands::Feedback(args) => feedback::run(args, output).await,
+        Commands::Bead(args) => bead::run(args, output).await,
         Commands::Grep(args) => grep::run(args, output).await,
         Commands::Refs(args) => refs::run(args, output).await,
         Commands::Related(args) => related::run(args, output).await,

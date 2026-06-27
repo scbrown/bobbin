@@ -53,8 +53,24 @@ impl MetadataStore {
                 hash TEXT NOT NULL
             );
 
+            -- Bead → bundle → commit workflow telemetry (GH#9, Layer 1: logging).
+            -- Each row records that a bead was linked to a commit / changeset, so
+            -- later layers can mine which files matter for which kinds of work.
+            CREATE TABLE IF NOT EXISTS bead_lineage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+                bead_id TEXT NOT NULL,
+                bead_type TEXT,
+                commit_sha TEXT,
+                bundle_slugs TEXT,
+                touched_files TEXT,
+                action_type TEXT
+            );
+
             -- Indexes
             CREATE INDEX IF NOT EXISTS idx_coupling_score ON coupling(score DESC);
+            CREATE INDEX IF NOT EXISTS idx_bead_lineage_bead ON bead_lineage(bead_id);
+            CREATE INDEX IF NOT EXISTS idx_bead_lineage_commit ON bead_lineage(commit_sha);
         "#,
         )?;
 
@@ -246,6 +262,106 @@ impl MetadataStore {
         self.conn.execute("DELETE FROM file_hashes", [])?;
         Ok(())
     }
+
+    /// Record a bead→commit lineage entry (GH#9 Layer 1 logging).
+    ///
+    /// Returns the row id of the inserted record. `touched_files` is stored as
+    /// a JSON array so later layers can aggregate over changesets.
+    pub fn record_bead_lineage(&self, rec: &NewBeadLineage) -> Result<i64> {
+        let touched_files_json = serde_json::to_string(&rec.touched_files)
+            .unwrap_or_else(|_| "[]".to_string());
+        self.conn.execute(
+            r#"INSERT INTO bead_lineage
+                   (bead_id, bead_type, commit_sha, bundle_slugs, touched_files, action_type)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
+            rusqlite::params![
+                rec.bead_id,
+                rec.bead_type,
+                rec.commit_sha,
+                rec.bundle_slugs,
+                touched_files_json,
+                rec.action_type,
+            ],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// List bead lineage records, optionally filtered by bead id and/or commit.
+    /// Most recent first.
+    pub fn list_bead_lineage(
+        &self,
+        bead_id: Option<&str>,
+        commit_sha: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<BeadLineageRecord>> {
+        let mut sql = String::from(
+            "SELECT id, created_at, bead_id, bead_type, commit_sha, bundle_slugs, touched_files, action_type
+             FROM bead_lineage",
+        );
+        let mut conditions: Vec<String> = Vec::new();
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        if let Some(b) = bead_id {
+            conditions.push(format!("bead_id = ?{}", params.len() + 1));
+            params.push(Box::new(b.to_string()));
+        }
+        if let Some(c) = commit_sha {
+            conditions.push(format!("commit_sha = ?{}", params.len() + 1));
+            params.push(Box::new(c.to_string()));
+        }
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        sql.push_str(&format!(" ORDER BY id DESC LIMIT ?{}", params.len() + 1));
+        params.push(Box::new(limit as i64));
+
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(param_refs.as_slice(), |row| {
+                let touched_json: Option<String> = row.get(6)?;
+                let touched_files = touched_json
+                    .and_then(|j| serde_json::from_str::<Vec<String>>(&j).ok())
+                    .unwrap_or_default();
+                Ok(BeadLineageRecord {
+                    id: row.get(0)?,
+                    created_at: row.get(1)?,
+                    bead_id: row.get(2)?,
+                    bead_type: row.get(3)?,
+                    commit_sha: row.get(4)?,
+                    bundle_slugs: row.get(5)?,
+                    touched_files,
+                    action_type: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+}
+
+/// Input for recording a bead lineage entry. `id`/`created_at` are assigned by
+/// the database.
+#[derive(Debug, Clone, Default)]
+pub struct NewBeadLineage {
+    pub bead_id: String,
+    pub bead_type: Option<String>,
+    pub commit_sha: Option<String>,
+    pub bundle_slugs: Option<String>,
+    pub touched_files: Vec<String>,
+    pub action_type: Option<String>,
+}
+
+/// A stored bead→commit lineage record.
+#[derive(Debug, Clone)]
+pub struct BeadLineageRecord {
+    pub id: i64,
+    pub created_at: String,
+    pub bead_id: String,
+    pub bead_type: Option<String>,
+    pub commit_sha: Option<String>,
+    pub bundle_slugs: Option<String>,
+    pub touched_files: Vec<String>,
+    pub action_type: Option<String>,
 }
 
 #[cfg(test)]
@@ -434,6 +550,56 @@ mod tests {
 
         assert!(store.get_file_hash("src/a.rs").unwrap().is_none());
         assert!(store.get_file_hash("src/b.rs").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_bead_lineage_record_and_list() {
+        let (store, _dir) = create_test_store();
+
+        store
+            .record_bead_lineage(&NewBeadLineage {
+                bead_id: "bo-abc".to_string(),
+                bead_type: Some("bug".to_string()),
+                commit_sha: Some("deadbeef".to_string()),
+                bundle_slugs: Some("search-reranking".to_string()),
+                touched_files: vec!["src/search/weights.rs".to_string(), "src/a.rs".to_string()],
+                action_type: Some("linked".to_string()),
+            })
+            .unwrap();
+
+        let all = store.list_bead_lineage(None, None, 10).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].bead_id, "bo-abc");
+        assert_eq!(all[0].commit_sha.as_deref(), Some("deadbeef"));
+        assert_eq!(all[0].touched_files.len(), 2);
+        assert!(all[0].touched_files.contains(&"src/a.rs".to_string()));
+
+        // Filter by bead id
+        let by_bead = store.list_bead_lineage(Some("bo-abc"), None, 10).unwrap();
+        assert_eq!(by_bead.len(), 1);
+        assert!(store.list_bead_lineage(Some("bo-zzz"), None, 10).unwrap().is_empty());
+
+        // Filter by commit
+        let by_commit = store.list_bead_lineage(None, Some("deadbeef"), 10).unwrap();
+        assert_eq!(by_commit.len(), 1);
+    }
+
+    #[test]
+    fn test_bead_lineage_ordering_and_limit() {
+        let (store, _dir) = create_test_store();
+        for i in 0..5 {
+            store
+                .record_bead_lineage(&NewBeadLineage {
+                    bead_id: format!("bo-{i}"),
+                    commit_sha: Some(format!("sha{i}")),
+                    ..Default::default()
+                })
+                .unwrap();
+        }
+        let recent = store.list_bead_lineage(None, None, 3).unwrap();
+        assert_eq!(recent.len(), 3);
+        // Most recent (highest id) first
+        assert_eq!(recent[0].bead_id, "bo-4");
     }
 
     #[test]
