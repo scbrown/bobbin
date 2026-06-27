@@ -205,7 +205,7 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         role: None,
         file_type_rules: vec![],
             repo_affinity: None,
-            repo_affinity_boost: 2.0,
+            repo_affinity_boost: config.hooks.repo_affinity_boost,
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: config.server.repo_path_prefix.clone(),

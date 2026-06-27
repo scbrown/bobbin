@@ -62,8 +62,9 @@ pub struct ContextConfig {
     pub content_mode: ContentMode,
     pub search_limit: usize,
     /// Demotion factor for Documentation/Config files in search ranking.
-    /// Applied as a multiplier to RRF scores: 1.0 = no demotion, 0.5 = half score.
-    /// Source/Test files are unaffected. Default: 0.5.
+    /// Applied as a multiplier to RRF scores: 1.0 = no demotion, 0.3 = 30% score.
+    /// Source/Test files are unaffected. Default: 0.3 — kept in sync with
+    /// `SearchConfig::doc_demotion`, the single source of truth.
     pub doc_demotion: f32,
     /// Half-life for recency decay in days (0.0 = disabled)
     pub recency_half_life_days: f32,
@@ -132,7 +133,7 @@ impl Default for ContextConfig {
             semantic_weight: 0.7,
             content_mode: ContentMode::Full,
             search_limit: 20,
-            doc_demotion: 0.5,
+            doc_demotion: 0.3,
             recency_half_life_days: 0.0,
             recency_weight: 0.0,
             rrf_k: 60.0,
