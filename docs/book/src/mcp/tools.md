@@ -334,3 +334,31 @@ List recent archive records by date.
 | `after` | string | yes | — | Only records after date (YYYY-MM-DD) |
 | `source` | string | no | all | Filter: `hla` or `pensieve` |
 | `limit` | integer | no | 20 | Maximum results |
+
+## knowledge_context
+
+Query the [Quipu](https://github.com/scbrown/quipu) knowledge graph for entities and facts relevant to a topic, using text search with link expansion. Best for questions like "what services run on kota?" or "entities related to DNS".
+
+> Requires bobbin built with the `knowledge` feature (`cargo build --features knowledge`). Without it the tool is registered but returns an error directing you to rebuild.
+
+**Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query` | string | yes | — | Natural language query describing the entities you need |
+| `max_entities` | integer | no | 20 | Maximum entities to return |
+| `expand_links` | boolean | no | true | Expand results by following graph links from direct hits |
+
+## knowledge_query
+
+Execute a SPARQL SELECT query against the Quipu knowledge graph, with optional temporal filtering. Best for precise structured queries when you know the entity IRIs or predicates.
+
+> Requires the `knowledge` build feature (see `knowledge_context`).
+
+**Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query` | string | yes | — | SPARQL SELECT query |
+| `valid_at` | string | no | — | ISO-8601 timestamp for a temporal query (what was true then?) |
+| `tx` | integer | no | — | Transaction ID for a point-in-time (as-of) query |

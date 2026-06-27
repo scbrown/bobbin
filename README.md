@@ -71,7 +71,7 @@ Related to src/auth/middleware.rs:
 
 📦 **Task-Aware Context** — `bobbin context "fix the login bug"` builds a budget-controlled bundle from search results + coupled files. Feed it straight to an AI agent.
 
-🤖 **MCP Server** — `bobbin serve` exposes 24 tools to Claude Code, Cursor, and any MCP-compatible agent.
+🤖 **MCP Server** — `bobbin serve` exposes 26 tools to Claude Code, Cursor, and any MCP-compatible agent (24 always available; `knowledge_context` and `knowledge_query` require the `knowledge` build feature).
 
 🧠 **Knowledge Graph (Quipu)** — Optional integration with [Quipu](https://github.com/scbrown/quipu) for structured knowledge alongside code. SPARQL queries, SHACL validation, and vector search over knowledge entities — all exposed as MCP tools (`knowledge_context`, `knowledge_query`). Feature-gated behind `knowledge`.
 
@@ -148,7 +148,7 @@ Add to your Claude Code or Cursor MCP config:
 }
 ```
 
-Exposes 24 tools including: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `impact`, `review`, `similar`, `prime`, `search_beads`, `dependencies`, `file_history`, `status`, `commit_search`, `feedback_submit`, `feedback_list`, `feedback_stats`, `feedback_lineage_store`, `feedback_lineage_list`, `archive_search`, and `archive_recent`.
+Exposes 26 tools including: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `impact`, `review`, `similar`, `prime`, `search_beads`, `dependencies`, `file_history`, `status`, `commit_search`, `feedback_submit`, `feedback_list`, `feedback_stats`, `feedback_lineage_store`, `feedback_lineage_list`, `archive_search`, and `archive_recent`, plus `knowledge_context` and `knowledge_query` (require the `knowledge` build feature).
 
 ### Claude Code Hooks
 
