@@ -179,6 +179,11 @@ so plans should include confidence levels.
   GitHub #9 stays open until done. **P2-P3.**
 - **#14 ontology auto-discovery (D5)** — mine embedding clusters + coupling communities
   to suggest ontology nodes. Feeds from #9 telemetry. **P3.**
-- **Incremental bead `updated_at` caveat** — the central `issues.updated_at` mass-bump
-  (from the stuck migration) will make every bead look freshly changed once indexing
-  resumes; verify recency signals after maldoon resolves the working set.
+- **Incremental bead `updated_at` caveat** — RESOLVED 2026-06-26: maldoon reverted the
+  `issues.updated_at` mass-bump (622 distinct timestamps restored) when resetting the
+  central DB to a clean v40 baseline. No recency pollution remains.
+- **bd schema migration root cause** (maldoon, 2026-06-26): migrations 0041-0052 require
+  `ALTER TABLE dependencies DROP PRIMARY KEY`, which crashes the connection on Dolt 2.1.8
+  (reproduced in isolation) — blocks bd and manual SQL. Fix path = fresh-init at v52 +
+  reimport (avoids the crashing DDL), pending Stiwi go (it's a DB replacement).
+  **HOLD all beads_bobbin writes until maldoon signals clear.**
