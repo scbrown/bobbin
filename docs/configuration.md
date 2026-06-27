@@ -54,26 +54,26 @@ enabled_languages = ["markdown"]
 default_limit = 10
 
 # Weight for semantic vs keyword search in hybrid mode.
-# 0.0 = keyword only, 1.0 = semantic only, default 0.7.
-semantic_weight = 0.7
+# 0.0 = keyword only, 1.0 = semantic only, default 0.9.
+semantic_weight = 0.9
 
 [hooks]
 # Per-result filter on normalized RRF scores
 threshold = 0.5
 
 # Max lines of injected context
-budget = 150
+budget = 300
 
 # Content display mode: full | preview | none
-content_mode = "preview"
+content_mode = "full"
 
 # Skip injection for prompts shorter than this
-min_prompt_length = 10
+min_prompt_length = 20
 
 # Min raw semantic similarity to inject at all.
 # The top semantic result's cosine similarity (before RRF normalization)
 # must exceed this value, or the entire injection is skipped.
-gate_threshold = 0.75
+gate_threshold = 0.45
 
 # Skip injection when search results haven't changed since last prompt.
 # Uses a session ID derived from the top-10 chunk keys.
@@ -85,7 +85,7 @@ dedup_enabled = true
 coupling_enabled = true
 
 # Number of commits to analyze for coupling relationships
-coupling_depth = 1000
+coupling_depth = 5000
 
 # Minimum number of co-changes required to establish a coupling link
 coupling_threshold = 3
@@ -128,7 +128,7 @@ Controls search behavior defaults.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `default_limit` | int | `10` | Default number of results returned |
-| `semantic_weight` | float | `0.7` | Balance between semantic (1.0) and keyword (0.0) in hybrid mode |
+| `semantic_weight` | float | `0.9` | Balance between semantic (1.0) and keyword (0.0) in hybrid mode |
 
 ### `[hooks]`
 
@@ -137,10 +137,10 @@ Controls Claude Code hook behavior for automatic context injection.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `threshold` | float | `0.5` | Per-result filter on normalized RRF scores |
-| `budget` | int | `150` | Maximum lines of injected context |
-| `content_mode` | string | `"preview"` | Content display mode: `full`, `preview`, or `none` |
-| `min_prompt_length` | int | `10` | Skip injection for prompts shorter than this |
-| `gate_threshold` | float | `0.75` | Minimum raw semantic similarity (cosine, before RRF) to inject at all. If the top result's score is below this, the entire injection is skipped. |
+| `budget` | int | `300` | Maximum lines of injected context |
+| `content_mode` | string | `"full"` | Content display mode: `full`, `preview`, or `none` |
+| `min_prompt_length` | int | `20` | Skip injection for prompts shorter than this |
+| `gate_threshold` | float | `0.45` | Minimum raw semantic similarity (cosine, before RRF) to inject at all. If the top result's score is below this, the entire injection is skipped. |
 | `dedup_enabled` | bool | `true` | Skip injection when search results match the previous prompt's session ID (same top-10 chunks = same session) |
 
 ### `[git]`
@@ -150,5 +150,5 @@ Controls temporal coupling analysis from git history.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `coupling_enabled` | bool | `true` | Enable temporal coupling analysis |
-| `coupling_depth` | int | `1000` | How many commits back to analyze |
+| `coupling_depth` | int | `5000` | How many commits back to analyze |
 | `coupling_threshold` | int | `3` | Minimum co-changes to establish a coupling relationship |

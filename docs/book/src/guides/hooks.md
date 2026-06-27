@@ -14,12 +14,14 @@ Bobbin's hook system integrates with Claude Code to automatically inject relevan
 
 ## How hooks work
 
-Bobbin installs two Claude Code hooks:
+Bobbin installs four Claude Code hooks:
 
 1. **UserPromptSubmit** — fires on every prompt you send. Bobbin runs a semantic search against your query, and if the results are relevant enough, injects them as context that Claude can see.
 2. **SessionStart (compact)** — fires after Claude Code compacts its context window. Bobbin re-injects key context so Claude doesn't lose codebase awareness after compaction.
+3. **PostToolUse** (`Write|Edit|Bash|Grep|Glob|Read`) — fires after a tool runs. Bobbin reactively injects files related to the code you just touched.
+4. **PostToolUseFailure** — fires when a tool call fails. Bobbin surfaces related context to help diagnose the failure.
 
-Both hooks are non-blocking and add minimal latency to your interaction.
+All four hooks are non-blocking and add minimal latency to your interaction.
 
 ## Setting up hooks
 

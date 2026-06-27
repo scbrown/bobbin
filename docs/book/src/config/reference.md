@@ -120,8 +120,8 @@ enabled_languages = ["markdown"]
 default_limit = 10
 
 # Weight for semantic vs keyword search in hybrid mode.
-# 0.0 = keyword only, 1.0 = semantic only, default 0.7.
-semantic_weight = 0.7
+# 0.0 = keyword only, 1.0 = semantic only, default 0.9.
+semantic_weight = 0.9
 
 [git]
 # Enable temporal coupling analysis (tracks which files

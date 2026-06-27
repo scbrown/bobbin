@@ -65,7 +65,7 @@ Related to src/auth/middleware.rs:
 
 🔍 **Hybrid Search** — Semantic + keyword results fused via [Reciprocal Rank Fusion](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf). Ask in natural language or grep by pattern.
 
-🌳 **Structure-Aware Parsing** — Tree-sitter extracts functions, classes, structs, traits, and more from 8 languages. Markdown parsed into sections, tables, and code blocks.
+🌳 **Structure-Aware Parsing** — Tree-sitter extracts functions, classes, structs, traits, and more from 6 languages (Rust, TypeScript, Python, Go, Java, C++). Markdown parsed into sections, tables, and code blocks; other languages use line-based chunking.
 
 🔗 **Git Temporal Coupling** — Analyzes commit history to find files that change together. `bobbin related src/auth.rs` reveals hidden dependencies no import graph can see.
 
@@ -152,22 +152,39 @@ Exposes 26 tools including: `search`, `grep`, `context`, `related`, `find_refs`,
 
 ### Claude Code Hooks
 
-For automatic context injection without MCP, add hooks to `.claude/settings.json`:
+For automatic context injection without MCP, run `bobbin hook install` (the source
+of truth), which writes **four** hooks to `.claude/settings.json`:
 
 ```json
 {
   "hooks": {
     "UserPromptSubmit": [{
       "hooks": [{
-        "command": "bobbin hook inject-context",
+        "command": "bobbin hook inject-context || true",
         "timeout": 10,
         "type": "command"
       }]
     }],
     "SessionStart": [{
+      "matcher": "compact",
       "hooks": [{
-        "command": "bobbin hook prime-context",
-        "timeout": 5,
+        "command": "bobbin hook session-context || true",
+        "timeout": 10,
+        "type": "command"
+      }]
+    }],
+    "PostToolUse": [{
+      "matcher": "Write|Edit|Bash|Grep|Glob|Read",
+      "hooks": [{
+        "command": "bobbin hook post-tool-use || true",
+        "timeout": 10,
+        "type": "command"
+      }]
+    }],
+    "PostToolUseFailure": [{
+      "hooks": [{
+        "command": "bobbin hook post-tool-use-failure || true",
+        "timeout": 10,
         "type": "command"
       }]
     }]
@@ -175,7 +192,12 @@ For automatic context injection without MCP, add hooks to `.claude/settings.json
 }
 ```
 
-The `inject-context` hook embeds your prompt, searches the index, and injects the most relevant code snippets. A relevance gate skips injection when the best match is too weak, and session dedup avoids re-injecting unchanged context.
+The `inject-context` hook embeds your prompt, searches the index, and injects the
+most relevant code snippets. A relevance gate skips injection when the best match
+is too weak, and session dedup avoids re-injecting unchanged context. The
+`SessionStart` hook restores context after compaction, and the reactive
+`PostToolUse` / `PostToolUseFailure` hooks inject related files when code is
+edited or a tool call fails.
 
 ## Architecture
 
@@ -216,7 +238,7 @@ See the [Architecture docs](https://scbrown.github.io/bobbin/architecture/overvi
 | Go         | Tree-sitter   | functions, methods, type declarations |
 | Java       | Tree-sitter   | methods, constructors, classes, interfaces, enums |
 | C++        | Tree-sitter   | functions, classes, structs, enums |
-| C          | Tree-sitter   | functions, structs, enums |
+| C          | Line-based    | detected and indexed, line-based chunking |
 | JavaScript | Line-based    | detected and indexed, line-based chunking |
 | Markdown   | pulldown-cmark| sections, tables, code blocks, YAML frontmatter |
 

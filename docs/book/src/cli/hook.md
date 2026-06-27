@@ -45,10 +45,12 @@ bobbin hook install [OPTIONS]
 | `--threshold <SCORE>` | Minimum relevance score to include in injected context |
 | `--budget <LINES>` | Maximum lines of injected context |
 
-This registers two hook entries:
+This registers four hook entries (`bobbin hook install` is the source of truth):
 
 1. **UserPromptSubmit** — calls `bobbin hook inject-context` on every prompt, adding relevant code snippets.
 2. **SessionStart** (compact matcher) — calls `bobbin hook session-context` after context compaction to restore codebase awareness.
+3. **PostToolUse** (`Write|Edit|Bash|Grep|Glob|Read`) — calls `bobbin hook post-tool-use` to reactively inject related files when code is touched.
+4. **PostToolUseFailure** — calls `bobbin hook post-tool-use-failure` to surface related context after a failed tool call.
 
 ### uninstall
 

@@ -118,6 +118,38 @@ bobbin bundle remove <NAME> --global -r "src/file.rs::OldSymbol"
 bobbin bundle remove <NAME> --global --all    # Delete entire bundle
 ```
 
+### suggest
+
+Propose **new** bundles from coupling-graph analysis — clusters of files that
+change together but aren't yet captured in any bundle.
+
+```bash
+bobbin bundle suggest                    # Default: coupling >= 0.3, cluster >= 3
+bobbin bundle suggest --threshold 0.5    # Stricter coupling
+bobbin bundle suggest --min-size 5       # Larger clusters only
+```
+
+### additions
+
+Suggest files to **add to an existing bundle**, ranked by how frequently they
+appear in the bundle's beads' changesets (GH#9 frequency analysis). A non-member
+file is suggested when it is touched by at least `--min-fraction` of the bundle's
+beads.
+
+```bash
+bobbin bundle additions <NAME>
+```
+
+### drift
+
+Report bundle drift: files frequently touched alongside a bundle but missing from
+it, and dead members no longer present.
+
+```bash
+bobbin bundle drift            # All bundles
+bobbin bundle drift <NAME>     # A single bundle
+```
+
 ## Global Options
 
 | Flag | Description |
@@ -125,8 +157,9 @@ bobbin bundle remove <NAME> --global --all    # Delete entire bundle
 | `--json` | Output in JSON format |
 | `--quiet` | Suppress non-essential output |
 | `--verbose` | Show detailed progress |
-| `--server <URL>` | Use remote bobbin server |
-| `--role <ROLE>` | Role for access filtering |
+
+> **Note:** `bundle` operates entirely on the local `tags.toml`; the global
+> `--server` and `--role` flags are ignored by bundle subcommands.
 
 ## Storage
 
