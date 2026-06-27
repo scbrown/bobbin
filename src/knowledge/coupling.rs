@@ -13,7 +13,12 @@ use anyhow::{Context, Result};
 
 use crate::types::FileCoupling;
 
-const BOBBIN_NS: &str = "https://bobbin.dev/";
+pub(crate) const BOBBIN_NS: &str = "https://bobbin.dev/";
+
+/// Full IRI of the `co_changed_with` coupling predicate.
+pub(crate) fn co_changed_with_iri() -> String {
+    format!("{BOBBIN_NS}co_changed_with")
+}
 
 /// Push coupling scores to the Quipu knowledge graph as weighted edges.
 ///
@@ -109,7 +114,7 @@ fn generate_coupling_turtle(couplings: &[FileCoupling], repo_name: &str) -> Stri
 }
 
 /// Build the IRI for a code module entity.
-fn code_module_iri(repo: &str, path: &str) -> String {
+pub(crate) fn code_module_iri(repo: &str, path: &str) -> String {
     format!(
         "{BOBBIN_NS}code/{}/{}",
         iri_encode(repo),
