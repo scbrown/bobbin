@@ -1914,4 +1914,62 @@ tags = ["docs"]
         // External role: scoped override → not pinned
         assert_eq!(config.resolve_pin("user:guardrails", Some("external/user1")), None);
     }
+
+    // ===== Ontology-aware query tests (GH#14) =====
+
+    fn ontology_config() -> TagsConfig {
+        let toml_str = r#"
+[ontology.tags.security]
+description = "Security-related code"
+
+[ontology.tags.auth]
+parent = "security"
+relates_to = ["session", "token"]
+
+[ontology.tags.session]
+parent = "auth"
+
+[[bundles]]
+name = "domain/security"
+description = "Security subsystem"
+tags = ["security"]
+"#;
+        toml::from_str(toml_str).unwrap()
+    }
+
+    #[test]
+    fn test_expand_tags_via_ontology_includes_descendants() {
+        let config = ontology_config();
+        let expanded = config.expand_tags_via_ontology(&["security".to_string()]);
+        // security → auth → session (transitive descendants)
+        assert!(expanded.contains(&"security".to_string()));
+        assert!(expanded.contains(&"auth".to_string()));
+        assert!(expanded.contains(&"session".to_string()));
+    }
+
+    #[test]
+    fn test_expand_tags_via_ontology_leaf_unchanged() {
+        let config = ontology_config();
+        let expanded = config.expand_tags_via_ontology(&["session".to_string()]);
+        // session is a leaf — only itself
+        assert_eq!(expanded, vec!["session".to_string()]);
+    }
+
+    #[test]
+    fn test_expand_tags_via_ontology_noop_without_ontology() {
+        let config = TagsConfig::default();
+        let input = vec!["security".to_string(), "auth".to_string()];
+        assert_eq!(config.expand_tags_via_ontology(&input), input);
+    }
+
+    #[test]
+    fn test_build_bundle_file_filter_with_ontology_expands_tags() {
+        let config = ontology_config();
+        let filter = config
+            .build_bundle_file_filter_with_ontology("domain/security")
+            .expect("bundle filter");
+        // The bundle's `security` tag should expand to include descendants.
+        assert!(filter.contains("auth"), "filter was: {filter}");
+        assert!(filter.contains("session"), "filter was: {filter}");
+    }
 }

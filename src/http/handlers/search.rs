@@ -160,7 +160,11 @@ pub(super) async fn search(
     if let Some(ref tags) = params.tag {
         let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
         if !tag_list.is_empty() {
-            extra_filters.push(build_tag_include_filter(&tag_list));
+            // Expand requested tags through the ontology hierarchy so a query for
+            // a parent concept (e.g. `security`) also matches descendant tags
+            // (`auth`, `session`). No-op when no ontology is configured (GH#14).
+            let expanded = state.tags_config.expand_tags_via_ontology(&tag_list);
+            extra_filters.push(build_tag_include_filter(&expanded));
         }
     }
     if let Some(ref tags) = params.exclude_tag {
@@ -169,9 +173,11 @@ pub(super) async fn search(
             extra_filters.push(build_tag_exclude_filter(&tag_list));
         }
     }
-    // Apply bundle filter (scope search to bundle member files)
+    // Apply bundle filter (scope search to bundle member files). Use the
+    // ontology-aware variant so a bundle's tags expand through the hierarchy
+    // (GH#14); falls back to plain tag membership when no ontology is defined.
     if let Some(ref bundle_name) = params.bundle {
-        if let Some(bundle_filter) = state.tags_config.build_bundle_file_filter(bundle_name) {
+        if let Some(bundle_filter) = state.tags_config.build_bundle_file_filter_with_ontology(bundle_name) {
             extra_filters.push(bundle_filter);
         }
     }
