@@ -214,7 +214,7 @@ Default configuration stored in `.bobbin/config.toml`. See [Configuration Refere
 
 ```toml
 [index]
-include = ["**/*.rs", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.py", "**/*.go", "**/*.md"]
+include = ["**/*.rs", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.py", "**/*.go", "**/*.java", "**/*.cpp", "**/*.cc", "**/*.hpp", "**/*.md"]
 exclude = ["**/node_modules/**", "**/target/**", "**/dist/**", "**/.git/**", "**/build/**", "**/__pycache__/**"]
 use_gitignore = true
 

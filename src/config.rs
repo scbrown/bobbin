@@ -74,6 +74,13 @@ impl Default for IndexConfig {
                 "**/*.jsx".into(),
                 "**/*.py".into(),
                 "**/*.go".into(),
+                // Java + C++ have wired tree-sitter parsers; include the
+                // extensions parser.rs recognizes (.c/.h are line-based "c" and
+                // intentionally left out — bo-esn4).
+                "**/*.java".into(),
+                "**/*.cpp".into(),
+                "**/*.cc".into(),
+                "**/*.hpp".into(),
                 "**/*.md".into(),
             ],
             exclude: vec![
@@ -923,6 +930,23 @@ mod tests {
         assert!(config.dimensions.is_none());
         assert!(config.api.is_none());
         assert!(config.custom_model.is_none());
+    }
+
+    #[test]
+    fn test_default_index_include_has_java_and_cpp() {
+        // Java + C++ have wired tree-sitter parsers; they must be in the default
+        // include set so their structural extraction actually runs (bo-esn4).
+        let include = IndexConfig::default().include;
+        for pat in [
+            "**/*.java",
+            "**/*.cpp",
+            "**/*.cc",
+            "**/*.hpp",
+            "**/*.rs",
+            "**/*.py",
+        ] {
+            assert!(include.contains(&pat.to_string()), "default include missing {pat}");
+        }
     }
 
     #[test]
