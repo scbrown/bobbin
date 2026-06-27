@@ -144,6 +144,13 @@ impl RepoFilter {
     /// Extract repo name from a file path like `/var/lib/bobbin/repos/aegis/src/main.rs`.
     /// Returns the segment after "repos/" or the first path component.
     pub fn repo_from_path(path: &str) -> &str {
+        // Bead chunks have synthetic paths `beads:<rig>:<id>` (no slashes). Scope
+        // their access to the owning rig so per-rig deny rules apply — otherwise
+        // the whole `beads:<rig>:<id>` string is treated as the repo, matches no
+        // deny rule, and falls through default_allow=true (security gap GH#13/bo-y0z).
+        if let Some(rest) = path.strip_prefix("beads:") {
+            return rest.split(':').next().unwrap_or(rest);
+        }
         // Look for "/repos/<name>/" pattern (absolute paths)
         if let Some(idx) = path.find("/repos/") {
             let after = &path[idx + 7..]; // skip "/repos/"
@@ -421,6 +428,36 @@ mod tests {
             RepoFilter::repo_from_path("repos/cv/resume.md"),
             "cv"
         );
+        // Bead chunks map to their rig (GH#13/bo-y0z access fix).
+        assert_eq!(RepoFilter::repo_from_path("beads:pixelsrc:bo-x"), "pixelsrc");
+        assert_eq!(RepoFilter::repo_from_path("beads:aegis:aegis-h8x"), "aegis");
+        assert_eq!(RepoFilter::repo_from_path("beads:hq:hq-9f2"), "hq");
+    }
+
+    #[test]
+    fn test_bead_access_scoped_to_rig() {
+        // A role that denies the `pixelsrc` repo must also be denied pixelsrc beads.
+        let config = make_config(true, vec![role("aegis", &[], &["pixelsrc"])]);
+        let filter = RepoFilter::from_config(&config, "aegis");
+        // Code from pixelsrc denied (baseline).
+        assert!(!filter.is_path_allowed("/var/lib/bobbin/repos/pixelsrc/src/x.rs"));
+        // Bead from the pixelsrc rig must ALSO be denied (this was the security gap).
+        assert!(!filter.is_path_allowed("beads:pixelsrc:bo-x"));
+        // Beads from an allowed rig still pass.
+        assert!(filter.is_path_allowed("beads:aegis:aegis-h8x"));
+    }
+
+    #[test]
+    fn test_bead_hq_human_only_deny() {
+        // hq beads (security/escalation) gated to humans via an agent-role deny.
+        let config = make_config(
+            true,
+            vec![role("human", &["*"], &[]), role("default", &[], &["hq"])],
+        );
+        let agent = RepoFilter::from_config(&config, "default");
+        assert!(!agent.is_path_allowed("beads:hq:hq-secret"));
+        let human = RepoFilter::from_config(&config, "human");
+        assert!(human.is_path_allowed("beads:hq:hq-secret"));
     }
 
     #[test]
