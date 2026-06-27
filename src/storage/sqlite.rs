@@ -68,10 +68,27 @@ impl MetadataStore {
                 action_type TEXT
             );
 
+            -- Bug causality (GH#9 telemetry Phase 0, bo-s1kb). The supervised
+            -- signal for "risky change": reconstructs which prior commit most
+            -- likely introduced the bug a later bead fixed, per file. One row per
+            -- (bug, culprit_sha, file); UNIQUE makes the reconstruction job
+            -- idempotent so periodic re-runs upsert rather than duplicate.
+            CREATE TABLE IF NOT EXISTS bug_causality (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+                bug_id TEXT NOT NULL,
+                culprit_sha TEXT,
+                culprit_bead_id TEXT,
+                file TEXT,
+                confidence REAL,
+                UNIQUE(bug_id, culprit_sha, file)
+            );
+
             -- Indexes
             CREATE INDEX IF NOT EXISTS idx_coupling_score ON coupling(score DESC);
             CREATE INDEX IF NOT EXISTS idx_bead_lineage_bead ON bead_lineage(bead_id);
             CREATE INDEX IF NOT EXISTS idx_bead_lineage_commit ON bead_lineage(commit_sha);
+            CREATE INDEX IF NOT EXISTS idx_bug_causality_bug ON bug_causality(bug_id);
         "#,
         )?;
 
@@ -389,6 +406,158 @@ impl MetadataStore {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
+
+    /// Distinct (bead_id, bead_type) pairs present in bead_lineage. `bead_type`
+    /// is the most-recent non-null type recorded for that bead (may be None).
+    /// Used by the causality job to discover candidate bug beads (bo-s1kb).
+    pub fn distinct_lineage_bead_ids(&self) -> Result<Vec<(String, Option<String>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT bead_id, MAX(bead_type) FROM bead_lineage GROUP BY bead_id ORDER BY bead_id",
+        )?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Prior commit lineage rows that touched any of `files` strictly before
+    /// `before` (ISO timestamp). Returns one (bead_id, commit_sha, file,
+    /// created_at) tuple per matching (row, file), most-recent first. Used by
+    /// bug-causality reconstruction (bo-s1kb) to find candidate culprit commits.
+    /// `files` empty → empty result. Uses json_each over `touched_files`.
+    pub fn prior_lineage_touching_files(
+        &self,
+        files: &[String],
+        before: &str,
+    ) -> Result<Vec<PriorTouch>> {
+        if files.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = (0..files.len())
+            .map(|i| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(",");
+        let before_idx = files.len() + 1;
+        let sql = format!(
+            "SELECT bl.bead_id, bl.commit_sha, je.value, bl.created_at
+             FROM bead_lineage bl, json_each(bl.touched_files) je
+             WHERE bl.commit_sha IS NOT NULL
+               AND bl.created_at < ?{before_idx}
+               AND je.value IN ({placeholders})
+             ORDER BY bl.created_at DESC, bl.id DESC"
+        );
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        for f in files {
+            params.push(Box::new(f.clone()));
+        }
+        params.push(Box::new(before.to_string()));
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(param_refs.as_slice(), |row| {
+                Ok(PriorTouch {
+                    bead_id: row.get(0)?,
+                    commit_sha: row.get(1)?,
+                    file: row.get(2)?,
+                    created_at: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Upsert a bug-causality row (bo-s1kb). Idempotent on (bug_id, culprit_sha,
+    /// file): a re-run refreshes confidence / culprit_bead_id rather than
+    /// duplicating. Returns the row id.
+    pub fn record_bug_causality(&self, rec: &NewBugCausality) -> Result<i64> {
+        self.conn.execute(
+            r#"INSERT INTO bug_causality (bug_id, culprit_sha, culprit_bead_id, file, confidence)
+               VALUES (?1, ?2, ?3, ?4, ?5)
+               ON CONFLICT(bug_id, culprit_sha, file) DO UPDATE SET
+                   culprit_bead_id = excluded.culprit_bead_id,
+                   confidence = excluded.confidence,
+                   created_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')"#,
+            rusqlite::params![
+                rec.bug_id,
+                rec.culprit_sha,
+                rec.culprit_bead_id,
+                rec.file,
+                rec.confidence,
+            ],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// List bug-causality rows, optionally filtered by bug id. Highest
+    /// confidence first.
+    pub fn list_bug_causality(
+        &self,
+        bug_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<BugCausalityRecord>> {
+        let mut sql = String::from(
+            "SELECT id, created_at, bug_id, culprit_sha, culprit_bead_id, file, confidence
+             FROM bug_causality",
+        );
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        if let Some(b) = bug_id {
+            sql.push_str(" WHERE bug_id = ?1");
+            params.push(Box::new(b.to_string()));
+        }
+        sql.push_str(&format!(
+            " ORDER BY confidence DESC, id DESC LIMIT ?{}",
+            params.len() + 1
+        ));
+        params.push(Box::new(limit as i64));
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(param_refs.as_slice(), |row| {
+                Ok(BugCausalityRecord {
+                    id: row.get(0)?,
+                    created_at: row.get(1)?,
+                    bug_id: row.get(2)?,
+                    culprit_sha: row.get(3)?,
+                    culprit_bead_id: row.get(4)?,
+                    file: row.get(5)?,
+                    confidence: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+}
+
+/// One (commit, file) pair from a prior lineage row that touched a file of
+/// interest (bug-causality reconstruction, bo-s1kb).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PriorTouch {
+    pub bead_id: String,
+    pub commit_sha: Option<String>,
+    pub file: String,
+    pub created_at: String,
+}
+
+/// Input for upserting a bug-causality row (bo-s1kb).
+#[derive(Debug, Clone, Default)]
+pub struct NewBugCausality {
+    pub bug_id: String,
+    pub culprit_sha: Option<String>,
+    pub culprit_bead_id: Option<String>,
+    pub file: Option<String>,
+    pub confidence: Option<f64>,
+}
+
+/// A stored bug-causality row (bo-s1kb).
+#[derive(Debug, Clone)]
+pub struct BugCausalityRecord {
+    pub id: i64,
+    pub created_at: String,
+    pub bug_id: String,
+    pub culprit_sha: Option<String>,
+    pub culprit_bead_id: Option<String>,
+    pub file: Option<String>,
+    pub confidence: Option<f64>,
 }
 
 /// A symbol touched by a commit's changeset (telemetry Phase 0, bo-xrsy).
@@ -672,6 +841,76 @@ mod tests {
         // Filter by commit
         let by_commit = store.list_bead_lineage(None, Some("deadbeef"), 10).unwrap();
         assert_eq!(by_commit.len(), 1);
+    }
+
+    #[test]
+    fn test_prior_lineage_touching_files_and_bug_causality() {
+        let (store, _dir) = create_test_store();
+
+        // A prior commit (bo-old) and a later bug-fix commit (bo-bug) both touch
+        // src/a.rs. Record them, then query priors touching the bug's files.
+        store
+            .record_bead_lineage(&NewBeadLineage {
+                bead_id: "bo-old".to_string(),
+                commit_sha: Some("sha_old".to_string()),
+                touched_files: vec!["src/a.rs".to_string(), "src/b.rs".to_string()],
+                action_type: Some("commit".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+        store
+            .record_bead_lineage(&NewBeadLineage {
+                bead_id: "bo-bug".to_string(),
+                bead_type: Some("bug".to_string()),
+                commit_sha: Some("sha_fix".to_string()),
+                touched_files: vec!["src/a.rs".to_string()],
+                action_type: Some("commit".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+        // json_each-driven lookup: a far-future boundary admits all prior rows.
+        let priors = store
+            .prior_lineage_touching_files(&["src/a.rs".to_string()], "9999-01-01T00:00:00Z")
+            .unwrap();
+        assert!(priors.iter().all(|p| p.file == "src/a.rs"));
+        assert!(priors.iter().any(|p| p.bead_id == "bo-old"));
+
+        // Empty file list short-circuits.
+        assert!(store
+            .prior_lineage_touching_files(&[], "9999-01-01T00:00:00Z")
+            .unwrap()
+            .is_empty());
+
+        // distinct bead ids surface the bug's recorded type.
+        let distinct = store.distinct_lineage_bead_ids().unwrap();
+        assert!(distinct
+            .iter()
+            .any(|(id, ty)| id == "bo-bug" && ty.as_deref() == Some("bug")));
+
+        // Upsert idempotency: same (bug, sha, file) refreshes, not duplicates.
+        store
+            .record_bug_causality(&NewBugCausality {
+                bug_id: "bo-bug".to_string(),
+                culprit_sha: Some("sha_old".to_string()),
+                culprit_bead_id: Some("bo-old".to_string()),
+                file: Some("src/a.rs".to_string()),
+                confidence: Some(0.5),
+            })
+            .unwrap();
+        store
+            .record_bug_causality(&NewBugCausality {
+                bug_id: "bo-bug".to_string(),
+                culprit_sha: Some("sha_old".to_string()),
+                culprit_bead_id: Some("bo-old".to_string()),
+                file: Some("src/a.rs".to_string()),
+                confidence: Some(0.9),
+            })
+            .unwrap();
+        let rows = store.list_bug_causality(Some("bo-bug"), 10).unwrap();
+        assert_eq!(rows.len(), 1, "upsert must not duplicate");
+        assert_eq!(rows[0].confidence, Some(0.9), "confidence refreshed");
+        assert_eq!(rows[0].culprit_sha.as_deref(), Some("sha_old"));
     }
 
     #[test]

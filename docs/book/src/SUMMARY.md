@@ -50,6 +50,7 @@
 - [watch](cli/watch.md)
 - [completions](cli/completions.md)
 - [hook](cli/hook.md)
+- [bead](cli/bead.md)
 - [tour](cli/tour.md)
 - [prime](cli/prime.md)
 - [bundle](cli/bundle.md)
