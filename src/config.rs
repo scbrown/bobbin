@@ -1345,6 +1345,36 @@ repo_affinity_boost = 3.5
         assert!((config.hooks.repo_affinity_boost - 3.5).abs() < f32::EPSILON);
     }
 
+    // bo-u962: the agent-facing context/search paths (MCP + HTTP context/review,
+    // cli review) must source repo_affinity_boost from config, not a hardcoded 2.0
+    // — otherwise the knob is silently ignored where agents actually hit it. These
+    // ContextConfig blocks are built inline in async handlers with no extractable
+    // seam, so guard against regression at the source: each agent-facing site reads
+    // the config field and none hardcode `repo_affinity_boost: 2.0`. calibrate.rs is
+    // deliberately excluded (calibration stays config-independent / deterministic).
+    #[test]
+    fn test_repo_affinity_boost_not_hardcoded_in_agent_paths() {
+        let root = env!("CARGO_MANIFEST_DIR");
+        for rel in [
+            "src/mcp/server.rs",
+            "src/http/handlers/context.rs",
+            "src/http/handlers/review.rs",
+            "src/cli/review.rs",
+            "src/cli/context.rs",
+        ] {
+            let src = std::fs::read_to_string(format!("{root}/{rel}")).unwrap();
+            assert!(
+                !src.contains("repo_affinity_boost: 2.0"),
+                "{rel} hardcodes repo_affinity_boost: 2.0 — thread config.hooks.repo_affinity_boost instead"
+            );
+            assert!(
+                src.contains("repo_affinity_boost: config.hooks.repo_affinity_boost")
+                    || src.contains("repo_affinity_boost: state.config.hooks.repo_affinity_boost"),
+                "{rel} must source repo_affinity_boost from config"
+            );
+        }
+    }
+
     #[test]
     fn test_hooks_config_custom() {
         let toml_str = r#"
