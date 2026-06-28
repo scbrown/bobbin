@@ -262,6 +262,42 @@ pub struct RelatedFile {
     pub co_changes: u32,
 }
 
+/// Request for test↔source coverage mapping
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TestCoverageRequest {
+    /// File path to map coverage for
+    #[schemars(
+        description = "File path (relative to repo root). A source file returns the test files that cover it; a test file returns the source files it covers."
+    )]
+    pub file: String,
+
+    /// Maximum number of results (default: 10)
+    #[schemars(description = "Maximum number of coverage links to return (default: 10)")]
+    pub limit: Option<usize>,
+
+    /// Minimum score threshold (default: 0.0)
+    #[schemars(description = "Minimum coupling score threshold (0.0-1.0, default: 0.0)")]
+    pub threshold: Option<f32>,
+}
+
+/// Response for test↔source coverage mapping
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct TestCoverageResponse {
+    pub file: String,
+    /// "test" when `file` is a source file (links are tests); "source" when
+    /// `file` is a test file (links are the sources it covers).
+    pub link_kind: String,
+    pub links: Vec<CoverageLinkOutput>,
+}
+
+/// A single test↔source coverage link
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct CoverageLinkOutput {
+    pub path: String,
+    pub score: f32,
+    pub co_changes: u32,
+}
+
 /// Request for finding symbol references
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct FindRefsRequest {

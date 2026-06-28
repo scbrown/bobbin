@@ -797,6 +797,64 @@ impl BobbinMcpServer {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
+    /// Map test↔source coverage
+    #[tool(description = "Map test↔source coverage inferred from git co-change history. Given a source file, returns the test files that change with it (the tests that likely cover it); given a test file, returns the source files it covers. Useful for: 'which tests exercise auth.rs?', 'what does test_auth.rs cover?'.")]
+    async fn test_coverage(
+        &self,
+        Parameters(req): Parameters<TestCoverageRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let limit = req.limit.unwrap_or(10);
+        let threshold = req.threshold.unwrap_or(0.0);
+
+        let vector_store = self.open_vector_store().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Verify file exists in index via LanceDB
+        if vector_store
+            .get_file(&req.file)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            .is_none()
+        {
+            return Err(McpError::invalid_params(
+                format!("File not found in index: {}", req.file),
+                None,
+            ));
+        }
+
+        // Coupling data is in SQLite
+        let store = self.open_metadata_store()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let couplings = store
+            .get_coupling(&req.file, limit)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let (direction, links) =
+            crate::index::coverage::derive_coverage(&req.file, couplings);
+
+        let links: Vec<CoverageLinkOutput> = links
+            .into_iter()
+            .filter(|l| l.score >= threshold)
+            .map(|l| CoverageLinkOutput {
+                path: l.path,
+                score: l.score,
+                co_changes: l.co_changes,
+            })
+            .collect();
+
+        let response = TestCoverageResponse {
+            file: req.file,
+            link_kind: direction.link_kind().to_string(),
+            links,
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
     /// Find symbol references
     #[tool(description = "Find the definition and all usages of a symbol by name. Returns the definition location (file, line, signature) and all usage sites across the codebase. Best for: 'where is parse_config defined?', 'who calls handle_request?', 'find all uses of Config struct'.")]
     async fn find_refs(

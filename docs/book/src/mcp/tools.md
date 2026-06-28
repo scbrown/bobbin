@@ -76,6 +76,25 @@ Find files related to a given file based on git commit history (temporal couplin
 
 **Response fields:** `file`, `related[]` (each with `path`, `score`, `co_changes`)
 
+## test_coverage
+
+Map test↔source coverage inferred from git co-change history. Given a source
+file, returns the test files that change with it (the tests that likely cover
+it); given a test file, returns the source files it covers. Test files are
+detected by path conventions (`test_*`, `*_test.*`, `*_spec.*`, `tests/`, etc.).
+
+**Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `file` | string | yes | — | File path relative to repo root |
+| `limit` | integer | no | 10 | Maximum number of results |
+| `threshold` | float | no | 0.0 | Minimum coupling score (0.0–1.0) |
+
+**Response fields:** `file`, `link_kind` (`"test"` when `file` is source,
+`"source"` when `file` is a test), `links[]` (each with `path`, `score`,
+`co_changes`)
+
 ## find_refs
 
 Find the definition and all usages of a symbol by name.

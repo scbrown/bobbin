@@ -5,6 +5,7 @@ mod calibrate;
 mod completions;
 mod connect;
 mod context;
+mod coverage;
 mod deps;
 mod feedback;
 mod grep;
@@ -112,6 +113,9 @@ enum Commands {
     /// Find files related to a given file
     Related(related::RelatedArgs),
 
+    /// Map test↔source coverage from temporal coupling
+    Coverage(coverage::CoverageArgs),
+
     /// Show commit history for a file
     History(history::HistoryArgs),
 
@@ -191,6 +195,7 @@ impl Commands {
             Commands::Grep(_) => "grep",
             Commands::Refs(_) => "refs",
             Commands::Related(_) => "related",
+            Commands::Coverage(_) => "coverage",
             Commands::History(_) => "history",
             Commands::Log(_) => "log",
             Commands::Hotspots(_) => "hotspots",
@@ -308,6 +313,7 @@ async fn dispatch_command(command: Commands, output: OutputConfig) -> Result<()>
         Commands::Grep(args) => grep::run(args, output).await,
         Commands::Refs(args) => refs::run(args, output).await,
         Commands::Related(args) => related::run(args, output).await,
+        Commands::Coverage(args) => coverage::run(args, output).await,
         Commands::History(args) => history::run(args, output).await,
         Commands::Log(args) => log::run(args, output).await,
         Commands::Hotspots(args) => hotspots::run(args, output).await,

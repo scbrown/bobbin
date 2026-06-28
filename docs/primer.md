@@ -72,7 +72,7 @@ Languages: Rust, TypeScript, Python, Go, Java, C++, Markdown. Others use line-ba
 
 ## MCP Tools
 
-When running as MCP server (`bobbin serve`): `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `impact`, `review`, `similar`, `dependencies`, `file_history`, `status`, `search_beads`, `commit_search`, `prime`.
+When running as MCP server (`bobbin serve`): `search`, `grep`, `context`, `related`, `test_coverage`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `impact`, `review`, `similar`, `dependencies`, `file_history`, `status`, `search_beads`, `commit_search`, `prime`.
 
 → Full tool reference: `docs/book/src/mcp/tools.md`
 
