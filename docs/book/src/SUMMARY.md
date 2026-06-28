@@ -38,6 +38,7 @@
 - [grep](cli/grep.md)
 - [refs](cli/refs.md)
 - [related](cli/related.md)
+- [coverage](cli/coverage.md)
 - [history](cli/history.md)
 - [hotspots](cli/hotspots.md)
 - [impact](cli/impact.md)
