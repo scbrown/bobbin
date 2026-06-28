@@ -512,6 +512,92 @@ impl GitAnalyzer {
         let stdout = String::from_utf8_lossy(&output.stdout);
         Ok(parse_blame_porcelain(&stdout))
     }
+
+    /// Blame a line range as of a specific revision (instead of the working tree).
+    /// Used by SZZ-style culprit detection: blame the pre-fix file (`<fix>^`) at
+    /// the lines a fix removed to find the commit that introduced them.
+    pub fn blame_lines_at_rev(
+        &self,
+        rev: &str,
+        file_path: &str,
+        start: u32,
+        end: u32,
+    ) -> Result<Vec<BlameEntry>> {
+        let range = format!("{},{}", start, end);
+        let output = Command::new("git")
+            .args(["blame", rev, "-L", &range, "--porcelain", "--", file_path])
+            .current_dir(&self.repo_root)
+            .output()
+            .context("Failed to run git blame")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!(
+                "git blame {} failed for {}:{}-{}: {}",
+                rev,
+                file_path,
+                start,
+                end,
+                stderr.trim()
+            );
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(parse_blame_porcelain(&stdout))
+    }
+
+    /// SZZ-lite culprit detection: find the commits that last touched the lines a
+    /// fix commit removed or modified in `file`.
+    ///
+    /// Diffs `fix_sha` against its first parent (zero context) to get the
+    /// old-side line ranges the fix deleted, then blames those ranges against
+    /// `fix_sha^`. Returns one [`BlameEntry`] per blamed line (the introducing
+    /// commit + its old line number). Returns an empty vec when the fix only
+    /// *added* lines, when `file` is newly created by the fix, or when blame is
+    /// unavailable (e.g. the fix is a root commit with no parent).
+    pub fn blame_fix_culprits(&self, fix_sha: &str, file: &str) -> Result<Vec<BlameEntry>> {
+        // Diff the fix against its first parent, no context, for this file only.
+        let output = Command::new("git")
+            .args([
+                "show",
+                fix_sha,
+                "--unified=0",
+                "--pretty=format:",
+                "--",
+                file,
+            ])
+            .current_dir(&self.repo_root)
+            .output()
+            .context("Failed to run git show")?;
+
+        if !output.status.success() {
+            anyhow::bail!(
+                "git show failed for {} {}: {}",
+                fix_sha,
+                file,
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+
+        let diff = String::from_utf8_lossy(&output.stdout);
+        let parsed = parse_unified_diff(&diff);
+        // removed_lines are old-side line numbers in the pre-fix file.
+        let removed = match parsed.get(file) {
+            Some((_added, removed)) if !removed.is_empty() => removed.clone(),
+            _ => return Ok(Vec::new()),
+        };
+
+        let parent = format!("{fix_sha}^");
+        let mut entries = Vec::new();
+        for (start, end) in group_consecutive(&removed) {
+            // A missing parent (root commit) or a file absent at the parent blames
+            // to nothing — skip those ranges rather than failing the whole bug.
+            if let Ok(mut e) = self.blame_lines_at_rev(&parent, file, start, end) {
+                entries.append(&mut e);
+            }
+        }
+        Ok(entries)
+    }
 }
 
 /// Parse file history log into entries
@@ -859,6 +945,33 @@ fn parse_hunk_header(line: &str, added_lines: &mut Vec<u32>, removed_lines: &mut
     }
 }
 
+/// Collapse a set of line numbers into contiguous `(start, end)` inclusive
+/// ranges. Input is sorted and de-duplicated first, so callers may pass the
+/// removed-line lists from multiple hunks in any order. Empty input → no ranges.
+fn group_consecutive(lines: &[u32]) -> Vec<(u32, u32)> {
+    let mut sorted: Vec<u32> = lines.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+
+    let mut ranges = Vec::new();
+    let mut iter = sorted.into_iter();
+    let Some(first) = iter.next() else {
+        return ranges;
+    };
+    let (mut start, mut end) = (first, first);
+    for n in iter {
+        if n == end + 1 {
+            end = n;
+        } else {
+            ranges.push((start, end));
+            start = n;
+            end = n;
+        }
+    }
+    ranges.push((start, end));
+    ranges
+}
+
 /// Parse a range spec like "42" (1 line at 42) or "42,5" (5 lines starting at 42).
 /// A count of 0 means no lines (pure addition or deletion on the other side).
 fn parse_range_spec(spec: &str) -> (u32, u32) {
@@ -931,6 +1044,21 @@ fn parse_blame_porcelain(output: &str) -> Vec<BlameEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_group_consecutive() {
+        // Unsorted + duplicate input collapses into contiguous inclusive ranges.
+        assert_eq!(
+            group_consecutive(&[5, 1, 2, 3, 7, 6, 3]),
+            vec![(1, 3), (5, 7)]
+        );
+        // Single isolated lines each form their own range.
+        assert_eq!(group_consecutive(&[10, 20, 30]), vec![(10, 10), (20, 20), (30, 30)]);
+        // One run.
+        assert_eq!(group_consecutive(&[4, 5, 6]), vec![(4, 6)]);
+        // Empty input → no ranges.
+        assert_eq!(group_consecutive(&[]), Vec::<(u32, u32)>::new());
+    }
 
     #[test]
     fn test_parse_git_log() {
@@ -1148,6 +1276,75 @@ mod tests {
         // A very restrictive since should return empty or same
         let churn_future = analyzer.get_file_churn(Some("2099-01-01")).unwrap();
         assert!(churn_future.is_empty());
+    }
+
+    #[test]
+    fn test_blame_fix_culprits_finds_introducing_commit() {
+        // SZZ-lite: a "culprit" commit introduces a buggy line; a later "fix"
+        // commit changes that line. blame_fix_culprits should attribute the
+        // removed line to the culprit commit, not the fix.
+        let dir = setup_test_repo();
+        let path = dir.path();
+        let run = |args: &[&str]| {
+            Command::new("git").args(args).current_dir(path).output().unwrap()
+        };
+
+        // c0: baseline file.
+        std::fs::write(path.join("auth.rs"), "fn ok() {}\nlet x = 1;\nfn end() {}\n").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-m", "baseline"]);
+
+        // culprit: introduce the buggy middle line.
+        std::fs::write(path.join("auth.rs"), "fn ok() {}\nlet x = BUGGY;\nfn end() {}\n").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-m", "introduce bug"]);
+        let culprit_sha = String::from_utf8_lossy(&run(&["rev-parse", "HEAD"]).stdout)
+            .trim()
+            .to_string();
+
+        // fix: change the buggy line (removes the culprit's version).
+        std::fs::write(path.join("auth.rs"), "fn ok() {}\nlet x = 2;\nfn end() {}\n").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-m", "fix bug"]);
+        let fix_sha = String::from_utf8_lossy(&run(&["rev-parse", "HEAD"]).stdout)
+            .trim()
+            .to_string();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let entries = analyzer.blame_fix_culprits(&fix_sha, "auth.rs").unwrap();
+
+        // The removed line was last touched by the culprit commit.
+        assert!(!entries.is_empty(), "expected blame to attribute removed lines");
+        assert!(
+            entries.iter().all(|e| e.commit_hash == culprit_sha),
+            "all blamed lines should point at the culprit, got {:?}",
+            entries
+        );
+    }
+
+    #[test]
+    fn test_blame_fix_culprits_pure_addition_is_empty() {
+        // A fix that only *adds* lines has no removed lines to blame → empty.
+        let dir = setup_test_repo();
+        let path = dir.path();
+        let run = |args: &[&str]| {
+            Command::new("git").args(args).current_dir(path).output().unwrap()
+        };
+
+        std::fs::write(path.join("a.rs"), "one\n").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-m", "c0"]);
+
+        std::fs::write(path.join("a.rs"), "one\ntwo\n").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-m", "append only"]);
+        let fix_sha = String::from_utf8_lossy(&run(&["rev-parse", "HEAD"]).stdout)
+            .trim()
+            .to_string();
+
+        let analyzer = GitAnalyzer::new(path).unwrap();
+        let entries = analyzer.blame_fix_culprits(&fix_sha, "a.rs").unwrap();
+        assert!(entries.is_empty(), "pure addition should yield no culprits");
     }
 
     #[test]

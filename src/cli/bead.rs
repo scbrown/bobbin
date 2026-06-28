@@ -214,7 +214,7 @@ pub async fn run(args: BeadArgs, output: OutputConfig) -> Result<()> {
         }
 
         BeadCommand::ReconstructCausality { bug, limit } => {
-            run_reconstruct_causality(&store, bug.as_deref(), limit, &output)?;
+            run_reconstruct_causality(&repo_root, &store, bug.as_deref(), limit, &output)?;
         }
 
         BeadCommand::History {
@@ -504,24 +504,30 @@ struct CausalityOutput {
     rows: usize,
 }
 
-/// Reconstruct bug causality and populate `bug_causality` (bo-s1kb).
+/// Reconstruct bug causality and populate `bug_causality` (bo-s1kb, bo-8nmm).
 ///
 /// For each bug bead: gather the files its fix touched, find the most-recent
 /// prior commit touching each such file (the candidate culprit), score
-/// confidence by how much of the fix's changeset that commit overlaps, and
-/// upsert one row per (bug, culprit, file). Idempotent via the table's UNIQUE
-/// constraint, so periodic re-runs refresh rather than duplicate.
+/// confidence by how much of the fix's changeset that commit overlaps, then
+/// *sharpen* each file with git blame — blaming the exact lines the fix removed
+/// against the fix's parent yields the precise introducing commit at higher
+/// confidence. Upserts one row per (bug, culprit, file); idempotent via the
+/// table's UNIQUE constraint, so periodic re-runs refresh rather than duplicate.
 ///
-/// Scope (v1): the recency+overlap heuristic over `bead_lineage`. Git-blame
-/// sharpening of the exact introducing commit and `change_events` outcome
-/// labeling are deferred (see bo-s1kb design notes) — neither blocks the
-/// supervised signal this table provides.
+/// Layering: blame (bo-8nmm) is the sharp signal and replaces the recency+overlap
+/// heuristic (bo-s1kb) per file where available, falling back to it otherwise
+/// (pure additions, new files, root commits, non-git trees). `change_events`
+/// outcome labeling remains deferred (see bo-s1kb design notes).
 fn run_reconstruct_causality(
+    repo_root: &Path,
     store: &MetadataStore,
     bug: Option<&str>,
     limit: usize,
     output: &OutputConfig,
 ) -> Result<()> {
+    // Git-blame sharpening (bo-8nmm) needs a repo handle; absence (e.g. running
+    // against a non-git tree) degrades gracefully to the recency+overlap path.
+    let git = crate::index::GitAnalyzer::new(repo_root).ok();
     // Resolve the set of bug beads to process.
     let bug_ids: Vec<String> = match bug {
         Some(b) => vec![b.to_string()],
@@ -568,12 +574,40 @@ fn run_reconstruct_causality(
             .filter(|t| &t.bead_id != bug_id)
             .collect();
 
-        let candidates = reconstruct_culprits(&fix_files, &prior);
+        let fallback = reconstruct_culprits(&fix_files, &prior);
+
+        // Sharpen with git blame (bo-8nmm): for each fix commit, blame the lines
+        // it removed against the parent to find the exact introducing commit.
+        // Per-file culprit shas accumulate across all of the bug's fix commits.
+        let mut blame_map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        if let Some(git) = git.as_ref() {
+            for row in &fix_rows {
+                let Some(sha) = row.commit_sha.as_deref().filter(|s| !s.is_empty()) else {
+                    continue;
+                };
+                for file in &row.touched_files {
+                    if let Ok(entries) = git.blame_fix_culprits(sha, file) {
+                        if entries.is_empty() {
+                            continue;
+                        }
+                        let shas = blame_map.entry(file.clone()).or_default();
+                        for e in entries {
+                            shas.push(e.commit_hash);
+                        }
+                    }
+                }
+            }
+        }
+
+        let candidates = merge_causality(fallback, &blame_map);
         for c in &candidates {
             store.record_bug_causality(&NewBugCausality {
                 bug_id: bug_id.clone(),
                 culprit_sha: Some(c.culprit_sha.clone()),
-                culprit_bead_id: Some(c.culprit_bead_id.clone()),
+                // Blame-derived culprits know only the sha, not a bead.
+                culprit_bead_id: Some(c.culprit_bead_id.clone())
+                    .filter(|b| !b.is_empty()),
                 file: Some(c.file.clone()),
                 confidence: Some(c.confidence),
             })?;
@@ -671,6 +705,71 @@ fn reconstruct_culprits(fix_files: &[String], prior: &[PriorTouch]) -> Vec<Causa
             }
         })
         .collect();
+    out.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.file.cmp(&b.file))
+    });
+    out
+}
+
+/// Pick the dominant culprit from a per-line list of blame commit shas: the sha
+/// that blames the most lines. Returns `(sha, attributed_lines, total_lines)`.
+/// Ties break to the lexically-smallest sha for determinism. None if empty.
+fn dominant_culprit(shas: &[String]) -> Option<(String, usize, usize)> {
+    use std::collections::HashMap;
+    if shas.is_empty() {
+        return None;
+    }
+    let total = shas.len();
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for s in shas {
+        *counts.entry(s.as_str()).or_default() += 1;
+    }
+    // Max by count, then smallest sha. Iterate sorted for deterministic tie-break.
+    let mut pairs: Vec<(&str, usize)> = counts.into_iter().collect();
+    pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+    let (sha, n) = pairs[0];
+    Some((sha.to_string(), n, total))
+}
+
+/// Confidence for a blame-derived culprit. Blame is a precise signal, so it is
+/// floored at 0.6 (above the recency+overlap heuristic's typical range) and
+/// scales toward 0.98 as the culprit's share of the blamed lines approaches 1.0.
+fn blame_confidence(attributed: usize, total: usize) -> f64 {
+    let frac = attributed as f64 / (total.max(1) as f64);
+    (0.6 + 0.38 * frac).clamp(0.6, 0.98)
+}
+
+/// Merge the recency+overlap `fallback` candidates with git-blame results
+/// (per-file lists of culprit shas). Where blame produced a dominant culprit for
+/// a file, it replaces that file's fallback candidate (sharper, exact commit);
+/// files with no blame keep their fallback; files seen only by blame are added.
+/// Deterministic order: confidence desc, then file asc.
+fn merge_causality(
+    fallback: Vec<CausalityCandidate>,
+    blame_map: &std::collections::HashMap<String, Vec<String>>,
+) -> Vec<CausalityCandidate> {
+    use std::collections::HashMap;
+    let mut by_file: HashMap<String, CausalityCandidate> =
+        fallback.into_iter().map(|c| (c.file.clone(), c)).collect();
+
+    for (file, shas) in blame_map {
+        if let Some((sha, attributed, total)) = dominant_culprit(shas) {
+            by_file.insert(
+                file.clone(),
+                CausalityCandidate {
+                    file: file.clone(),
+                    culprit_sha: sha,
+                    culprit_bead_id: String::new(), // unknown from blame alone
+                    confidence: blame_confidence(attributed, total),
+                },
+            );
+        }
+    }
+
+    let mut out: Vec<CausalityCandidate> = by_file.into_values().collect();
     out.sort_by(|a, b| {
         b.confidence
             .partial_cmp(&a.confidence)
@@ -890,6 +989,77 @@ mod tests {
             },
         ];
         assert!(reconstruct_culprits(&fix_files, &prior).is_empty());
+    }
+
+    fn cand(file: &str, sha: &str, bead: &str, conf: f64) -> CausalityCandidate {
+        CausalityCandidate {
+            file: file.to_string(),
+            culprit_sha: sha.to_string(),
+            culprit_bead_id: bead.to_string(),
+            confidence: conf,
+        }
+    }
+
+    #[test]
+    fn test_dominant_culprit_majority_and_ties() {
+        let shas = vec![
+            "aaa".to_string(),
+            "bbb".to_string(),
+            "aaa".to_string(),
+            "aaa".to_string(),
+        ];
+        assert_eq!(dominant_culprit(&shas), Some(("aaa".to_string(), 3, 4)));
+        // Tie on count → lexically smallest sha wins (deterministic).
+        let tie = vec!["zzz".to_string(), "mmm".to_string()];
+        assert_eq!(dominant_culprit(&tie), Some(("mmm".to_string(), 1, 2)));
+        assert_eq!(dominant_culprit(&[]), None);
+    }
+
+    #[test]
+    fn test_blame_confidence_band() {
+        // Unanimous blame → top of band; split blame → lower but floored at 0.6.
+        assert!((blame_confidence(10, 10) - 0.98).abs() < 1e-9);
+        assert!(blame_confidence(1, 10) >= 0.6);
+        assert!(blame_confidence(5, 10) > blame_confidence(1, 10));
+    }
+
+    #[test]
+    fn test_merge_causality_blame_overrides_fallback() {
+        use std::collections::HashMap;
+        // Fallback put sha_old on a.rs at 0.95; blame says the real culprit is
+        // sha_real (unanimous), so blame replaces it with a blame-band score.
+        let fallback = vec![
+            cand("src/a.rs", "sha_old", "bo-old", 0.95),
+            cand("src/b.rs", "sha_b", "bo-b", 0.4),
+        ];
+        let mut blame: HashMap<String, Vec<String>> = HashMap::new();
+        blame.insert(
+            "src/a.rs".to_string(),
+            vec!["sha_real".to_string(), "sha_real".to_string()],
+        );
+        let merged = merge_causality(fallback, &blame);
+
+        let a = merged.iter().find(|c| c.file == "src/a.rs").unwrap();
+        assert_eq!(a.culprit_sha, "sha_real");
+        assert_eq!(a.culprit_bead_id, ""); // blame doesn't know the bead
+        assert!((a.confidence - 0.98).abs() < 1e-9);
+
+        // b.rs had no blame → fallback survives untouched.
+        let b = merged.iter().find(|c| c.file == "src/b.rs").unwrap();
+        assert_eq!(b.culprit_sha, "sha_b");
+        assert_eq!(b.culprit_bead_id, "bo-b");
+    }
+
+    #[test]
+    fn test_merge_causality_adds_blame_only_files() {
+        use std::collections::HashMap;
+        // A file blame found but with no fallback candidate is still recorded.
+        let mut blame: HashMap<String, Vec<String>> = HashMap::new();
+        blame.insert("src/new.rs".to_string(), vec!["sha_intro".to_string()]);
+        let merged = merge_causality(vec![], &blame);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].file, "src/new.rs");
+        assert_eq!(merged[0].culprit_sha, "sha_intro");
     }
 }
 
