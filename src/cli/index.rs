@@ -605,6 +605,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                     match analyzer.analyze_coupling(
                         config.git.coupling_depth,
                         config.git.coupling_threshold,
+                        config.git.coupling_freq_weight,
+                        config.git.coupling_recency_days,
                     ) {
                         Ok(couplings) => {
                             let mut count = 0;

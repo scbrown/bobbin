@@ -234,6 +234,8 @@ semantic_weight = 0.7
 coupling_enabled = true
 coupling_depth = 1000
 coupling_threshold = 3
+coupling_freq_weight = 0.7   # frequency vs recency split (recency = 1 - this)
+coupling_recency_days = 30.0 # recency decay knee: N days old -> 0.5 recency score
 ```
 
 ## Hybrid Search (RRF)

@@ -114,7 +114,13 @@ impl GitAnalyzer {
     }
 
     /// Analyze git history to find files that change together
-    pub fn analyze_coupling(&self, depth: usize, threshold: u32) -> Result<Vec<FileCoupling>> {
+    pub fn analyze_coupling(
+        &self,
+        depth: usize,
+        threshold: u32,
+        freq_weight: f32,
+        recency_days: f32,
+    ) -> Result<Vec<FileCoupling>> {
         // Get commit log with files changed
         // Format: COMMIT:<hash>:<timestamp>
         // followed by list of files
@@ -211,7 +217,14 @@ impl GitAnalyzer {
                 FileCoupling {
                     file_a,
                     file_b,
-                    score: calculate_coupling_score(count, max_co_changes, last_co_change, now),
+                    score: calculate_coupling_score(
+                        count,
+                        max_co_changes,
+                        last_co_change,
+                        now,
+                        freq_weight,
+                        recency_days,
+                    ),
                     co_changes: count,
                     last_co_change,
                 }
@@ -859,12 +872,19 @@ fn parse_range_spec(spec: &str) -> (u32, u32) {
     }
 }
 
-/// Calculate coupling score based on frequency and recency
+/// Calculate coupling score based on frequency and recency.
+///
+/// `freq_weight` is the weight on the normalized co-change count (0.0–1.0); the
+/// recency component is weighted `1.0 - freq_weight`. `recency_days` is the knee
+/// of the recency decay: a pair last changed `recency_days` ago scores 0.5 on
+/// recency. See `[git].coupling_freq_weight` / `coupling_recency_days`.
 fn calculate_coupling_score(
     co_changes: u32,
     max_co_changes: u32,
     last_co_change: i64,
     now: i64,
+    freq_weight: f32,
+    recency_days: f32,
 ) -> f32 {
     if max_co_changes == 0 {
         return 0.0;
@@ -873,17 +893,16 @@ fn calculate_coupling_score(
     // Frequency score: normalized count (0.0 - 1.0)
     let freq_score = co_changes as f32 / max_co_changes as f32;
 
-    // Recency score: decay based on days since last co-change
-    // Decay factor: 0.99 per day? Or simpler: 1 / (1 + days)
+    // Recency score: slow decay based on days since last co-change.
+    // At `recency_days` old the score is 0.5; at 0 days it is 1.0.
+    // Guard against a non-positive knee collapsing the decay.
+    let knee = if recency_days > 0.0 { recency_days } else { 30.0 };
     let days_diff = ((now - last_co_change) as f32 / 86400.0).max(0.0);
-    // Use a slow decay: at 30 days, score is ~0.5. at 0 days, score is 1.0
-    // 30 days * k = 1 => k = 1/30?
-    // Let's use 1 / (1 + days/30)
-    let recency_score = 1.0 / (1.0 + days_diff / 30.0);
+    let recency_score = 1.0 / (1.0 + days_diff / knee);
 
-    // Weighted combination: 70% frequency, 30% recency
-    // This emphasizes pairs that change often, with a boost if they changed recently
-    0.7 * freq_score + 0.3 * recency_score
+    // Weighted combination: emphasizes pairs that change often, with a boost if
+    // they changed recently. Recency weight is the complement of freq_weight.
+    freq_weight * freq_score + (1.0 - freq_weight) * recency_score
 }
 
 /// Parse git blame --porcelain output into BlameEntry records.
@@ -932,22 +951,36 @@ mod tests {
         let now = 10000;
         let max_co_changes = 10;
 
+        // Default weights: 0.7 frequency, 0.3 recency, 30-day knee.
+        let fw = 0.7;
+        let rd = 30.0;
+
         // Case 1: High frequency, recent
-        let score1 = calculate_coupling_score(10, max_co_changes, now, now);
+        let score1 = calculate_coupling_score(10, max_co_changes, now, now, fw, rd);
         // freq = 1.0, recency = 1.0 -> 1.0
         assert!((score1 - 1.0).abs() < 0.001);
 
         // Case 2: Low frequency, recent
-        let score2 = calculate_coupling_score(1, max_co_changes, now, now);
+        let score2 = calculate_coupling_score(1, max_co_changes, now, now, fw, rd);
         // freq = 0.1, recency = 1.0 -> 0.07 + 0.3 = 0.37
         assert!((score2 - 0.37).abs() < 0.001);
 
         // Case 3: High frequency, old
         // 30 days old = 2592000 seconds
         let old = now - 30 * 86400;
-        let score3 = calculate_coupling_score(10, max_co_changes, old, now);
+        let score3 = calculate_coupling_score(10, max_co_changes, old, now, fw, rd);
         // freq = 1.0, recency = 1/(1+1) = 0.5 -> 0.7 + 0.15 = 0.85
         assert!((score3 - 0.85).abs() < 0.001);
+
+        // Case 4: Custom weights — recency-dominant (freq_weight = 0.2).
+        // freq = 1.0, recency = 0.5 -> 0.2 + 0.4 = 0.6
+        let score4 = calculate_coupling_score(10, max_co_changes, old, now, 0.2, rd);
+        assert!((score4 - 0.6).abs() < 0.001);
+
+        // Case 5: Custom knee — 60-day knee makes 30-day-old pairs decay less.
+        // freq = 1.0, recency = 1/(1+0.5) = 0.667 -> 0.7 + 0.3*0.667 = 0.9
+        let score5 = calculate_coupling_score(10, max_co_changes, old, now, fw, 60.0);
+        assert!((score5 - 0.9).abs() < 0.001);
     }
 
     #[test]

@@ -337,6 +337,14 @@ pub struct GitConfig {
     pub coupling_depth: usize,
     /// Minimum co-changes to establish coupling
     pub coupling_threshold: u32,
+    /// Weight on co-change frequency in the coupling score (0.0–1.0). The
+    /// recency component is weighted `1.0 - coupling_freq_weight`. Default: 0.7
+    /// (70% frequency, 30% recency).
+    pub coupling_freq_weight: f32,
+    /// Recency knee in days for coupling score decay: a pair last changed
+    /// together `coupling_recency_days` ago scores 0.5 on the recency component
+    /// (`1/(1 + days/coupling_recency_days)`). Default: 30.0.
+    pub coupling_recency_days: f32,
     /// Enable semantic commit indexing (embed commit messages for search)
     pub commits_enabled: bool,
     /// How many commits back to index for semantic search (0 = all)
@@ -349,6 +357,8 @@ impl Default for GitConfig {
             coupling_enabled: true,
             coupling_depth: 5000,
             coupling_threshold: 3,
+            coupling_freq_weight: 0.7,
+            coupling_recency_days: 30.0,
             commits_enabled: true,
             commits_depth: 0,
         }

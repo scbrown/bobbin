@@ -738,8 +738,10 @@ fn reindex_coupling(
     db_path: &std::path::Path,
     depth: usize,
     threshold: u32,
+    freq_weight: f32,
+    recency_days: f32,
 ) -> Result<()> {
-    let couplings = git.analyze_coupling(depth, threshold)?;
+    let couplings = git.analyze_coupling(depth, threshold, freq_weight, recency_days)?;
     let ms = MetadataStore::open(db_path)?;
     ms.clear_coupling()?;
     ms.begin_transaction()?;
@@ -1385,7 +1387,14 @@ async fn run_full_sweep(
                 });
             }
         }
-        reindex_coupling(git, db_path, depth, config.git.coupling_threshold)?;
+        reindex_coupling(
+            git,
+            db_path,
+            depth,
+            config.git.coupling_threshold,
+            config.git.coupling_freq_weight,
+            config.git.coupling_recency_days,
+        )?;
 
         // Run probes with this coupling depth
         let prog = progress_path(repo_root);
@@ -1423,7 +1432,14 @@ async fn run_full_sweep(
             original_coupling_depth
         );
     }
-    reindex_coupling(git, db_path, original_coupling_depth, config.git.coupling_threshold)?;
+    reindex_coupling(
+        git,
+        db_path,
+        original_coupling_depth,
+        config.git.coupling_threshold,
+        config.git.coupling_freq_weight,
+        config.git.coupling_recency_days,
+    )?;
 
     Ok(all_results)
 }
