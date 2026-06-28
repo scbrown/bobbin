@@ -5,6 +5,25 @@ Bobbin stores its configuration in `.bobbin/config.toml`, created by `bobbin ini
 ## Full Default Configuration
 
 ```toml
+# Quipu knowledge-graph endpoint (e.g. "http://quipu.svc"). When set, search
+# results are annotated with entity spotlight data. Unset by default.
+# Top-level key — must appear before the first [section] header.
+# quipu_endpoint = "http://quipu.svc"
+
+[server]
+# All three keys are unset by default (thin-client / serve options).
+
+# Remote bobbin HTTP server URL for thin-client mode. When set, this machine
+# queries the remote server instead of using a local index.
+# url = "http://search.svc"
+
+# Bind address for `bobbin serve --http`. Runtime fallback when unset: "0.0.0.0".
+# bind_address = "127.0.0.1"
+
+# Filesystem prefix for indexed repos on the server, used to normalize absolute
+# result paths back to repo-relative. Returned as-is when unset.
+# repo_path_prefix = "/var/lib/bobbin/repos/"
+
 [index]
 # Glob patterns for files to include
 include = [
@@ -30,6 +49,15 @@ exclude = [
     "**/.git/**",
     "**/build/**",
     "**/__pycache__/**",
+    "**/CONTRIBUTING.md",
+    "**/contributing.md",
+    "**/searchindex*.js",
+    "**/*.min.js",
+    "**/*.min.css",
+    "**/.scratch/**",
+    "**/vendor/**",
+    "**/.venv/**",
+    "**/book/book/**",
 ]
 
 # Whether to respect .gitignore files
@@ -122,6 +150,109 @@ boost_max = 0.3
 
 # Weight multiplier applied to raw cross-agent feedback scores
 boost_weight = 0.2
+
+[dependencies]
+# Enable dependency extraction and storage
+enabled = true
+
+# Enable import path resolution
+resolve_imports = true
+
+[beads]
+# Index beads (Dolt issue tracker) content
+enabled = false
+
+# Dolt server hostname
+host = "dolt.svc"
+
+# Dolt server port
+port = 3306
+
+# Dolt user
+user = "root"
+
+# Database names to index (e.g. ["beads_aegis", "beads_gastown"]). None by default.
+databases = []
+
+# Include bead comments in indexed content
+include_comments = true
+
+# Include closed beads in the index
+include_closed = false
+
+# Skip beads older than this many days (0 = no limit)
+max_age_days = 90
+
+# Exclude beads carrying any of these labels (case-insensitive) — keeps sensitive
+# beads out of the index entirely (e.g. ["security", "escalation"])
+exclude_labels = []
+
+[archive]
+# Index archive sources (directories of markdown files with YAML frontmatter)
+enabled = false
+
+# Webhook secret for push notifications. Empty = no auth.
+webhook_secret = ""
+
+# Archive sources to index. None by default; uncomment to add:
+# [[archive.sources]]
+# # Label — used as the chunk language tag, path prefix, and search `source` filter
+# name = "hla"
+# # Filesystem path to the records directory
+# path = "/mnt/hla/records"
+# # String matched in YAML frontmatter to identify records
+# # (e.g. "human-intent" matches `schema: human-intent/v2`)
+# schema = "human-intent"
+# # Frontmatter field used as the chunk-name prefix (empty = just the record id)
+# name_field = "channel"
+
+[access]
+# When true, repos not named in any role rule are visible to ALL roles.
+# When false, repos must be explicitly granted by a role's allow list.
+default_allow = true
+
+# Role-based access rules. None by default; deny beats allow. Uncomment to restrict:
+# [[access.roles]]
+# # Role name or glob (e.g. "human", "aegis/*", "bobbin/polecats/*")
+# name = "bobbin/polecats/*"
+# # Repos this role CAN see (globs; ["*"] = all)
+# allow = ["bobbin", "aegis"]
+# # Repos this role CANNOT see (globs; deny beats allow)
+# deny = ["secrets"]
+# # File-path patterns denied within allowed repos (globs)
+# deny_paths = ["**/*.env", "**/secrets/**"]
+
+[sources]
+# Template applied to ALL auto-detected git remotes. Empty (default) =
+# auto-detect forge type (GitHub/GitLab/Forgejo/Bitbucket). Placeholders:
+# {remote_base}, {path}, {line}
+remote_template = ""
+
+# Fallback URL template for repos with no git remote and no per-repo override.
+# Placeholders: {repo}, {path}, {line}
+default_url = ""
+
+# Per-repo URL overrides (highest priority). Empty by default.
+# [sources.repos]
+# beads = "https://github.com/scbrown/beads/blob/main/{path}#L{line}"
+
+# Override forge detection per host. Empty by default.
+# [sources.forge_overrides]
+# "git.internal.example.com" = "gitlab"
+
+# Named repo groups for scoped search (--group CLI flag / ?group= HTTP param).
+# None by default; groups compose with role-based access filtering.
+# [[groups]]
+# name = "infra"
+# repos = ["goldblum", "homelab-mcp", "aegis"]
+
+# Custom file-type classification rules. None by default; evaluated in order,
+# first match wins. Unmatched files fall back to the built-in classifier.
+# Built-in categories: "source", "test", "documentation", "config"; custom
+# names (e.g. "generated") are stored/displayed as-is.
+# [[file_types]]
+# name = "generated"
+# patterns = ["*.pb.go", "*.generated.ts", "migrations/*.sql"]
 ```
 
 ## Section Reference
@@ -207,3 +338,80 @@ Tunes cross-agent feedback boosting. Files rated "useful" by other agents for si
 |-----|------|---------|-------------|
 | `boost_max` | float | `0.3` | Maximum feedback boost multiplier. Actual boost is `min(score * boost_weight, boost_max)`. |
 | `boost_weight` | float | `0.2` | Weight multiplier applied to raw feedback scores. |
+
+### `[server]`
+
+Thin-client and HTTP-server options. All keys are unset by default.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `url` | string | _(unset)_ | Remote bobbin server URL. When set, this machine queries the remote server instead of a local index. |
+| `bind_address` | string | _(unset → `"0.0.0.0"`)_ | Bind address for `bobbin serve --http`. Runtime fallback is `0.0.0.0` when unset. |
+| `repo_path_prefix` | string | _(unset)_ | Filesystem prefix used to normalize absolute result paths back to repo-relative on the server. |
+
+### `[dependencies]`
+
+Controls dependency extraction and import resolution.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enable dependency extraction and storage |
+| `resolve_imports` | bool | `true` | Enable import-path resolution |
+
+### `[beads]`
+
+Indexes beads (the Dolt issue tracker) as searchable content.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Index beads content |
+| `host` | string | `"dolt.svc"` | Dolt server hostname |
+| `port` | int | `3306` | Dolt server port |
+| `user` | string | `"root"` | Dolt user |
+| `databases` | string[] | `[]` | Database names to index (e.g. `["beads_aegis"]`) |
+| `include_comments` | bool | `true` | Include bead comments in indexed content |
+| `include_closed` | bool | `false` | Include closed beads |
+| `max_age_days` | int | `90` | Skip beads older than this many days (`0` = no limit) |
+| `exclude_labels` | string[] | `[]` | Exclude beads carrying any of these labels (case-insensitive) — keeps sensitive beads out of the index |
+
+### `[archive]`
+
+Indexes archive sources — directories of markdown files with YAML frontmatter.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Index archive sources |
+| `webhook_secret` | string | `""` | Webhook secret for push notifications (empty = no auth) |
+| `sources` | table[] | `[]` | Archive sources — each `[[archive.sources]]` has `name`, `path`, `schema` (required) and optional `name_field` |
+
+### `[access]`
+
+Role-based access filtering — restricts which repos a calling role can see.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `default_allow` | bool | `true` | When true, repos not named in any rule are visible to all roles; when false, repos must be explicitly granted |
+| `roles` | table[] | `[]` | Role rules — each `[[access.roles]]` has `name` (required) and optional `allow`, `deny`, `deny_paths` globs. `deny` beats `allow`. |
+
+### `[sources]`
+
+Source-link generation — maps indexed files to clickable forge URLs.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `remote_template` | string | `""` | Template for all auto-detected remotes; empty = auto-detect forge type. Placeholders `{remote_base}`, `{path}`, `{line}` |
+| `default_url` | string | `""` | Fallback template for repos with no remote/override. Placeholders `{repo}`, `{path}`, `{line}` |
+| `repos` | table | `{}` | Per-repo URL overrides under `[sources.repos]` (highest priority) |
+| `forge_overrides` | table | `{}` | Per-host forge-type overrides under `[sources.forge_overrides]` |
+
+### `groups`
+
+Named repo groups for scoped search (`--group` CLI flag / `?group=` HTTP param). None by default; groups compose with `[access]` filtering. Each entry is an `[[groups]]` table with `name` and `repos` (both required).
+
+### `file_types`
+
+Custom file-type classification rules. None by default; evaluated in order, first match wins, with unmatched files falling back to the built-in classifier. Each entry is a `[[file_types]]` table with `name` and `patterns` (both required). Built-in category names are `source`, `test`, `documentation`, `config`; custom names are stored and displayed as-is.
+
+### `quipu_endpoint`
+
+Top-level key (not a table). Quipu knowledge-graph endpoint (e.g. `"http://quipu.svc"`); unset by default. When set, search results are annotated with entity spotlight data. Must appear before the first `[section]` header in the TOML.
