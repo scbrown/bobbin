@@ -178,7 +178,7 @@ Vocab = Bobbin
 BasedOnStyles = Vale, write-good
 ```
 
-With `.vale/styles/Vocab/Bobbin/accept.txt`:
+With `.vale/styles/config/vocabularies/Bobbin/accept.txt`:
 ```
 bobbin
 LanceDB

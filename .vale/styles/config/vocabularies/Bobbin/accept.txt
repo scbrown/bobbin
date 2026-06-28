@@ -4,6 +4,7 @@ APIs
 archive_recent
 archive_search
 args
+async
 Autoconf
 backend
 Bobbin
@@ -12,7 +13,11 @@ bool
 boolean
 bridge_boost_factor
 bridge_mode
+changeset
+changesets
+Clippy
 code_block
+commit
 commit_search
 composable
 config
@@ -40,6 +45,7 @@ enum
 enums
 eval
 evals
+exclude_tag
 feedback_lineage_list
 feedback_lineage_store
 feedback_list
@@ -61,6 +67,9 @@ impl
 injection_id
 inotify
 ints
+knowledge_context
+knowledge_query
+kota
 LanceDB
 list_symbols
 LLMs
@@ -82,7 +91,10 @@ Pensieve
 polars
 protoc
 pylint
+Quipu
+reactively
 read_chunk
+rebase
 reformats
 reindex
 reindexing
@@ -116,6 +128,7 @@ tokenizer
 tokei
 toolchain
 unstaged
+upserted
 upserts
 walkthrough
 werkzeug

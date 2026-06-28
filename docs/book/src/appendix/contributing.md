@@ -95,6 +95,28 @@ just docs check      # Full pipeline: lint + vale + validate + build
 
 Run `just docs check` before pushing documentation changes.
 
+#### Domain vocabulary (Vale spelling)
+
+Vale's `Style check` runs across every file in `docs/book/src/`, so a spelling
+error in *any* file fails the check — even one untouched by your change. Domain
+terms (product names, identifiers like `knowledge_context`, dev jargon like
+`async`) are not in Vale's dictionary and would flag as misspellings.
+
+Add such terms to the accept-list, **one per line**:
+
+```text
+.vale/styles/config/vocabularies/Bobbin/accept.txt
+```
+
+Entries are case-insensitive when lowercase (e.g. `quipu` also accepts `Quipu`);
+add an explicit capitalized form only when the lowercase spelling is itself a
+real word that should still be checked. To find every flagged term locally:
+
+```bash
+vale sync
+vale --minAlertLevel error docs/book/src/
+```
+
 ### Feature Flags
 
 The `knowledge` feature enables Quipu integration. When adding code that depends on Quipu, gate it behind `#[cfg(feature = "knowledge")]`:
