@@ -63,6 +63,11 @@ pub struct IndexConfig {
     pub exclude: Vec<String>,
     /// Whether to respect .gitignore
     pub use_gitignore: bool,
+    /// Lines per chunk for the line-based (unknown-language) chunker. Default: 50.
+    pub chunk_size: usize,
+    /// Overlapping lines between consecutive line-based chunks. Default: 10.
+    /// Must be smaller than `chunk_size`.
+    pub chunk_overlap: usize,
 }
 
 impl Default for IndexConfig {
@@ -103,6 +108,8 @@ impl Default for IndexConfig {
                 "**/book/book/**".into(),
             ],
             use_gitignore: true,
+            chunk_size: 50,
+            chunk_overlap: 10,
         }
     }
 }
@@ -1012,6 +1019,24 @@ mod tests {
         ] {
             assert!(include.contains(&pat.to_string()), "default include missing {pat}");
         }
+    }
+
+    #[test]
+    fn test_index_chunk_defaults_and_override() {
+        let def = IndexConfig::default();
+        assert_eq!(def.chunk_size, 50);
+        assert_eq!(def.chunk_overlap, 10);
+
+        let toml_str = r#"
+[index]
+chunk_size = 80
+chunk_overlap = 16
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.index.chunk_size, 80);
+        assert_eq!(config.index.chunk_overlap, 16);
+        // Unspecified index keys still fall back to defaults.
+        assert!(config.index.use_gitignore);
     }
 
     #[test]

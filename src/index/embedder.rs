@@ -291,6 +291,16 @@ impl Embedder {
         }
     }
 
+    /// Maximum input sequence length (tokens) the model accepts before it
+    /// silently truncates. `None` for API backends whose window we don't track.
+    /// Used by the chunker to keep chunks within the embedder window.
+    pub fn max_seq(&self) -> Option<usize> {
+        match &self.backend {
+            EmbedderBackend::Onnx(onnx) => Some(onnx.max_seq),
+            EmbedderBackend::Api(_) => None,
+        }
+    }
+
     /// Get the model name
     pub fn model_name(&self) -> &str {
         match &self.backend {

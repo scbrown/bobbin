@@ -63,6 +63,12 @@ exclude = [
 # Whether to respect .gitignore files
 use_gitignore = true
 
+# Line-based chunker (unknown languages): lines per chunk and overlap.
+# Chunks are also clamped to the embedding model's token window so dense
+# chunks aren't silently truncated at embed time.
+chunk_size = 50
+chunk_overlap = 10
+
 [embedding]
 # Embedding model (downloaded automatically on first run)
 model = "all-MiniLM-L6-v2"
@@ -266,6 +272,10 @@ Controls which files are indexed.
 | `include` | string[] | See above | Glob patterns for files to include |
 | `exclude` | string[] | See above | Additional exclusion patterns (on top of `.gitignore`) |
 | `use_gitignore` | bool | `true` | Whether to respect `.gitignore` files |
+| `chunk_size` | int | `50` | Lines per chunk for the line-based (unknown-language) chunker. |
+| `chunk_overlap` | int | `10` | Overlapping lines between consecutive line-based chunks. Capped below `chunk_size`. |
+
+Line-based chunks are additionally clamped to the embedding model's token window (`max_seq`) so a dense chunk never silently overflows and gets truncated at embed time — chunks are split to fit. The default model (`all-MiniLM-L6-v2`) has a 256-token window; `bge-small-en-v1.5` and `gte-small` allow 512.
 
 ### `[embedding]`
 

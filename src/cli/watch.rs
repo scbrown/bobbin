@@ -105,7 +105,11 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
     let metadata_store = MetadataStore::open(&db_path)?;
     let mut vector_store = VectorStore::open(&lance_path).await?;
     let embed = Embedder::load(&model_dir, &config.embedding.model)?;
-    let mut parser = Parser::new()?;
+    let mut parser = Parser::new()?.with_chunking(
+        config.index.chunk_size,
+        config.index.chunk_overlap,
+        embed.max_seq().unwrap_or(0),
+    );
 
     // Precompile include/exclude patterns
     let include_patterns: Vec<glob::Pattern> = config

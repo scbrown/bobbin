@@ -5,6 +5,21 @@ use tree_sitter::{Language, Node};
 
 use crate::types::{Chunk, ChunkEdge, ChunkEdgeType, ChunkType, ImportEdge, RawImport};
 
+/// Default lines per line-based chunk (unknown languages). Overridable via
+/// `[index].chunk_size`.
+pub const DEFAULT_CHUNK_SIZE: usize = 50;
+/// Default overlapping lines between consecutive line-based chunks.
+/// Overridable via `[index].chunk_overlap`.
+pub const DEFAULT_CHUNK_OVERLAP: usize = 10;
+
+/// Estimate the token count of a text fragment for embedder-window clamping.
+/// Uses the standard `chars / 4` heuristic (≈4 chars/token) — deterministic,
+/// needs no tokenizer files, and is accurate enough to keep chunks under the
+/// model window. Matches the budget estimator used in context assembly.
+fn estimate_tokens(text: &str) -> usize {
+    text.chars().count().div_ceil(4)
+}
+
 /// Parses source code using tree-sitter to extract semantic chunks
 pub struct Parser {
     rust_parser: tree_sitter::Parser,
@@ -13,6 +28,14 @@ pub struct Parser {
     go_parser: tree_sitter::Parser,
     java_parser: tree_sitter::Parser,
     cpp_parser: tree_sitter::Parser,
+    /// Lines per line-based chunk.
+    chunk_size: usize,
+    /// Overlapping lines between consecutive line-based chunks.
+    chunk_overlap: usize,
+    /// Embedder token window. When > 0, line/markdown chunks are split so none
+    /// exceeds this many estimated tokens — preventing silent embedding
+    /// truncation. 0 = no clamp (window unknown / API backend).
+    max_chunk_tokens: usize,
 }
 
 impl Parser {
@@ -25,7 +48,27 @@ impl Parser {
             go_parser: create_parser(tree_sitter_go::LANGUAGE.into())?,
             java_parser: create_parser(tree_sitter_java::LANGUAGE.into())?,
             cpp_parser: create_parser(tree_sitter_cpp::LANGUAGE.into())?,
+            chunk_size: DEFAULT_CHUNK_SIZE,
+            chunk_overlap: DEFAULT_CHUNK_OVERLAP,
+            max_chunk_tokens: 0,
         })
+    }
+
+    /// Configure line-chunk sizing and the embedder token window for clamping.
+    /// `max_chunk_tokens` is typically the embedder's `max_seq` (0 to disable
+    /// clamping). Invalid pairings are sanitized: `chunk_size` is forced to at
+    /// least 1, and `chunk_overlap` is capped below `chunk_size` to guarantee
+    /// forward progress.
+    pub fn with_chunking(
+        mut self,
+        chunk_size: usize,
+        chunk_overlap: usize,
+        max_chunk_tokens: usize,
+    ) -> Self {
+        self.chunk_size = chunk_size.max(1);
+        self.chunk_overlap = chunk_overlap.min(self.chunk_size - 1);
+        self.max_chunk_tokens = max_chunk_tokens;
+        self
     }
 
     /// Parse a file and extract semantic chunks
@@ -681,18 +724,34 @@ impl Parser {
         chunks
     }
 
-    /// Fall back to line-based chunking for unknown languages
+    /// Fall back to line-based chunking for unknown languages.
+    ///
+    /// Chunk size and overlap come from `[index]` config. When `max_chunk_tokens`
+    /// is set (the embedder window), each chunk is shrunk to fit so the embedder
+    /// never silently truncates it — a 50-line dense-code chunk can otherwise
+    /// blow past a 256/512-token window.
     fn chunk_by_lines(&self, path: &Path, content: &str) -> Vec<Chunk> {
         let lines: Vec<&str> = content.lines().collect();
-        let chunk_size = 50; // lines per chunk
-        let overlap = 10;
+        let overlap = self.chunk_overlap;
+        let language = detect_language(path).unwrap_or_else(|| "unknown".to_string());
 
         let mut chunks = Vec::new();
         let mut start = 0;
 
         while start < lines.len() {
-            let end = (start + chunk_size).min(lines.len());
-            let chunk_content = lines[start..end].join("\n");
+            let mut end = (start + self.chunk_size).min(lines.len());
+
+            // Clamp to the embedder token window: shrink the chunk until it fits.
+            // Always keep at least one line so we make forward progress (a lone
+            // over-window line can't be split without breaking it; the embedder
+            // truncates that pathological case as before).
+            if self.max_chunk_tokens > 0 {
+                while end > start + 1
+                    && estimate_tokens(&lines[start..end].join("\n")) > self.max_chunk_tokens
+                {
+                    end -= 1;
+                }
+            }
 
             chunks.push(Chunk {
                 id: generate_chunk_id(path, start as u32 + 1, end as u32),
@@ -701,15 +760,17 @@ impl Parser {
                 name: None,
                 start_line: start as u32 + 1,
                 end_line: end as u32,
-                content: chunk_content,
-                language: detect_language(path).unwrap_or_else(|| "unknown".to_string()),
+                content: lines[start..end].join("\n"),
+                language: language.clone(),
                 tags: String::new(),
             });
 
             if end >= lines.len() {
                 break;
             }
-            start = end - overlap;
+            // Advance with overlap, but never backwards or in place — the clamp
+            // can make a chunk shorter than `overlap`.
+            start = end.saturating_sub(overlap).max(start + 1);
         }
 
         chunks
@@ -2358,5 +2419,64 @@ fn standalone_function() {
         let chunks = parser.parse_file(&path, content).unwrap();
         let edges = parser.extract_chunk_edges(&path, content, &chunks);
         assert!(edges.is_empty());
+    }
+
+    #[test]
+    fn test_estimate_tokens_heuristic() {
+        assert_eq!(estimate_tokens(""), 0);
+        assert_eq!(estimate_tokens("abcd"), 1); // 4 chars => 1
+        assert_eq!(estimate_tokens("abcde"), 2); // 5 chars => ceil(5/4) = 2
+    }
+
+    #[test]
+    fn test_with_chunking_sanitizes_overlap() {
+        // overlap >= size would stall the chunker; it must be capped below size.
+        let parser = Parser::new().unwrap().with_chunking(5, 10, 0);
+        assert_eq!(parser.chunk_size, 5);
+        assert_eq!(parser.chunk_overlap, 4);
+        // size 0 is forced to at least 1.
+        let parser = Parser::new().unwrap().with_chunking(0, 0, 0);
+        assert_eq!(parser.chunk_size, 1);
+        assert_eq!(parser.chunk_overlap, 0);
+    }
+
+    #[test]
+    fn test_chunk_by_lines_configurable_size_overlap() {
+        // 10-line chunks, 2-line overlap, no token clamp.
+        let parser = Parser::new().unwrap().with_chunking(10, 2, 0);
+        let content = (1..=25).map(|i| format!("line{i}")).collect::<Vec<_>>().join("\n");
+        let path = PathBuf::from("data.unknownext");
+        let chunks = parser.chunk_by_lines(&path, &content);
+
+        // start 0..10, then 8..18, then 16..25 => 3 chunks
+        assert_eq!(chunks.len(), 3);
+        assert_eq!((chunks[0].start_line, chunks[0].end_line), (1, 10));
+        assert_eq!(chunks[1].start_line, 9); // 10 - 2 overlap + 1 (1-based)
+        assert_eq!(chunks[2].end_line, 25);
+    }
+
+    #[test]
+    fn test_chunk_by_lines_clamps_to_token_window() {
+        // 50-line window but an 8-token clamp: dense lines force smaller chunks
+        // so nothing exceeds the embedder window (no silent truncation).
+        let cap = 8;
+        let parser = Parser::new().unwrap().with_chunking(50, 1, cap);
+        // 12 lines, 8 chars each (~2 tokens/line). The full 50-line window would
+        // be ~30+ tokens — must be split.
+        let content = (0..12).map(|_| "yyyyyyyy".to_string()).collect::<Vec<_>>().join("\n");
+        let path = PathBuf::from("dense.unknownext");
+        let chunks = parser.chunk_by_lines(&path, &content);
+
+        assert!(chunks.len() > 1, "clamp should split the window into multiple chunks");
+        for c in &chunks {
+            assert!(
+                estimate_tokens(&c.content) <= cap,
+                "chunk exceeds token window: {} tokens",
+                estimate_tokens(&c.content)
+            );
+        }
+        // Coverage: chunks span the whole file start-to-end.
+        assert_eq!(chunks.first().unwrap().start_line, 1);
+        assert_eq!(chunks.last().unwrap().end_line, 12);
     }
 }
