@@ -115,6 +115,24 @@ pub struct FileCoupling {
     pub last_co_change: i64,
 }
 
+/// Cross-repo coupling between two files in DIFFERENT repositories (bo-oqny).
+///
+/// Inferred from bead-reference co-occurrence: a bead id appearing in the git
+/// history (bead trailers) of two repos in the same `GroupConfig` links the
+/// files those commits touched. Both sides carry their repo because the stored
+/// paths are repo-relative and collide across repos (e.g. `src/main.rs`).
+/// Canonicalized so `(repo_a, path_a) <= (repo_b, path_b)` to dedupe.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CrossRepoCoupling {
+    pub repo_a: String,
+    pub path_a: String,
+    pub repo_b: String,
+    pub path_b: String,
+    pub score: f32,
+    pub co_changes: u32,
+    pub last_co_change: i64,
+}
+
 /// A raw import statement extracted from source code
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawImport {

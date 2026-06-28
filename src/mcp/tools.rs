@@ -245,6 +245,10 @@ pub struct RelatedRequest {
     /// Minimum score threshold (default: 0.0)
     #[schemars(description = "Minimum coupling score threshold (0.0-1.0, default: 0.0)")]
     pub threshold: Option<f32>,
+
+    /// Seed file's repo, to disambiguate cross-repo coupling in a shared store
+    #[schemars(description = "Repo the file belongs to (optional; disambiguates cross-repo coupling lookups in a multi-repo store)")]
+    pub repo: Option<String>,
 }
 
 /// Response for related files
@@ -260,6 +264,9 @@ pub struct RelatedFile {
     pub path: String,
     pub score: f32,
     pub co_changes: u32,
+    /// Repo the file lives in — set only for cross-repo coupled files (bo-oqny).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
 }
 
 /// Request for test↔source coverage mapping
