@@ -26,6 +26,8 @@ use super::{
 pub(super) struct RelatedParams {
     /// File path to find related files for
     file: String,
+    /// Seed file's repo (disambiguates the cross-repo lookup in a shared store)
+    repo: Option<String>,
     /// Max results (default 10)
     limit: Option<usize>,
     /// Min coupling score threshold (default 0.0)
@@ -45,6 +47,9 @@ pub(super) struct RelatedFile {
     path: String,
     score: f32,
     co_changes: u32,
+    /// Repo the file lives in — set only for cross-repo coupled files (bo-oqny).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repo: Option<String>,
 }
 
 pub(super) async fn related(
@@ -75,7 +80,7 @@ pub(super) async fn related(
         .map_err(internal_error)?;
 
     let access = super::resolve_filter(&state, params.role.as_deref());
-    let related: Vec<RelatedFile> = couplings
+    let mut related: Vec<RelatedFile> = couplings
         .into_iter()
         .filter(|c| c.score >= threshold)
         .map(|c| {
@@ -88,10 +93,30 @@ pub(super) async fn related(
                 path: other_path,
                 score: c.score,
                 co_changes: c.co_changes,
+                repo: None,
             }
         })
         .filter(|r| access.is_path_allowed(&r.path))
         .collect();
+
+    // Cross-repo coupled files (bo-oqny) — access-filtered inside the helper.
+    let cross = crate::index::cross_repo::related_cross_repo(
+        &store,
+        params.repo.as_deref(),
+        &params.file,
+        limit,
+        threshold,
+        &access,
+    )
+    .map_err(internal_error)?;
+    related.extend(cross.into_iter().map(|c| RelatedFile {
+        path: c.path,
+        score: c.score,
+        co_changes: c.co_changes,
+        repo: Some(c.repo),
+    }));
+    related.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    related.truncate(limit);
 
     Ok(Json(RelatedResponse {
         file: params.file,

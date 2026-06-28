@@ -677,6 +677,25 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     profile.git_coupling_ms = t_coupling.elapsed().as_millis();
 
+    // Cross-repo coupling (bo-oqny): recompute group-scoped edges from the
+    // bead histories of every indexed repo in each configured group. Cheap and
+    // best-effort — a group only materializes once ≥2 of its repos are indexed,
+    // and a failure here must not fail the index of this repo.
+    if !config.groups.is_empty() {
+        match crate::index::cross_repo::compute_and_store_cross_repo(&metadata_store, &config) {
+            Ok(n) => {
+                if output.verbose && !output.quiet && !output.json {
+                    println!("  Stored {} cross-repo coupling edges", n);
+                }
+            }
+            Err(e) => {
+                if !output.quiet && !output.json {
+                    println!("{} Failed to compute cross-repo coupling: {}", "!".yellow(), e);
+                }
+            }
+        }
+    }
+
     // Analyze and store import dependencies
     let t_deps = Instant::now();
     let mut dep_count: usize = 0;

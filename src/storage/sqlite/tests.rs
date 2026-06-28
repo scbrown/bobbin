@@ -64,6 +64,66 @@ fn test_coupling_update() {
 }
 
 #[test]
+fn test_cross_repo_coupling_roundtrip() {
+    use crate::types::CrossRepoCoupling;
+    let (store, _dir) = create_test_store();
+
+    let edge = CrossRepoCoupling {
+        repo_a: "api".to_string(),
+        path_a: "contract.rs".to_string(),
+        repo_b: "web".to_string(),
+        path_b: "client.ts".to_string(),
+        score: 0.8,
+        co_changes: 4,
+        last_co_change: 1000,
+    };
+    store.upsert_cross_repo_coupling(&edge).unwrap();
+
+    // Match on the seed's exact (repo, path), either side.
+    let from_a = store
+        .get_cross_repo_coupling(Some("api"), "contract.rs", 10)
+        .unwrap();
+    assert_eq!(from_a.len(), 1);
+    assert_eq!(from_a[0].repo_b, "web");
+    let from_b = store
+        .get_cross_repo_coupling(Some("web"), "client.ts", 10)
+        .unwrap();
+    assert_eq!(from_b.len(), 1);
+
+    // Wrong repo for the path -> no match (paths collide across repos).
+    let wrong_repo = store
+        .get_cross_repo_coupling(Some("other"), "contract.rs", 10)
+        .unwrap();
+    assert!(wrong_repo.is_empty());
+
+    // Path-only match (seed repo unknown).
+    let by_path = store
+        .get_cross_repo_coupling(None, "contract.rs", 10)
+        .unwrap();
+    assert_eq!(by_path.len(), 1);
+
+    // Upsert on the same canonical PK updates rather than duplicates.
+    store
+        .upsert_cross_repo_coupling(&CrossRepoCoupling {
+            score: 0.95,
+            co_changes: 9,
+            ..edge.clone()
+        })
+        .unwrap();
+    let updated = store
+        .get_cross_repo_coupling(Some("api"), "contract.rs", 10)
+        .unwrap();
+    assert_eq!(updated.len(), 1);
+    assert_eq!(updated[0].co_changes, 9);
+
+    store.clear_cross_repo_coupling().unwrap();
+    assert!(store
+        .get_cross_repo_coupling(Some("api"), "contract.rs", 10)
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
 fn test_meta() {
     let (store, _dir) = create_test_store();
 

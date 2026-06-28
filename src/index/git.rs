@@ -237,6 +237,43 @@ impl GitAnalyzer {
         Ok(couplings)
     }
 
+    /// Extract `bead_id -> (touched files, latest commit timestamp)` for this
+    /// repo from its git history (bo-oqny cross-repo coupling).
+    ///
+    /// Reuses the same bead-trailer parsing as lineage (`extract_bead_refs`), so
+    /// only explicit `Bead*` trailers count. A bead may span several commits; the
+    /// file set is the union and the timestamp is the most recent. Mega-beads
+    /// (more than `MAX_FILES_PER_BEAD` distinct files) are skipped to avoid pair
+    /// explosion, mirroring the per-repo coupling guard.
+    pub fn bead_file_map(
+        &self,
+        depth: usize,
+    ) -> Result<HashMap<String, (std::collections::BTreeSet<String>, i64)>> {
+        const MAX_FILES_PER_BEAD: usize = 50;
+        let commits = self.get_commit_log(depth, None)?;
+        let mut map: HashMap<String, (std::collections::BTreeSet<String>, i64)> = HashMap::new();
+        for entry in commits {
+            let beads = extract_bead_refs(&entry.trailers);
+            if beads.is_empty() || entry.files.is_empty() {
+                continue;
+            }
+            for bead in beads {
+                let e = map
+                    .entry(bead)
+                    .or_insert_with(|| (std::collections::BTreeSet::new(), 0));
+                for f in &entry.files {
+                    e.0.insert(f.clone());
+                }
+                if entry.timestamp > e.1 {
+                    e.1 = entry.timestamp;
+                }
+            }
+        }
+        // Drop mega-beads (sweeping reformats/renames tagged with one bead).
+        map.retain(|_, (files, _)| files.len() <= MAX_FILES_PER_BEAD);
+        Ok(map)
+    }
+
     /// Get files changed in a specific commit
     // TODO(bobbin-6vq): For incremental indexing
     #[allow(dead_code)]
@@ -991,7 +1028,7 @@ fn parse_range_spec(spec: &str) -> (u32, u32) {
 /// recency component is weighted `1.0 - freq_weight`. `recency_days` is the knee
 /// of the recency decay: a pair last changed `recency_days` ago scores 0.5 on
 /// recency. See `[git].coupling_freq_weight` / `coupling_recency_days`.
-fn calculate_coupling_score(
+pub(crate) fn calculate_coupling_score(
     co_changes: u32,
     max_co_changes: u32,
     last_co_change: i64,

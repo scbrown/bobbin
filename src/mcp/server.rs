@@ -769,7 +769,7 @@ impl BobbinMcpServer {
             .get_coupling(&req.file, limit)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let related: Vec<RelatedFile> = couplings
+        let mut related: Vec<RelatedFile> = couplings
             .into_iter()
             .filter(|c| c.score >= threshold)
             .map(|c| {
@@ -782,9 +782,35 @@ impl BobbinMcpServer {
                     path: other_path,
                     score: c.score,
                     co_changes: c.co_changes,
+                    repo: None,
                 }
             })
             .collect();
+
+        // Cross-repo coupled files (bo-oqny) — MANDATORY access filtering applied
+        // inside the helper. Role is resolved from the environment (BOBBIN_ROLE /
+        // GT_ROLE / BD_ACTOR) exactly as other access-gated surfaces resolve it.
+        let config = Config::load(&Config::config_path(&self.repo_root))
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let role = crate::access::RepoFilter::resolve_role(None);
+        let filter = crate::access::RepoFilter::from_config(&config.access, &role);
+        let cross = crate::index::cross_repo::related_cross_repo(
+            &store,
+            req.repo.as_deref(),
+            &req.file,
+            limit,
+            threshold,
+            &filter,
+        )
+        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        related.extend(cross.into_iter().map(|c| RelatedFile {
+            path: c.path,
+            score: c.score,
+            co_changes: c.co_changes,
+            repo: Some(c.repo),
+        }));
+        related.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        related.truncate(limit);
 
         let response = RelatedResponse {
             file: req.file,
