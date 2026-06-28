@@ -266,6 +266,14 @@ pub fn related_cross_repo(
         } else {
             (e.repo_a, e.path_a)
         };
+        // SECURITY (defense-in-depth, bo-4t07): treat an empty/blank repo or path as
+        // DENY. A synthetic `repos//path` would yield repo "" and slip through
+        // `is_allowed("")` for deny-list roles under default_allow=true (fail-open).
+        // Real data never emits empty-repo edges today, but enforce it here so a
+        // future producer change cannot leak.
+        if other_repo.trim().is_empty() || other_path.trim().is_empty() {
+            continue;
+        }
         // SECURITY: build a synthetic `repos/<repo>/<path>` so RepoFilter extracts
         // the correct repo AND applies any deny_paths to the repo-relative path.
         let synthetic = format!("repos/{}/{}", other_repo, other_path);
@@ -414,6 +422,38 @@ mod tests {
         assert!(
             denied.is_empty(),
             "denied repo must not leak via coupling edge"
+        );
+    }
+
+    /// bo-4t07 (defense-in-depth): an edge whose OTHER side has an empty repo must
+    /// surface to NO role — not even allow-all. Without the guard, the synthetic
+    /// `repos//path` collapses to repo "" which slips through `is_allowed("")` under
+    /// default_allow=true (fail-open for deny-list roles).
+    #[test]
+    fn empty_repo_edge_never_surfaces_even_to_allow_all() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("meta.db");
+        let store = MetadataStore::open(&db).unwrap();
+        // Seed in `aegis` coupled to a file whose repo is empty (malformed edge).
+        store
+            .upsert_cross_repo_coupling(&CrossRepoCoupling {
+                repo_a: "aegis".to_string(),
+                path_a: "src/seed.rs".to_string(),
+                repo_b: "".to_string(),
+                path_b: "src/secret.rs".to_string(),
+                score: 0.9,
+                co_changes: 3,
+                last_co_change: 1000,
+            })
+            .unwrap();
+
+        // Even the most permissive filter must drop the empty-repo side.
+        let permissive = RepoFilter::allow_all();
+        let out =
+            related_cross_repo(&store, Some("aegis"), "src/seed.rs", 10, 0.0, &permissive).unwrap();
+        assert!(
+            out.is_empty(),
+            "empty-repo edge must never surface (fail-closed), even to allow-all"
         );
     }
 
