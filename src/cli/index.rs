@@ -210,7 +210,13 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     let embed = Embedder::from_config(&config.embedding, &model_dir)
         .context("Failed to load embedding model")?;
-    let mut parser = Parser::new().context("Failed to initialize parser")?;
+    let mut parser = Parser::new()
+        .context("Failed to initialize parser")?
+        .with_chunking(
+            config.index.chunk_size,
+            config.index.chunk_overlap,
+            embed.max_seq().unwrap_or(0),
+        );
 
     // When forcing, delete all existing chunks for this repo first to prevent
     // unbounded LanceDB growth (each --force reindex was duplicating all data).

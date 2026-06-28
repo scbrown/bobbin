@@ -294,7 +294,11 @@ async fn run_incremental_index(
 
     let model_dir = Config::model_cache_dir()?;
     let embedder = Embedder::load(&model_dir, &config.embedding.model)?;
-    let mut parser = Parser::new()?;
+    let mut parser = Parser::new()?.with_chunking(
+        config.index.chunk_size,
+        config.index.chunk_overlap,
+        embedder.max_seq().unwrap_or(0),
+    );
 
     // Collect files
     let mut walker = WalkBuilder::new(source_dir);
