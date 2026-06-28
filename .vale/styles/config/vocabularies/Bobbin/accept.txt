@@ -122,6 +122,7 @@ subcommands
 subprocess
 substring
 systemd
+test_coverage
 tmux
 tokenization
 tokenizer
