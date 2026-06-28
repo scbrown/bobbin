@@ -141,6 +141,7 @@ pub(super) async fn context(
 
     let context_config = ContextConfig {
         budget_lines: params.budget.unwrap_or(500),
+        budget_unit: state.config.context.budget_unit,
         depth: params.depth.unwrap_or(1),
         max_coupled: params.max_coupled.unwrap_or(3),
         coupling_threshold: params.coupling_threshold.unwrap_or(state.config.context.coupling_threshold),

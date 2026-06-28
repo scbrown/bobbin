@@ -2846,6 +2846,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
 
     let context_config = ContextConfig {
         budget_lines: cal_budget.unwrap_or(budget),
+        budget_unit: config.context.budget_unit,
         depth: 1,
         max_coupled: 2,    // Tightened from 3 to reduce coupled noise (matches remote mode)
         coupling_threshold: adj.coupling_threshold.unwrap_or(config.context.coupling_threshold),

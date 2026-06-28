@@ -116,6 +116,12 @@ knowledge_budget_pct = 15.0
 # Max graph-traversal hops for knowledge expansion
 knowledge_max_hops = 2
 
+# Unit the context budget is enforced in: "line" (count source lines) or
+# "token" (estimate tokens per chunk, ~chars/4). Token mode makes injection
+# size predictable against the model window. The budget value (e.g. the hook
+# `budget`) is then interpreted in this unit.
+budget_unit = "line"
+
 [feedback]
 # Maximum feedback boost multiplier. Actual boost = min(score * boost_weight, boost_max).
 boost_max = 0.3
@@ -198,6 +204,7 @@ Tunes context assembly — the bridging + knowledge-expansion pipeline that is B
 | `coupling_threshold` | float | `0.1` | Minimum coupling **score** (0.0–1.0) for a coupled file to enter context. Distinct from `[git].coupling_threshold`, which is an integer co-change **count** applied during indexing. |
 | `knowledge_budget_pct` | float | `15.0` | Percent of the line budget reserved for knowledge-graph expansion (requires the `knowledge` feature). |
 | `knowledge_max_hops` | int | `2` | Max graph-traversal hops for knowledge expansion. |
+| `budget_unit` | string | `"line"` | Unit the context budget is enforced in: `"line"` (count source lines) or `"token"` (estimate tokens per chunk, ~chars/4). Token mode makes injection size predictable against the model window; the budget value is then interpreted in tokens. |
 
 ### `[feedback]`
 
