@@ -159,7 +159,7 @@ pub(super) async fn context(
         role: params.role.clone(),
         file_type_rules: state.config.file_types.clone(),
         repo_affinity: params.repo_affinity.clone(),
-        repo_affinity_boost: 2.0,
+        repo_affinity_boost: state.config.hooks.repo_affinity_boost,
         max_bridged_files: state.config.context.max_bridged_files,
         max_bridged_chunks_per_file: state.config.context.max_bridged_chunks_per_file,
         knowledge_budget_pct: state.config.context.knowledge_budget_pct,

@@ -127,7 +127,7 @@ pub(super) async fn review(
         role: params.role.clone(),
         file_type_rules: state.config.file_types.clone(),
         repo_affinity: None,
-        repo_affinity_boost: 2.0,
+        repo_affinity_boost: state.config.hooks.repo_affinity_boost,
         max_bridged_files: 3,
         max_bridged_chunks_per_file: 2,
         repo_path_prefix: state.config.server.repo_path_prefix.clone(),
