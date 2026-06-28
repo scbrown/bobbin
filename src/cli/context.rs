@@ -187,6 +187,7 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
 
     let context_config = ContextConfig {
         budget_lines: args.budget,
+        budget_unit: config.context.budget_unit,
         depth: args.depth,
         max_coupled: args.max_coupled,
         coupling_threshold: args.coupling_threshold.unwrap_or(config.context.coupling_threshold),

@@ -52,9 +52,72 @@ impl std::str::FromStr for BridgeMode {
     }
 }
 
+/// Unit in which the context-assembly budget is counted. Agents have *token*
+/// budgets, but a 50-line dense-code chunk costs far more tokens than 50 lines
+/// of comments. `Token` makes injection size predictable against the model
+/// window; `Line` preserves the historical line-count behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum BudgetUnit {
+    /// Count budget in source lines (`end_line - start_line + 1`). Historical default.
+    #[default]
+    Line,
+    /// Count budget in estimated tokens (see [`estimate_tokens`]).
+    Token,
+}
+
+impl std::fmt::Display for BudgetUnit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BudgetUnit::Line => write!(f, "line"),
+            BudgetUnit::Token => write!(f, "token"),
+        }
+    }
+}
+
+impl std::str::FromStr for BudgetUnit {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "line" | "lines" => Ok(BudgetUnit::Line),
+            "token" | "tokens" => Ok(BudgetUnit::Token),
+            _ => anyhow::bail!("Unknown budget_unit '{}'. Use: line, token", s),
+        }
+    }
+}
+
+/// Estimate the token count of a text fragment.
+///
+/// Uses the standard `chars / 4` heuristic (≈4 chars per token for English +
+/// code) rather than a real tokenizer — it needs no model files, is
+/// deterministic, and is accurate enough for budget *accounting* (we only need
+/// relative sizing to keep injection under the model window, not exact counts).
+/// Non-empty input always costs at least 1 token.
+pub fn estimate_tokens(text: &str) -> usize {
+    let chars = text.chars().count();
+    if chars == 0 {
+        0
+    } else {
+        chars.div_ceil(4)
+    }
+}
+
+/// Cost of a chunk against the assembly budget, in the configured unit.
+/// `Line` uses the chunk's line span; `Token` estimates from its content.
+fn chunk_cost(unit: BudgetUnit, content: &str, start_line: u32, end_line: u32) -> usize {
+    match unit {
+        BudgetUnit::Line => (end_line.saturating_sub(start_line) + 1) as usize,
+        BudgetUnit::Token => estimate_tokens(content),
+    }
+}
+
 /// Configuration for context assembly
 pub struct ContextConfig {
     pub budget_lines: usize,
+    /// Unit the budget is enforced in: `Line` (count source lines) or `Token`
+    /// (estimate tokens per chunk). When `Token`, `budget_lines` and all derived
+    /// caps are interpreted as token counts. Default: `Line`.
+    pub budget_unit: BudgetUnit,
     pub depth: u32,
     pub max_coupled: usize,
     pub coupling_threshold: f32,
@@ -127,6 +190,7 @@ impl Default for ContextConfig {
     fn default() -> Self {
         Self {
             budget_lines: 500,
+            budget_unit: BudgetUnit::Line,
             depth: 1,
             max_coupled: 3,
             coupling_threshold: 0.1,
@@ -1375,7 +1439,7 @@ fn assemble_bundle(
                 if seen_chunk_ids.contains(&result.chunk_id) {
                     continue;
                 }
-                let chunk_lines = (result.end_line - result.start_line + 1) as usize;
+                let chunk_lines = chunk_cost(config.budget_unit, &result.content, result.start_line, result.end_line);
                 let capped_lines = chunk_lines.min(max_chunk_lines);
                 if used_lines + capped_lines > pin_budget_reserve {
                     break;
@@ -1463,7 +1527,7 @@ fn assemble_bundle(
                 continue;
             }
 
-            let chunk_lines = (result.end_line - result.start_line + 1) as usize;
+            let chunk_lines = chunk_cost(config.budget_unit, &result.content, result.start_line, result.end_line);
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
             if used_lines + capped_lines > budget {
@@ -1566,7 +1630,7 @@ fn assemble_bundle(
                 continue;
             }
 
-            let chunk_lines = (chunk.end_line - chunk.start_line + 1) as usize;
+            let chunk_lines = chunk_cost(config.budget_unit, &chunk.content, chunk.start_line, chunk.end_line);
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
             if used_lines + capped_lines > budget {
@@ -1648,7 +1712,7 @@ fn assemble_bundle(
                 continue;
             }
 
-            let chunk_lines = (chunk.end_line - chunk.start_line + 1) as usize;
+            let chunk_lines = chunk_cost(config.budget_unit, &chunk.content, chunk.start_line, chunk.end_line);
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
             if used_lines + capped_lines > budget || bridged_lines + capped_lines > bridged_budget {
@@ -1735,7 +1799,7 @@ fn assemble_bundle(
                 continue;
             }
 
-            let chunk_lines = (chunk.end_line - chunk.start_line + 1) as usize;
+            let chunk_lines = chunk_cost(config.budget_unit, &chunk.content, chunk.start_line, chunk.end_line);
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
             if used_lines + capped_lines > budget || knowledge_lines + capped_lines > knowledge_budget {
@@ -1921,6 +1985,54 @@ mod tests {
 
         assert!(bundle.budget.used_lines <= bundle.budget.max_lines);
         assert_eq!(bundle.budget.max_lines, 10);
+    }
+
+    #[test]
+    fn test_estimate_tokens() {
+        assert_eq!(estimate_tokens(""), 0);
+        assert_eq!(estimate_tokens("a"), 1); // 1 char rounds up to 1 token
+        assert_eq!(estimate_tokens("abcd"), 1); // 4 chars => 1
+        assert_eq!(estimate_tokens("abcde"), 2); // 5 chars => ceil(5/4) = 2
+        assert_eq!(estimate_tokens(&"x".repeat(40)), 10); // 40 chars => 10
+    }
+
+    #[test]
+    fn test_budget_unit_roundtrip() {
+        for unit in [BudgetUnit::Line, BudgetUnit::Token] {
+            let s = unit.to_string();
+            let parsed: BudgetUnit = s.parse().unwrap();
+            assert_eq!(unit, parsed);
+        }
+        assert_eq!(BudgetUnit::default(), BudgetUnit::Line);
+    }
+
+    #[test]
+    fn test_token_budget_enforcement() {
+        // Token mode counts a chunk's cost from its *content* (~chars/4), not its
+        // line span. A chunk with a huge line span but tiny content is cheap.
+        let config = ContextConfig {
+            budget_lines: 20, // interpreted as 20 tokens here
+            budget_unit: BudgetUnit::Token,
+            depth: 0,
+            bridge_mode: BridgeMode::Inject,
+            ..ContextConfig::default()
+        };
+
+        // a.rs: 199-line span but only 32 chars => 8 tokens (admitted despite span)
+        let mut a = make_seed("c1", "a.rs", 1, 200, 0.9);
+        a.content = "x".repeat(32);
+        // b.rs: 40 chars => 10 tokens; 8 + 10 = 18 <= 20, fits
+        let mut b = make_seed("c2", "b.rs", 1, 5, 0.8);
+        b.content = "x".repeat(40);
+        // c.rs: 16 chars => 4 tokens; 18 + 4 = 22 > 20, dropped
+        let mut c = make_seed("c3", "c.rs", 1, 3, 0.7);
+        c.content = "x".repeat(16);
+
+        let bundle = assemble_bundle("test", &config, vec![a, b, c], vec![], vec![], vec![]).unwrap();
+
+        assert_eq!(bundle.budget.max_lines, 20);
+        assert_eq!(bundle.budget.used_lines, 18); // tokens, not lines
+        assert_eq!(bundle.summary.total_chunks, 2); // c dropped on budget
     }
 
     #[test]

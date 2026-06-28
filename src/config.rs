@@ -374,6 +374,10 @@ pub struct ContextTuning {
     pub knowledge_budget_pct: f32,
     /// Maximum graph-traversal hops for knowledge expansion. Default: 2.
     pub knowledge_max_hops: u32,
+    /// Unit the context budget is enforced in: `"line"` (count source lines) or
+    /// `"token"` (estimate tokens per chunk, ~chars/4). Token mode makes injection
+    /// size predictable against the model window. Default: `"line"`.
+    pub budget_unit: crate::search::context::BudgetUnit,
 }
 
 impl Default for ContextTuning {
@@ -385,6 +389,7 @@ impl Default for ContextTuning {
             coupling_threshold: 0.1,
             knowledge_budget_pct: 15.0,
             knowledge_max_hops: 2,
+            budget_unit: crate::search::context::BudgetUnit::Line,
         }
     }
 }
@@ -1206,6 +1211,7 @@ coupling_depth = 500
         assert!((c.context.coupling_threshold - 0.1).abs() < f32::EPSILON);
         assert!((c.context.knowledge_budget_pct - 15.0).abs() < f32::EPSILON);
         assert_eq!(c.context.knowledge_max_hops, 2);
+        assert_eq!(c.context.budget_unit, crate::search::context::BudgetUnit::Line);
         assert!((c.feedback.boost_max - 0.3).abs() < f32::EPSILON);
         assert!((c.feedback.boost_weight - 0.2).abs() < f32::EPSILON);
     }
@@ -1220,6 +1226,7 @@ max_bridged_chunks_per_file = 3
 coupling_threshold = 0.25
 knowledge_budget_pct = 20.0
 knowledge_max_hops = 3
+budget_unit = "token"
 
 [feedback]
 boost_max = 0.4
@@ -1232,6 +1239,7 @@ boost_weight = 0.15
         assert!((config.context.coupling_threshold - 0.25).abs() < f32::EPSILON);
         assert!((config.context.knowledge_budget_pct - 20.0).abs() < f32::EPSILON);
         assert_eq!(config.context.knowledge_max_hops, 3);
+        assert_eq!(config.context.budget_unit, crate::search::context::BudgetUnit::Token);
         assert!((config.feedback.boost_max - 0.4).abs() < f32::EPSILON);
         assert!((config.feedback.boost_weight - 0.15).abs() < f32::EPSILON);
     }
