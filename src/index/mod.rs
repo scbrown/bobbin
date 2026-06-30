@@ -4,6 +4,7 @@ pub mod coverage;
 pub mod cross_repo;
 pub mod embedder;
 pub mod git;
+pub mod multimodal;
 pub mod parser;
 pub mod resolver;
 

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Multimodal ingest — PDF text (bo-j5r0)** — opt-in `[index] multimodal`
+  flag. When enabled, `bobbin index` also walks `**/*.pdf`, extracts text via a
+  pure-Rust extractor (`pdf-extract`; no Python/native toolchain), and chunks it
+  like a plain-text document (`language = "pdf"`) so runbooks, design docs, and
+  specs become searchable. Off by default — no change to the default
+  dep/behavior profile. Image captioning (vision LLM) is tracked as a follow-up.
+
 ## [0.4.0] - 2026-06-27
 
 Search quality, knowledge-graph ranking, workflow telemetry, and a bead

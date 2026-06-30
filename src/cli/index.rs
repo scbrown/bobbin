@@ -286,8 +286,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .to_string();
 
         if !args.force {
-            let content = std::fs::read_to_string(file_path)
-                .with_context(|| format!("Failed to read {}", file_path.display()))?;
+            let content = read_indexable_content(file_path, &config)?;
             let hash = compute_hash(&content);
 
             if let Some(stored_hash) = metadata_store.get_file_hash(&rel_path)? {
@@ -391,7 +390,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .to_string();
 
         let t_read = Instant::now();
-        let content = match std::fs::read_to_string(file_path) {
+        let content = match read_indexable_content(file_path, &config) {
             Ok(c) => c,
             Err(e) => {
                 errors.push((rel_path.clone(), e.to_string()));
@@ -1362,13 +1361,35 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     Ok(())
 }
 
+/// Read a file's text content for indexing.
+///
+/// For multimodal-enabled file types (currently PDFs) the text is extracted via
+/// [`crate::index::multimodal`]; everything else is read as UTF-8. The
+/// multimodal branch only activates when `index.multimodal` is set, so default
+/// indexing behavior is unchanged.
+fn read_indexable_content(path: &Path, config: &Config) -> Result<String> {
+    if config.index.multimodal && crate::index::multimodal::is_multimodal_file(path) {
+        crate::index::multimodal::extract_text(path)
+    } else {
+        std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read {}", path.display()))
+    }
+}
+
 /// Collect all files to index based on configuration patterns
 fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
-    let include_patterns: Vec<glob::Pattern> = config
-        .index
-        .include
+    let mut include_globs: Vec<String> = config.index.include.clone();
+    if config.index.multimodal {
+        // Opt-in: also walk multimodal file types (PDFs) so the extractor can
+        // turn them into searchable text. Kept separate from the default
+        // include list so toggling the flag is the only knob users need.
+        for ext in crate::index::multimodal::MULTIMODAL_EXTENSIONS {
+            include_globs.push(format!("**/*.{ext}"));
+        }
+    }
+    let include_patterns: Vec<glob::Pattern> = include_globs
         .iter()
         .filter_map(|p| glob::Pattern::new(p).ok())
         .collect();
@@ -1769,6 +1790,30 @@ mod tests {
             .filter(|p| p.extension().map(|e| e == "txt").unwrap_or(false))
             .collect();
         assert!(txt_files.is_empty());
+    }
+
+    #[test]
+    fn test_collect_files_multimodal_flag_gates_pdf() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::write(root.join("main.rs"), "fn main() {}").unwrap();
+        std::fs::write(root.join("runbook.pdf"), b"%PDF-1.4 dummy").unwrap();
+
+        // Off by default: PDFs are not walked.
+        let mut config = Config::default();
+        assert!(!config.index.multimodal);
+        let files = collect_files(root, &config).unwrap();
+        assert!(!files
+            .iter()
+            .any(|p| p.extension().map(|e| e == "pdf").unwrap_or(false)));
+
+        // Opt-in: the flag makes the walker pick up PDFs.
+        config.index.multimodal = true;
+        let files = collect_files(root, &config).unwrap();
+        assert!(files
+            .iter()
+            .any(|p| p.file_name().map(|n| n == "runbook.pdf").unwrap_or(false)));
     }
 
     #[test]

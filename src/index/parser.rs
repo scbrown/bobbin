@@ -862,6 +862,9 @@ fn detect_language(path: &Path) -> Option<String> {
         "c" | "h" => Some("c".to_string()),
         "cpp" | "cc" | "hpp" => Some("cpp".to_string()),
         "md" => Some("markdown".to_string()),
+        // PDF text (extracted upstream by index::multimodal). Falls through to
+        // line-based chunking in parse_file, tagged with language = "pdf".
+        "pdf" => Some("pdf".to_string()),
         _ => None,
     }
 }
