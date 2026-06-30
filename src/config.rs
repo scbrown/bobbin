@@ -68,6 +68,11 @@ pub struct IndexConfig {
     /// Overlapping lines between consecutive line-based chunks. Default: 10.
     /// Must be smaller than `chunk_size`.
     pub chunk_overlap: usize,
+    /// Enable multimodal ingest (currently PDF text extraction). When true, the
+    /// indexer also walks `**/*.pdf`, extracts their text via a pure-Rust
+    /// extractor, and chunks it like a plain-text document (language = "pdf").
+    /// Default: false — opt-in so the default behavior/dep profile is unchanged.
+    pub multimodal: bool,
 }
 
 impl Default for IndexConfig {
@@ -110,6 +115,7 @@ impl Default for IndexConfig {
             use_gitignore: true,
             chunk_size: 50,
             chunk_overlap: 10,
+            multimodal: false,
         }
     }
 }

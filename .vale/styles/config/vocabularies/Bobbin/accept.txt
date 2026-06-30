@@ -81,11 +81,13 @@ MCP
 mdbook
 middleware
 monorepo
+[Mm]ultimodal
 Namespace
 OAuth
 Onboarding
 param
 params
+PDFs
 pensieve
 Pensieve
 polars
@@ -104,6 +106,7 @@ ripgrep
 rmcp
 rrf_k
 rst
+runbooks
 rustup
 save_session
 search_beads
