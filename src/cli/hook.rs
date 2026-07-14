@@ -765,10 +765,17 @@ async fn run_uninstall(args: UninstallArgs, output: OutputConfig) -> Result<()> 
 }
 
 async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
-    let repo_root = args
+    let start = args
         .path
         .canonicalize()
         .with_context(|| format!("Invalid path: {}", args.path.display()))?;
+    // Resolve the bobbin root by walking up to the first ancestor holding
+    // `.bobbin/config.toml`, matching the resolver the inject path uses
+    // (bobbin #42, Bug B). Using `args.path` verbatim made the reported
+    // injection count depend on CWD: from a sub-dir the status read a
+    // non-existent hook_state.json and defaulted to 0, while injection recorded
+    // to the true root. Fall back to `start` when not inside a bobbin tree.
+    let repo_root = find_bobbin_root(&start).unwrap_or(start);
 
     let config = Config::load(&Config::config_path(&repo_root)).unwrap_or_default();
 
@@ -1509,6 +1516,16 @@ async fn inject_context_remote(
                 budget,
                 Some(&out),
             ).await;
+
+            // Mirror the local inject path: advance the client-side counter so
+            // `hook status` reflects remote injections too (bobbin #42, Bug A).
+            // Without this, hook_state.json is only ever written by the local
+            // path, which is never taken when BOBBIN_SERVER is set — freezing
+            // the reported injection count at its last local value.
+            let mut state = load_hook_state(&repo_root);
+            state.injection_count += 1;
+            state.last_injection_time = chrono::Utc::now().to_rfc3339();
+            save_hook_state(&repo_root, &state);
 
             Ok(())
         }
@@ -7139,6 +7156,30 @@ mod tests {
         let loaded = load_hook_state(tmp.path());
         assert_eq!(loaded.last_session_id, "test123");
         assert_eq!(loaded.injection_count, 3);
+    }
+
+    #[test]
+    fn test_find_bobbin_root_skips_stray_bobbin_dir() {
+        // Bug B (bobbin #42): the resolver must require .bobbin/config.toml so
+        // `hook status` and the inject path agree on the root. A stray .bobbin/
+        // dir (e.g. one holding only tags.toml) between the CWD and the real
+        // root must be walked past, not treated as the root — otherwise status
+        // reads a hook_state.json that doesn't exist there and reports 0.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+
+        // Real root: has .bobbin/config.toml
+        std::fs::create_dir_all(root.join(".bobbin")).unwrap();
+        std::fs::write(root.join(".bobbin").join("config.toml"), "").unwrap();
+
+        // Stray sub-dir: has a .bobbin/ but no config.toml
+        let stray = root.join("sub");
+        std::fs::create_dir_all(stray.join(".bobbin")).unwrap();
+        std::fs::write(stray.join(".bobbin").join("tags.toml"), "").unwrap();
+
+        // Resolving from the stray dir must land on the real root.
+        assert_eq!(find_bobbin_root(&stray), Some(root.clone()));
+        assert_eq!(find_bobbin_root(&root), Some(root));
     }
 
     #[test]
