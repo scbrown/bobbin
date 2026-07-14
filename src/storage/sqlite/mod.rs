@@ -4,6 +4,11 @@ use std::path::Path;
 
 use crate::types::FileCoupling;
 
+/// Maximum bound parameters per statement. SQLite's compile-time default
+/// `SQLITE_MAX_VARIABLE_NUMBER` is 32766; we stay comfortably under it so a
+/// large `IN (…)` prune never aborts (bobbin #43).
+const SQLITE_MAX_BIND_VARS: usize = 30_000;
+
 /// Git coupling and metadata storage using SQLite
 ///
 /// After the LanceDB consolidation, SQLite only stores:
@@ -390,21 +395,29 @@ impl MetadataStore {
         Ok(())
     }
 
-    /// Delete hash entries for removed files
+    /// Delete hash entries for removed files.
+    ///
+    /// The deletes are chunked so a single statement never binds more than
+    /// [`SQLITE_MAX_BIND_VARS`] parameters. An unbatched `IN (?1, …, ?N)` past
+    /// SQLite's `SQLITE_MAX_VARIABLE_NUMBER` (32766) fails, aborting the prune
+    /// and leaving the index inconsistent (bobbin #43). All chunks run in one
+    /// transaction so the prune is atomic.
     pub fn delete_file_hashes(&self, file_paths: &[String]) -> Result<()> {
         if file_paths.is_empty() {
             return Ok(());
         }
-        let placeholders: Vec<String> = (1..=file_paths.len()).map(|i| format!("?{i}")).collect();
-        let sql = format!(
-            "DELETE FROM file_hashes WHERE file_path IN ({})",
-            placeholders.join(", ")
-        );
-        let params: Vec<&dyn rusqlite::ToSql> = file_paths
-            .iter()
-            .map(|p| p as &dyn rusqlite::ToSql)
-            .collect();
-        self.conn.execute(&sql, params.as_slice())?;
+        let tx = self.conn.unchecked_transaction()?;
+        for chunk in file_paths.chunks(SQLITE_MAX_BIND_VARS) {
+            let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("?{i}")).collect();
+            let sql = format!(
+                "DELETE FROM file_hashes WHERE file_path IN ({})",
+                placeholders.join(", ")
+            );
+            let params: Vec<&dyn rusqlite::ToSql> =
+                chunk.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+            tx.execute(&sql, params.as_slice())?;
+        }
+        tx.commit()?;
         Ok(())
     }
 
