@@ -40,6 +40,35 @@ struct StatusOutput {
     calibration: Option<CalibrationStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     git: Option<GitStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    freshness: Option<Freshness>,
+}
+
+/// Index freshness relative to git HEAD (bobbin #44).
+#[derive(Serialize)]
+struct Freshness {
+    /// True when HEAD's commit is newer than the last index run (or the repo
+    /// has commits but has never been indexed).
+    stale: bool,
+    /// Committer timestamp (unix seconds) of the current HEAD.
+    head_commit_time: i64,
+    /// Timestamp (unix seconds) of the most recent index run, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_indexed: Option<i64>,
+}
+
+impl Freshness {
+    fn compute(head_commit_time: i64, last_indexed: Option<i64>) -> Self {
+        let stale = match last_indexed {
+            Some(ts) => head_commit_time > ts,
+            None => true,
+        };
+        Freshness {
+            stale,
+            head_commit_time,
+            last_indexed,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -85,6 +114,7 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
                 stats: None,
                 calibration: None,
                 git: None,
+                freshness: None,
             };
             println!("{}", serde_json::to_string_pretty(&json_output)?);
         } else if !output.quiet {
@@ -111,10 +141,16 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
     let calibration_result = calibrate::load_calibration(&repo_root);
     let cal_status = build_calibration_status(&calibration_result, stats.total_chunks);
 
-    // Git info
-    let git_status = GitAnalyzer::new(&repo_root)
-        .ok()
-        .map(|git| build_git_status(&git));
+    // Git info + index freshness (bobbin #44): compare HEAD's commit time
+    // against the last index run. If HEAD is newer, committed changes have not
+    // been picked up — a watcher-drift signal that doesn't false-positive on
+    // quiet repos (no new commits => HEAD not newer => not stale).
+    let git = GitAnalyzer::new(&repo_root).ok();
+    let git_status = git.as_ref().map(build_git_status);
+    let freshness = git
+        .as_ref()
+        .and_then(|g| g.get_head_commit_time())
+        .map(|head_ts| Freshness::compute(head_ts, stats.last_indexed));
 
     if output.json {
         let json_output = StatusOutput {
@@ -124,6 +160,7 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
             stats: Some(stats),
             calibration: Some(cal_status),
             git: git_status,
+            freshness,
         };
         println!("{}", serde_json::to_string_pretty(&json_output)?);
     } else if !output.quiet {
@@ -166,6 +203,23 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
                 .map(|t| format_relative_time(t.timestamp()))
                 .unwrap_or_else(|| "Unknown".to_string());
             println!("  Last indexed: {}", dt);
+        }
+
+        // Freshness signal (bobbin #44): warn when HEAD outpaces the index.
+        if let Some(ref f) = freshness {
+            if f.stale {
+                let behind = f
+                    .last_indexed
+                    .map(|ts| format!(" (HEAD is {} newer)", format_duration(f.head_commit_time - ts)))
+                    .unwrap_or_else(|| " (never indexed)".to_string());
+                println!(
+                    "  Freshness:    {}{}",
+                    "stale — run `bobbin index`".yellow(),
+                    behind.dimmed()
+                );
+            } else {
+                println!("  Freshness:    {}", "up to date".green());
+            }
         }
 
         // Show dependency stats
@@ -423,6 +477,20 @@ fn format_relative_time(ts: i64) -> String {
     }
 }
 
+/// Format a positive duration in seconds as a compact human string.
+fn format_duration(secs: i64) -> String {
+    let secs = secs.max(0);
+    if secs < 60 {
+        format!("{}s", secs)
+    } else if secs < 3600 {
+        format!("{}m", secs / 60)
+    } else if secs < 86400 {
+        format!("{}h", secs / 3600)
+    } else {
+        format!("{}d", secs / 86400)
+    }
+}
+
 fn format_age_days(days: u32) -> String {
     if days < 30 {
         format!("{} days", days)
@@ -449,6 +517,7 @@ async fn run_remote(args: StatusArgs, output: OutputConfig, server_url: &str) ->
             repos: vec![],
             calibration: None, // Not available via remote
             git: None,         // Not available via remote
+            freshness: None,   // Not available via remote
             stats: Some(IndexStats {
                 total_files: resp.index.total_files,
                 total_chunks: resp.index.total_chunks,
@@ -506,4 +575,48 @@ async fn run_remote(args: StatusArgs, output: OutputConfig, server_url: &str) ->
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_freshness_head_newer_is_stale() {
+        // HEAD committed after the last index run => stale.
+        let f = Freshness::compute(2_000, Some(1_000));
+        assert!(f.stale);
+        assert_eq!(f.head_commit_time, 2_000);
+        assert_eq!(f.last_indexed, Some(1_000));
+    }
+
+    #[test]
+    fn test_freshness_head_older_is_fresh() {
+        // No commits since the last index (quiet repo) => not stale. This is
+        // the false-positive guard: age alone must not flag an idle repo.
+        let f = Freshness::compute(1_000, Some(2_000));
+        assert!(!f.stale);
+    }
+
+    #[test]
+    fn test_freshness_equal_is_fresh() {
+        let f = Freshness::compute(1_000, Some(1_000));
+        assert!(!f.stale);
+    }
+
+    #[test]
+    fn test_freshness_never_indexed_is_stale() {
+        let f = Freshness::compute(1_000, None);
+        assert!(f.stale);
+        assert_eq!(f.last_indexed, None);
+    }
+
+    #[test]
+    fn test_format_duration_units() {
+        assert_eq!(format_duration(30), "30s");
+        assert_eq!(format_duration(120), "2m");
+        assert_eq!(format_duration(7_200), "2h");
+        assert_eq!(format_duration(172_800), "2d");
+        assert_eq!(format_duration(-5), "0s");
+    }
 }

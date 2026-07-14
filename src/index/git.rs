@@ -332,6 +332,23 @@ impl GitAnalyzer {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
+    /// Get the committer timestamp (unix seconds) of the current HEAD commit.
+    ///
+    /// Used as a freshness reference: if HEAD is newer than the last index run,
+    /// committed changes have not yet been picked up (bobbin #44). Returns None
+    /// when there is no HEAD (empty repo) or git is unavailable.
+    pub fn get_head_commit_time(&self) -> Option<i64> {
+        let output = Command::new("git")
+            .args(["log", "-1", "--format=%ct"])
+            .current_dir(&self.repo_root)
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        String::from_utf8_lossy(&output.stdout).trim().parse::<i64>().ok()
+    }
+
     /// Get the last commit timestamp for every file in the repo in one pass.
     ///
     /// Returns a map of relative file path -> unix timestamp of the most recent
