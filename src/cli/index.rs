@@ -1377,7 +1377,7 @@ fn read_indexable_content(path: &Path, config: &Config) -> Result<String> {
 }
 
 /// Collect all files to index based on configuration patterns
-fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
+pub(crate) fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
     let mut include_globs: Vec<String> = config.index.include.clone();

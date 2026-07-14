@@ -31,6 +31,13 @@ pub struct WatchArgs {
     #[arg(long, default_value_t = 500)]
     debounce_ms: u64,
 
+    /// Periodic full-tree reindex backstop, in seconds. Catches changes the
+    /// file watcher may have dropped (missed events, high-churn bursts). Each
+    /// sweep is incremental — unchanged files are skipped by hash — so it is
+    /// cheap when the watcher kept up. Set to 0 to disable. (bobbin #44)
+    #[arg(long, default_value_t = 900)]
+    reindex_interval_secs: u64,
+
     /// Write PID to this file for daemon management
     #[arg(long)]
     pid_file: Option<PathBuf>,
@@ -167,6 +174,23 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
     const COMPACT_MIN_INTERVAL: Duration = Duration::from_secs(30 * 60);
     let mut compact_counter: usize = 0;
     let mut last_compact = Instant::now();
+
+    // Periodic reindex backstop (bobbin #44). Fires one interval out (not
+    // immediately — the watcher was just started fresh) and reconciles the
+    // whole tree against the index, catching any events the watcher dropped.
+    let reindex_enabled = args.reindex_interval_secs > 0;
+    let reindex_period = Duration::from_secs(args.reindex_interval_secs.max(1));
+    let mut reindex_interval = tokio::time::interval_at(
+        tokio::time::Instant::now() + reindex_period,
+        reindex_period,
+    );
+    reindex_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    if !output.quiet && reindex_enabled {
+        println!(
+            "  Reindex backstop: every {}s",
+            args.reindex_interval_secs
+        );
+    }
 
     let mut sigterm =
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
@@ -329,6 +353,39 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
                     }
                 }
             }
+
+            _ = reindex_interval.tick(), if reindex_enabled => {
+                match run_reindex_backstop(
+                    &source_root,
+                    &config,
+                    repo_name,
+                    &mut vector_store,
+                    &metadata_store,
+                    &embed,
+                    &mut parser,
+                    &output,
+                )
+                .await
+                {
+                    Ok(stats) if stats.files_indexed > 0 || stats.files_removed > 0 => {
+                        compact_counter += stats.files_indexed + stats.files_removed;
+                        if !output.quiet {
+                            println!(
+                                "  {} Backstop reconciled: {} reindexed, {} removed",
+                                "~".cyan(),
+                                stats.files_indexed,
+                                stats.files_removed,
+                            );
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        if !output.quiet {
+                            eprintln!("  {} Backstop error: {}", "!".yellow(), e);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -480,6 +537,74 @@ async fn reindex_files(
     }
 
     Ok(stats)
+}
+
+struct BackstopStats {
+    files_indexed: usize,
+    files_removed: usize,
+}
+
+/// Periodic full-tree reconciliation (bobbin #44).
+///
+/// Walks the whole source tree with the same collector `bobbin index` uses,
+/// re-indexes any file whose content hash drifted from the stored one, and
+/// prunes index rows for files that have disappeared from disk. Both halves
+/// reuse the incremental paths (`reindex_files` hash-skips unchanged files),
+/// so a sweep where the watcher kept up does almost no work. This is the
+/// safety net for events the watcher missed (restarts, dropped events,
+/// high-churn bursts).
+#[allow(clippy::too_many_arguments)]
+async fn run_reindex_backstop(
+    source_root: &Path,
+    config: &Config,
+    repo_name: &str,
+    vector_store: &mut VectorStore,
+    metadata_store: &MetadataStore,
+    embed: &Embedder,
+    parser: &mut Parser,
+    output: &OutputConfig,
+) -> Result<BackstopStats> {
+    let files = super::index::collect_files(source_root, config)?;
+
+    // Prune index rows for files that no longer exist on disk. collect_files
+    // only returns extant files, so anything indexed but absent was deleted
+    // while the watcher was down (or its Remove event was dropped).
+    let current: HashSet<String> = files
+        .iter()
+        .map(|p| {
+            p.strip_prefix(source_root)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    let indexed = metadata_store.get_all_indexed_files()?;
+    let removed: Vec<String> = indexed.difference(&current).cloned().collect();
+    let mut files_removed = 0;
+    if !removed.is_empty() {
+        vector_store.delete_by_file(&removed).await?;
+        metadata_store.delete_file_hashes(&removed)?;
+        files_removed = removed.len();
+    }
+
+    // Reindex drifted files (reindex_files skips those whose hash is unchanged).
+    let stats = reindex_files(
+        &files,
+        source_root,
+        config,
+        repo_name,
+        vector_store,
+        metadata_store,
+        embed,
+        parser,
+        output,
+    )
+    .await?;
+
+    Ok(BackstopStats {
+        files_indexed: stats.files_indexed,
+        files_removed,
+    })
 }
 
 /// Detect the git repo name for a directory by walking up to find `.git`.
