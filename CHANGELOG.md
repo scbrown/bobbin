@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-13
+
+Multimodal PDF ingest, index-freshness safety net, and two indexing/telemetry
+correctness fixes.
+
 ### Added
 
 - **Multimodal ingest — PDF text (bo-j5r0)** — opt-in `[index] multimodal`
@@ -15,6 +20,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   like a plain-text document (`language = "pdf"`) so runbooks, design docs, and
   specs become searchable. Off by default — no change to the default
   dep/behavior profile. Image captioning (vision LLM) is tracked as a follow-up.
+- **Periodic reindex backstop for `watch` (#44)** — `bobbin watch` now runs a
+  periodic full-tree reconciliation (on by default, every 15 min;
+  `--reindex-interval-secs`, `0` disables). Each sweep re-embeds files whose
+  content hash drifted and prunes rows for files that vanished from disk,
+  catching events the file watcher dropped. Sweeps are incremental, so one where
+  the watcher kept up does almost no work.
+- **Index freshness signal in `status` (#44)** — `bobbin status` reports a
+  `Freshness` line (and JSON field) that flags the index stale when the current
+  git HEAD commit is newer than the last index run. Uses commit time, not
+  wall-clock, so a quiet repo is never a false positive.
+
+### Fixed
+
+- **Batched prune delete (#43)** — pruning a source with more than SQLite's
+  `SQLITE_MAX_VARIABLE_NUMBER` (32766) files in one pass no longer exceeds the
+  bound-variable limit and aborts. The `DELETE … IN (…)` is chunked within a
+  single transaction, keeping the prune atomic and the index consistent.
+- **Hook injection count in remote deployments (#42)** — `bobbin hook status`
+  reported `Injection count: 0` while injection was firing. The remote inject
+  path now advances `hook_state`, and `hook status` resolves the bobbin root the
+  same way the inject path does (first ancestor with `.bobbin/config.toml`), so
+  the reported count is accurate and no longer depends on CWD.
 
 ## [0.4.0] - 2026-06-27
 
