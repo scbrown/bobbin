@@ -232,6 +232,25 @@ fn test_delete_file_hashes() {
 }
 
 #[test]
+fn test_delete_file_hashes_exceeds_bind_var_limit() {
+    // Regression for bobbin #43: pruning more files than SQLITE_MAX_VARIABLE_NUMBER
+    // (32766) in one pass must not abort. Insert > limit rows, delete them all.
+    let (store, _dir) = create_test_store();
+
+    let n = 40_000;
+    let paths: Vec<String> = (0..n).map(|i| format!("src/file_{i}.rs")).collect();
+    let entries: Vec<(&str, &str)> = paths.iter().map(|p| (p.as_str(), "h")).collect();
+    store.set_file_hashes_bulk(&entries).unwrap();
+
+    // A single unbatched IN (?) would exceed the variable limit and fail here.
+    store.delete_file_hashes(&paths).unwrap();
+
+    assert!(store.get_file_hash("src/file_0.rs").unwrap().is_none());
+    assert!(store.get_file_hash(&format!("src/file_{}.rs", n - 1)).unwrap().is_none());
+    assert!(store.get_all_indexed_files().unwrap().is_empty());
+}
+
+#[test]
 fn test_clear_file_hashes() {
     let (store, _dir) = create_test_store();
 
