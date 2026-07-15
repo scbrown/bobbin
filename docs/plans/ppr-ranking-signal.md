@@ -4,9 +4,24 @@
 > *expands* via graph. This plan closes that gap: a Personalized PageRank (PPR)
 > signal that lets graph connectivity influence the ranking itself.
 
-**Status:** Pitch / Draft · **Origin:** agent (strider) · **Date:** 2026-06-21
+**Status:** BUILT IN SOURCE — DARK IN EVERY SHIPPED BINARY · **Origin:** agent (strider) · **Date:** 2026-06-21
+**Updated:** 2026-07-15 (strider) · **Tracking:** `bobbin-jdlkh` (P1)
 **Provenance:** Derived from comparison of [HippoRAG](https://github.com/OSU-NLP-Group/HippoRAG)
 against Bobbin + Quipu, prompted by Stiwi.
+
+> ⚠️ **READ THIS BEFORE TRUSTING ANYTHING BELOW.** This plan was written as a pitch and the code
+> was subsequently BUILT and MERGED (`src/search/ppr.rs`, wired at `src/search/context.rs:1074`
+> and `:1127`). It has **never run**. `knowledge` is the crate's only cargo feature and it is
+> enabled by **no build path at all** — not `release.yml`, not `ci.yml`, not the `justfile`. So
+> the whole Quipu integration (MCP surface, coupling exporter, PPR reranking) is compiled out of
+> every shipped binary, and CI has never even compiled it.
+>
+> **Every present-tense claim below describes SOURCE, not any artifact a user has run.** In
+> particular the "Quipu export" row's *"Already mirrors coupling edges into Quipu RDF"* is TRUE IN
+> SOURCE and FALSE IN EVERY RELEASE — `push_coupling_to_quipu` sits behind
+> `#[cfg(feature = "knowledge")]` (`src/cli/index.rs:632`), so the live coupling graph is EMPTY.
+> That sentence is what sent people hunting for a broken exporter instead of a dead feature flag.
+> See `bobbin-jdlkh` for the mechanism and the fix sequence.
 
 ## Motivation
 
@@ -39,7 +54,7 @@ fast).
 | Score struct | `src/search/types.rs:76-87` (`SearchResult`) | Add `graph_proximity: f32` field |
 | Coupling compute | `src/index/git.rs:117-200` | Co-change matrix → `FileCoupling` (SQLite) |
 | Coupling expand | `src/search/context.rs:652-714` (`expand_coupling`) | Currently expansion-only |
-| Quipu export | `src/knowledge/coupling.rs:21-62` (`push_coupling_to_quipu`) | Already mirrors coupling edges into Quipu RDF |
+| Quipu export | `src/knowledge/coupling.rs:21-62` (`push_coupling_to_quipu`) | ⚠️ Mirrors coupling edges into Quipu RDF **in source only** — gated by `#[cfg(feature="knowledge")]` at its sole call site (`src/cli/index.rs:632-635`), and that feature is enabled by no build path, so this has never run and the live graph is EMPTY. See `bobbin-jdlkh`. |
 | Knowledge expand | `src/search/context.rs:723-844` (`expand_knowledge`, `#[cfg(feature="knowledge")]`) | Calls `quipu::tool_context` |
 
 **Three latent edge sets, none used in ranking:**
