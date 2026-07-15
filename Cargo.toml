@@ -100,7 +100,12 @@ rmcp = { version = "0.12", features = ["server", "transport-io", "transport-stre
 schemars = "1.0"
 
 # Knowledge graph (Quipu subsystem)
-quipu = { git = "https://github.com/scbrown/quipu", branch = "main", default-features = false, optional = true }
+# Pinned to a rev, not `branch = "main"`: once `knowledge` is built by CI/release
+# (bobbin-jdlkh) a moving branch would make every build non-reproducible.
+# `default-features = false` keeps quipu's `onnx` + `shacl` features off — verified via
+# `cargo tree -i ort`: only bobbin pulls ort/tokenizers, quipu does not, so quipu's
+# embedder is not compiled in. Bump this rev deliberately.
+quipu = { git = "https://github.com/scbrown/quipu", rev = "7f984b4e", default-features = false, optional = true }
 
 # HTTP Server
 axum = "0.8"

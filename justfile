@@ -5,6 +5,13 @@
 verbose := "false"
 cargo_flags := if verbose == "true" { "" } else { "-q --message-format=short" }
 
+# `knowledge` gates bobbin's ENTIRE Quipu integration: the MCP surface, the coupling
+# exporter, and PPR context reranking. It is NOT a cargo default feature, so a plain
+# `cargo build` compiles all of it out SILENTLY — which is how it shipped dark for
+# months (bobbin-jdlkh). Build and test it everywhere, or its tests guard nothing.
+features := "knowledge"
+cargo_features := "--features " + features
+
 # Default recipe - show available commands
 default:
     @just --list
@@ -13,25 +20,25 @@ default:
 
 # Build the project (quiet by default, use verbose=true for full output)
 build:
-    cargo build {{cargo_flags}}
+    cargo build {{cargo_flags}} {{cargo_features}}
 
 # Run tests (quiet by default, use verbose=true for full output)
 test:
-    cargo test {{cargo_flags}}
+    cargo test {{cargo_flags}} {{cargo_features}}
 
 # Type check and pre-commit hooks (quiet by default, use verbose=true for full output)
 check:
-    cargo check {{cargo_flags}}
+    cargo check {{cargo_flags}} {{cargo_features}}
     pre-commit run --all-files
     bash scripts/check-file-size.sh --all
 
 # Lint with clippy (quiet by default, use verbose=true for full output)
 lint:
-    cargo clippy {{cargo_flags}}
+    cargo clippy {{cargo_flags}} {{cargo_features}}
 
 # Build and run
 run *args:
-    cargo run {{cargo_flags}} -- {{args}}
+    cargo run {{cargo_flags}} {{cargo_features}} -- {{args}}
 
 # === Setup ===
 

@@ -84,7 +84,11 @@ jobs:
             export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
             export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
           fi
-          cargo build --release --target ${{ matrix.target }}
+          # --features knowledge is REQUIRED, not optional: it gates bobbin's entire
+          # Quipu integration (MCP surface, coupling exporter, PPR reranking) and is
+          # not a cargo default. Every release before this line shipped with all of it
+          # silently compiled out (bobbin-jdlkh). Do not drop this flag.
+          cargo build --release --features knowledge --target ${{ matrix.target }}
 
       - name: Download ONNX Runtime
         shell: bash

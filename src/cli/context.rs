@@ -214,6 +214,9 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
             feedback_boost_max: config.feedback.boost_max,
             feedback_boost_weight: config.feedback.boost_weight,
             repo_path_prefix: config.server.repo_path_prefix.clone(),
+            // Needed to seed PPR against the coupling graph, which is keyed by
+            // repo-relative paths (bobbin-jdlkh).
+            repo_root: Some(repo_root.clone()),
             ..ContextConfig::default()
     };
 
@@ -238,8 +241,20 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
             }
         }
     }
+    // Without the `knowledge` feature there is no PPR compute (src/search/ppr.rs is
+    // gated), so a non-zero weight would rank nothing and still exit 0. Refuse instead
+    // of lying: a flag whose presence is not capability is worse than a missing flag.
+    // Covers --ppr-weight and search.ppr_weight from config alike.
     #[cfg(not(feature = "knowledge"))]
-    let _ = ppr_enabled;
+    if ppr_enabled {
+        bail!(
+            "PPR reranking was requested (--ppr-weight or search.ppr_weight > 0.0) but this \
+             binary was built WITHOUT the `knowledge` feature, so PPR is not compiled in and \
+             would silently do nothing.\n\
+             Rebuild with `cargo build --features knowledge` (or `just build`), or set \
+             ppr_weight = 0.0 to run without PPR."
+        );
+    }
 
     let mut bundle = assembler
         .assemble(&args.query, args.repo.as_deref())

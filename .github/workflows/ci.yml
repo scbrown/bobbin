@@ -26,11 +26,28 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
 
-      - name: Check
+      # `knowledge` gates bobbin's entire Quipu integration (MCP surface, coupling
+      # exporter, PPR reranking) and is NOT a cargo default feature. CI never passed
+      # it, so none of that code was ever compiled here and its tests passed while
+      # guarding nothing (bobbin-jdlkh). Build BOTH ways, every time:
+      #   --features knowledge  -> the integration is actually compiled + tested
+      #   (no features)         -> the default build, incl. the cfg(not(knowledge))
+      #                            guard that refuses a PPR request it cannot serve
+      # Dropping either arm re-creates the bug: whichever side goes unbuilt goes dark.
+      - name: Check (knowledge)
+        run: cargo check --features knowledge
+
+      - name: Check (default, no features)
         run: cargo check
 
-      - name: Test
+      - name: Test (knowledge)
+        run: cargo test --features knowledge
+
+      - name: Test (default, no features)
         run: cargo test
 
-      - name: Clippy
+      - name: Clippy (knowledge)
+        run: cargo clippy --features knowledge
+
+      - name: Clippy (default, no features)
         run: cargo clippy

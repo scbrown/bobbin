@@ -169,6 +169,12 @@ pub struct ContextConfig {
     /// Filesystem prefix for indexed repos on the server (e.g. "/var/lib/bobbin/repos/").
     /// Used to normalize absolute paths back to repo-relative for dedup.
     pub repo_path_prefix: Option<String>,
+    /// Repo root, used to turn the absolute `file_path`s carried by search results
+    /// back into the repo-relative form the Quipu coupling graph is keyed by.
+    /// Required for PPR seeding: without it every seed IRI misses and PPR is a
+    /// silent no-op. `git_analyzer` is not wired on the CLI path, so this cannot
+    /// be derived from it here. See bobbin-jdlkh.
+    pub repo_root: Option<std::path::PathBuf>,
     /// Cross-agent feedback scores: file_path → aggregate feedback score.
     /// Files rated "useful" by other agents for similar queries get boosted.
     /// Populated by FeedbackStore::file_feedback_scores() before assembly.
@@ -213,6 +219,7 @@ impl Default for ContextConfig {
             max_bridged_files: 3,
             max_bridged_chunks_per_file: 2,
             repo_path_prefix: None,
+            repo_root: None,
             feedback_scores: None,
             feedback_boost_max: 0.3,
             feedback_boost_weight: 0.2,
@@ -1061,9 +1068,30 @@ impl ContextAssembler {
             {
                 if ppr_weight > 0.0 {
                     if let Some(ref store) = self.quipu_store {
+                        // The coupling exporter takes paths straight from git, so the graph
+                        // is keyed by REPO-RELATIVE paths, while search results carry
+                        // ABSOLUTE ones. Seed IRIs must be built in the graph's form or
+                        // every seed misses, PPR returns an empty map, and the ranking comes
+                        // back byte-identical with no error at all. See bobbin-jdlkh.
+                        let repo_root = self.config.repo_root.clone();
+                        let to_rel = |p: &str| -> String {
+                            repo_root
+                                .as_ref()
+                                .and_then(|root| std::path::Path::new(p).strip_prefix(root).ok())
+                                .map(|rel| rel.to_string_lossy().to_string())
+                                .unwrap_or_else(|| p.to_string())
+                        };
+                        // compute_code_ppr keys its result by whatever path we hand it, but
+                        // the multiplier below looks up by absolute file_path — so map back.
+                        let mut rel_to_abs: std::collections::HashMap<String, String> =
+                            std::collections::HashMap::new();
                         let candidates: Vec<(String, f32)> = scores
                             .values()
-                            .map(|(r, s)| (r.file_path.clone(), *s))
+                            .map(|(r, s)| {
+                                let rel = to_rel(&r.file_path);
+                                rel_to_abs.insert(rel.clone(), r.file_path.clone());
+                                (rel, *s)
+                            })
                             .collect();
                         let repo = self
                             .config
@@ -1078,6 +1106,11 @@ impl ContextAssembler {
                             crate::search::ppr::DEFAULT_SEED_K,
                             crate::search::ppr::DEFAULT_DAMPING,
                         )
+                        .into_iter()
+                        .map(|(rel, score)| {
+                            (rel_to_abs.get(&rel).cloned().unwrap_or(rel), score)
+                        })
+                        .collect()
                     } else {
                         std::collections::HashMap::new()
                     }
