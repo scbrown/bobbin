@@ -62,7 +62,7 @@ Bobbin's job is to **host** these components, not reimplement them.
 │  │ Bobbin SPA (ui.html)                         │   │
 │  │                                              │   │
 │  │  ┌─ Code Results ─────────────────────────┐  │   │
-│  │  │  file.rs:42 — HybridSearch  [koror ↗]  │  │   │
+│  │  │  file.rs:42 — HybridSearch  [node-1 ↗]  │  │   │
 │  │  │  file.go:10 — parseConfig   [dns ↗]    │  │   │
 │  │  └────────────────────────────────────────┘  │   │
 │  │                                              │   │
@@ -93,15 +93,15 @@ linking to Quipu's standalone UI.
 
 **How it works**:
 
-1. When a search query arrives, Bobbin calls `POST quipu.svc/spotlight`
+1. When a search query arrives, Bobbin calls `POST quipu.example/spotlight`
    with the query text
 2. Quipu returns entity annotations with confidence scores
 3. Bobbin attaches entity badges to matching search results
-4. Badges are hyperlinks to `quipu.svc/entity/{iri}` (content-negotiated)
+4. Badges are hyperlinks to `quipu.example/entity/{iri}` (content-negotiated)
 
 ```text
 search_result.rs:42  — HybridSearch trait definition
-  📊 koror (ProxmoxNode)  →  http://quipu.svc/entity/aegis:koror
+  📊 node-1 (ProxmoxNode)  →  http://quipu.example/entity/aegis:node-1
 ```
 
 **Implementation**:
@@ -121,7 +121,7 @@ Quipu renders itself — Bobbin provides the viewport.
 
 **How it works**:
 
-1. SPA loads `<script src="quipu.svc/quipu-components.js">` (one tag)
+1. SPA loads `<script src="quipu.example/quipu-components.js">` (one tag)
 2. A new "Knowledge" tab in the SPA navigation shows a knowledge panel
 3. The panel contains `<quipu-graph>` with the current search query
 4. Clicking entities in the graph navigates within Quipu's widget
@@ -129,7 +129,7 @@ Quipu renders itself — Bobbin provides the viewport.
 
 ```html
 <quipu-graph
-  endpoint="http://quipu.svc"
+  endpoint="http://quipu.example"
   query="SELECT ?s ?p ?o WHERE { ?s ?p ?o . ?s a aegis:SystemdService }"
   height="400px">
 </quipu-graph>
@@ -160,9 +160,9 @@ pages with structured knowledge about displayed code.
 {
   "@context": { "@vocab": "https://schema.org/", "quipu": "https://quipu.dev/ontology#" },
   "@type": "SoftwareSourceCode",
-  "@id": "https://quipu.svc/entity/parseConfig",
+  "@id": "https://quipu.example/entity/parseConfig",
   "name": "parseConfig",
-  "quipu:dependsOn": [{"@id": "https://quipu.svc/entity/yamlParser"}]
+  "quipu:dependsOn": [{"@id": "https://quipu.example/entity/yamlParser"}]
 }
 </script>
 ```
@@ -182,7 +182,7 @@ Drupal RDF module pattern:
 # bobbin-quipu-mapping.toml
 
 [quipu]
-endpoint = "http://quipu.svc"
+endpoint = "http://quipu.example"
 
 [mappings.code_symbol]
 bobbin_type = "CodeSymbol"
@@ -276,8 +276,8 @@ v1's ~1200 lines of Rust + ~800 lines of Askama templates.
 ## Non-Goals
 
 - **Rendering knowledge views** — Quipu owns this via web components
-- **SPARQL proxy** — Quipu's workbench talks directly to quipu.svc
+- **SPARQL proxy** — Quipu's workbench talks directly to quipu.example
 - **Graph visualization library** — Quipu chose Sigma.js; Bobbin doesn't care
-- **Standalone knowledge UI** — use Quipu's standalone app at quipu.svc
+- **Standalone knowledge UI** — use Quipu's standalone app at quipu.example
 - **Real-time updates** — refresh to see changes
 - **Auth** — same as current `bobbin serve` (none for v1)

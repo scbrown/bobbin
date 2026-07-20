@@ -14,8 +14,8 @@ Running task ruff-001: 3 runs (1 approaches × 3 attempts) [run 20260302-163649-
 11:36:50 INFO runner.workspace: Checking out parent e84b0f496f43 of commit f14fd5d88507
     Running Claude Code (model=claude-sonnet-4-5-20250929, budget=$5.00)...
 11:36:51 INFO runner.agent_runner: Running agent in /tmp/bobbin-eval-ruff-001-u5jc1yug/astral-sh--ruff (model=claude-sonnet-4-5-20250929, budget=$5.00, timeout=600s)
-11:36:51 INFO runner.agent_runner: Isolating global settings: /home/braino/.claude/settings.json → /home/braino/.claude/settings.json.eval-bak
-11:41:52 INFO runner.agent_runner: Restoring global settings: /home/braino/.claude/settings.json.eval-bak → /home/braino/.claude/settings.json
+11:36:51 INFO runner.agent_runner: Isolating global settings: /home/user/.claude/settings.json → /home/user/.claude/settings.json.eval-bak
+11:41:52 INFO runner.agent_runner: Restoring global settings: /home/user/.claude/settings.json.eval-bak → /home/user/.claude/settings.json
     Scoring...
 11:41:52 INFO runner.workspace: Snapshot created: 9ed50def0976
 11:41:52 INFO scorer.test_scorer: Running tests in /tmp/bobbin-eval-ruff-001-u5jc1yug/astral-sh--ruff: cargo test -p ruff_python_formatter -- except_handler
@@ -28,8 +28,8 @@ Running task ruff-001: 3 runs (1 approaches × 3 attempts) [run 20260302-163649-
 11:41:55 INFO runner.workspace: Checking out parent e84b0f496f43 of commit f14fd5d88507
     Running Claude Code (model=claude-sonnet-4-5-20250929, budget=$5.00)...
 11:41:55 INFO runner.agent_runner: Running agent in /tmp/bobbin-eval-ruff-001-kulgfpr5/astral-sh--ruff (model=claude-sonnet-4-5-20250929, budget=$5.00, timeout=600s)
-11:41:55 INFO runner.agent_runner: Isolating global settings: /home/braino/.claude/settings.json → /home/braino/.claude/settings.json.eval-bak
-11:47:58 INFO runner.agent_runner: Restoring global settings: /home/braino/.claude/settings.json.eval-bak → /home/braino/.claude/settings.json
+11:41:55 INFO runner.agent_runner: Isolating global settings: /home/user/.claude/settings.json → /home/user/.claude/settings.json.eval-bak
+11:47:58 INFO runner.agent_runner: Restoring global settings: /home/user/.claude/settings.json.eval-bak → /home/user/.claude/settings.json
     Scoring...
 11:47:58 INFO runner.workspace: Snapshot created: 400f514bdad0
 11:47:58 INFO scorer.test_scorer: Running tests in /tmp/bobbin-eval-ruff-001-kulgfpr5/astral-sh--ruff: cargo test -p ruff_python_formatter -- except_handler
@@ -42,4 +42,4 @@ Running task ruff-001: 3 runs (1 approaches × 3 attempts) [run 20260302-163649-
 11:48:04 INFO runner.workspace: Checking out parent e84b0f496f43 of commit f14fd5d88507
     Running Claude Code (model=claude-sonnet-4-5-20250929, budget=$5.00)...
 11:48:05 INFO runner.agent_runner: Running agent in /tmp/bobbin-eval-ruff-001-_tplkkao/astral-sh--ruff (model=claude-sonnet-4-5-20250929, budget=$5.00, timeout=600s)
-11:48:05 INFO runner.agent_runner: Isolating global settings: /home/braino/.claude/settings.json → /home/braino/.claude/settings.json.eval-bak
+11:48:05 INFO runner.agent_runner: Isolating global settings: /home/user/.claude/settings.json → /home/user/.claude/settings.json.eval-bak

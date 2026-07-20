@@ -237,15 +237,15 @@ provenance. Every fact traces back to an episode.
 
 ### The episodes that come in (Gas Town / aegis)
 
-- **Operational events** — `koror-rebuild`: node recovered, edge `rebuilt_on`.
+- **Operational events** — `node-1-rebuild`: node recovered, edge `rebuilt_on`.
 - **Bead work** — task completion: entities = bead, files, services; edges =
   `touches`, `depends_on`, `resolved_by`.
-- **Infra observations** — topology: `traefik runsOn kota`, `forgejo runsOn koror`.
+- **Infra observations** — topology: `traefik runsOn node-4`, `forgejo runsOn node-1`.
 - **Deploy episodes** — `deploy-v3`: app version bump, `runs_on` host.
 - **Code archaeology** — `CodeModule` / `CodeSymbol` entities, import edges.
 
 Each episode is a small subgraph stitched into the growing graph. Over many
-episodes, entities **accrete** connectivity — `kota` referenced by dozens of
+episodes, entities **accrete** connectivity — `node-4` referenced by dozens of
 deploy/rebuild episodes becomes highly connected.
 
 ### How they're queried today
@@ -266,13 +266,13 @@ query through multi-hop connection*.
 Episode accretion means the **link structure itself encodes importance** — and
 PageRank reads it:
 
-- **Global PageRank = emergent importance.** No single episode declares `kota`
+- **Global PageRank = emergent importance.** No single episode declares `node-4`
   central; it becomes central because dozens of episodes point at it. PageRank
   surfaces that emergent property. Powers a "top entities" panel, node sizing in
   the web UI graph explorer, per-type centrality in the schema inspector.
 - **Personalized PageRank = query-relevant multi-hop.** Seed with the entities a
   query matches (vector/text), walk the episode graph, rank neighbors by
-  connectivity to the seeds. "traefik issues" surfaces `kota`, the cert service,
+  connectivity to the seeds. "traefik issues" surfaces `node-4`, the cert service,
   the bead that last touched it — even when not textually similar.
 
 Feeds existing surfaces: **context pipeline** (rank which expanded links to keep
@@ -282,9 +282,9 @@ that ties provenance to importance.
 
 Plus two things only Quipu can do:
 
-- **Temporal PageRank** — run `as_of` past times: "`kota`'s importance rose after
+- **Temporal PageRank** — run `as_of` past times: "`node-4`'s importance rose after
   the rebuild episodes." Importance *trajectory*, not just a snapshot.
-- **Counterfactual PageRank** — via `speculate()`: "if we retire `koror`, how
+- **Counterfactual PageRank** — via `speculate()`: "if we retire `node-1`, how
   does importance redistribute?"
 
 ### Alignment with existing Quipu PageRank ideas

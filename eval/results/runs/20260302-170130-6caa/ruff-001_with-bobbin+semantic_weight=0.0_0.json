@@ -365,7 +365,7 @@
       "bobbin search \"Expr::Tuple elts elements\"",
       "bobbin refs ExprTuple",
       "bobbin refs find ExprTuple",
-      "tail -20 /home/braino/.claude-accounts/current/projects/-tmp-bobbin-eval-ruff-001-qogn6wz1-astral-sh--ruff/700f6ff2-e43d-4f6b-a49b-4ebbd8c08b96/tool-results/bvi3712yt.txt",
+      "tail -20 /home/user/.claude-accounts/current/projects/-tmp-bobbin-eval-ruff-001-qogn6wz1-astral-sh--ruff/700f6ff2-e43d-4f6b-a49b-4ebbd8c08b96/tool-results/bvi3712yt.txt",
       "rm /tmp/bobbin-eval-ruff-001-qogn6wz1/astral-sh--ruff/test_starred_except.py",
       "rm /tmp/bobbin-eval-ruff-001-qogn6wz1/astral-sh--ruff/demo_starred_except.py"
     ]

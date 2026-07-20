@@ -23,13 +23,13 @@ Each iteration takes 10-15 minutes. Plan for 3-5 iterations to get a good baseli
 
 ```bash
 # What repos are indexed?
-curl -s http://search.svc/repos | jq '.repos[].name'
+curl -s http://search.example/repos | jq '.repos[].name'
 
 # How many chunks per repo?
-curl -s http://search.svc/repos | jq '.repos[] | "\(.name): \(.chunk_count) chunks"'
+curl -s http://search.example/repos | jq '.repos[] | "\(.name): \(.chunk_count) chunks"'
 
 # What tags exist already? (auto-tags are applied by default)
-curl -s http://search.svc/tags?repo=<name> | jq '.tags[] | "\(.count)\t\(.tag)"'
+curl -s http://search.example/tags?repo=<name> | jq '.tags[] | "\(.count)\t\(.tag)"'
 ```
 
 ### Step 2: Run a query battery
@@ -47,7 +47,7 @@ queries=(
 
 for q in "${queries[@]}"; do
   echo "=== $q ==="
-  curl -s "http://search.svc/context?q=$(python3 -c \
+  curl -s "http://search.example/context?q=$(python3 -c \
     "import urllib.parse; print(urllib.parse.quote('$q'))")&repo=aegis&limit=3" \
     | jq '.files[] | "\(.score)\t\(.path | split("/") | last)"'
   echo
@@ -209,7 +209,7 @@ After editing `tags.toml`:
    ```
 
 5. **Verify via `/context` endpoint** (not `/search` — tag effects only apply to context)
-6. **Check tag counts**: `curl -s http://search.svc/tags?repo=<name> | jq`
+6. **Check tag counts**: `curl -s http://search.example/tags?repo=<name> | jq`
 
 ## Key Gotchas
 
@@ -246,11 +246,11 @@ After each iteration, check:
 #   Tags: 46347 tagged, 22941 untagged chunks
 
 # Tag distribution
-curl -s http://search.svc/tags?repo=aegis | jq '.tags | length'
+curl -s http://search.example/tags?repo=aegis | jq '.tags | length'
 # → Unique tag count
 
 # Total assignments
-curl -s http://search.svc/tags?repo=aegis | jq '[.tags[].count] | add'
+curl -s http://search.example/tags?repo=aegis | jq '[.tags[].count] | add'
 # → Total tag assignments
 ```
 

@@ -169,7 +169,7 @@ so plans should include confidence levels.
 - **FTS 500 bug** (GitHub scbrown/bobbin#21) — FIXED IN CODE on main (157a14a):
   self-healing FTS index (rebuild+retry on error) + watch rebuilds FTS after
   compaction. Root cause: missing/stale FTS index (swallowed create error +
-  compaction invalidation) → every FTS query 500'd. **Awaiting search.svc redeploy**
+  compaction invalidation) → every FTS query 500'd. **Awaiting search.example redeploy**
   (routed to dearing→malcolm/infra) to take effect + live verification; #21 left open.
 - **PPR ranking — final wiring + tuning** — add `ppr_weight` to `ContextConfig`, fold
   `search::ppr::ppr_multiplier` into the score-adjust chain (`context.rs` ~972-1010),

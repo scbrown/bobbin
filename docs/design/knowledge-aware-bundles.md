@@ -210,7 +210,7 @@ Bundles as subgraphs unlock capabilities beyond context retrieval:
 
 - **Tool authorization.** Destructive tools (restart service, modify config)
   gate on bundle membership. An agent touching `Bundle/dns-config` gets
-  access to dns.lan management tools.
+  access to dns.example management tools.
 
 - **Role inheritance.** `Bundle/monitoring` carries
   `bobbin:role aegis/crew/sentinel`. Agents working within that subgraph

@@ -223,7 +223,7 @@ For boolean operators in search terms:
 
 ### Phase 4: UI Integration (P2)
 
-Update the web UI at search.svc:
+Update the web UI at search.example:
 
 - Search bar with syntax highlighting for filters
 - Filter chips that can be clicked to add/remove

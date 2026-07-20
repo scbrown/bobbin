@@ -164,7 +164,7 @@ of 10-50 items is trivial.
 5. ~~Add `role` query param to HTTP handler param structs~~ DONE (all endpoints)
 6. ~~Wire same `RepoFilter` into HTTP handlers~~ DONE (search, grep, context, related, refs, hotspots, impact, review, similar, repos, repos/files)
 7. ~~Tests: role matching, deny-over-allow, env fallback chain, default behavior, no-config backward compat~~ DONE (15 unit tests in access.rs)
-8. TODO: Add `[access]` section to production config on kota
+8. TODO: Add `[access]` section to production config on node-4
 
 ### Migration
 

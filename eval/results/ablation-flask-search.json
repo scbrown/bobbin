@@ -1,6 +1,6 @@
 {
   "timestamp": "2026-02-25T18:11:13.640940+00:00",
-  "bobbin": "/home/braino/.local/bin/bobbin",
+  "bobbin": "/home/user/.local/bin/bobbin",
   "baseline_config": {
     "semantic_weight": 0.9,
     "doc_demotion": 0.3,

@@ -5,17 +5,17 @@ Bobbin stores its configuration in `.bobbin/config.toml`, created by `bobbin ini
 ## Full Default Configuration
 
 ```toml
-# Quipu knowledge-graph endpoint (e.g. "http://quipu.svc"). When set, search
+# Quipu knowledge-graph endpoint (e.g. "http://quipu.example"). When set, search
 # results are annotated with entity spotlight data. Unset by default.
 # Top-level key — must appear before the first [section] header.
-# quipu_endpoint = "http://quipu.svc"
+# quipu_endpoint = "http://quipu.example"
 
 [server]
 # All three keys are unset by default (thin-client / serve options).
 
 # Remote bobbin HTTP server URL for thin-client mode. When set, this machine
 # queries the remote server instead of using a local index.
-# url = "http://search.svc"
+# url = "http://search.example"
 
 # Bind address for `bobbin serve --http`. Runtime fallback when unset: "0.0.0.0".
 # bind_address = "127.0.0.1"
@@ -175,7 +175,7 @@ resolve_imports = true
 enabled = false
 
 # Dolt server hostname
-host = "dolt.svc"
+host = "dolt.example"
 
 # Dolt server port
 port = 3306
@@ -382,7 +382,7 @@ Indexes beads (the Dolt issue tracker) as searchable content.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | bool | `false` | Index beads content |
-| `host` | string | `"dolt.svc"` | Dolt server hostname |
+| `host` | string | `"dolt.example"` | Dolt server hostname |
 | `port` | int | `3306` | Dolt server port |
 | `user` | string | `"root"` | Dolt user |
 | `databases` | string[] | `[]` | Database names to index (e.g. `["beads_aegis"]`) |
@@ -431,4 +431,4 @@ Custom file-type classification rules. None by default; evaluated in order, firs
 
 ### `quipu_endpoint`
 
-Top-level key (not a table). Quipu knowledge-graph endpoint (e.g. `"http://quipu.svc"`); unset by default. When set, search results are annotated with entity spotlight data. Must appear before the first `[section]` header in the TOML.
+Top-level key (not a table). Quipu knowledge-graph endpoint (e.g. `"http://quipu.example"`); unset by default. When set, search results are annotated with entity spotlight data. Must appear before the first `[section]` header in the TOML.

@@ -35,7 +35,7 @@ Global config (`~/.config/bobbin/config.toml`):
 
 ```toml
 [server]
-url = "http://search.svc"
+url = "http://search.example"
 
 [hooks]
 gate_threshold = 0.50
@@ -53,7 +53,7 @@ semantic_weight = 0.8
 budget = 500  # Override just this field; gate_threshold inherits 0.50
 ```
 
-Result: server.url = `http://search.svc`, hooks.gate_threshold = 0.50, hooks.budget = 500, search.semantic_weight = 0.8.
+Result: server.url = `http://search.example`, hooks.gate_threshold = 0.50, hooks.budget = 500, search.semantic_weight = 0.8.
 
 ### Calibration overlay
 

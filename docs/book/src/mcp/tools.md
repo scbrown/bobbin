@@ -356,7 +356,7 @@ List recent archive records by date.
 
 ## knowledge_context
 
-Query the [Quipu](https://github.com/scbrown/quipu) knowledge graph for entities and facts relevant to a topic, using text search with link expansion. Best for questions like "what services run on kota?" or "entities related to DNS".
+Query the [Quipu](https://github.com/scbrown/quipu) knowledge graph for entities and facts relevant to a topic, using text search with link expansion. Best for questions like "what services run on node-4?" or "entities related to DNS".
 
 > Requires bobbin built with the `knowledge` feature (`cargo build --features knowledge`). Without it the tool is registered but returns an error directing you to rebuild.
 

@@ -20,7 +20,7 @@ Agents currently search beads linearly via `bd list` / `bd show`. With vector in
 ## Architecture
 
 ```
-Dolt (dolt.svc:3306)          Bobbin Index (LanceDB)
+Dolt (dolt.example:3306)          Bobbin Index (LanceDB)
 ┌──────────────────┐          ┌─────────────────────┐
 │ beads_aegis      │──fetch──→│ chunks table         │
 │ beads_gastown    │          │  code chunks (existing)
@@ -112,7 +112,7 @@ Each bead becomes a Chunk in LanceDB:
 # .bobbin/config.toml
 [beads]
 enabled = true
-host = "dolt.svc"
+host = "dolt.example"
 port = 3306
 user = "root"
 databases = ["beads_aegis", "beads_gastown", "beads_bobbin"]
@@ -125,7 +125,7 @@ max_age_days = 90           # skip very old beads
 
 ## Dependencies
 
-- Dolt server at dolt.svc (192.168.7.236:3306) — already running
+- Dolt server at dolt.example (192.0.2.0:3306) — already running
 - `mysql_async` Rust crate for Dolt queries
 - Bobbin embedding model (all-MiniLM-L6-v2) — already bundled
 - Beads table schema (issues, comments) — stable
@@ -133,11 +133,11 @@ max_age_days = 90           # skip very old beads
 ## Testing
 
 - Unit: mock Dolt responses, verify Chunk creation
-- Integration: connect to dolt.svc, index real beads, verify search
+- Integration: connect to dolt.example, index real beads, verify search
 - E2E: `bobbin index --include-beads && bobbin search "cert expiry"` finds cert beads
 
 ## Risks
 
-- Dolt connection from bobbin build environment (needs network access to dolt.svc)
+- Dolt connection from bobbin build environment (needs network access to dolt.example)
 - Beads schema changes could break indexer (mitigate: version check on connect)
 - Large comment threads may exceed embedding token limit (mitigate: truncate/split)

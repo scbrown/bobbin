@@ -1,45 +1,45 @@
-19:23:57 INFO Using bobbin: /home/braino/gt/bobbin/crew/aegis-ian/target/release/bobbin
-19:23:57 DEBUG Loaded task cargo-001 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/cargo-001.yaml
-19:23:57 DEBUG Loaded task cargo-002 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/cargo-002.yaml
-19:23:57 DEBUG Loaded task cargo-003 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/cargo-003.yaml
-19:23:57 DEBUG Loaded task cargo-004 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/cargo-004.yaml
-19:23:57 DEBUG Loaded task cargo-005 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/cargo-005.yaml
-19:23:57 DEBUG Loaded task django-001 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/django-001.yaml
-19:23:57 DEBUG Loaded task django-002 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/django-002.yaml
-19:23:57 DEBUG Loaded task django-003 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/django-003.yaml
-19:23:57 DEBUG Loaded task django-004 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/django-004.yaml
-19:23:57 DEBUG Loaded task django-005 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/django-005.yaml
-19:23:57 DEBUG Loaded task go-001 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/go-001.yaml
-19:23:57 DEBUG Loaded task go-002 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/go-002.yaml
-19:23:57 DEBUG Loaded task go-003 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/go-003.yaml
-19:23:57 DEBUG Loaded task go-004 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/go-004.yaml
-19:23:57 DEBUG Loaded task go-005 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/go-005.yaml
-19:23:57 DEBUG Loaded task nushell-001 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/nushell-001.yaml
-19:23:57 DEBUG Loaded task nushell-002 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/nushell-002.yaml
-19:23:57 DEBUG Loaded task nushell-003 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/nushell-003.yaml
-19:23:57 DEBUG Loaded task nushell-004 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/nushell-004.yaml
-19:23:57 DEBUG Loaded task nushell-005 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/nushell-005.yaml
-19:23:57 DEBUG Loaded task pandas-001 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/pandas-001.yaml
-19:23:57 DEBUG Loaded task pandas-002 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/pandas-002.yaml
-19:23:57 DEBUG Loaded task pandas-003 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/pandas-003.yaml
-19:23:57 DEBUG Loaded task pandas-004 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/pandas-004.yaml
-19:23:57 DEBUG Loaded task pandas-005 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/pandas-005.yaml
-19:23:57 DEBUG Loaded task polars-001 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/polars-001.yaml
-19:23:57 DEBUG Loaded task polars-002 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/polars-002.yaml
-19:23:57 DEBUG Loaded task polars-003 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/polars-003.yaml
-19:23:57 DEBUG Loaded task polars-004 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/polars-004.yaml
-19:23:57 DEBUG Loaded task polars-005 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/polars-005.yaml
-19:23:57 DEBUG Loaded task ruff-001 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/ruff-001.yaml
-19:23:57 DEBUG Loaded task ruff-002 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/ruff-002.yaml
-19:23:57 DEBUG Loaded task ruff-003 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/ruff-003.yaml
-19:23:57 DEBUG Loaded task ruff-004 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/ruff-004.yaml
-19:23:57 DEBUG Loaded task ruff-005 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/ruff-005.yaml
-19:23:57 DEBUG Loaded task typst-001 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/typst-001.yaml
-19:23:57 DEBUG Loaded task typst-002 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/typst-002.yaml
-19:23:57 DEBUG Loaded task typst-003 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/typst-003.yaml
-19:23:57 DEBUG Loaded task typst-004 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/typst-004.yaml
-19:23:57 DEBUG Loaded task typst-005 from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks/typst-005.yaml
-19:23:57 INFO Loaded 40 tasks from /home/braino/gt/bobbin/crew/aegis-ian/eval/tasks
+19:23:57 INFO Using bobbin: /home/user/gt/bobbin/crew/aegis-ian/target/release/bobbin
+19:23:57 DEBUG Loaded task cargo-001 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/cargo-001.yaml
+19:23:57 DEBUG Loaded task cargo-002 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/cargo-002.yaml
+19:23:57 DEBUG Loaded task cargo-003 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/cargo-003.yaml
+19:23:57 DEBUG Loaded task cargo-004 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/cargo-004.yaml
+19:23:57 DEBUG Loaded task cargo-005 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/cargo-005.yaml
+19:23:57 DEBUG Loaded task django-001 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/django-001.yaml
+19:23:57 DEBUG Loaded task django-002 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/django-002.yaml
+19:23:57 DEBUG Loaded task django-003 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/django-003.yaml
+19:23:57 DEBUG Loaded task django-004 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/django-004.yaml
+19:23:57 DEBUG Loaded task django-005 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/django-005.yaml
+19:23:57 DEBUG Loaded task go-001 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/go-001.yaml
+19:23:57 DEBUG Loaded task go-002 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/go-002.yaml
+19:23:57 DEBUG Loaded task go-003 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/go-003.yaml
+19:23:57 DEBUG Loaded task go-004 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/go-004.yaml
+19:23:57 DEBUG Loaded task go-005 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/go-005.yaml
+19:23:57 DEBUG Loaded task nushell-001 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/nushell-001.yaml
+19:23:57 DEBUG Loaded task nushell-002 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/nushell-002.yaml
+19:23:57 DEBUG Loaded task nushell-003 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/nushell-003.yaml
+19:23:57 DEBUG Loaded task nushell-004 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/nushell-004.yaml
+19:23:57 DEBUG Loaded task nushell-005 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/nushell-005.yaml
+19:23:57 DEBUG Loaded task pandas-001 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/pandas-001.yaml
+19:23:57 DEBUG Loaded task pandas-002 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/pandas-002.yaml
+19:23:57 DEBUG Loaded task pandas-003 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/pandas-003.yaml
+19:23:57 DEBUG Loaded task pandas-004 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/pandas-004.yaml
+19:23:57 DEBUG Loaded task pandas-005 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/pandas-005.yaml
+19:23:57 DEBUG Loaded task polars-001 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/polars-001.yaml
+19:23:57 DEBUG Loaded task polars-002 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/polars-002.yaml
+19:23:57 DEBUG Loaded task polars-003 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/polars-003.yaml
+19:23:57 DEBUG Loaded task polars-004 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/polars-004.yaml
+19:23:57 DEBUG Loaded task polars-005 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/polars-005.yaml
+19:23:57 DEBUG Loaded task ruff-001 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/ruff-001.yaml
+19:23:57 DEBUG Loaded task ruff-002 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/ruff-002.yaml
+19:23:57 DEBUG Loaded task ruff-003 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/ruff-003.yaml
+19:23:57 DEBUG Loaded task ruff-004 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/ruff-004.yaml
+19:23:57 DEBUG Loaded task ruff-005 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/ruff-005.yaml
+19:23:57 DEBUG Loaded task typst-001 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/typst-001.yaml
+19:23:57 DEBUG Loaded task typst-002 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/typst-002.yaml
+19:23:57 DEBUG Loaded task typst-003 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/typst-003.yaml
+19:23:57 DEBUG Loaded task typst-004 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/typst-004.yaml
+19:23:57 DEBUG Loaded task typst-005 from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks/typst-005.yaml
+19:23:57 INFO Loaded 40 tasks from /home/user/gt/bobbin/crew/aegis-ian/eval/tasks
 19:23:57 INFO Selected 10 tasks across 5 repos
 19:23:57 INFO   django/django: ['django-001', 'django-002']
 19:23:57 INFO   golang/go: ['go-001', 'go-002']
@@ -49,9 +49,9 @@
 19:23:57 INFO === Starting coupling depth sweep ===
 19:23:57 INFO === Coupling depth sweep: django/django (2 tasks) ===
 19:23:57 INFO Cache hit for django/django — fetching updates
-19:23:57 DEBUG Running: git remote update --prune (cwd=/home/braino/.cache/bobbin-eval/repos/73cf18b903811a5f.git)
+19:23:57 DEBUG Running: git remote update --prune (cwd=/home/user/.cache/bobbin-eval/repos/73cf18b903811a5f.git)
 19:23:58 INFO Creating workspace at /tmp/bobbin-sweep-cd-39qfcdzv/django--django from cache
-19:23:58 DEBUG Running: git clone /home/braino/.cache/bobbin-eval/repos/73cf18b903811a5f.git /tmp/bobbin-sweep-cd-39qfcdzv/django--django (cwd=None)
+19:23:58 DEBUG Running: git clone /home/user/.cache/bobbin-eval/repos/73cf18b903811a5f.git /tmp/bobbin-sweep-cd-39qfcdzv/django--django (cwd=None)
 19:23:59 DEBUG Running: git remote set-url origin https://github.com/django/django.git (cwd=/tmp/bobbin-sweep-cd-39qfcdzv/django--django)
 19:23:59 DEBUG Running: git rev-parse 95394443bff2cd6c5cb47c752422fe1f391bb43d^ (cwd=/tmp/bobbin-sweep-cd-39qfcdzv/django--django)
 19:23:59 INFO Checking out parent 6ee8e9d56c17 of commit 95394443bff2
@@ -104,10 +104,10 @@
 19:43:11 DEBUG Running: git checkout --force 0071cb1efd559d721e5882da2e18556f867eed76 (cwd=/tmp/bobbin-sweep-cd-39qfcdzv/django--django)
 19:43:12 INFO   django-002 [coupling_depth=5000.0]: P=0.182 R=0.667 F1=0.286 (11 files)
 19:43:14 INFO === Coupling depth sweep: golang/go (2 tasks) ===
-19:43:14 INFO Cloning https://github.com/golang/go.git into cache (/home/braino/.cache/bobbin-eval/repos/8fe554da9df9dd2a.git)
-19:43:14 DEBUG Running: git clone --mirror https://github.com/golang/go.git /home/braino/.cache/bobbin-eval/repos/8fe554da9df9dd2a.git (cwd=None)
+19:43:14 INFO Cloning https://github.com/golang/go.git into cache (/home/user/.cache/bobbin-eval/repos/8fe554da9df9dd2a.git)
+19:43:14 DEBUG Running: git clone --mirror https://github.com/golang/go.git /home/user/.cache/bobbin-eval/repos/8fe554da9df9dd2a.git (cwd=None)
 19:43:37 INFO Creating workspace at /tmp/bobbin-sweep-cd-ek_9b_bu/golang--go from cache
-19:43:37 DEBUG Running: git clone /home/braino/.cache/bobbin-eval/repos/8fe554da9df9dd2a.git /tmp/bobbin-sweep-cd-ek_9b_bu/golang--go (cwd=None)
+19:43:37 DEBUG Running: git clone /home/user/.cache/bobbin-eval/repos/8fe554da9df9dd2a.git /tmp/bobbin-sweep-cd-ek_9b_bu/golang--go (cwd=None)
 19:43:38 DEBUG Running: git remote set-url origin https://github.com/golang/go.git (cwd=/tmp/bobbin-sweep-cd-ek_9b_bu/golang--go)
 19:43:38 DEBUG Running: git rev-parse 026fa9dc597ea8e5280d7531ce7f193ed157cad0^ (cwd=/tmp/bobbin-sweep-cd-ek_9b_bu/golang--go)
 19:43:38 INFO Checking out parent 133b339ca546 of commit 026fa9dc597e
@@ -160,10 +160,10 @@
 19:57:37 DEBUG Running: git checkout --force 045ceb72406ee725fd0ea9b8267e8bcd4d2afd5b (cwd=/tmp/bobbin-sweep-cd-ek_9b_bu/golang--go)
 19:57:38 INFO   go-002 [coupling_depth=5000.0]: P=0.000 R=0.000 F1=0.000 (8 files)
 19:57:42 INFO === Coupling depth sweep: nushell/nushell (2 tasks) ===
-19:57:42 INFO Cloning https://github.com/nushell/nushell.git into cache (/home/braino/.cache/bobbin-eval/repos/273aad0677dce1d2.git)
-19:57:42 DEBUG Running: git clone --mirror https://github.com/nushell/nushell.git /home/braino/.cache/bobbin-eval/repos/273aad0677dce1d2.git (cwd=None)
+19:57:42 INFO Cloning https://github.com/nushell/nushell.git into cache (/home/user/.cache/bobbin-eval/repos/273aad0677dce1d2.git)
+19:57:42 DEBUG Running: git clone --mirror https://github.com/nushell/nushell.git /home/user/.cache/bobbin-eval/repos/273aad0677dce1d2.git (cwd=None)
 19:57:48 INFO Creating workspace at /tmp/bobbin-sweep-cd-vsafemmu/nushell--nushell from cache
-19:57:48 DEBUG Running: git clone /home/braino/.cache/bobbin-eval/repos/273aad0677dce1d2.git /tmp/bobbin-sweep-cd-vsafemmu/nushell--nushell (cwd=None)
+19:57:48 DEBUG Running: git clone /home/user/.cache/bobbin-eval/repos/273aad0677dce1d2.git /tmp/bobbin-sweep-cd-vsafemmu/nushell--nushell (cwd=None)
 19:57:48 DEBUG Running: git remote set-url origin https://github.com/nushell/nushell.git (cwd=/tmp/bobbin-sweep-cd-vsafemmu/nushell--nushell)
 19:57:48 DEBUG Running: git rev-parse 28ddcf1934517de084b0d38709b3d0c549503dbd^ (cwd=/tmp/bobbin-sweep-cd-vsafemmu/nushell--nushell)
 19:57:48 INFO Checking out parent 2b6d24c31867 of commit 28ddcf193451
@@ -217,9 +217,9 @@
 20:05:55 INFO   nushell-002 [coupling_depth=5000.0]: P=0.167 R=0.500 F1=0.250 (6 files)
 20:05:56 INFO === Coupling depth sweep: pandas-dev/pandas (2 tasks) ===
 20:05:56 INFO Cache hit for pandas-dev/pandas — fetching updates
-20:05:56 DEBUG Running: git remote update --prune (cwd=/home/braino/.cache/bobbin-eval/repos/b9435b23c296d591.git)
+20:05:56 DEBUG Running: git remote update --prune (cwd=/home/user/.cache/bobbin-eval/repos/b9435b23c296d591.git)
 20:06:00 INFO Creating workspace at /tmp/bobbin-sweep-cd-51xzdu4a/pandas-dev--pandas from cache
-20:06:00 DEBUG Running: git clone /home/braino/.cache/bobbin-eval/repos/b9435b23c296d591.git /tmp/bobbin-sweep-cd-51xzdu4a/pandas-dev--pandas (cwd=None)
+20:06:00 DEBUG Running: git clone /home/user/.cache/bobbin-eval/repos/b9435b23c296d591.git /tmp/bobbin-sweep-cd-51xzdu4a/pandas-dev--pandas (cwd=None)
 20:06:01 DEBUG Running: git remote set-url origin https://github.com/pandas-dev/pandas.git (cwd=/tmp/bobbin-sweep-cd-51xzdu4a/pandas-dev--pandas)
 20:06:01 DEBUG Running: git rev-parse bb0d1cb5af55b9696ea05ab1566eb381f40fc0bc^ (cwd=/tmp/bobbin-sweep-cd-51xzdu4a/pandas-dev--pandas)
 20:06:01 INFO Checking out parent 328420a08d0f of commit bb0d1cb5af55
@@ -272,10 +272,10 @@
 20:11:19 DEBUG Running: git checkout --force 433b140936aadec0f42c46e4e827f6f545569bbc (cwd=/tmp/bobbin-sweep-cd-51xzdu4a/pandas-dev--pandas)
 20:11:20 INFO   pandas-002 [coupling_depth=5000.0]: P=0.000 R=0.000 F1=0.000 (5 files)
 20:11:21 INFO === Coupling depth sweep: typst/typst (2 tasks) ===
-20:11:21 INFO Cloning https://github.com/typst/typst.git into cache (/home/braino/.cache/bobbin-eval/repos/a0dde6392837bad7.git)
-20:11:21 DEBUG Running: git clone --mirror https://github.com/typst/typst.git /home/braino/.cache/bobbin-eval/repos/a0dde6392837bad7.git (cwd=None)
+20:11:21 INFO Cloning https://github.com/typst/typst.git into cache (/home/user/.cache/bobbin-eval/repos/a0dde6392837bad7.git)
+20:11:21 DEBUG Running: git clone --mirror https://github.com/typst/typst.git /home/user/.cache/bobbin-eval/repos/a0dde6392837bad7.git (cwd=None)
 20:11:28 INFO Creating workspace at /tmp/bobbin-sweep-cd-iadfqzh6/typst--typst from cache
-20:11:28 DEBUG Running: git clone /home/braino/.cache/bobbin-eval/repos/a0dde6392837bad7.git /tmp/bobbin-sweep-cd-iadfqzh6/typst--typst (cwd=None)
+20:11:28 DEBUG Running: git clone /home/user/.cache/bobbin-eval/repos/a0dde6392837bad7.git /tmp/bobbin-sweep-cd-iadfqzh6/typst--typst (cwd=None)
 20:11:28 DEBUG Running: git remote set-url origin https://github.com/typst/typst.git (cwd=/tmp/bobbin-sweep-cd-iadfqzh6/typst--typst)
 20:11:28 DEBUG Running: git rev-parse b0f11424b49479f0678aaf26995fe80c476d0f61^ (cwd=/tmp/bobbin-sweep-cd-iadfqzh6/typst--typst)
 20:11:28 INFO Checking out parent db540b49423c of commit b0f11424b494
@@ -331,9 +331,9 @@
 20:12:44 INFO === Starting recency weight sweep ===
 20:12:44 INFO === Recency weight sweep: django/django (2 tasks) ===
 20:12:44 INFO Cache hit for django/django — fetching updates
-20:12:44 DEBUG Running: git remote update --prune (cwd=/home/braino/.cache/bobbin-eval/repos/73cf18b903811a5f.git)
+20:12:44 DEBUG Running: git remote update --prune (cwd=/home/user/.cache/bobbin-eval/repos/73cf18b903811a5f.git)
 20:12:44 INFO Creating workspace at /tmp/bobbin-sweep-rw-rn92vvby/django--django from cache
-20:12:44 DEBUG Running: git clone /home/braino/.cache/bobbin-eval/repos/73cf18b903811a5f.git /tmp/bobbin-sweep-rw-rn92vvby/django--django (cwd=None)
+20:12:44 DEBUG Running: git clone /home/user/.cache/bobbin-eval/repos/73cf18b903811a5f.git /tmp/bobbin-sweep-rw-rn92vvby/django--django (cwd=None)
 20:12:45 DEBUG Running: git remote set-url origin https://github.com/django/django.git (cwd=/tmp/bobbin-sweep-rw-rn92vvby/django--django)
 20:12:45 DEBUG Running: git rev-parse 95394443bff2cd6c5cb47c752422fe1f391bb43d^ (cwd=/tmp/bobbin-sweep-rw-rn92vvby/django--django)
 20:12:45 INFO Checking out parent 6ee8e9d56c17 of commit 95394443bff2
@@ -387,9 +387,9 @@
 20:13:45 INFO   django-002 [recency_weight=0.5]: P=0.222 R=0.667 F1=0.333 (9 files)
 20:13:45 INFO === Recency weight sweep: golang/go (2 tasks) ===
 20:13:45 INFO Cache hit for golang/go — fetching updates
-20:13:45 DEBUG Running: git remote update --prune (cwd=/home/braino/.cache/bobbin-eval/repos/8fe554da9df9dd2a.git)
+20:13:45 DEBUG Running: git remote update --prune (cwd=/home/user/.cache/bobbin-eval/repos/8fe554da9df9dd2a.git)
 20:13:46 INFO Creating workspace at /tmp/bobbin-sweep-rw-kpl993jw/golang--go from cache
-20:13:46 DEBUG Running: git clone /home/braino/.cache/bobbin-eval/repos/8fe554da9df9dd2a.git /tmp/bobbin-sweep-rw-kpl993jw/golang--go (cwd=None)
+20:13:46 DEBUG Running: git clone /home/user/.cache/bobbin-eval/repos/8fe554da9df9dd2a.git /tmp/bobbin-sweep-rw-kpl993jw/golang--go (cwd=None)
 20:13:47 DEBUG Running: git remote set-url origin https://github.com/golang/go.git (cwd=/tmp/bobbin-sweep-rw-kpl993jw/golang--go)
 20:13:47 DEBUG Running: git rev-parse 026fa9dc597ea8e5280d7531ce7f193ed157cad0^ (cwd=/tmp/bobbin-sweep-rw-kpl993jw/golang--go)
 20:13:47 INFO Checking out parent 133b339ca546 of commit 026fa9dc597e
@@ -443,9 +443,9 @@
 20:15:27 INFO   go-002 [recency_weight=0.5]: P=0.000 R=0.000 F1=0.000 (8 files)
 20:15:27 INFO === Recency weight sweep: nushell/nushell (2 tasks) ===
 20:15:27 INFO Cache hit for nushell/nushell — fetching updates
-20:15:27 DEBUG Running: git remote update --prune (cwd=/home/braino/.cache/bobbin-eval/repos/273aad0677dce1d2.git)
+20:15:27 DEBUG Running: git remote update --prune (cwd=/home/user/.cache/bobbin-eval/repos/273aad0677dce1d2.git)
 20:15:28 INFO Creating workspace at /tmp/bobbin-sweep-rw-03v1zq3p/nushell--nushell from cache
-20:15:28 DEBUG Running: git clone /home/braino/.cache/bobbin-eval/repos/273aad0677dce1d2.git /tmp/bobbin-sweep-rw-03v1zq3p/nushell--nushell (cwd=None)
+20:15:28 DEBUG Running: git clone /home/user/.cache/bobbin-eval/repos/273aad0677dce1d2.git /tmp/bobbin-sweep-rw-03v1zq3p/nushell--nushell (cwd=None)
 20:15:28 DEBUG Running: git remote set-url origin https://github.com/nushell/nushell.git (cwd=/tmp/bobbin-sweep-rw-03v1zq3p/nushell--nushell)
 20:15:28 DEBUG Running: git rev-parse 28ddcf1934517de084b0d38709b3d0c549503dbd^ (cwd=/tmp/bobbin-sweep-rw-03v1zq3p/nushell--nushell)
 20:15:28 INFO Checking out parent 2b6d24c31867 of commit 28ddcf193451
@@ -499,9 +499,9 @@
 20:16:40 INFO   nushell-002 [recency_weight=0.5]: P=0.167 R=0.500 F1=0.250 (6 files)
 20:16:40 INFO === Recency weight sweep: pandas-dev/pandas (2 tasks) ===
 20:16:40 INFO Cache hit for pandas-dev/pandas — fetching updates
-20:16:40 DEBUG Running: git remote update --prune (cwd=/home/braino/.cache/bobbin-eval/repos/b9435b23c296d591.git)
+20:16:40 DEBUG Running: git remote update --prune (cwd=/home/user/.cache/bobbin-eval/repos/b9435b23c296d591.git)
 20:16:41 INFO Creating workspace at /tmp/bobbin-sweep-rw-qoq6y47l/pandas-dev--pandas from cache
-20:16:41 DEBUG Running: git clone /home/braino/.cache/bobbin-eval/repos/b9435b23c296d591.git /tmp/bobbin-sweep-rw-qoq6y47l/pandas-dev--pandas (cwd=None)
+20:16:41 DEBUG Running: git clone /home/user/.cache/bobbin-eval/repos/b9435b23c296d591.git /tmp/bobbin-sweep-rw-qoq6y47l/pandas-dev--pandas (cwd=None)
 20:16:41 DEBUG Running: git remote set-url origin https://github.com/pandas-dev/pandas.git (cwd=/tmp/bobbin-sweep-rw-qoq6y47l/pandas-dev--pandas)
 20:16:41 DEBUG Running: git rev-parse bb0d1cb5af55b9696ea05ab1566eb381f40fc0bc^ (cwd=/tmp/bobbin-sweep-rw-qoq6y47l/pandas-dev--pandas)
 20:16:41 INFO Checking out parent 328420a08d0f of commit bb0d1cb5af55
@@ -555,9 +555,9 @@
 20:17:49 INFO   pandas-002 [recency_weight=0.5]: P=0.000 R=0.000 F1=0.000 (5 files)
 20:17:49 INFO === Recency weight sweep: typst/typst (2 tasks) ===
 20:17:49 INFO Cache hit for typst/typst — fetching updates
-20:17:49 DEBUG Running: git remote update --prune (cwd=/home/braino/.cache/bobbin-eval/repos/a0dde6392837bad7.git)
+20:17:49 DEBUG Running: git remote update --prune (cwd=/home/user/.cache/bobbin-eval/repos/a0dde6392837bad7.git)
 20:17:49 INFO Creating workspace at /tmp/bobbin-sweep-rw-vd_956qn/typst--typst from cache
-20:17:49 DEBUG Running: git clone /home/braino/.cache/bobbin-eval/repos/a0dde6392837bad7.git /tmp/bobbin-sweep-rw-vd_956qn/typst--typst (cwd=None)
+20:17:49 DEBUG Running: git clone /home/user/.cache/bobbin-eval/repos/a0dde6392837bad7.git /tmp/bobbin-sweep-rw-vd_956qn/typst--typst (cwd=None)
 20:17:49 DEBUG Running: git remote set-url origin https://github.com/typst/typst.git (cwd=/tmp/bobbin-sweep-rw-vd_956qn/typst--typst)
 20:17:49 DEBUG Running: git rev-parse b0f11424b49479f0678aaf26995fe80c476d0f61^ (cwd=/tmp/bobbin-sweep-rw-vd_956qn/typst--typst)
 20:17:49 INFO Checking out parent db540b49423c of commit b0f11424b494

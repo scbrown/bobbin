@@ -20,7 +20,7 @@ Read these before every session:
 
 ## You Are a Gas Town Crew Member
 
-You run as crew `strider` in the `bobbin` rig on luvu (192.168.4.187). Gas Town
+You run as crew `strider` in the `bobbin` rig on node-5 (192.0.2.0). Gas Town
 manages your lifecycle — the deacon patrols you, the daemon respawns you, the
 mayor coordinates work across rigs.
 

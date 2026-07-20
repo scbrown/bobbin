@@ -387,7 +387,7 @@
       "bobbin search \"format except handler python formatter\"",
       "bobbin refs find \"Expr::Starred\"",
       "bobbin refs find ExprTuple",
-      "tail -20 /home/braino/.claude-accounts/current/projects/-tmp-bobbin-eval-ruff-001-k7ufm0fq-astral-sh--ruff/0cec70ff-3cef-41f7-b426-1e2eb78627f2/tool-results/b8qreym6o.txt",
+      "tail -20 /home/user/.claude-accounts/current/projects/-tmp-bobbin-eval-ruff-001-k7ufm0fq-astral-sh--ruff/0cec70ff-3cef-41f7-b426-1e2eb78627f2/tool-results/b8qreym6o.txt",
       "bobbin search \"default python version formatter\"",
       "bobbin refs find \"PythonVersion::default\"",
       "bobbin refs find PythonVersion | grep \"enum PythonVersion\""

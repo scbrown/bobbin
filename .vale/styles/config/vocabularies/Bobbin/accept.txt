@@ -69,7 +69,7 @@ inotify
 ints
 knowledge_context
 knowledge_query
-kota
+node-4
 LanceDB
 list_symbols
 LLMs

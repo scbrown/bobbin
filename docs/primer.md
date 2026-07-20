@@ -80,7 +80,7 @@ When running as MCP server (`bobbin serve`): `search`, `grep`, `context`, `relat
 
 **Server mode** (connect to a running bobbin server):
 ```bash
-bobbin connect http://search.svc --global   # saves URL + installs hooks
+bobbin connect http://search.example --global   # saves URL + installs hooks
 bobbin search "error handling"
 ```
 

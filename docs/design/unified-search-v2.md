@@ -145,5 +145,5 @@ See beads: bobbin-cmb (epic) and children bobbin-cmb.1 through bobbin-cmb.5
 
 ## References
 
-- [Search comparison doc](https://git.lan/stiwi/goldblum/docs/search.md)
-- [Goldblum integration plan](https://git.lan/stiwi/goldblum/docs/architecture/bobbin-v2-unified-search.md)
+- [Search comparison doc](https://git.example/stiwi/goldblum/docs/search.md)
+- [Goldblum integration plan](https://git.example/stiwi/goldblum/docs/architecture/bobbin-v2-unified-search.md)

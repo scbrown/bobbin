@@ -10,7 +10,7 @@ Bobbin has ~16 CLI commands, MCP tools, and rich analysis features, but document
 
 ### Structure: `docs/book/`
 
-Mirrors the pixelsrc convention at `/home/braino/gt/pixelsrc/crew/goldblum/docs/book/`.
+Mirrors the pixelsrc convention at `/home/user/gt/pixelsrc/crew/goldblum/docs/book/`.
 
 ```
 docs/book/
@@ -342,7 +342,7 @@ This mirrors pixelsrc's demo coverage system: every feature has a runnable demon
 
 ## 6. `bobbin prime` — LLM Context Overview
 
-Modeled after pixelsrc's `pxl prime` command (`/home/braino/gt/pixelsrc/crew/goldblum/src/prime.rs`).
+Modeled after pixelsrc's `pxl prime` command (`/home/user/gt/pixelsrc/crew/goldblum/src/prime.rs`).
 
 ### What It Does
 
@@ -381,8 +381,8 @@ bobbin prime --section status    # Just current index status
 
 | File | Reference |
 |------|-----------|
-| `src/prime.rs` (pixelsrc) | `/home/braino/gt/pixelsrc/crew/goldblum/src/prime.rs` — reference implementation |
-| `src/mcp/tools/prime.rs` (pixelsrc) | `/home/braino/gt/pixelsrc/crew/goldblum/src/mcp/tools/prime.rs` — MCP tool pattern |
+| `src/prime.rs` (pixelsrc) | `/home/user/gt/pixelsrc/crew/goldblum/src/prime.rs` — reference implementation |
+| `src/mcp/tools/prime.rs` (pixelsrc) | `/home/user/gt/pixelsrc/crew/goldblum/src/mcp/tools/prime.rs` — MCP tool pattern |
 | `src/cli/status.rs` | Existing status logic to reuse for live stats |
 | `AGENTS.md` | Current static LLM primer — `bobbin prime` replaces this |
 
