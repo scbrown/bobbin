@@ -20,12 +20,12 @@ jobs:
         run: |
           WORKDIR=$(mktemp -d)
           cd "$WORKDIR"
-          git clone --depth 1 http://git.lan:3000/${{ github.repository }}.git .
+          git clone --depth 1 ${{ vars.INTERNAL_GIT_BASE }}/${{ github.repository }}.git .
           echo "WORKDIR=$WORKDIR" >> "$GITHUB_ENV"
 
       - name: Fetch doc-lint.py from aegis
         run: |
-          curl -sf http://git.lan:3000/stiwi/aegis/raw/branch/main/scripts/doc-lint.py \
+          curl -sf ${{ vars.DOCLINT_SCRIPT_URL }} \
             -o "$WORKDIR/doc-lint.py"
           chmod +x "$WORKDIR/doc-lint.py"
 

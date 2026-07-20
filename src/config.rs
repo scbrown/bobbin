@@ -21,7 +21,7 @@ pub struct Config {
     pub sources: SourcesConfig,
     pub groups: Vec<GroupConfig>,
     pub file_types: Vec<FileTypeRule>,
-    /// Quipu knowledge graph endpoint (e.g. "http://quipu.svc").
+    /// Quipu knowledge graph endpoint (e.g. "http://quipu.example").
     /// When set, search results are annotated with entity spotlight data.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quipu_endpoint: Option<String>,
@@ -31,7 +31,7 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ServerConfig {
-    /// Remote bobbin HTTP server URL (e.g. "http://search.svc")
+    /// Remote bobbin HTTP server URL (e.g. "http://search.example")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     /// Bind address for `bobbin serve --http` (default: "0.0.0.0").
@@ -611,7 +611,7 @@ impl Default for BeadsConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            host: "dolt.svc".into(),
+            host: "localhost".into(),
             port: 3306,
             user: "root".into(),
             databases: vec![],
@@ -1458,10 +1458,10 @@ budget = 300
     fn test_server_config_parse() {
         let toml_str = r#"
 [server]
-url = "http://search.svc"
+url = "http://search.example"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.server.url.as_deref(), Some("http://search.svc"));
+        assert_eq!(config.server.url.as_deref(), Some("http://search.example"));
     }
 
     #[test]
@@ -1481,14 +1481,14 @@ model = "all-MiniLM-L6-v2"
         let config_path = tmp.path().join("config.toml");
 
         let mut config = Config::default();
-        config.server.url = Some("http://search.svc".to_string());
+        config.server.url = Some("http://search.example".to_string());
 
         let content = toml::to_string_pretty(&config).unwrap();
         std::fs::write(&config_path, &content).unwrap();
 
         let loaded: Config =
             toml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
-        assert_eq!(loaded.server.url.as_deref(), Some("http://search.svc"));
+        assert_eq!(loaded.server.url.as_deref(), Some("http://search.example"));
     }
 
     #[test]
@@ -1748,11 +1748,11 @@ semantic_weight = 0.9
 "#).unwrap();
         let overlay: toml::Value = toml::from_str(r#"
 [server]
-url = "http://search.svc"
+url = "http://search.example"
 "#).unwrap();
         let merged = deep_merge_toml(base, overlay);
         let config: Config = merged.try_into().unwrap();
-        assert_eq!(config.server.url.as_deref(), Some("http://search.svc"));
+        assert_eq!(config.server.url.as_deref(), Some("http://search.example"));
         // search.semantic_weight from base is preserved
         assert!((config.search.semantic_weight - 0.9).abs() < f32::EPSILON);
     }

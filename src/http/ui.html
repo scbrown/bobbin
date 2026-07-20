@@ -506,7 +506,7 @@ function loadKnowledge() {
     script.src = _quipuEndpoint.replace(/\/$/, '') + '/quipu-components.js';
     script.onload = () => initKnowledgeGraph();
     script.onerror = () => {
-      document.getElementById('knowledge-placeholder').textContent = 'Could not load Quipu components — is quipu.svc running?';
+      document.getElementById('knowledge-placeholder').textContent = 'Could not load Quipu components — is quipu.example running?';
     };
     document.head.appendChild(script);
   }).catch(() => {
@@ -1120,7 +1120,7 @@ document.addEventListener('click', e => {
 });
 
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-function quipuEntityUrl(iri) { return `http://quipu.svc/entity/${encodeURIComponent(iri)}`; }
+function quipuEntityUrl(iri) { return `http://quipu.example/entity/${encodeURIComponent(iri)}`; }
 
 // -- Injection detail overlay --
 async function showInjectionDetail(injectionId) {

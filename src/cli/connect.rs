@@ -9,7 +9,7 @@ use crate::http::client::Client;
 
 #[derive(Args)]
 pub struct ConnectArgs {
-    /// Bobbin server URL (e.g. http://search.svc)
+    /// Bobbin server URL (e.g. http://search.example)
     url: String,
 
     /// Save to global config (~/.config/bobbin/config.toml) instead of repo-local

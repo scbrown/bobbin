@@ -304,7 +304,7 @@ mod tests {
         assert_eq!(classify_intent("set up the docker environment"), QueryIntent::Configuration);
         assert_eq!(classify_intent("update the deploy yaml config"), QueryIntent::Configuration);
         assert_eq!(classify_intent("deploy the service to production"), QueryIntent::Configuration);
-        assert_eq!(classify_intent("deploy this to kota"), QueryIntent::Configuration);
+        assert_eq!(classify_intent("deploy this to node-4"), QueryIntent::Configuration);
     }
 
     #[test]
@@ -354,7 +354,7 @@ mod tests {
         // Infrastructure monitoring queries should be Operational, not Architecture
         assert_eq!(classify_intent("what is the disk usage on seeker2"), QueryIntent::Operational);
         assert_eq!(classify_intent("how much disk space is left"), QueryIntent::Operational);
-        assert_eq!(classify_intent("check the memory usage on kota"), QueryIntent::Operational);
+        assert_eq!(classify_intent("check the memory usage on node-4"), QueryIntent::Operational);
         assert_eq!(classify_intent("check the backup status"), QueryIntent::Operational);
         assert_eq!(classify_intent("restart the service"), QueryIntent::Operational);
         assert_eq!(classify_intent("check cert expiry on traefik"), QueryIntent::Operational);

@@ -541,7 +541,7 @@ fn bobbin_hook_entries() -> serde_json::Value {
 /// Project-level hooks (e.g. the quarterdeck shared config) rarely use the
 /// bare `bobbin hook ...` form. They wrap it with env-var prefixes, absolute
 /// paths, and `|| true` suffixes, e.g.:
-///   `BOBBIN_SERVER=http://search.svc /home/me/.local/bin/bobbin hook inject-context || true`
+///   `BOBBIN_SERVER=http://search.example /home/user/.local/bin/bobbin hook inject-context || true`
 /// A plain `starts_with("bobbin hook ")` check misses all of these, which made
 /// `bobbin hook status` report "not installed" for working project hooks (GH#10).
 ///
@@ -5595,7 +5595,7 @@ mod tests {
     fn test_command_invokes_bobbin_hook_wrapped() {
         // Project-level / quarterdeck form: env prefix + absolute path + suffix (GH#10)
         assert!(command_invokes_bobbin_hook(
-            "BOBBIN_SERVER=http://search.svc /home/me/.local/bin/bobbin hook inject-context || true"
+            "BOBBIN_SERVER=http://search.example /home/user/.local/bin/bobbin hook inject-context || true"
         ));
         assert!(command_invokes_bobbin_hook("/usr/bin/bobbin hook session-context"));
         assert!(command_invokes_bobbin_hook("FOO=bar bobbin hook post-tool-use"));
@@ -5618,7 +5618,7 @@ mod tests {
                 "UserPromptSubmit": [{
                     "hooks": [{
                         "type": "command",
-                        "command": "BOBBIN_SERVER=http://search.svc /home/me/.local/bin/bobbin hook inject-context || true"
+                        "command": "BOBBIN_SERVER=http://search.example /home/user/.local/bin/bobbin hook inject-context || true"
                     }]
                 }]
             }
@@ -7870,7 +7870,7 @@ mod tests {
         assert!(is_automated_message("PATROL: Run gt hook, gt mail inbox, bd ready."));
 
         // Reactor alerts
-        assert!(is_automated_message("[reactor] ⚠️ ESCALATION: E2ESmokeTestFailing — luvu | Paging: aegis/crew/wu"));
+        assert!(is_automated_message("[reactor] ⚠️ ESCALATION: E2ESmokeTestFailing — node-5 | Paging: aegis/crew/wu"));
         assert!(is_automated_message("[reactor] 🟠 P1 bead: aegis-sc86f0 Skills Framework Phase 1"));
         assert!(is_automated_message("[reactor] 🟠 P0 bead: aegis-thmbt2 Claude token expires"));
 
@@ -7900,7 +7900,7 @@ mod tests {
 
         // Normal messages should NOT be filtered
         assert!(!is_automated_message("Fix the bug in bobbin search"));
-        assert!(!is_automated_message("How do I deploy bobbin to kota?"));
+        assert!(!is_automated_message("How do I deploy bobbin to node-4?"));
         assert!(!is_automated_message("bd show aegis-abc123"));
         assert!(!is_automated_message("Run the tests and check for failures"));
         assert!(!is_automated_message("")); // Empty string
@@ -7923,7 +7923,7 @@ mod tests {
 
         // Should NOT be skipped (not bead commands)
         assert!(!is_bead_command("Fix the bug in bobbin search"));
-        assert!(!is_bead_command("How do I deploy bobbin to kota?"));
+        assert!(!is_bead_command("How do I deploy bobbin to node-4?"));
         assert!(!is_bead_command("Run the tests and check for failures"));
         assert!(!is_bead_command("")); // Empty string
         assert!(!is_bead_command("what is the architecture of the system and how does deployment work across all rigs"));

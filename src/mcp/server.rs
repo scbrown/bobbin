@@ -2507,7 +2507,7 @@ impl BobbinMcpServer {
     // ── Quipu knowledge graph tools ───────────────────────────────
 
     /// Query the knowledge graph for entities relevant to a topic
-    #[tool(description = "Query the Quipu knowledge graph for entities and facts relevant to a topic. Uses text search with link expansion to find related entities, their types, labels, and relationships. Best for: 'what services run on kota?', 'show me the traefik configuration', 'entities related to DNS'. Returns entities with their facts, labels, and types.")]
+    #[tool(description = "Query the Quipu knowledge graph for entities and facts relevant to a topic. Uses text search with link expansion to find related entities, their types, labels, and relationships. Best for: 'what services run on node-4?', 'show me the traefik configuration', 'entities related to DNS'. Returns entities with their facts, labels, and types.")]
     async fn knowledge_context(
         &self,
         Parameters(req): Parameters<KnowledgeContextRequest>,

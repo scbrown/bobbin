@@ -408,8 +408,8 @@ mod tests {
     #[test]
     fn test_web_base_from_remote_http() {
         assert_eq!(
-            web_base_from_remote("http://git.svc:3000/stiwi/bobbin"),
-            Some("http://git.svc:3000/stiwi/bobbin".to_string())
+            web_base_from_remote("http://git.example:3000/stiwi/bobbin"),
+            Some("http://git.example:3000/stiwi/bobbin".to_string())
         );
     }
 
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn test_detect_forge_selfhosted_default() {
         // Unknown self-hosted → Forgejo
-        assert_eq!(detect_forge("git.svc"), ForgeType::Forgejo);
+        assert_eq!(detect_forge("git.example"), ForgeType::Forgejo);
         assert_eq!(detect_forge("code.internal.com"), ForgeType::Forgejo);
     }
 
@@ -452,12 +452,12 @@ mod tests {
     fn test_build_source_url_auto_forgejo() {
         let overrides = std::collections::HashMap::new();
         let url = build_source_url(
-            "http://git.svc:3000/stiwi/bobbin",
+            "http://git.example:3000/stiwi/bobbin",
             "",
             "bobbin",
             &overrides,
         );
-        assert_eq!(url, "http://git.svc:3000/stiwi/bobbin/src/branch/main/{path}#L{line}");
+        assert_eq!(url, "http://git.example:3000/stiwi/bobbin/src/branch/main/{path}#L{line}");
     }
 
     #[test]
@@ -475,21 +475,21 @@ mod tests {
     #[test]
     fn test_build_source_url_with_forge_override() {
         let mut overrides = std::collections::HashMap::new();
-        overrides.insert("git.svc".to_string(), "gitlab".to_string());
+        overrides.insert("git.example".to_string(), "gitlab".to_string());
         let url = build_source_url(
-            "http://git.svc:3000/stiwi/bobbin",
+            "http://git.example:3000/stiwi/bobbin",
             "",
             "bobbin",
             &overrides,
         );
-        // git.svc overridden to gitlab
-        assert_eq!(url, "http://git.svc:3000/stiwi/bobbin/-/blob/main/{path}#L{line}");
+        // git.example overridden to gitlab
+        assert_eq!(url, "http://git.example:3000/stiwi/bobbin/-/blob/main/{path}#L{line}");
     }
 
     #[test]
     fn test_host_from_url() {
         assert_eq!(host_from_url("https://github.com/owner/repo"), Some("github.com"));
-        assert_eq!(host_from_url("http://git.svc:3000/stiwi/bobbin"), Some("git.svc"));
+        assert_eq!(host_from_url("http://git.example:3000/stiwi/bobbin"), Some("git.example"));
         assert_eq!(host_from_url("not-a-url"), None);
     }
 }

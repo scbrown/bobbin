@@ -38,3 +38,6 @@ uv.lock
 
 # mdbook build output
 book/_build/
+
+# Committed runtime state — an operator-path leak (aegis-mqnl). Never track.
+/state.json

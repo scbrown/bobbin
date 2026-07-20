@@ -1,3 +1,10 @@
+# aegis-mqnl: internal hostnames/user/webhook were REMOVED from this
+# public file and replaced with Forgejo repo variables. If this workflow
+# still runs on a Forgejo instance, set: BUILD_HOST, BUILD_USER,
+# DEPLOY_HOST, DEPLOY_NOTIFY_URL — or it fails (loudly, by design).
+# Likely VESTIGIAL: bobbin migrated to GitHub, which does not run
+# .forgejo/ workflows. Kept parameterized rather than deleted, pending
+# owner confirmation it is retired.
 name: Deploy Bobbin
 
 on:
@@ -27,16 +34,16 @@ jobs:
           mkdir -p ~/.ssh
           echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H luvu >> ~/.ssh/known_hosts 2>/dev/null || true
-          ssh-keyscan -H kota >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H ${{ vars.BUILD_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H ${{ vars.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Build on luvu
+      - name: Build on build host
         run: |
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
 
           # Build in dedicated CI directory (preserves cargo cache across runs)
           # Source: GitHub (canonical) — Forgejo mirror has divergent CLI code
-          $SSH braino@luvu "
+          $SSH ${{ vars.BUILD_USER }}@${{ vars.BUILD_HOST }} "
             set -e
             . ~/.cargo/env
             if [ ! -d ~/bobbin-ci/.git ]; then
@@ -53,26 +60,26 @@ jobs:
             ls -lh target/release/bobbin
           "
 
-      - name: Deploy to luvu
+      - name: Deploy to build host
         run: |
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
-          $SSH braino@luvu "
+          $SSH ${{ vars.BUILD_USER }}@${{ vars.BUILD_HOST }} "
             cp ~/bobbin-ci/target/release/bobbin ~/.local/bin/bobbin
-            echo \"luvu: \$(~/.local/bin/bobbin --version)\"
+            echo \"build host: \$(~/.local/bin/bobbin --version)\"
           "
 
-      - name: Deploy to kota
+      - name: Deploy to serving host
         run: |
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
           SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
 
-          # Pull binary from luvu build to runner
-          $SCP braino@luvu:~/bobbin-ci/target/release/bobbin /tmp/bobbin
+          # Pull binary from build host to runner
+          $SCP ${{ vars.BUILD_USER }}@${{ vars.BUILD_HOST }}:~/bobbin-ci/target/release/bobbin /tmp/bobbin
 
           # Zero-downtime deploy: copy to staging path, then atomic mv + restart
           # This minimizes the window where the binary is unavailable
-          $SCP /tmp/bobbin root@kota:/usr/local/bin/bobbin.new
-          $SSH root@kota "
+          $SCP /tmp/bobbin root@${{ vars.DEPLOY_HOST }}:/usr/local/bin/bobbin.new
+          $SSH root@${{ vars.DEPLOY_HOST }} "
             chmod +x /usr/local/bin/bobbin.new
             mv /usr/local/bin/bobbin.new /usr/local/bin/bobbin
             mkdir -p /opt/bobbin
@@ -89,33 +96,33 @@ jobs:
           PASSED=0
           FAILED=0
 
-          # Test 1: luvu binary works
-          VER=$($SSH braino@luvu "~/.local/bin/bobbin --version" 2>&1) || VER="error"
+          # Test 1: build host binary works
+          VER=$($SSH ${{ vars.BUILD_USER }}@${{ vars.BUILD_HOST }} "~/.local/bin/bobbin --version" 2>&1) || VER="error"
           if echo "$VER" | grep -q "bobbin"; then
-            echo "  PASS: luvu — $VER"
+            echo "  PASS: build host — $VER"
             PASSED=$((PASSED + 1))
           else
-            echo "  FAIL: luvu version — $VER"
+            echo "  FAIL: build host version — $VER"
             FAILED=$((FAILED + 1))
           fi
 
-          # Test 2: kota service active
-          STATUS=$($SSH root@kota "systemctl is-active bobbin" 2>&1) || STATUS="unknown"
+          # Test 2: serving host service active
+          STATUS=$($SSH root@${{ vars.DEPLOY_HOST }} "systemctl is-active bobbin" 2>&1) || STATUS="unknown"
           if [ "$STATUS" = "active" ]; then
-            echo "  PASS: kota service active"
+            echo "  PASS: serving host service active"
             PASSED=$((PASSED + 1))
           else
-            echo "  FAIL: kota service — $STATUS"
+            echo "  FAIL: serving host service — $STATUS"
             FAILED=$((FAILED + 1))
           fi
 
-          # Test 3: kota HTTP health
-          HTTP=$($SSH root@kota "curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/status" 2>&1) || HTTP="000"
+          # Test 3: serving host HTTP health
+          HTTP=$($SSH root@${{ vars.DEPLOY_HOST }} "curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/status" 2>&1) || HTTP="000"
           if [ "$HTTP" = "200" ]; then
-            echo "  PASS: kota HTTP 200"
+            echo "  PASS: serving host HTTP 200"
             PASSED=$((PASSED + 1))
           else
-            echo "  FAIL: kota HTTP — $HTTP"
+            echo "  FAIL: serving host HTTP — $HTTP"
             FAILED=$((FAILED + 1))
           fi
 
@@ -130,19 +137,19 @@ jobs:
       - name: Notify (Success)
         if: success()
         run: |
-          curl -s --connect-timeout 5 --max-time 10 -X POST http://192.168.7.201:8000/webhook \
+          curl -s --connect-timeout 5 --max-time 10 -X POST ${{ vars.DEPLOY_NOTIFY_URL }} \
             -H 'Content-Type: application/json' \
             -d '{
               "status": "SUCCESS",
               "title": "Bobbin Deploy Complete",
-              "message": "Built and deployed to luvu + kota, smoke tests passed",
+              "message": "Built and deployed to build + serving hosts, smoke tests passed",
               "ruleUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }' || echo "Webhook failed"
 
       - name: Notify (Failure)
         if: failure()
         run: |
-          curl -s --connect-timeout 5 --max-time 10 -X POST http://192.168.7.201:8000/webhook \
+          curl -s --connect-timeout 5 --max-time 10 -X POST ${{ vars.DEPLOY_NOTIFY_URL }} \
             -H 'Content-Type: application/json' \
             -d '{
               "status": "FAILED",

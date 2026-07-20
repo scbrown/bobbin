@@ -276,7 +276,7 @@ source:
   context: dm
 ---
 
-Deploy bobbin to luvu, not the old CT.
+Deploy bobbin to node-5, not the old CT.
 Make sure traefik points to the new host.
 "#;
 
@@ -332,7 +332,7 @@ The semantic_weight of 0.7 gives the best results for code search.
         let (meta, body) = parse_frontmatter(SAMPLE_HLA, "human-intent").unwrap();
         assert_eq!(meta.id, "hi-01ARYZ6S41");
         assert_eq!(meta.timestamp, "2026-02-17T14:32:00Z");
-        assert!(body.contains("Deploy bobbin to luvu"));
+        assert!(body.contains("Deploy bobbin to node-5"));
 
         // Check that channel is extracted from nested source
         let channel = meta.fields.iter().find(|(k, _)| k == "channel");
@@ -373,7 +373,7 @@ The semantic_weight of 0.7 gives the best results for code search.
         assert_eq!(chunk.file_path, "hla:2026/02/17/hi-01ARYZ6S41.md");
         assert!(chunk.name.as_deref().unwrap().contains("hi-01ARYZ6S41"));
         assert!(chunk.name.as_deref().unwrap().starts_with("telegram/"));
-        assert!(chunk.content.contains("Deploy bobbin to luvu"));
+        assert!(chunk.content.contains("Deploy bobbin to node-5"));
     }
 
     #[test]

@@ -3,7 +3,7 @@
 # Changes here only require a config reload, not code changes.
 
 [quipu]
-endpoint = "http://quipu.svc"
+endpoint = "http://localhost:3030"
 
 [mappings.code_symbol]
 bobbin_type = "CodeSymbol"
