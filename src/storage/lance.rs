@@ -11,8 +11,8 @@ use lancedb::index::Index;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::table::{CompactionOptions, Duration, OptimizeAction};
 use lancedb::{connect, Connection, Table};
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::types::{
@@ -65,6 +65,43 @@ pub struct VectorStore {
     embedding_dim: i32,
     /// Whether FTS index has been created for this session
     fts_indexed: AtomicBool,
+    /// The dataset directory, for the cross-process maintenance lock file.
+    db_path: PathBuf,
+    /// Baseline for the read-path compaction throttle.
+    opened_at: std::time::Instant,
+    /// Seconds-since-open of the last read-path compaction attempt (0 = never).
+    last_compact_secs: AtomicU64,
+}
+
+/// True when an error is a lance commit conflict — a transient race between
+/// concurrent writers (indexer vs. server vs. CLI) that the lance error text
+/// itself says to resolve by rerunning off the latest version.
+fn is_commit_conflict<E: std::fmt::Display>(err: &E) -> bool {
+    let msg = err.to_string();
+    msg.contains("Commit conflict") || msg.contains("concurrent commit")
+}
+
+/// Retry a table write that hit a commit conflict: refresh the table handle to
+/// the latest version and re-run, at most twice, with a short backoff. Every
+/// participant compacts/writes the same tables, so occasional conflicts are
+/// expected operation, not errors — before this, the archive-chunk write
+/// failed on EVERY incremental run behind a success message.
+macro_rules! retry_on_conflict {
+    ($table:expr, $op:expr) => {{
+        let mut attempt: u32 = 0;
+        loop {
+            match $op.await {
+                Ok(v) => break Ok(v),
+                Err(e) if attempt < 2 && is_commit_conflict(&e) => {
+                    attempt += 1;
+                    let _ = $table.checkout_latest().await;
+                    tokio::time::sleep(std::time::Duration::from_millis(100 * u64::from(attempt)))
+                        .await;
+                }
+                Err(e) => break Err(e),
+            }
+        }
+    }};
 }
 
 impl VectorStore {
@@ -252,6 +289,9 @@ impl VectorStore {
             entities_table,
             embedding_dim,
             fts_indexed: AtomicBool::new(false),
+            db_path: path.to_path_buf(),
+            opened_at: std::time::Instant::now(),
+            last_compact_secs: AtomicU64::new(0),
         })
     }
 
@@ -439,13 +479,15 @@ impl VectorStore {
                 let ids: Vec<String> = chunks.iter().map(|c| c.id.clone()).collect();
                 self.delete(&ids).await?;
 
-                // Add new records
-                let reader = Self::batch_to_reader(batch, schema);
-                table
-                    .add(reader)
-                    .execute()
-                    .await
-                    .context("Failed to add chunks")?;
+                // Add new records (fresh reader per attempt — the reader is
+                // consumed by a failed add, and RecordBatch clones are Arc-cheap)
+                retry_on_conflict!(
+                    table,
+                    table
+                        .add(Self::batch_to_reader(batch.clone(), schema.clone()))
+                        .execute()
+                )
+                .context("Failed to add chunks")?;
             }
             None => {
                 // Create table with initial data
@@ -510,12 +552,13 @@ impl VectorStore {
 
         match &self.table {
             Some(table) => {
-                let reader = Self::batch_to_reader(batch, schema);
-                table
-                    .add(reader)
-                    .execute()
-                    .await
-                    .context("Failed to bulk-add chunks")?;
+                retry_on_conflict!(
+                    table,
+                    table
+                        .add(Self::batch_to_reader(batch.clone(), schema.clone()))
+                        .execute()
+                )
+                .context("Failed to bulk-add chunks")?;
             }
             None => {
                 let reader = Self::batch_to_reader(batch, schema);
@@ -572,46 +615,107 @@ impl VectorStore {
         Ok(())
     }
 
+    /// Try to take the cross-process maintenance lock (advisory flock on a
+    /// file inside the dataset directory). `None` means another bobbin
+    /// participant — the server, the indexer, a CLI run — is already
+    /// compacting/pruning this store, and the correct move is to SKIP:
+    /// a second concurrent compaction contributes nothing but the commit
+    /// conflict that interrupts the first, refragments the table, and makes
+    /// the next compaction longer — the positive feedback loop that took the
+    /// search server down and grew the store 2.9G -> 41G.
+    /// The lock releases when the returned handle drops.
+    fn try_maintenance_lock(&self) -> Option<std::fs::File> {
+        use fs4::FileExt;
+        let lock_path = self.db_path.join(".maintenance.lock");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock_path)
+            .ok()?;
+        match file.try_lock_exclusive() {
+            Ok(()) => Some(file),
+            Err(_) => None,
+        }
+    }
+
     /// Compact fragmented data files.
     ///
     /// LanceDB creates a new fragment for every add/delete. With per-file upserts
     /// this leads to heavy fragmentation that hurts read performance. Compaction
     /// merges small fragments into larger ones.
+    ///
+    /// Gated on the maintenance lock: at most ONE compaction runs at a time
+    /// across every process sharing the store; contenders skip (Ok) rather
+    /// than queue — compaction is best-effort maintenance, and an interrupted
+    /// compaction is strictly worse than a deferred one.
     pub async fn compact(&self) -> Result<()> {
         let table = match &self.table {
             Some(t) => t,
             None => return Ok(()),
         };
 
-        table
-            .optimize(OptimizeAction::Compact {
+        let Some(_lock) = self.try_maintenance_lock() else {
+            return Ok(());
+        };
+
+        retry_on_conflict!(
+            table,
+            table.optimize(OptimizeAction::Compact {
                 options: CompactionOptions::default(),
                 remap_options: None,
             })
-            .await
-            .context("Failed to compact table")?;
+        )
+        .context("Failed to compact table")?;
 
         Ok(())
     }
 
     /// Remove old dataset versions to reclaim disk space.
     /// Removes versions older than 1 hour by default.
+    /// Gated on the maintenance lock exactly like [`Self::compact`].
     pub async fn prune(&self) -> Result<()> {
         let table = match &self.table {
             Some(t) => t,
             None => return Ok(()),
         };
 
-        table
-            .optimize(OptimizeAction::Prune {
+        let Some(_lock) = self.try_maintenance_lock() else {
+            return Ok(());
+        };
+
+        retry_on_conflict!(
+            table,
+            table.optimize(OptimizeAction::Prune {
                 older_than: Some(Duration::try_hours(1).expect("valid delta")),
                 delete_unverified: Some(true),
                 error_if_tagged_old_versions: None,
             })
-            .await
-            .context("Failed to prune old versions")?;
+        )
+        .context("Failed to prune old versions")?;
 
         Ok(())
+    }
+
+    /// Read-path compaction throttle: attempt a compaction at most once per
+    /// interval per process. `get_stats` is called by every search / grep /
+    /// status surface, and compacting on each call meant a long compaction on
+    /// a fragmented table ran inline in EVERY request while other
+    /// participants interrupted it. Between attempts, a slightly
+    /// stale scan beats an unavailable server.
+    async fn compact_if_stale(&self) {
+        const READ_PATH_COMPACT_INTERVAL_SECS: u64 = 300;
+        // Clamped to >= 1 so a recorded value is never the "never" sentinel 0.
+        let now = self.opened_at.elapsed().as_secs().max(1);
+        let last = self.last_compact_secs.load(Ordering::Relaxed);
+        if last != 0 && now.saturating_sub(last) < READ_PATH_COMPACT_INTERVAL_SECS {
+            return;
+        }
+        // Record the attempt whether it ran or was skipped (lock held
+        // elsewhere): either way, hammering the lock on every request is the
+        // behavior this throttle exists to stop.
+        self.last_compact_secs.store(now, Ordering::Relaxed);
+        self.compact().await.ok();
     }
 
     /// Search for similar vectors using approximate nearest neighbor search.
@@ -1204,10 +1308,7 @@ impl VectorStore {
                 .map(|id| format!("'{}'", id.replace('\'', "''")))
                 .collect();
             let filter = format!("id IN ({})", escaped_ids.join(", "));
-            table
-                .delete(&filter)
-                .await
-                .context("Failed to delete chunks")?;
+            retry_on_conflict!(table, table.delete(&filter)).context("Failed to delete chunks")?;
         }
 
         Ok(())
@@ -1258,9 +1359,7 @@ impl VectorStore {
                 .map(|p| format!("'{}'", p.replace('\'', "''")))
                 .collect();
             let filter = format!("{}file_path IN ({})", repo_clause, escaped_paths.join(", "));
-            table
-                .delete(&filter)
-                .await
+            retry_on_conflict!(table, table.delete(&filter))
                 .context("Failed to delete chunks by file")?;
         }
 
@@ -1275,9 +1374,7 @@ impl VectorStore {
         };
 
         let filter = format!("repo = '{}'", repo.replace('\'', "''"));
-        table
-            .delete(&filter)
-            .await
+        retry_on_conflict!(table, table.delete(&filter))
             .context("Failed to delete chunks by repo")?;
 
         Ok(())
@@ -1879,8 +1976,10 @@ impl VectorStore {
         };
 
         // Compact before scanning — fragmented tables return incomplete scan
-        // results in LanceDB 0.17. This is a no-op if already compacted.
-        self.compact().await.ok();
+        // results in LanceDB 0.17. Throttled + lock-gated: get_stats is on
+        // every request path, and an unconditional compact here was the
+        // runaway-contention trigger.
+        self.compact_if_stale().await;
 
         let repo_filter = repo.map(|r| format!("repo = '{}'", r.replace('\'', "''")));
 
@@ -2117,12 +2216,13 @@ impl VectorStore {
 
         match &self.deps_table {
             Some(table) => {
-                let reader = Self::batch_to_reader(batch, schema);
-                table
-                    .add(reader)
-                    .execute()
-                    .await
-                    .context("Failed to add dependencies")?;
+                retry_on_conflict!(
+                    table,
+                    table
+                        .add(Self::batch_to_reader(batch.clone(), schema.clone()))
+                        .execute()
+                )
+                .context("Failed to add dependencies")?;
             }
             None => {
                 let reader = Self::batch_to_reader(batch, schema);
@@ -2195,9 +2295,7 @@ impl VectorStore {
         };
 
         let filter = format!("file_a = '{}'", file_path.replace('\'', "''"));
-        table
-            .delete(&filter)
-            .await
+        retry_on_conflict!(table, table.delete(&filter))
             .context("Failed to clear file dependencies")?;
 
         Ok(())
@@ -2210,9 +2308,7 @@ impl VectorStore {
             None => return Ok(()),
         };
 
-        table
-            .delete("file_a IS NOT NULL")
-            .await
+        retry_on_conflict!(table, table.delete("file_a IS NOT NULL"))
             .context("Failed to clear dependencies")?;
 
         Ok(())
@@ -2283,12 +2379,13 @@ impl VectorStore {
 
         match &self.chunk_edges_table {
             Some(table) => {
-                let reader = Self::batch_to_reader(batch, schema);
-                table
-                    .add(reader)
-                    .execute()
-                    .await
-                    .context("Failed to add chunk edges")?;
+                retry_on_conflict!(
+                    table,
+                    table
+                        .add(Self::batch_to_reader(batch.clone(), schema.clone()))
+                        .execute()
+                )
+                .context("Failed to add chunk edges")?;
             }
             None => {
                 let reader = Self::batch_to_reader(batch, schema);
@@ -2363,9 +2460,7 @@ impl VectorStore {
         };
 
         let filter = format!("file_path = '{}'", file_path.replace('\'', "''"));
-        table
-            .delete(&filter)
-            .await
+        retry_on_conflict!(table, table.delete(&filter))
             .context("Failed to clear file chunk edges")?;
 
         Ok(())
@@ -2506,12 +2601,13 @@ impl VectorStore {
                 let iris: Vec<&str> = entities.iter().map(|e| e.entity_iri.as_str()).collect();
                 self.delete_entities(&iris).await?;
 
-                let reader = Self::batch_to_reader(batch, schema);
-                table
-                    .add(reader)
-                    .execute()
-                    .await
-                    .context("Failed to add entities")?;
+                retry_on_conflict!(
+                    table,
+                    table
+                        .add(Self::batch_to_reader(batch.clone(), schema.clone()))
+                        .execute()
+                )
+                .context("Failed to add entities")?;
             }
             None => {
                 let reader = Self::batch_to_reader(batch, schema);
@@ -2665,10 +2761,7 @@ impl VectorStore {
             .collect();
         let filter = format!("entity_iri IN ({})", escaped.join(", "));
 
-        table
-            .delete(&filter)
-            .await
-            .context("Failed to delete entities")?;
+        retry_on_conflict!(table, table.delete(&filter)).context("Failed to delete entities")?;
 
         Ok(())
     }
@@ -2681,9 +2774,7 @@ impl VectorStore {
         };
 
         let filter = format!("repo = '{}'", repo.replace('\'', "''"));
-        table
-            .delete(&filter)
-            .await
+        retry_on_conflict!(table, table.delete(&filter))
             .context("Failed to delete entities by repo")?;
 
         Ok(())
@@ -3075,6 +3166,67 @@ mod tests {
             let results = store.search(&sample_embedding(), 10, None).await.unwrap();
             assert_eq!(results[0].chunk.name, Some("persistent".to_string()));
         }
+    }
+
+    #[test]
+    fn commit_conflict_classifier_matches_lance_conflicts_only() {
+        // The retry must fire on the exact failure the incident logged and
+        // never mask real errors as retryable.
+        let conflict = anyhow::anyhow!(
+            "Commit conflict for version 3295: There was a concurrent commit \
+             that conflicts with this one and it cannot be automatically resolved."
+        );
+        assert!(is_commit_conflict(&conflict));
+        let other = anyhow::anyhow!("Failed to open table: corrupt manifest");
+        assert!(!is_commit_conflict(&other));
+    }
+
+    #[tokio::test]
+    async fn maintenance_lock_is_exclusive_and_compact_skips_when_held() {
+        // The single-compactor guarantee: while ANY participant holds the
+        // maintenance lock, another participant's compact() must SKIP —
+        // return Ok fast, not queue and not error. A second concurrent
+        // compaction is what interrupted the first and set off the
+        // fragmentation feedback loop that took the server down.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+        let chunks = vec![sample_chunk("chunk1", "main")];
+        let embeddings = vec![sample_embedding()];
+        store
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(1),
+                "default",
+                "abc123",
+                "1234567890",
+            )
+            .await
+            .unwrap();
+
+        // A second handle on the same store, as a second process would have.
+        let other = VectorStore::open(&path).await.unwrap();
+
+        let held = store
+            .try_maintenance_lock()
+            .expect("first participant takes the lock");
+        assert!(
+            other.try_maintenance_lock().is_none(),
+            "the lock must be exclusive across handles"
+        );
+        // compact() under contention: Ok (skipped), not an error, not a hang.
+        other.compact().await.expect("contended compact skips");
+        other.prune().await.expect("contended prune skips");
+
+        drop(held);
+        assert!(
+            other.try_maintenance_lock().is_some(),
+            "releasing the lock frees the next participant"
+        );
+        // And with the lock free, a real compaction runs clean.
+        other.compact().await.expect("uncontended compact runs");
     }
 
     #[tokio::test]

@@ -58,6 +58,9 @@ tree-sitter-cpp = "0.23"
 # Vector database (primary storage)
 lancedb = "0.17"
 lance-index = "0.23"
+# Cross-process advisory lock for lance maintenance (compact/prune) — already
+# in the tree transitively; promoted so the maintenance gate can flock.
+fs4 = "0.8"
 arrow = { version = "53", default-features = false }
 arrow-array = "53"
 arrow-schema = "53"
