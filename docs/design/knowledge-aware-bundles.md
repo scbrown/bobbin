@@ -1,5 +1,7 @@
 # Knowledge-Aware Bundles: Code Entities in the Knowledge Graph
 
+> **Implementation status (2026-07-23, harding):** 🟡 **Partial — in source, dark in every artifact.** The code→Quipu export this designs (code entities pushed as graph edges / dangling references) lives in `src/knowledge/coupling.rs`, but the whole `knowledge` module is gated behind the `knowledge` cargo feature that **no build path enables** — same gate that darks the PPR re-ranker and the Quipu integration plan. Un-darking is scoped in **GH #56**.
+
 > Bundles are curated knowledge, not index data. They belong in Quipu.
 
 ## Thesis

@@ -1,5 +1,7 @@
 # Design: Bobbin Integration with Desirepath
 
+> **Implementation status (2026-07-23, harding):** ⬜ **Planned — greenfield, not started.** Zero desirepath-integration code in bobbin `src/` (grep: no `desirepath` refs). The desirepath tool exists standalone; the bobbin-side consumption this doc designs is unbuilt. Doc is a "Draft" (not approved-for-build) — left ⬜ rather than issue-filed until prioritized; the doc is the spec when it is.
+
 **Bead**: aegis-hq2j86
 **Author**: stryder
 **Date**: 2026-03-05

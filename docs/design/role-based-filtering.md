@@ -1,5 +1,7 @@
 # Bobbin Role-Based Repo Filtering (§69)
 
+> **Implementation status (2026-07-23, harding):** ✅ **Implemented** (matches the doc's own claim). `src/config.rs:698` `RoleFilterConfig` (§69, with `default_visible`), applied at `src/cli/context.rs:264` ("Apply role-based access filtering to context files"). Code-complete; activation is per-deployment config.
+
 **Status**: Implemented (code complete, pending config deployment)
 **Directive**: §69 — certain repos should only show for certain roles, highly configurable per project/repo
 **Bead**: aegis-5w0

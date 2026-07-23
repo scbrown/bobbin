@@ -1,5 +1,7 @@
 # Bobbin Tags & Annotations
 
+> **Implementation status (2026-07-23, harding):** ✅ **Implemented** (supersedes the "Draft" line). The tag model is `src/tags.rs` (comment-tag extraction + `CommentsConfig`), surfaced by the wired `bobbin tag` subcommand (`Commands::Tag` → `tag::run`, `src/cli/mod.rs:214,335`).
+
 **Bead**: aegis-gzc4jv
 **Author**: aegis/crew/ellie
 **Date**: 2026-03-02

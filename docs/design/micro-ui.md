@@ -1,5 +1,7 @@
 # Bobbin Knowledge Integration: Embedding Quipu Web Components
 
+> **Implementation status (2026-07-23, harding):** ⬜ **Planned (blocked on a deferred dependency).** No embedding code in `src/`; the doc self-declares "Design (approved direction)" and depends on the standalone Quipu UI (`quipu/docs/design/quipu-ui.md`) + `quipu-components.js`. The Quipu-UI track is currently deferred, so this is not actionable until it lands.
+
 > Bobbin annotates. Quipu renders. The bridge is hyperlinks and web standards.
 
 ## Status

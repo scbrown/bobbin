@@ -1,5 +1,7 @@
 # Bobbin v2: Unified Search Engine
 
+> **Implementation status (2026-07-23, harding):** ✅ **Implemented (core).** The v2 thesis — a unified, multi-repo hybrid search with an HTTP server — is what bobbin became: `HybridSearch` (`src/search/hybrid.rs`, re-exported `src/search/mod.rs`), multi-repo via `bobbin connect` (`Commands::Connect`, `src/cli/mod.rs:78`), and the HTTP server (`src/http/`). Chunking + contextual-embedding refinements continue under the eval/calibration plans.
+
 ## Overview
 
 Extend bobbin to be a unified search solution supporting multiple repositories, better document chunking, contextual embeddings, and centralized HTTP server deployment.

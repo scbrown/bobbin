@@ -1,5 +1,7 @@
 # Phase 4: Analysis & Intelligence Features
 
+> **Implementation status (2026-07-23, harding):** ✅ **Implemented.** All 5 designed subcommands are wired and run: `bobbin similar`, `hotspots`, `review`, `impact`, `refs` — `Commands::{Similar,Hotspots,Impact,Related,Review}` in `src/cli/mod.rs` dispatch to their `::run` (`:315-322`), and all five are also live MCP tools. No gaps.
+
 Phase 3 gave bobbin a solid foundation: structure-aware parsing, hybrid search,
 git coupling, context assembly, and MCP integration. Phase 4 builds on these
 primitives to answer higher-level questions about codebases.

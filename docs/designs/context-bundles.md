@@ -1,5 +1,7 @@
 # Context Bundles: Stable, Addressable Knowledge Anchors for Bobbin
 
+> **Implementation status (2026-07-23, harding):** ✅ **Implemented** (supersedes the "Draft" line). `bobbin bundle` is a wired subcommand — `Commands::Bundle(bundle::BundleArgs)` (`src/cli/mod.rs:167`) → `src/cli/bundle.rs` — "Explore context bundles (named, hierarchical knowledge anchors)".
+
 **Author**: stryder (aegis/crew)
 **Date**: 2026-03-22
 **Status**: Draft
