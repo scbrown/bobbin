@@ -68,10 +68,17 @@ impl MetadataStore {
                 value TEXT
             );
 
-            -- File hash tracking for incremental indexing
+            -- File hash tracking for incremental indexing. Keyed by
+            -- (repo, file_path): the bare path is NOT unique across a
+            -- multi-repo index (19 repos each have a README.md), and a
+            -- path-only key let the first writer own the row while every
+            -- other repo's copy was judged against the wrong hash and
+            -- silently skipped forever.
             CREATE TABLE IF NOT EXISTS file_hashes (
-                file_path TEXT PRIMARY KEY,
-                hash TEXT NOT NULL
+                repo TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                PRIMARY KEY (repo, file_path)
             );
 
             -- Bead → bundle → commit workflow telemetry (GH#9, Layer 1: logging).
@@ -115,7 +122,60 @@ impl MetadataStore {
         )?;
 
         self.migrate_bead_lineage()?;
+        self.migrate_repo_scoped_state()?;
 
+        Ok(())
+    }
+
+    /// One-time migration to repo-scoped incremental state.
+    ///
+    /// The pre-migration `file_hashes` rows are keyed by bare path, so in a
+    /// multi-repo index each row belongs to whichever repo wrote it first and
+    /// there is no way to attribute it after the fact — re-keying would just
+    /// bless the collided data. The rows are dropped instead; the next index
+    /// run per repo re-hashes (and re-embeds changed files) from scratch, which
+    /// is the one-time rebuild this fix requires.
+    ///
+    /// The legacy GLOBAL watermark keys (`last_indexed_commit`,
+    /// `last_coupling_commit`, `coupling_depth`) are deleted for the same
+    /// reason: one SHA shared by every repo means each repo was asked for
+    /// "commits since" a commit it does not contain. Their per-repo
+    /// replacements (`last_indexed_commit:<repo>`, …) are written fresh by the
+    /// next index run; a missing watermark falls back to the full-depth scan a
+    /// fresh index already does.
+    fn migrate_repo_scoped_state(&self) -> Result<()> {
+        // Old schema is detected by the absence of the `repo` column. The DROP
+        // runs at most once: the recreate below uses the new schema.
+        let mut has_repo = false;
+        let mut has_table = false;
+        {
+            let mut stmt = self.conn.prepare("PRAGMA table_info(file_hashes)")?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+            for r in rows {
+                has_table = true;
+                if r? == "repo" {
+                    has_repo = true;
+                }
+            }
+        }
+        if has_table && !has_repo {
+            self.conn.execute_batch(
+                r#"
+                DROP TABLE file_hashes;
+                CREATE TABLE file_hashes (
+                    repo TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    hash TEXT NOT NULL,
+                    PRIMARY KEY (repo, file_path)
+                );
+                "#,
+            )?;
+        }
+        // Idempotent; a no-op once the keys are gone.
+        self.conn.execute(
+            "DELETE FROM meta WHERE key IN ('last_indexed_commit', 'last_coupling_commit', 'coupling_depth')",
+            [],
+        )?;
         Ok(())
     }
 
@@ -359,32 +419,37 @@ impl MetadataStore {
         Ok(())
     }
 
-    /// Get the stored hash for a file (for incremental indexing)
-    pub fn get_file_hash(&self, file_path: &str) -> Result<Option<String>> {
+    /// Get the stored hash for a file (for incremental indexing). Scoped to
+    /// `repo`: the same relative path in another repo is a different file
+    ///.
+    pub fn get_file_hash(&self, repo: &str, file_path: &str) -> Result<Option<String>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT hash FROM file_hashes WHERE file_path = ?1")?;
-        let result = stmt.query_row([file_path], |row| row.get(0)).optional()?;
+            .prepare("SELECT hash FROM file_hashes WHERE repo = ?1 AND file_path = ?2")?;
+        let result = stmt
+            .query_row([repo, file_path], |row| row.get(0))
+            .optional()?;
         Ok(result)
     }
 
     /// Store the hash for a file after successful indexing
-    pub fn set_file_hash(&self, file_path: &str, hash: &str) -> Result<()> {
+    pub fn set_file_hash(&self, repo: &str, file_path: &str, hash: &str) -> Result<()> {
         self.conn.execute(
-            "INSERT OR REPLACE INTO file_hashes (file_path, hash) VALUES (?1, ?2)",
-            [file_path, hash],
+            "INSERT OR REPLACE INTO file_hashes (repo, file_path, hash) VALUES (?1, ?2, ?3)",
+            [repo, file_path, hash],
         )?;
         Ok(())
     }
 
     /// Store hashes for multiple files in a single transaction
-    pub fn set_file_hashes_bulk(&self, entries: &[(&str, &str)]) -> Result<()> {
+    pub fn set_file_hashes_bulk(&self, repo: &str, entries: &[(&str, &str)]) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         {
-            let mut stmt =
-                tx.prepare("INSERT OR REPLACE INTO file_hashes (file_path, hash) VALUES (?1, ?2)")?;
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO file_hashes (repo, file_path, hash) VALUES (?1, ?2, ?3)",
+            )?;
             for (path, hash) in entries {
-                stmt.execute([path, hash])?;
+                stmt.execute([repo, path, hash])?;
             }
         }
         tx.commit()?;
@@ -398,29 +463,45 @@ impl MetadataStore {
     /// SQLite's `SQLITE_MAX_VARIABLE_NUMBER` (32766) fails, aborting the prune
     /// and leaving the index inconsistent (bobbin #43). All chunks run in one
     /// transaction so the prune is atomic.
-    pub fn delete_file_hashes(&self, file_paths: &[String]) -> Result<()> {
+    /// `repo = None` deletes the paths in EVERY repo — for callers (the
+    /// watcher's delete path) that cannot attribute a vanished path to one
+    /// repo; over-deleting a hash row only costs a re-hash on the next run,
+    /// while under-deleting risks a stale hash silently skipping a file.
+    pub fn delete_file_hashes(&self, repo: Option<&str>, file_paths: &[String]) -> Result<()> {
         if file_paths.is_empty() {
             return Ok(());
         }
         let tx = self.conn.unchecked_transaction()?;
         for chunk in file_paths.chunks(SQLITE_MAX_BIND_VARS) {
             let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("?{i}")).collect();
-            let sql = format!(
-                "DELETE FROM file_hashes WHERE file_path IN ({})",
-                placeholders.join(", ")
-            );
-            let params: Vec<&dyn rusqlite::ToSql> =
+            let sql = match repo {
+                Some(_) => format!(
+                    "DELETE FROM file_hashes WHERE repo = ?{} AND file_path IN ({})",
+                    chunk.len() + 1,
+                    placeholders.join(", ")
+                ),
+                None => format!(
+                    "DELETE FROM file_hashes WHERE file_path IN ({})",
+                    placeholders.join(", ")
+                ),
+            };
+            let mut params: Vec<&dyn rusqlite::ToSql> =
                 chunk.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+            if let Some(ref r) = repo {
+                params.push(r as &dyn rusqlite::ToSql);
+            }
             tx.execute(&sql, params.as_slice())?;
         }
         tx.commit()?;
         Ok(())
     }
 
-    /// Get all file paths that have been indexed
-    pub fn get_all_indexed_files(&self) -> Result<std::collections::HashSet<String>> {
-        let mut stmt = self.conn.prepare("SELECT file_path FROM file_hashes")?;
-        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    /// Get all file paths that have been indexed for one repo
+    pub fn get_all_indexed_files(&self, repo: &str) -> Result<std::collections::HashSet<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT file_path FROM file_hashes WHERE repo = ?1")?;
+        let rows = stmt.query_map([repo], |row| row.get::<_, String>(0))?;
         let mut result = std::collections::HashSet::new();
         for row in rows {
             result.insert(row?);
@@ -428,9 +509,12 @@ impl MetadataStore {
         Ok(result)
     }
 
-    /// Clear all file hashes (used by --force to rebuild from scratch)
-    pub fn clear_file_hashes(&self) -> Result<()> {
-        self.conn.execute("DELETE FROM file_hashes", [])?;
+    /// Clear one repo's file hashes (used by --force to rebuild from scratch).
+    /// Scoped so `--force` on repo A no longer wipes every other repo's
+    /// incremental state with it.
+    pub fn clear_file_hashes(&self, repo: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM file_hashes WHERE repo = ?1", [repo])?;
         Ok(())
     }
 }

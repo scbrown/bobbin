@@ -184,20 +184,48 @@ fn test_transaction() {
 fn test_file_hash_roundtrip() {
     let (store, _dir) = create_test_store();
 
-    assert!(store.get_file_hash("src/main.rs").unwrap().is_none());
+    assert!(store.get_file_hash("r", "src/main.rs").unwrap().is_none());
 
-    store.set_file_hash("src/main.rs", "abc123").unwrap();
+    store.set_file_hash("r", "src/main.rs", "abc123").unwrap();
     assert_eq!(
-        store.get_file_hash("src/main.rs").unwrap(),
+        store.get_file_hash("r", "src/main.rs").unwrap(),
         Some("abc123".to_string())
     );
 
     // Update hash
-    store.set_file_hash("src/main.rs", "def456").unwrap();
+    store.set_file_hash("r", "src/main.rs", "def456").unwrap();
     assert_eq!(
-        store.get_file_hash("src/main.rs").unwrap(),
+        store.get_file_hash("r", "src/main.rs").unwrap(),
         Some("def456".to_string())
     );
+}
+
+#[test]
+fn test_same_path_in_two_repos_is_two_rows() {
+    // THE multi-repo collision regression: 19 indexed repos each have a README.md, and the
+    // old path-only key gave them ONE shared row — first writer owned it, every
+    // other repo's copy was compared against the wrong hash and silently
+    // skipped. The same path in different repos must be independent state.
+    let (store, _dir) = create_test_store();
+
+    store
+        .set_file_hash("quipu", "README.md", "hash_quipu")
+        .unwrap();
+    store
+        .set_file_hash("goldblum", "README.md", "hash_goldblum")
+        .unwrap();
+
+    assert_eq!(
+        store.get_file_hash("quipu", "README.md").unwrap(),
+        Some("hash_quipu".to_string()),
+        "goldblum's write must not clobber quipu's row"
+    );
+    assert_eq!(
+        store.get_file_hash("goldblum", "README.md").unwrap(),
+        Some("hash_goldblum".to_string())
+    );
+    // And a repo that never wrote the path sees ABSENT, not another repo's hash.
+    assert!(store.get_file_hash("hank", "README.md").unwrap().is_none());
 }
 
 #[test]
@@ -209,18 +237,18 @@ fn test_file_hashes_bulk() {
         ("src/b.rs", "hash_b"),
         ("src/c.rs", "hash_c"),
     ];
-    store.set_file_hashes_bulk(&entries).unwrap();
+    store.set_file_hashes_bulk("r", &entries).unwrap();
 
     assert_eq!(
-        store.get_file_hash("src/a.rs").unwrap(),
+        store.get_file_hash("r", "src/a.rs").unwrap(),
         Some("hash_a".to_string())
     );
     assert_eq!(
-        store.get_file_hash("src/b.rs").unwrap(),
+        store.get_file_hash("r", "src/b.rs").unwrap(),
         Some("hash_b".to_string())
     );
     assert_eq!(
-        store.get_file_hash("src/c.rs").unwrap(),
+        store.get_file_hash("r", "src/c.rs").unwrap(),
         Some("hash_c".to_string())
     );
 }
@@ -229,20 +257,47 @@ fn test_file_hashes_bulk() {
 fn test_delete_file_hashes() {
     let (store, _dir) = create_test_store();
 
-    store.set_file_hash("src/a.rs", "hash_a").unwrap();
-    store.set_file_hash("src/b.rs", "hash_b").unwrap();
-    store.set_file_hash("src/c.rs", "hash_c").unwrap();
+    store.set_file_hash("r", "src/a.rs", "hash_a").unwrap();
+    store.set_file_hash("r", "src/b.rs", "hash_b").unwrap();
+    store.set_file_hash("r", "src/c.rs", "hash_c").unwrap();
 
     store
-        .delete_file_hashes(&["src/a.rs".to_string(), "src/c.rs".to_string()])
+        .delete_file_hashes(Some("r"), &["src/a.rs".to_string(), "src/c.rs".to_string()])
         .unwrap();
 
-    assert!(store.get_file_hash("src/a.rs").unwrap().is_none());
+    assert!(store.get_file_hash("r", "src/a.rs").unwrap().is_none());
     assert_eq!(
-        store.get_file_hash("src/b.rs").unwrap(),
+        store.get_file_hash("r", "src/b.rs").unwrap(),
         Some("hash_b".to_string())
     );
-    assert!(store.get_file_hash("src/c.rs").unwrap().is_none());
+    assert!(store.get_file_hash("r", "src/c.rs").unwrap().is_none());
+}
+
+#[test]
+fn test_delete_file_hashes_scoped_spares_other_repos() {
+    // A scoped delete for repo A's path must not touch repo B's row for the
+    // same path; an unscoped (None) delete removes both.
+    let (store, _dir) = create_test_store();
+
+    store.set_file_hash("a", "README.md", "ha").unwrap();
+    store.set_file_hash("b", "README.md", "hb").unwrap();
+
+    store
+        .delete_file_hashes(Some("a"), &["README.md".to_string()])
+        .unwrap();
+    assert!(store.get_file_hash("a", "README.md").unwrap().is_none());
+    assert_eq!(
+        store.get_file_hash("b", "README.md").unwrap(),
+        Some("hb".to_string()),
+        "scoped delete must spare the other repo's row"
+    );
+
+    store.set_file_hash("a", "README.md", "ha").unwrap();
+    store
+        .delete_file_hashes(None, &["README.md".to_string()])
+        .unwrap();
+    assert!(store.get_file_hash("a", "README.md").unwrap().is_none());
+    assert!(store.get_file_hash("b", "README.md").unwrap().is_none());
 }
 
 #[test]
@@ -254,30 +309,96 @@ fn test_delete_file_hashes_exceeds_bind_var_limit() {
     let n = 40_000;
     let paths: Vec<String> = (0..n).map(|i| format!("src/file_{i}.rs")).collect();
     let entries: Vec<(&str, &str)> = paths.iter().map(|p| (p.as_str(), "h")).collect();
-    store.set_file_hashes_bulk(&entries).unwrap();
+    store.set_file_hashes_bulk("r", &entries).unwrap();
 
     // A single unbatched IN (?) would exceed the variable limit and fail here.
-    store.delete_file_hashes(&paths).unwrap();
+    store.delete_file_hashes(Some("r"), &paths).unwrap();
 
-    assert!(store.get_file_hash("src/file_0.rs").unwrap().is_none());
+    assert!(store.get_file_hash("r", "src/file_0.rs").unwrap().is_none());
     assert!(store
-        .get_file_hash(&format!("src/file_{}.rs", n - 1))
+        .get_file_hash("r", &format!("src/file_{}.rs", n - 1))
         .unwrap()
         .is_none());
-    assert!(store.get_all_indexed_files().unwrap().is_empty());
+    assert!(store.get_all_indexed_files("r").unwrap().is_empty());
 }
 
 #[test]
-fn test_clear_file_hashes() {
+fn test_clear_file_hashes_is_scoped_to_one_repo() {
     let (store, _dir) = create_test_store();
 
-    store.set_file_hash("src/a.rs", "hash_a").unwrap();
-    store.set_file_hash("src/b.rs", "hash_b").unwrap();
+    store.set_file_hash("a", "src/a.rs", "hash_a").unwrap();
+    store.set_file_hash("b", "src/b.rs", "hash_b").unwrap();
 
-    store.clear_file_hashes().unwrap();
+    store.clear_file_hashes("a").unwrap();
 
-    assert!(store.get_file_hash("src/a.rs").unwrap().is_none());
-    assert!(store.get_file_hash("src/b.rs").unwrap().is_none());
+    assert!(store.get_file_hash("a", "src/a.rs").unwrap().is_none());
+    assert_eq!(
+        store.get_file_hash("b", "src/b.rs").unwrap(),
+        Some("hash_b".to_string()),
+        "--force on repo a must not wipe repo b's incremental state"
+    );
+}
+
+#[test]
+fn test_migration_drops_path_keyed_hashes_and_global_watermarks() {
+    // A pre-fix database: path-keyed file_hashes (collided, unattributable) and
+    // the global watermark keys. Opening it must drop both — the rows cannot be
+    // re-keyed after the fact, and the global SHA belongs to at most one repo.
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+    {
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE file_hashes (file_path TEXT PRIMARY KEY, hash TEXT NOT NULL);
+            INSERT INTO file_hashes VALUES ('README.md', 'quipus_hash_owning_everyones_row');
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO meta VALUES ('last_indexed_commit', 'deadbeef');
+            INSERT INTO meta VALUES ('last_coupling_commit', 'deadbeef');
+            INSERT INTO meta VALUES ('coupling_depth', '5000');
+            INSERT INTO meta VALUES ('embedding_model', 'kept');
+            INSERT INTO meta VALUES ('repo_source:quipu', '/repos/quipu');
+            "#,
+        )
+        .unwrap();
+    }
+
+    let store = MetadataStore::open(&db_path).unwrap();
+
+    // The collided row is gone for every repo — absent, never the wrong hash.
+    assert!(store.get_file_hash("quipu", "README.md").unwrap().is_none());
+    assert!(store
+        .get_file_hash("goldblum", "README.md")
+        .unwrap()
+        .is_none());
+    // New-schema writes work.
+    store.set_file_hash("quipu", "README.md", "h").unwrap();
+    assert_eq!(
+        store.get_file_hash("quipu", "README.md").unwrap(),
+        Some("h".to_string())
+    );
+
+    // Global watermarks removed; unrelated meta keys survive.
+    assert!(store.get_meta("last_indexed_commit").unwrap().is_none());
+    assert!(store.get_meta("last_coupling_commit").unwrap().is_none());
+    assert!(store.get_meta("coupling_depth").unwrap().is_none());
+    assert_eq!(
+        store.get_meta("embedding_model").unwrap(),
+        Some("kept".to_string())
+    );
+    assert_eq!(
+        store.get_meta("repo_source:quipu").unwrap(),
+        Some("/repos/quipu".to_string())
+    );
+
+    // Reopening an already-migrated DB is a no-op (idempotent).
+    drop(store);
+    let store = MetadataStore::open(&db_path).unwrap();
+    assert_eq!(
+        store.get_file_hash("quipu", "README.md").unwrap(),
+        Some("h".to_string()),
+        "re-migration must not re-drop the new-schema table"
+    );
 }
 
 #[test]
@@ -492,11 +613,12 @@ fn test_bead_lineage_ordering_and_limit() {
 fn test_get_all_indexed_files() {
     let (store, _dir) = create_test_store();
 
-    store.set_file_hash("src/a.rs", "hash_a").unwrap();
-    store.set_file_hash("src/b.rs", "hash_b").unwrap();
+    store.set_file_hash("r", "src/a.rs", "hash_a").unwrap();
+    store.set_file_hash("r", "src/b.rs", "hash_b").unwrap();
+    store.set_file_hash("other", "src/c.rs", "hash_c").unwrap();
 
-    let files = store.get_all_indexed_files().unwrap();
-    assert_eq!(files.len(), 2);
+    let files = store.get_all_indexed_files("r").unwrap();
+    assert_eq!(files.len(), 2, "listing is scoped to the requested repo");
     assert!(files.contains("src/a.rs"));
     assert!(files.contains("src/b.rs"));
 }

@@ -346,7 +346,7 @@ async fn run_incremental_index(
             };
             let hash = format!("{:x}", Sha256::digest(content.as_bytes()));
             let needs = vector_store
-                .needs_reindex(&rel_path, &hash)
+                .needs_reindex(&rel_path, &hash, Some(repo_name))
                 .await
                 .unwrap_or(true);
             if needs {
@@ -372,7 +372,9 @@ async fn run_incremental_index(
             continue;
         }
 
-        vector_store.delete_by_file(&[rel_path.clone()]).await?;
+        vector_store
+            .delete_by_file(&[rel_path.clone()], Some(repo_name))
+            .await?;
 
         let texts: Vec<&str> = chunks.iter().map(|c| c.content.as_str()).collect();
         let embeddings = embedder.embed_batch(&texts).await?;

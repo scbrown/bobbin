@@ -243,30 +243,44 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
             _ = check_interval.tick() => {
                 let has_work = !pending_changes.is_empty() || !pending_deletes.is_empty();
                 if has_work && last_event_time.elapsed() >= debounce {
-                    // Process deletions
+                    // Process deletions. Attribute each path to its repo where
+                    // the tree still allows detection (detect walks up to the
+                    // surviving ancestor's .git) so the delete is scoped to that
+                    // repo's rows — an unscoped delete also removed every OTHER
+                    // repo's copy of a same-named path from the shared index
+                    //. Detection failure falls back to the old
+                    // any-repo delete: over-deleting costs a re-hash, while
+                    // under-deleting leaves stale rows.
                     if !pending_deletes.is_empty() {
-                        let del_paths: Vec<String> = pending_deletes
-                            .drain()
-                            .map(|p| {
-                                p.strip_prefix(&source_root)
-                                    .unwrap_or(&p)
-                                    .to_string_lossy()
-                                    .to_string()
-                            })
-                            .collect();
-
-                        match vector_store.delete_by_file(&del_paths).await {
-                            Ok(_) => {
-                                let _ = metadata_store.delete_file_hashes(&del_paths);
-                                if !output.quiet {
-                                    for p in &del_paths {
-                                        println!("  {} Removed {}", "-".red(), p);
+                        let mut by_repo: HashMap<Option<String>, Vec<String>> = HashMap::new();
+                        for p in pending_deletes.drain() {
+                            let repo =
+                                detect_git_repo_name(p.parent().unwrap_or(&source_root));
+                            let rel = p
+                                .strip_prefix(&source_root)
+                                .unwrap_or(&p)
+                                .to_string_lossy()
+                                .to_string();
+                            by_repo.entry(repo).or_default().push(rel);
+                        }
+                        for (repo, del_paths) in &by_repo {
+                            match vector_store
+                                .delete_by_file(del_paths, repo.as_deref())
+                                .await
+                            {
+                                Ok(_) => {
+                                    let _ = metadata_store
+                                        .delete_file_hashes(repo.as_deref(), del_paths);
+                                    if !output.quiet {
+                                        for p in del_paths {
+                                            println!("  {} Removed {}", "-".red(), p);
+                                        }
                                     }
                                 }
-                            }
-                            Err(e) => {
-                                if !output.quiet {
-                                    eprintln!("  {} Delete failed: {}", "!".yellow(), e);
+                                Err(e) => {
+                                    if !output.quiet {
+                                        eprintln!("  {} Delete failed: {}", "!".yellow(), e);
+                                    }
                                 }
                             }
                         }
@@ -465,7 +479,9 @@ async fn reindex_files(
             Ok(c) => c,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 // File deleted between event and processing
-                let _ = vector_store.delete_by_file(&[rel_path]).await;
+                let _ = vector_store
+                    .delete_by_file(&[rel_path], Some(&effective_repo))
+                    .await;
                 continue;
             }
             Err(_) => continue,
@@ -477,14 +493,18 @@ async fn reindex_files(
 
         let hash = compute_hash(&content);
 
-        // Skip unchanged files using SQLite hash lookup
-        if let Some(stored_hash) = metadata_store.get_file_hash(&rel_path)? {
+        // Skip unchanged files using SQLite hash lookup (scoped to this file's
+        // repo — the same path in another repo is a different file)
+        if let Some(stored_hash) = metadata_store.get_file_hash(&effective_repo, &rel_path)? {
             if stored_hash == hash {
                 continue;
             }
         }
 
-        let chunks = match parser.parse_file(path, &content) {
+        // Parse under the REPO-RELATIVE path — the parser stamps chunks'
+        // file_path with the path it is handed, and rel is the key every
+        // delete/reconcile compares against (see cli/index.rs).
+        let chunks = match parser.parse_file(Path::new(&rel_path), &content) {
             Ok(c) if !c.is_empty() => c,
             _ => continue,
         };
@@ -506,7 +526,9 @@ async fn reindex_files(
             .await
             .context("Failed to generate embeddings")?;
 
-        vector_store.delete_by_file(&[rel_path.clone()]).await?;
+        vector_store
+            .delete_by_file(&[rel_path.clone()], Some(&effective_repo))
+            .await?;
         vector_store
             .insert(
                 &chunks,
@@ -519,7 +541,7 @@ async fn reindex_files(
             .await?;
 
         // Update SQLite hash after successful indexing
-        metadata_store.set_file_hash(&rel_path, &hash)?;
+        metadata_store.set_file_hash(&effective_repo, &rel_path, &hash)?;
 
         stats.chunks_created += chunks.len();
         stats.files_indexed += 1;
@@ -562,22 +584,39 @@ async fn run_reindex_backstop(
     // Prune index rows for files that no longer exist on disk. collect_files
     // only returns extant files, so anything indexed but absent was deleted
     // while the watcher was down (or its Remove event was dropped).
-    let current: HashSet<String> = files
-        .iter()
-        .map(|p| {
-            p.strip_prefix(source_root)
-                .unwrap_or(p)
-                .to_string_lossy()
-                .to_string()
-        })
-        .collect();
-    let indexed = metadata_store.get_all_indexed_files()?;
-    let removed: Vec<String> = indexed.difference(&current).cloned().collect();
+    //
+    // Grouped by each file's effective repo (the same detection reindex_files
+    // uses) and compared per repo. The old global compare — "every hash row
+    // minus THIS root's files" — treated every other repo's rows in a shared
+    // index, and the whole bead corpus (`beads:` paths, never on disk), as
+    // deleted files, and removed them on every sweep.
+    let mut repo_cache: HashMap<PathBuf, String> = HashMap::new();
+    let mut current_by_repo: HashMap<String, HashSet<String>> = HashMap::new();
+    for p in &files {
+        let dir = p.parent().unwrap_or(source_root);
+        let repo = if let Some(cached) = repo_cache.get(dir) {
+            cached.clone()
+        } else {
+            let detected = detect_git_repo_name(dir).unwrap_or_else(|| repo_name.to_string());
+            repo_cache.insert(dir.to_path_buf(), detected.clone());
+            detected
+        };
+        let rel = p
+            .strip_prefix(source_root)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .to_string();
+        current_by_repo.entry(repo).or_default().insert(rel);
+    }
     let mut files_removed = 0;
-    if !removed.is_empty() {
-        vector_store.delete_by_file(&removed).await?;
-        metadata_store.delete_file_hashes(&removed)?;
-        files_removed = removed.len();
+    for (repo, current) in &current_by_repo {
+        let indexed = metadata_store.get_all_indexed_files(repo)?;
+        let removed: Vec<String> = indexed.difference(current).cloned().collect();
+        if !removed.is_empty() {
+            vector_store.delete_by_file(&removed, Some(repo)).await?;
+            metadata_store.delete_file_hashes(Some(repo), &removed)?;
+            files_removed += removed.len();
+        }
     }
 
     // Reindex drifted files (reindex_files skips those whose hash is unchanged).

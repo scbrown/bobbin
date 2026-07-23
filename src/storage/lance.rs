@@ -1228,8 +1228,15 @@ impl VectorStore {
         Ok(count as u64)
     }
 
-    /// Delete all chunks for files matching the given paths
-    pub async fn delete_by_file(&self, file_paths: &[String]) -> Result<()> {
+    /// Delete all chunks for files matching the given paths.
+    ///
+    /// `repo = Some(..)` confines the delete to that repo's rows. Paths are
+    /// repo-relative, so the same path names a different file in every indexed
+    /// repo — an unscoped delete for repo A's `README.md` also removed repo
+    /// B's, leaving B silently unsearchable until its next reindex
+    ///. `None` keeps the old any-repo behavior for callers that
+    /// genuinely cannot attribute the path.
+    pub async fn delete_by_file(&self, file_paths: &[String], repo: Option<&str>) -> Result<()> {
         let table = match &self.table {
             Some(t) => t,
             None => return Ok(()),
@@ -1239,6 +1246,10 @@ impl VectorStore {
             return Ok(());
         }
 
+        let repo_clause = repo
+            .map(|r| format!("repo = '{}' AND ", r.replace('\'', "''")))
+            .unwrap_or_default();
+
         // Batch the IN clause (see delete() — large IN overflows the query engine).
         const DELETE_BATCH: usize = 100;
         for batch in file_paths.chunks(DELETE_BATCH) {
@@ -1246,7 +1257,7 @@ impl VectorStore {
                 .iter()
                 .map(|p| format!("'{}'", p.replace('\'', "''")))
                 .collect();
-            let filter = format!("file_path IN ({})", escaped_paths.join(", "));
+            let filter = format!("{}file_path IN ({})", repo_clause, escaped_paths.join(", "));
             table
                 .delete(&filter)
                 .await
@@ -1272,15 +1283,32 @@ impl VectorStore {
         Ok(())
     }
 
-    /// Check if a file needs reindexing by comparing hash
-    pub async fn needs_reindex(&self, file_path: &str, current_hash: &str) -> Result<bool> {
+    /// Check if a file needs reindexing by comparing hash.
+    ///
+    /// `repo = Some(..)` scopes the check to that repo's rows: an unscoped
+    /// match can find another repo's copy of the same path holding the same
+    /// content and conclude "already indexed" while THIS repo has no rows at
+    /// all.
+    pub async fn needs_reindex(
+        &self,
+        file_path: &str,
+        current_hash: &str,
+        repo: Option<&str>,
+    ) -> Result<bool> {
         let table = match &self.table {
             Some(t) => t,
             None => return Ok(true), // No data yet, needs indexing
         };
 
         // Query for any chunk from this file and check the file_hash
-        let filter = format!("file_path = '{}'", file_path.replace('\'', "''"));
+        let repo_clause = repo
+            .map(|r| format!("repo = '{}' AND ", r.replace('\'', "''")))
+            .unwrap_or_default();
+        let filter = format!(
+            "{}file_path = '{}'",
+            repo_clause,
+            file_path.replace('\'', "''")
+        );
         let results = table
             .query()
             .only_if(filter)
@@ -2932,10 +2960,32 @@ mod tests {
         assert_eq!(store.count().await.unwrap(), 2);
 
         store
-            .delete_by_file(&["src/a.rs".to_string()])
+            .delete_by_file(&["src/a.rs".to_string()], None)
             .await
             .unwrap();
         assert_eq!(store.count().await.unwrap(), 1);
+
+        // Repo-scoped: a delete for the same path in ANOTHER repo must spare
+        // this repo's rows (the unscoped delete was removing
+        // every repo's copy of a shared path).
+        store
+            .delete_by_file(&["src/b.rs".to_string()], Some("not-this-repo"))
+            .await
+            .unwrap();
+        assert_eq!(
+            store.count().await.unwrap(),
+            1,
+            "wrong-repo delete spared the row"
+        );
+        store
+            .delete_by_file(&["src/b.rs".to_string()], Some("default"))
+            .await
+            .unwrap();
+        assert_eq!(
+            store.count().await.unwrap(),
+            0,
+            "right-repo delete removed it"
+        );
     }
 
     #[tokio::test]
@@ -3035,7 +3085,10 @@ mod tests {
         let mut store = VectorStore::open(&path).await.unwrap();
 
         // No data yet - needs reindex
-        assert!(store.needs_reindex("src/main.rs", "abc123").await.unwrap());
+        assert!(store
+            .needs_reindex("src/main.rs", "abc123", None)
+            .await
+            .unwrap());
 
         let chunks = vec![sample_chunk("chunk1", "main")];
         let embeddings = vec![sample_embedding()];
@@ -3052,16 +3105,40 @@ mod tests {
             .unwrap();
 
         // Same hash - no reindex needed
-        assert!(!store.needs_reindex("src/main.rs", "abc123").await.unwrap());
+        assert!(!store
+            .needs_reindex("src/main.rs", "abc123", None)
+            .await
+            .unwrap());
 
         // Different hash - needs reindex
         assert!(store
-            .needs_reindex("src/main.rs", "different")
+            .needs_reindex("src/main.rs", "different", None)
             .await
             .unwrap());
 
         // Different file - needs reindex
-        assert!(store.needs_reindex("src/other.rs", "abc123").await.unwrap());
+        assert!(store
+            .needs_reindex("src/other.rs", "abc123", None)
+            .await
+            .unwrap());
+
+        // Repo-scoped: another repo holding the same path+hash
+        // must not satisfy THIS repo's check — unscoped it reads "already
+        // indexed" while this repo has no rows at all.
+        assert!(
+            !store
+                .needs_reindex("src/main.rs", "abc123", Some("default"))
+                .await
+                .unwrap(),
+            "the owning repo is satisfied"
+        );
+        assert!(
+            store
+                .needs_reindex("src/main.rs", "abc123", Some("other-repo"))
+                .await
+                .unwrap(),
+            "a repo with no rows needs indexing even though the path+hash exists under 'default'"
+        );
     }
 
     #[tokio::test]
@@ -3199,7 +3276,7 @@ mod tests {
             let fp = format!("src/file_{i}.{ext}");
 
             // This is the real-world pattern from cli/index.rs
-            store.delete_by_file(&[fp.clone()]).await.unwrap();
+            store.delete_by_file(&[fp.clone()], None).await.unwrap();
 
             let chunk = Chunk {
                 id: format!("chunk_{i}"),

@@ -15,6 +15,12 @@ use crate::index::{embedder, resolver, Embedder, Parser};
 use crate::storage::{MetadataStore, VectorStore};
 use crate::types::{Chunk, ChunkType, ImportDependency, ImportEdge};
 
+/// The repo key for bead-issue chunks and their file hashes. Distinct from any
+/// source repo name so bead state never collides with a source repo that
+/// happens to be named "beads"; shared across index runs because the bead
+/// corpus is global, not per source repo.
+const BEADS_HASH_REPO: &str = "beads-issues";
+
 #[derive(Args)]
 pub struct IndexArgs {
     /// Only update changed files (now the default; kept for backwards compatibility)
@@ -251,15 +257,26 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         })
         .collect();
 
-    let deleted_files: Vec<String> = existing_files.difference(&current_files).cloned().collect();
+    // `git:` rows are commit chunks — they are never files on disk, so without
+    // the filter every incremental run judged the whole commit corpus
+    // "deleted", removed it, and the since-watermark commit pass then had
+    // nothing to re-embed: the corpus silently eroded to the newest run's
+    // commits (the commit-search corpus damage).
+    let deleted_files: Vec<String> = existing_files
+        .difference(&current_files)
+        .filter(|p| !p.starts_with("git:"))
+        .cloned()
+        .collect();
 
     // Clean up deleted files
     if !deleted_files.is_empty() {
         if output.verbose && !output.quiet && !output.json {
             println!("  Cleaning up {} deleted files...", deleted_files.len());
         }
-        vector_store.delete_by_file(&deleted_files).await?;
-        metadata_store.delete_file_hashes(&deleted_files)?;
+        vector_store
+            .delete_by_file(&deleted_files, Some(repo_name))
+            .await?;
+        metadata_store.delete_file_hashes(Some(repo_name), &deleted_files)?;
         // Also clear import dependencies for deleted files
         if config.dependencies.enabled {
             for file in &deleted_files {
@@ -268,9 +285,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
-    // When forcing, clear SQLite file hashes so everything gets re-indexed
+    // When forcing, clear this repo's SQLite file hashes so everything gets
+    // re-indexed (scoped: --force on one repo must not wipe the others').
     if args.force {
-        metadata_store.clear_file_hashes()?;
+        metadata_store.clear_file_hashes(repo_name)?;
     }
 
     // Filter files that need indexing (incremental by default)
@@ -288,7 +306,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             let content = read_indexable_content(file_path, &config)?;
             let hash = compute_hash(&content);
 
-            if let Some(stored_hash) = metadata_store.get_file_hash(&rel_path)? {
+            if let Some(stored_hash) = metadata_store.get_file_hash(repo_name, &rel_path)? {
                 if stored_hash == hash {
                     skipped_count += 1;
                     continue;
@@ -412,7 +430,15 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
 
         let t_parse = Instant::now();
-        let mut chunks = match parser.parse_file(file_path, &content) {
+        // Parse under the REPO-RELATIVE path: the parser stamps every chunk's
+        // file_path with the path it is handed, and that value is the key the
+        // cleanup sweep, delete_by_file and needs_reindex later compare against
+        // rel-path sets. Handing it the absolute walk path stored
+        // absolute-keyed rows that never matched — one incremental run later
+        // the sweep judged every row "deleted", removed them, and the
+        // unchanged content hash then skipped re-embedding forever
+        // (silently unsearchable behind '✓ Indexed').
+        let mut chunks = match parser.parse_file(Path::new(&rel_path), &content) {
             Ok(c) => c,
             Err(e) => {
                 errors.push((rel_path.clone(), format!("Parse error: {}", e)));
@@ -513,7 +539,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 .iter()
                 .map(|(p, h)| (p.as_str(), h.as_str()))
                 .collect();
-            metadata_store.set_file_hashes_bulk(&hash_refs)?;
+            metadata_store.set_file_hashes_bulk(repo_name, &hash_refs)?;
 
             indexed_files += indexed;
             total_chunks += chunks_count;
@@ -552,7 +578,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .iter()
             .map(|(p, h)| (p.as_str(), h.as_str()))
             .collect();
-        metadata_store.set_file_hashes_bulk(&hash_refs)?;
+        metadata_store.set_file_hashes_bulk(repo_name, &hash_refs)?;
 
         indexed_files += indexed;
         total_chunks += chunks_count;
@@ -590,8 +616,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             });
 
         let depth_str = config.git.coupling_depth.to_string();
-        let cached_commit = metadata_store.get_meta("last_coupling_commit")?;
-        let cached_depth = metadata_store.get_meta("coupling_depth")?;
+        // Watermarks are per-repo: a single global key meant every
+        // repo was judged against whatever HEAD the LAST indexed repo wrote —
+        // a SHA most repos do not even contain.
+        let cached_commit =
+            metadata_store.get_meta(&format!("last_coupling_commit:{repo_name}"))?;
+        let cached_depth = metadata_store.get_meta(&format!("coupling_depth:{repo_name}"))?;
 
         let coupling_cached = !args.force
             && head_hash.is_some()
@@ -626,8 +656,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                             metadata_store.commit()?;
 
                             if let Some(ref hash) = head_hash {
-                                metadata_store.set_meta("last_coupling_commit", hash)?;
-                                metadata_store.set_meta("coupling_depth", &depth_str)?;
+                                metadata_store
+                                    .set_meta(&format!("last_coupling_commit:{repo_name}"), hash)?;
+                                metadata_store
+                                    .set_meta(&format!("coupling_depth:{repo_name}"), &depth_str)?;
                             }
 
                             if output.verbose && !output.quiet && !output.json {
@@ -785,8 +817,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
         match crate::index::git::GitAnalyzer::new(&source_root) {
             Ok(analyzer) => {
-                // Check for incremental commit indexing
-                let last_commit = metadata_store.get_meta("last_indexed_commit")?;
+                // Check for incremental commit indexing. Per-repo watermark
+                //: the old global key held ONE SHA shared by all
+                // repos, so each was asked for "commits since" a commit from
+                // whichever repo happened to index last.
+                let last_commit =
+                    metadata_store.get_meta(&format!("last_indexed_commit:{repo_name}"))?;
                 let since = if args.force {
                     None
                 } else {
@@ -926,8 +962,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
                                     // Track the latest commit for incremental indexing
                                     if let Some(latest) = commit_entries.first() {
-                                        metadata_store
-                                            .set_meta("last_indexed_commit", &latest.hash)?;
+                                        metadata_store.set_meta(
+                                            &format!("last_indexed_commit:{repo_name}"),
+                                            &latest.hash,
+                                        )?;
                                     }
 
                                     if output.verbose && !output.quiet && !output.json {
@@ -981,21 +1019,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 // --force: drop all previously-tracked bead hashes so every bead
                 // re-embeds from scratch.
                 if args.force {
-                    let stale: Vec<String> = metadata_store
-                        .get_all_indexed_files()
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter(|p| p.starts_with("beads:"))
-                        .collect();
-                    if !stale.is_empty() {
-                        metadata_store.delete_file_hashes(&stale).ok();
-                    }
+                    metadata_store.clear_file_hashes(BEADS_HASH_REPO).ok();
                 }
 
                 // Incremental: only (re)embed beads whose assembled content hash
-                // changed since the last index. Bead chunk file_paths are
-                // `beads:<rig>:<id>` — a namespace distinct from source files, so
-                // they share the file_hashes table without collision.
+                // changed since the last index. Bead hashes live under their own
+                // repo key (matching the LanceDB rows), so the bead corpus is
+                // shared across source-repo index runs without touching any
+                // source repo's incremental state.
                 let mut to_index = Vec::new();
                 let mut current_paths: std::collections::HashSet<String> =
                     std::collections::HashSet::new();
@@ -1004,7 +1035,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                     current_paths.insert(c.file_path.clone());
                     let h = crate::index::beads::content_hash(&c.content);
                     let unchanged = metadata_store
-                        .get_file_hash(&c.file_path)
+                        .get_file_hash(BEADS_HASH_REPO, &c.file_path)
                         .ok()
                         .flatten()
                         .as_deref()
@@ -1017,14 +1048,19 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
                 // Remove beads that no longer appear (closed / aged-out / deleted).
                 let removed: Vec<String> = metadata_store
-                    .get_all_indexed_files()
+                    .get_all_indexed_files(BEADS_HASH_REPO)
                     .unwrap_or_default()
                     .into_iter()
-                    .filter(|p| p.starts_with("beads:") && !current_paths.contains(p))
+                    .filter(|p| !current_paths.contains(p))
                     .collect();
                 if !removed.is_empty() {
-                    vector_store.delete_by_file(&removed).await.ok();
-                    metadata_store.delete_file_hashes(&removed).ok();
+                    vector_store
+                        .delete_by_file(&removed, Some(BEADS_HASH_REPO))
+                        .await
+                        .ok();
+                    metadata_store
+                        .delete_file_hashes(Some(BEADS_HASH_REPO), &removed)
+                        .ok();
                 }
 
                 if to_index.is_empty() {
@@ -1056,7 +1092,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                                     &to_index,
                                     &embeddings,
                                     &contexts,
-                                    "beads-issues",
+                                    BEADS_HASH_REPO,
                                     "beads",
                                     &now,
                                 )
@@ -1072,7 +1108,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                                     .iter()
                                     .map(|(p, h)| (p.as_str(), h.as_str()))
                                     .collect();
-                                metadata_store.set_file_hashes_bulk(&hash_refs).ok();
+                                metadata_store
+                                    .set_file_hashes_bulk(BEADS_HASH_REPO, &hash_refs)
+                                    .ok();
                                 if output.verbose && !output.quiet && !output.json {
                                     println!(
                                         "  Indexed {} beads ({} unchanged, {} removed)",
@@ -1501,7 +1539,7 @@ async fn process_batch(
         .filter(|p| existing_files.contains(p))
         .collect();
     if !file_paths.is_empty() {
-        vector_store.delete_by_file(&file_paths).await?;
+        vector_store.delete_by_file(&file_paths, Some(repo)).await?;
     }
     profile.delete_ms += t_del.elapsed().as_millis();
 
