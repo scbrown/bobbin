@@ -6,3 +6,9 @@ git_tag_enable = true
 
 [[package]]
 name = "bobbin"
+# The MANIFEST says publish = false (the crates.io "bobbin" is an unrelated
+# crate), and release-plz's default is to skip non-published packages entirely
+# — its first clean run said "nothing to release" over real unreleased feats.
+# release = true says: version it from git tags anyway; that is this repo's
+# whole release model (tag -> release.yml -> binaries).
+release = true
