@@ -1,6 +1,6 @@
 # Bobbin Knowledge Integration: Embedding Quipu Web Components
 
-> **Implementation status (2026-07-23, harding):** ⬜ **Planned (blocked on a deferred dependency).** No embedding code in `src/`; the doc self-declares "Design (approved direction)" and depends on the standalone Quipu UI (`quipu/docs/design/quipu-ui.md`) + `quipu-components.js`. The Quipu-UI track is currently deferred, so this is not actionable until it lands.
+> **Implementation status (2026-07-23, harding; corrected from ⬜ after review):** 🟡 **Partial — the embedding IS built.** My first pass grepped for "widget/embed" and wrongly called this ⬜; re-verified by mechanism: **Level 1 (spotlight)** — `SpotlightHit` + `fetch_spotlight` annotate search results from Quipu when `quipu_endpoint` is set (`src/http/handlers/search.rs:58,62,277-279`, `src/config.rs:27`); **Level 2 (embedded web components)** — the "Knowledge" tab loads `quipu-components.js` + `initKnowledgeGraph` (`src/http/ui.html:196,487,493,507`); **Level 3 (JSON-LD)** — client-side `injectJsonLd` exists (`ui.html:775-783`). It is NOT blocked on a deferred dependency — the embedding is live. **Residual gap:** the server-side content-negotiated `/entity/{iri}` → HTML/JSON-LD/Turtle endpoint (Level 3's server half) is absent.
 
 > Bobbin annotates. Quipu renders. The bridge is hyperlinks and web standards.
 
