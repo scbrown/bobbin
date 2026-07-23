@@ -1116,6 +1116,7 @@ dependencies = [
  "arrow-array",
  "arrow-schema",
  "assert_cmd",
+ "async-trait",
  "axum",
  "chrono",
  "clap",
