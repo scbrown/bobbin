@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-07-23
+
+### Fixed
+
+- *(release)* Match release-plz git_tag_name to the repo's v-prefix tags([e064e56](https://github.com/scbrown/bobbin/commit/e064e5634add7c1ac5d5d53fe379e475b02aaa5c))
+- *(release)* Move publish restriction out of the manifest so release-plz opens PRs([a8cffbe](https://github.com/scbrown/bobbin/commit/a8cffbe784815cdf7677c4fb14253cf3e249688a))
+
 ## [0.6.0] - 2026-07-13
 
 Multimodal PDF ingest, index-freshness safety net, and two indexing/telemetry
