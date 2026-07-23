@@ -81,9 +81,7 @@ impl VectorStore {
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
 
-        let path_str = path
-            .to_str()
-            .context("non-UTF8 path for LanceDB")?;
+        let path_str = path.to_str().context("non-UTF8 path for LanceDB")?;
         let conn = connect(path_str)
             .execute()
             .await
@@ -116,13 +114,14 @@ impl VectorStore {
                 .iter()
                 .map(|f| f.name().as_str())
                 .collect();
-            let expected_fields: Vec<&str> =
-                expected.fields().iter().map(|f| f.name().as_str()).collect();
+            let expected_fields: Vec<&str> = expected
+                .fields()
+                .iter()
+                .map(|f| f.name().as_str())
+                .collect();
 
             if on_disk != expected_fields {
-                eprintln!(
-                    "bobbin: chunks table schema changed — dropping for re-creation"
-                );
+                eprintln!("bobbin: chunks table schema changed — dropping for re-creation");
                 eprintln!("  on-disk fields:  {:?}", on_disk);
                 eprintln!("  expected fields: {:?}", expected_fields);
                 conn.drop_table(TABLE_NAME)
@@ -154,13 +153,14 @@ impl VectorStore {
                 .iter()
                 .map(|f| f.name().as_str())
                 .collect();
-            let expected_fields: Vec<&str> =
-                expected.fields().iter().map(|f| f.name().as_str()).collect();
+            let expected_fields: Vec<&str> = expected
+                .fields()
+                .iter()
+                .map(|f| f.name().as_str())
+                .collect();
 
             if on_disk != expected_fields {
-                eprintln!(
-                    "bobbin: deps table schema changed — dropping for re-creation"
-                );
+                eprintln!("bobbin: deps table schema changed — dropping for re-creation");
                 conn.drop_table(DEPS_TABLE_NAME)
                     .await
                     .context("Failed to drop outdated deps table")?;
@@ -189,13 +189,14 @@ impl VectorStore {
                 .iter()
                 .map(|f| f.name().as_str())
                 .collect();
-            let expected_fields: Vec<&str> =
-                expected.fields().iter().map(|f| f.name().as_str()).collect();
+            let expected_fields: Vec<&str> = expected
+                .fields()
+                .iter()
+                .map(|f| f.name().as_str())
+                .collect();
 
             if on_disk != expected_fields {
-                eprintln!(
-                    "bobbin: chunk_edges table schema changed — dropping for re-creation"
-                );
+                eprintln!("bobbin: chunk_edges table schema changed — dropping for re-creation");
                 conn.drop_table(CHUNK_EDGES_TABLE_NAME)
                     .await
                     .context("Failed to drop outdated chunk_edges table")?;
@@ -224,13 +225,14 @@ impl VectorStore {
                 .iter()
                 .map(|f| f.name().as_str())
                 .collect();
-            let expected_fields: Vec<&str> =
-                expected.fields().iter().map(|f| f.name().as_str()).collect();
+            let expected_fields: Vec<&str> = expected
+                .fields()
+                .iter()
+                .map(|f| f.name().as_str())
+                .collect();
 
             if on_disk != expected_fields {
-                eprintln!(
-                    "bobbin: entities table schema changed — dropping for re-creation"
-                );
+                eprintln!("bobbin: entities table schema changed — dropping for re-creation");
                 conn.drop_table(ENTITIES_TABLE_NAME)
                     .await
                     .context("Failed to drop outdated entities table")?;
@@ -309,7 +311,14 @@ impl VectorStore {
     ) -> Result<RecordBatch> {
         let file_hashes: Vec<&str> = chunks.iter().map(|_| file_hash).collect();
         let indexed_ats: Vec<&str> = chunks.iter().map(|_| indexed_at).collect();
-        self.to_record_batch_bulk(chunks, embeddings, full_contexts, repo, &file_hashes, &indexed_ats)
+        self.to_record_batch_bulk(
+            chunks,
+            embeddings,
+            full_contexts,
+            repo,
+            &file_hashes,
+            &indexed_ats,
+        )
     }
 
     fn to_record_batch_bulk(
@@ -335,10 +344,8 @@ impl VectorStore {
         let start_lines: Vec<u32> = chunks.iter().map(|c| c.start_line).collect();
         let end_lines: Vec<u32> = chunks.iter().map(|c| c.end_line).collect();
         let contents: Vec<&str> = chunks.iter().map(|c| c.content.as_str()).collect();
-        let full_context_refs: Vec<Option<&str>> = full_contexts
-            .iter()
-            .map(|c| c.as_deref())
-            .collect();
+        let full_context_refs: Vec<Option<&str>> =
+            full_contexts.iter().map(|c| c.as_deref()).collect();
         let indexed_ats: Vec<&str> = indexed_at_values.to_vec();
         let tags: Vec<&str> = chunks.iter().map(|c| c.tags.as_str()).collect();
 
@@ -417,7 +424,14 @@ impl VectorStore {
         }
 
         let schema = Arc::new(self.schema());
-        let batch = self.to_record_batch(chunks, embeddings, full_contexts, repo, file_hash, indexed_at)?;
+        let batch = self.to_record_batch(
+            chunks,
+            embeddings,
+            full_contexts,
+            repo,
+            file_hash,
+            indexed_at,
+        )?;
 
         match &self.table {
             Some(table) => {
@@ -485,8 +499,14 @@ impl VectorStore {
         }
 
         let schema = Arc::new(self.schema());
-        let batch =
-            self.to_record_batch_bulk(chunks, embeddings, full_contexts, repo, file_hashes, indexed_at_values)?;
+        let batch = self.to_record_batch_bulk(
+            chunks,
+            embeddings,
+            full_contexts,
+            repo,
+            file_hashes,
+            indexed_at_values,
+        )?;
 
         match &self.table {
             Some(table) => {
@@ -534,10 +554,7 @@ impl VectorStore {
         // Try without replace first — if index exists on disk, this errors
         // but that's success for us (index is already ready).
         let result = table
-            .create_index(
-                &["content"],
-                Index::FTS(FtsIndexBuilder::default()),
-            )
+            .create_index(&["content"], Index::FTS(FtsIndexBuilder::default()))
             .replace(false)
             .execute()
             .await;
@@ -599,12 +616,24 @@ impl VectorStore {
 
     /// Search for similar vectors using approximate nearest neighbor search.
     /// Optionally filter by repo name and/or an additional SQL WHERE clause.
-    pub async fn search(&self, query_embedding: &[f32], limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
-        self.search_filtered(query_embedding, limit, repo, None).await
+    pub async fn search(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+        repo: Option<&str>,
+    ) -> Result<Vec<SearchResult>> {
+        self.search_filtered(query_embedding, limit, repo, None)
+            .await
     }
 
     /// Search with an additional SQL filter (e.g., "language IN ('hla', 'pensieve')").
-    pub async fn search_filtered(&self, query_embedding: &[f32], limit: usize, repo: Option<&str>, filter: Option<&str>) -> Result<Vec<SearchResult>> {
+    pub async fn search_filtered(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+        repo: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<Vec<SearchResult>> {
         if limit == 0 {
             return Ok(vec![]);
         }
@@ -623,11 +652,7 @@ impl VectorStore {
             query = query.only_if(f.clone());
         }
 
-        let results = match query
-            .limit(limit)
-            .execute()
-            .await
-        {
+        let results = match query.limit(limit).execute().await {
             Ok(r) => r,
             Err(e) => {
                 // LanceDB raises "k must be positive" when a filter yields 0 matching
@@ -650,12 +675,23 @@ impl VectorStore {
 
     /// Full-text search on content and chunk_name.
     /// Optionally filter by repo name.
-    pub async fn search_fts(&self, query: &str, limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
+    pub async fn search_fts(
+        &self,
+        query: &str,
+        limit: usize,
+        repo: Option<&str>,
+    ) -> Result<Vec<SearchResult>> {
         self.search_fts_filtered(query, limit, repo, None).await
     }
 
     /// Full-text search with an additional SQL filter.
-    pub async fn search_fts_filtered(&self, query: &str, limit: usize, repo: Option<&str>, filter: Option<&str>) -> Result<Vec<SearchResult>> {
+    pub async fn search_fts_filtered(
+        &self,
+        query: &str,
+        limit: usize,
+        repo: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<Vec<SearchResult>> {
         if limit == 0 {
             return Ok(vec![]);
         }
@@ -754,7 +790,10 @@ impl VectorStore {
     }
 
     /// Convert RecordBatches to SearchResults (for vector search with _distance)
-    fn batches_to_results(batches: &[RecordBatch], match_type: MatchType) -> Result<Vec<SearchResult>> {
+    fn batches_to_results(
+        batches: &[RecordBatch],
+        match_type: MatchType,
+    ) -> Result<Vec<SearchResult>> {
         let mut search_results = Vec::new();
 
         for batch in batches {
@@ -859,8 +898,7 @@ impl VectorStore {
                 let distance = distances.value(i);
                 let score = 1.0 / (1.0 + distance);
 
-                let indexed_at = indexed_ats
-                    .and_then(|arr| arr.value(i).parse::<i64>().ok());
+                let indexed_at = indexed_ats.and_then(|arr| arr.value(i).parse::<i64>().ok());
 
                 let repo = repos.map(|r| r.value(i).to_string());
 
@@ -979,8 +1017,7 @@ impl VectorStore {
 
                 let score = scores.map(|s| s.value(i)).unwrap_or(1.0);
 
-                let indexed_at = indexed_ats
-                    .and_then(|arr| arr.value(i).parse::<i64>().ok());
+                let indexed_at = indexed_ats.and_then(|arr| arr.value(i).parse::<i64>().ok());
 
                 let repo = repos.map(|r| r.value(i).to_string());
 
@@ -1070,23 +1107,56 @@ impl VectorStore {
                 continue;
             }
 
-            let ids = batch.column_by_name("id").context("Missing id column")?
-                .as_any().downcast_ref::<StringArray>().context("id column has wrong type")?;
-            let file_paths = batch.column_by_name("file_path").context("Missing file_path column")?
-                .as_any().downcast_ref::<StringArray>().context("file_path column has wrong type")?;
-            let chunk_names = batch.column_by_name("chunk_name").context("Missing chunk_name column")?
-                .as_any().downcast_ref::<StringArray>().context("chunk_name column has wrong type")?;
-            let chunk_types = batch.column_by_name("chunk_type").context("Missing chunk_type column")?
-                .as_any().downcast_ref::<StringArray>().context("chunk_type column has wrong type")?;
-            let start_lines = batch.column_by_name("start_line").context("Missing start_line column")?
-                .as_any().downcast_ref::<UInt32Array>().context("start_line column has wrong type")?;
-            let end_lines = batch.column_by_name("end_line").context("Missing end_line column")?
-                .as_any().downcast_ref::<UInt32Array>().context("end_line column has wrong type")?;
-            let contents = batch.column_by_name("content").context("Missing content column")?
-                .as_any().downcast_ref::<StringArray>().context("content column has wrong type")?;
-            let languages = batch.column_by_name("language").context("Missing language column")?
-                .as_any().downcast_ref::<StringArray>().context("language column has wrong type")?;
-            let tags_col = batch.column_by_name("tags")
+            let ids = batch
+                .column_by_name("id")
+                .context("Missing id column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("id column has wrong type")?;
+            let file_paths = batch
+                .column_by_name("file_path")
+                .context("Missing file_path column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("file_path column has wrong type")?;
+            let chunk_names = batch
+                .column_by_name("chunk_name")
+                .context("Missing chunk_name column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("chunk_name column has wrong type")?;
+            let chunk_types = batch
+                .column_by_name("chunk_type")
+                .context("Missing chunk_type column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("chunk_type column has wrong type")?;
+            let start_lines = batch
+                .column_by_name("start_line")
+                .context("Missing start_line column")?
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .context("start_line column has wrong type")?;
+            let end_lines = batch
+                .column_by_name("end_line")
+                .context("Missing end_line column")?
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .context("end_line column has wrong type")?;
+            let contents = batch
+                .column_by_name("content")
+                .context("Missing content column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("content column has wrong type")?;
+            let languages = batch
+                .column_by_name("language")
+                .context("Missing language column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("language column has wrong type")?;
+            let tags_col = batch
+                .column_by_name("tags")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
             return Ok(Some(Chunk {
@@ -1102,7 +1172,9 @@ impl VectorStore {
                 end_line: end_lines.value(0),
                 content: contents.value(0).to_string(),
                 language: languages.value(0).to_string(),
-                tags: tags_col.map(|arr| arr.value(0).to_string()).unwrap_or_default(),
+                tags: tags_col
+                    .map(|arr| arr.value(0).to_string())
+                    .unwrap_or_default(),
             }));
         }
 
@@ -1246,17 +1318,16 @@ impl VectorStore {
 
         let mut q = table
             .query()
-            .select(lancedb::query::Select::Columns(vec!["file_path".to_string()]))
+            .select(lancedb::query::Select::Columns(vec![
+                "file_path".to_string()
+            ]))
             .limit(SCAN_ALL_LIMIT);
 
         if let Some(repo_name) = repo {
             q = q.only_if(format!("repo = '{}'", repo_name.replace('\'', "''")));
         }
 
-        let results = q
-            .execute()
-            .await
-            .context("Failed to query file paths")?;
+        let results = q.execute().await.context("Failed to query file paths")?;
 
         let batches: Vec<RecordBatch> = results
             .try_collect()
@@ -1328,7 +1399,9 @@ impl VectorStore {
 
         let results = table
             .query()
-            .select(lancedb::query::Select::Columns(vec!["language".to_string()]))
+            .select(lancedb::query::Select::Columns(
+                vec!["language".to_string()],
+            ))
             .limit(SCAN_ALL_LIMIT)
             .execute()
             .await
@@ -1370,7 +1443,9 @@ impl VectorStore {
 
         let results = table
             .query()
-            .select(lancedb::query::Select::Columns(vec!["chunk_type".to_string()]))
+            .select(lancedb::query::Select::Columns(vec![
+                "chunk_type".to_string()
+            ]))
             .limit(SCAN_ALL_LIMIT)
             .execute()
             .await
@@ -1483,23 +1558,56 @@ impl VectorStore {
 
         let mut chunks = Vec::new();
         for batch in &batches {
-            let ids = batch.column_by_name("id").context("Missing id column")?
-                .as_any().downcast_ref::<StringArray>().context("id column has wrong type")?;
-            let file_paths = batch.column_by_name("file_path").context("Missing file_path column")?
-                .as_any().downcast_ref::<StringArray>().context("file_path column has wrong type")?;
-            let chunk_names = batch.column_by_name("chunk_name").context("Missing chunk_name column")?
-                .as_any().downcast_ref::<StringArray>().context("chunk_name column has wrong type")?;
-            let chunk_types = batch.column_by_name("chunk_type").context("Missing chunk_type column")?
-                .as_any().downcast_ref::<StringArray>().context("chunk_type column has wrong type")?;
-            let start_lines = batch.column_by_name("start_line").context("Missing start_line column")?
-                .as_any().downcast_ref::<UInt32Array>().context("start_line column has wrong type")?;
-            let end_lines = batch.column_by_name("end_line").context("Missing end_line column")?
-                .as_any().downcast_ref::<UInt32Array>().context("end_line column has wrong type")?;
-            let contents = batch.column_by_name("content").context("Missing content column")?
-                .as_any().downcast_ref::<StringArray>().context("content column has wrong type")?;
-            let languages = batch.column_by_name("language").context("Missing language column")?
-                .as_any().downcast_ref::<StringArray>().context("language column has wrong type")?;
-            let tags_col = batch.column_by_name("tags")
+            let ids = batch
+                .column_by_name("id")
+                .context("Missing id column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("id column has wrong type")?;
+            let file_paths = batch
+                .column_by_name("file_path")
+                .context("Missing file_path column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("file_path column has wrong type")?;
+            let chunk_names = batch
+                .column_by_name("chunk_name")
+                .context("Missing chunk_name column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("chunk_name column has wrong type")?;
+            let chunk_types = batch
+                .column_by_name("chunk_type")
+                .context("Missing chunk_type column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("chunk_type column has wrong type")?;
+            let start_lines = batch
+                .column_by_name("start_line")
+                .context("Missing start_line column")?
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .context("start_line column has wrong type")?;
+            let end_lines = batch
+                .column_by_name("end_line")
+                .context("Missing end_line column")?
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .context("end_line column has wrong type")?;
+            let contents = batch
+                .column_by_name("content")
+                .context("Missing content column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("content column has wrong type")?;
+            let languages = batch
+                .column_by_name("language")
+                .context("Missing language column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("language column has wrong type")?;
+            let tags_col = batch
+                .column_by_name("tags")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
             for i in 0..batch.num_rows() {
@@ -1516,7 +1624,9 @@ impl VectorStore {
                     end_line: end_lines.value(i),
                     content: contents.value(i).to_string(),
                     language: languages.value(i).to_string(),
-                    tags: tags_col.map(|arr| arr.value(i).to_string()).unwrap_or_default(),
+                    tags: tags_col
+                        .map(|arr| arr.value(i).to_string())
+                        .unwrap_or_default(),
                 });
             }
         }
@@ -1579,7 +1689,8 @@ impl VectorStore {
                 .as_any()
                 .downcast_ref::<FixedSizeListArray>()
                 .context("vector column has wrong type")?;
-            let tags_col = batch.column_by_name("tags")
+            let tags_col = batch
+                .column_by_name("tags")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
             for i in 0..batch.num_rows() {
@@ -1596,7 +1707,9 @@ impl VectorStore {
                     end_line: end_lines.value(i),
                     content: contents.value(i).to_string(),
                     language: languages.value(i).to_string(),
-                    tags: tags_col.map(|arr| arr.value(i).to_string()).unwrap_or_default(),
+                    tags: tags_col
+                        .map(|arr| arr.value(i).to_string())
+                        .unwrap_or_default(),
                 };
 
                 let value_arr = vectors.value(i);
@@ -1615,11 +1728,7 @@ impl VectorStore {
     }
 
     /// Get all chunks whose chunk_name matches the given name, optionally filtered by repo
-    pub async fn get_chunks_by_name(
-        &self,
-        name: &str,
-        repo: Option<&str>,
-    ) -> Result<Vec<Chunk>> {
+    pub async fn get_chunks_by_name(&self, name: &str, repo: Option<&str>) -> Result<Vec<Chunk>> {
         let table = match &self.table {
             Some(t) => t,
             None => return Ok(vec![]),
@@ -1645,23 +1754,56 @@ impl VectorStore {
 
         let mut chunks = Vec::new();
         for batch in &batches {
-            let ids = batch.column_by_name("id").context("Missing id column")?
-                .as_any().downcast_ref::<StringArray>().context("id column has wrong type")?;
-            let file_paths = batch.column_by_name("file_path").context("Missing file_path column")?
-                .as_any().downcast_ref::<StringArray>().context("file_path column has wrong type")?;
-            let chunk_names = batch.column_by_name("chunk_name").context("Missing chunk_name column")?
-                .as_any().downcast_ref::<StringArray>().context("chunk_name column has wrong type")?;
-            let chunk_types = batch.column_by_name("chunk_type").context("Missing chunk_type column")?
-                .as_any().downcast_ref::<StringArray>().context("chunk_type column has wrong type")?;
-            let start_lines = batch.column_by_name("start_line").context("Missing start_line column")?
-                .as_any().downcast_ref::<UInt32Array>().context("start_line column has wrong type")?;
-            let end_lines = batch.column_by_name("end_line").context("Missing end_line column")?
-                .as_any().downcast_ref::<UInt32Array>().context("end_line column has wrong type")?;
-            let contents = batch.column_by_name("content").context("Missing content column")?
-                .as_any().downcast_ref::<StringArray>().context("content column has wrong type")?;
-            let languages = batch.column_by_name("language").context("Missing language column")?
-                .as_any().downcast_ref::<StringArray>().context("language column has wrong type")?;
-            let tags_col = batch.column_by_name("tags")
+            let ids = batch
+                .column_by_name("id")
+                .context("Missing id column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("id column has wrong type")?;
+            let file_paths = batch
+                .column_by_name("file_path")
+                .context("Missing file_path column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("file_path column has wrong type")?;
+            let chunk_names = batch
+                .column_by_name("chunk_name")
+                .context("Missing chunk_name column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("chunk_name column has wrong type")?;
+            let chunk_types = batch
+                .column_by_name("chunk_type")
+                .context("Missing chunk_type column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("chunk_type column has wrong type")?;
+            let start_lines = batch
+                .column_by_name("start_line")
+                .context("Missing start_line column")?
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .context("start_line column has wrong type")?;
+            let end_lines = batch
+                .column_by_name("end_line")
+                .context("Missing end_line column")?
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .context("end_line column has wrong type")?;
+            let contents = batch
+                .column_by_name("content")
+                .context("Missing content column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("content column has wrong type")?;
+            let languages = batch
+                .column_by_name("language")
+                .context("Missing language column")?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .context("language column has wrong type")?;
+            let tags_col = batch
+                .column_by_name("tags")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
             for i in 0..batch.num_rows() {
@@ -1678,7 +1820,9 @@ impl VectorStore {
                     end_line: end_lines.value(i),
                     content: contents.value(i).to_string(),
                     language: languages.value(i).to_string(),
-                    tags: tags_col.map(|arr| arr.value(i).to_string()).unwrap_or_default(),
+                    tags: tags_col
+                        .map(|arr| arr.value(i).to_string())
+                        .unwrap_or_default(),
                 });
             }
         }
@@ -1728,10 +1872,7 @@ impl VectorStore {
             q = q.only_if(filter.clone());
         }
 
-        let results = q
-            .execute()
-            .await
-            .context("Failed to query stats")?;
+        let results = q.execute().await.context("Failed to query stats")?;
 
         let batches: Vec<RecordBatch> = results
             .try_collect()
@@ -1758,10 +1899,7 @@ impl VectorStore {
 
                 file_set.insert(fp.clone());
 
-                lang_files
-                    .entry(lang.clone())
-                    .or_default()
-                    .insert(fp);
+                lang_files.entry(lang.clone()).or_default().insert(fp);
                 *lang_chunks.entry(lang).or_insert(0) += 1;
 
                 if last_indexed.is_none() || Some(ts) > last_indexed {
@@ -1821,8 +1959,7 @@ impl VectorStore {
             .await
             .context("Failed to collect tag data")?;
 
-        let mut counts: std::collections::HashMap<String, usize> =
-            std::collections::HashMap::new();
+        let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
 
         for batch in &batches {
             if let Some(tags_col) = batch
@@ -1864,7 +2001,7 @@ impl VectorStore {
         let results = table
             .query()
             .select(lancedb::query::Select::Columns(vec![
-                "file_path".to_string(),
+                "file_path".to_string()
             ]))
             .only_if(filter)
             .limit(SCAN_ALL_LIMIT)
@@ -2164,7 +2301,10 @@ impl VectorStore {
     }
 
     /// Get all chunk edges of a specific type
-    pub async fn get_chunk_edges_by_type(&self, edge_type: ChunkEdgeType) -> Result<Vec<ChunkEdge>> {
+    pub async fn get_chunk_edges_by_type(
+        &self,
+        edge_type: ChunkEdgeType,
+    ) -> Result<Vec<ChunkEdge>> {
         let table = match &self.chunk_edges_table {
             Some(t) => t,
             None => return Ok(Vec::new()),
@@ -2670,7 +2810,14 @@ mod tests {
         let embeddings = vec![sample_embedding(), sample_embedding()];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(2), "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(2),
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
 
@@ -2688,7 +2835,14 @@ mod tests {
         let embeddings = vec![sample_embedding()];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(1), "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(1),
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
 
@@ -2715,7 +2869,14 @@ mod tests {
         let embeddings = vec![sample_embedding(), sample_embedding()];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(2), "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(2),
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
         assert_eq!(store.count().await.unwrap(), 2);
@@ -2758,7 +2919,14 @@ mod tests {
         let embeddings = vec![sample_embedding(), sample_embedding()];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(2), "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(2),
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
         assert_eq!(store.count().await.unwrap(), 2);
@@ -2780,13 +2948,27 @@ mod tests {
         let chunks = vec![sample_chunk("chunk1", "original")];
         let embeddings = vec![sample_embedding()];
         store
-            .insert(&chunks, &embeddings, &no_contexts(1), "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(1),
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
 
         let chunks = vec![sample_chunk("chunk1", "updated")];
         store
-            .insert(&chunks, &embeddings, &no_contexts(1), "default", "def456", "1234567891")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(1),
+                "default",
+                "def456",
+                "1234567891",
+            )
             .await
             .unwrap();
 
@@ -2824,7 +3006,14 @@ mod tests {
             let chunks = vec![sample_chunk("chunk1", "persistent")];
             let embeddings = vec![sample_embedding()];
             store
-                .insert(&chunks, &embeddings, &no_contexts(1), "default", "abc123", "1234567890")
+                .insert(
+                    &chunks,
+                    &embeddings,
+                    &no_contexts(1),
+                    "default",
+                    "abc123",
+                    "1234567890",
+                )
                 .await
                 .unwrap();
         }
@@ -2851,7 +3040,14 @@ mod tests {
         let chunks = vec![sample_chunk("chunk1", "main")];
         let embeddings = vec![sample_embedding()];
         store
-            .insert(&chunks, &embeddings, &no_contexts(1), "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(1),
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
 
@@ -2859,7 +3055,10 @@ mod tests {
         assert!(!store.needs_reindex("src/main.rs", "abc123").await.unwrap());
 
         // Different hash - needs reindex
-        assert!(store.needs_reindex("src/main.rs", "different").await.unwrap());
+        assert!(store
+            .needs_reindex("src/main.rs", "different")
+            .await
+            .unwrap());
 
         // Different file - needs reindex
         assert!(store.needs_reindex("src/other.rs", "abc123").await.unwrap());
@@ -2910,7 +3109,14 @@ mod tests {
         let embeddings = vec![sample_embedding(), sample_embedding(), sample_embedding()];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(3), "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(3),
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
 
@@ -2918,11 +3124,19 @@ mod tests {
         assert_eq!(stats.total_files, 2);
         assert_eq!(stats.total_chunks, 3);
 
-        let rust_stats = stats.languages.iter().find(|l| l.language == "rust").unwrap();
+        let rust_stats = stats
+            .languages
+            .iter()
+            .find(|l| l.language == "rust")
+            .unwrap();
         assert_eq!(rust_stats.file_count, 1);
         assert_eq!(rust_stats.chunk_count, 2);
 
-        let python_stats = stats.languages.iter().find(|l| l.language == "python").unwrap();
+        let python_stats = stats
+            .languages
+            .iter()
+            .find(|l| l.language == "python")
+            .unwrap();
         assert_eq!(python_stats.file_count, 1);
         assert_eq!(python_stats.chunk_count, 1);
     }
@@ -3096,8 +3310,16 @@ mod tests {
         // 20 chunks across 4 languages = 5 each
         assert_eq!(stats.languages.len(), 4);
         for lang_stat in &stats.languages {
-            assert_eq!(lang_stat.chunk_count, 5, "{} should have 5 chunks", lang_stat.language);
-            assert_eq!(lang_stat.file_count, 5, "{} should have 5 files", lang_stat.language);
+            assert_eq!(
+                lang_stat.chunk_count, 5,
+                "{} should have 5 chunks",
+                lang_stat.language
+            );
+            assert_eq!(
+                lang_stat.file_count, 5,
+                "{} should have 5 files",
+                lang_stat.language
+            );
         }
     }
 
@@ -3111,7 +3333,14 @@ mod tests {
         let chunks = vec![sample_chunk("chunk1", "main")];
         let embeddings = vec![sample_embedding()];
         store
-            .insert(&chunks, &embeddings, &no_contexts(1), "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(1),
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
 
@@ -3157,11 +3386,25 @@ mod tests {
         };
 
         store
-            .insert(&[chunk_a], &[sample_embedding()], &no_contexts(1), "repo_a", "hash_a", "100")
+            .insert(
+                &[chunk_a],
+                &[sample_embedding()],
+                &no_contexts(1),
+                "repo_a",
+                "hash_a",
+                "100",
+            )
             .await
             .unwrap();
         store
-            .insert(&[chunk_b], &[sample_embedding()], &no_contexts(1), "repo_b", "hash_b", "200")
+            .insert(
+                &[chunk_b],
+                &[sample_embedding()],
+                &no_contexts(1),
+                "repo_b",
+                "hash_b",
+                "200",
+            )
             .await
             .unwrap();
 
@@ -3170,11 +3413,17 @@ mod tests {
         assert_eq!(all_results.len(), 2);
 
         // Search specific repo
-        let repo_a_results = store.search(&sample_embedding(), 10, Some("repo_a")).await.unwrap();
+        let repo_a_results = store
+            .search(&sample_embedding(), 10, Some("repo_a"))
+            .await
+            .unwrap();
         assert_eq!(repo_a_results.len(), 1);
         assert_eq!(repo_a_results[0].chunk.name, Some("main_a".to_string()));
 
-        let repo_b_results = store.search(&sample_embedding(), 10, Some("repo_b")).await.unwrap();
+        let repo_b_results = store
+            .search(&sample_embedding(), 10, Some("repo_b"))
+            .await
+            .unwrap();
         assert_eq!(repo_b_results.len(), 1);
         assert_eq!(repo_b_results[0].chunk.name, Some("main_b".to_string()));
 
@@ -3202,7 +3451,9 @@ mod tests {
         // query engine ("Failed to delete chunks"), so large bead batches (632)
         // failed to store via insert()'s upsert-delete. delete() now batches.
         let dir = tempdir().unwrap();
-        let mut store = VectorStore::open(&dir.path().join("vectors")).await.unwrap();
+        let mut store = VectorStore::open(&dir.path().join("vectors"))
+            .await
+            .unwrap();
 
         let n = 250usize; // > DELETE_BATCH (100) -> exercises multi-batch delete
         let chunks: Vec<Chunk> = (0..n)
@@ -3220,7 +3471,14 @@ mod tests {
             .collect();
         let embs: Vec<Vec<f32>> = (0..n).map(|_| sample_embedding()).collect();
         store
-            .insert(&chunks, &embs, &no_contexts(n), "beads-issues", "beads", "100")
+            .insert(
+                &chunks,
+                &embs,
+                &no_contexts(n),
+                "beads-issues",
+                "beads",
+                "100",
+            )
             .await
             .expect("insert 250 beads should succeed (upsert-delete batched)");
 
@@ -3230,7 +3488,14 @@ mod tests {
 
         // Re-insert should also succeed (upsert path deletes 250 first).
         store
-            .insert(&chunks, &embs, &no_contexts(n), "beads-issues", "beads", "101")
+            .insert(
+                &chunks,
+                &embs,
+                &no_contexts(n),
+                "beads-issues",
+                "beads",
+                "101",
+            )
             .await
             .expect("re-insert 250 beads should succeed");
     }
@@ -3255,7 +3520,14 @@ mod tests {
             tags: String::new(),
         };
         store
-            .insert(&[chunk], &[sample_embedding()], &no_contexts(1), "repo", "h", "100")
+            .insert(
+                &[chunk],
+                &[sample_embedding()],
+                &no_contexts(1),
+                "repo",
+                "h",
+                "100",
+            )
             .await
             .unwrap();
 
@@ -3320,7 +3592,14 @@ mod tests {
         let embeddings = vec![sample_embedding(), sample_embedding(), sample_embedding()];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(3), "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(3),
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
 
@@ -3358,7 +3637,14 @@ mod tests {
         ];
 
         store
-            .insert(&chunks, &embeddings, &contexts, "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &embeddings,
+                &contexts,
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
 
@@ -3385,7 +3671,14 @@ mod tests {
         emb.iter_mut().for_each(|x| *x /= norm);
 
         store
-            .insert(&chunks, &[emb.clone()], &no_contexts(1), "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &[emb.clone()],
+                &no_contexts(1),
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
 
@@ -3407,7 +3700,14 @@ mod tests {
         let embedding = sample_embedding();
 
         store
-            .insert(&chunks, &[embedding.clone()], &no_contexts(1), "default", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &[embedding.clone()],
+                &no_contexts(1),
+                "default",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
 
@@ -3447,16 +3747,14 @@ mod tests {
 
         let mut store = VectorStore::open(&path).await.unwrap();
 
-        let deps = vec![
-            ImportDependency {
-                file_a: "src/main.rs".to_string(),
-                file_b: "src/types.rs".to_string(),
-                dep_type: "use".to_string(),
-                import_statement: "use crate::types::Chunk;".to_string(),
-                symbol: Some("Chunk".to_string()),
-                resolved: true,
-            },
-        ];
+        let deps = vec![ImportDependency {
+            file_a: "src/main.rs".to_string(),
+            file_b: "src/types.rs".to_string(),
+            dep_type: "use".to_string(),
+            import_statement: "use crate::types::Chunk;".to_string(),
+            symbol: Some("Chunk".to_string()),
+            resolved: true,
+        }];
         store.upsert_dependencies(&deps).await.unwrap();
 
         let result = store.get_dependencies("src/main.rs").await.unwrap();
@@ -3646,7 +3944,14 @@ mod tests {
         let chunks = vec![sample_chunk("new1", "main")];
         let embeddings = vec![sample_embedding()];
         store
-            .insert(&chunks, &embeddings, &no_contexts(1), "testrepo", "hash2", "2026-03-02")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(1),
+                "testrepo",
+                "hash2",
+                "2026-03-02",
+            )
             .await
             .unwrap();
         assert_eq!(store.count().await.unwrap(), 1);
@@ -3762,7 +4067,10 @@ mod tests {
 
         let entities = vec![sample_entity("bobbin:code/repo/src/a.rs", "CodeModule")];
         let emb = sample_embedding();
-        store.upsert_entities(&entities, &vec![emb.clone()]).await.unwrap();
+        store
+            .upsert_entities(&entities, &vec![emb.clone()])
+            .await
+            .unwrap();
 
         let retrieved = store
             .get_entity_embedding("bobbin:code/repo/src/a.rs")

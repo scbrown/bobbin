@@ -117,9 +117,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let config = Config::load(&config_path).with_context(|| "Failed to load configuration")?;
 
     // Load tags config for tag resolution during indexing
-    let tags_config = crate::tags::TagsConfig::load_or_default(
-        &crate::tags::TagsConfig::tags_path(&repo_root),
-    );
+    let tags_config =
+        crate::tags::TagsConfig::load_or_default(&crate::tags::TagsConfig::tags_path(&repo_root));
 
     // Load feedback auto-tags (feedback:hot, feedback:cold) from feedback store
     let feedback_tags = {
@@ -364,7 +363,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let batch_size = if embed.is_gpu() {
         let gpu_batch = config.embedding.batch_size * 4;
         if output.verbose && !output.quiet && !output.json {
-            println!("  GPU detected — batch size {} ({}×4)", gpu_batch, config.embedding.batch_size);
+            println!(
+                "  GPU detected — batch size {} ({}×4)",
+                gpu_batch, config.embedding.batch_size
+            );
         }
         gpu_batch
     } else {
@@ -520,7 +522,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 pb.inc(indexed as u64);
             }
             if emit_progress {
-                eprintln!("progress: {}/{} files ({} chunks)", indexed_files, total_files, total_chunks);
+                eprintln!(
+                    "progress: {}/{} files ({} chunks)",
+                    indexed_files, total_files, total_chunks
+                );
             }
         }
     }
@@ -556,7 +561,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             pb.inc(indexed as u64);
         }
         if emit_progress {
-            eprintln!("progress: {}/{} files ({} chunks)", indexed_files, total_files, total_chunks);
+            eprintln!(
+                "progress: {}/{} files ({} chunks)",
+                indexed_files, total_files, total_chunks
+            );
         }
     }
 
@@ -618,10 +626,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                             metadata_store.commit()?;
 
                             if let Some(ref hash) = head_hash {
-                                metadata_store
-                                    .set_meta("last_coupling_commit", hash)?;
-                                metadata_store
-                                    .set_meta("coupling_depth", &depth_str)?;
+                                metadata_store.set_meta("last_coupling_commit", hash)?;
+                                metadata_store.set_meta("coupling_depth", &depth_str)?;
                             }
 
                             if output.verbose && !output.quiet && !output.json {
@@ -633,9 +639,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                             if !couplings.is_empty() {
                                 let t_quipu = Instant::now();
                                 match crate::knowledge::coupling::push_coupling_to_quipu(
-                                    &couplings,
-                                    repo_name,
-                                    &repo_root,
+                                    &couplings, repo_name, &repo_root,
                                 ) {
                                     Ok((_tx_id, triple_count)) => {
                                         if output.verbose && !output.quiet && !output.json {
@@ -660,11 +664,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                         }
                         Err(e) => {
                             if !output.quiet && !output.json {
-                                println!(
-                                    "{} Failed to analyze git coupling: {}",
-                                    "!".yellow(),
-                                    e
-                                );
+                                println!("{} Failed to analyze git coupling: {}", "!".yellow(), e);
                             }
                         }
                     }
@@ -689,7 +689,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             }
             Err(e) => {
                 if !output.quiet && !output.json {
-                    println!("{} Failed to compute cross-repo coupling: {}", "!".yellow(), e);
+                    println!(
+                        "{} Failed to compute cross-repo coupling: {}",
+                        "!".yellow(),
+                        e
+                    );
                 }
             }
         }
@@ -783,7 +787,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             Ok(analyzer) => {
                 // Check for incremental commit indexing
                 let last_commit = metadata_store.get_meta("last_indexed_commit")?;
-                let since = if args.force { None } else { last_commit.as_deref() };
+                let since = if args.force {
+                    None
+                } else {
+                    last_commit.as_deref()
+                };
 
                 match analyzer.get_commit_log(config.git.commits_depth, since) {
                     Ok(commit_entries) if !commit_entries.is_empty() => {
@@ -799,25 +807,38 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                                 let trailers_str = if entry.trailers.is_empty() {
                                     String::new()
                                 } else {
-                                    let lines: Vec<String> = entry.trailers.iter()
+                                    let lines: Vec<String> = entry
+                                        .trailers
+                                        .iter()
                                         .map(|(k, v)| format!("{}: {}", k, v))
                                         .collect();
                                     format!("\n\nTrailers:\n{}", lines.join("\n"))
                                 };
                                 let content = format!(
                                     "{}\n\nAuthor: {}\nDate: {}{}{}",
-                                    entry.message, entry.author, entry.date, trailers_str, files_str
+                                    entry.message,
+                                    entry.author,
+                                    entry.date,
+                                    trailers_str,
+                                    files_str
                                 );
 
                                 // Store trailer keys as tags for structured filtering
-                                let tags = entry.trailers.iter()
-                                    .map(|(k, v)| format!("{}={}", k.to_lowercase().replace(' ', "-"), v))
+                                let tags = entry
+                                    .trailers
+                                    .iter()
+                                    .map(|(k, v)| {
+                                        format!("{}={}", k.to_lowercase().replace(' ', "-"), v)
+                                    })
                                     .collect::<Vec<_>>()
                                     .join(",");
 
                                 Chunk {
                                     id: format!("commit:{}", entry.hash),
-                                    file_path: format!("git:{}", &entry.hash[..7.min(entry.hash.len())]),
+                                    file_path: format!(
+                                        "git:{}",
+                                        &entry.hash[..7.min(entry.hash.len())]
+                                    ),
                                     chunk_type: ChunkType::Commit,
                                     name: Some(truncate_message(&entry.message, 80)),
                                     start_line: 0,
@@ -830,11 +851,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                             .collect();
 
                         // Embed commit messages in batches
-                        let embed_texts: Vec<String> = commit_chunks
-                            .iter()
-                            .map(|c| c.content.clone())
-                            .collect();
-                        let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
+                        let embed_texts: Vec<String> =
+                            commit_chunks.iter().map(|c| c.content.clone()).collect();
+                        let embed_refs: Vec<&str> =
+                            embed_texts.iter().map(|s| s.as_str()).collect();
 
                         match embed.embed_batch(&embed_refs).await {
                             Ok(embeddings) => {
@@ -843,10 +863,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
                                 // Delete old commit chunks if force re-indexing
                                 if args.force {
-                                    let old_ids: Vec<String> = commit_chunks
-                                        .iter()
-                                        .map(|c| c.id.clone())
-                                        .collect();
+                                    let old_ids: Vec<String> =
+                                        commit_chunks.iter().map(|c| c.id.clone()).collect();
                                     vector_store.delete(&old_ids).await.ok();
                                 }
 
@@ -1020,8 +1038,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 } else {
                     let embed_texts: Vec<String> =
                         to_index.iter().map(|c| c.content.clone()).collect();
-                    let embed_refs: Vec<&str> =
-                        embed_texts.iter().map(|s| s.as_str()).collect();
+                    let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
 
                     match embed.embed_batch(&embed_refs).await {
                         Ok(embeddings) => {
@@ -1046,11 +1063,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                                 .await
                             {
                                 if !output.quiet && !output.json {
-                                    println!(
-                                        "{} Failed to store bead chunks: {}",
-                                        "!".yellow(),
-                                        e
-                                    );
+                                    println!("{} Failed to store bead chunks: {}", "!".yellow(), e);
                                 }
                             } else {
                                 beads_indexed = to_index.len();
@@ -1072,11 +1085,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                         }
                         Err(e) => {
                             if !output.quiet && !output.json {
-                                println!(
-                                    "{} Failed to embed beads: {}",
-                                    "!".yellow(),
-                                    e
-                                );
+                                println!("{} Failed to embed beads: {}", "!".yellow(), e);
                             }
                         }
                     }
@@ -1130,11 +1139,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                             .await
                         {
                             if !output.quiet && !output.json {
-                                println!(
-                                    "{} Failed to store archive chunks: {}",
-                                    "!".yellow(),
-                                    e
-                                );
+                                println!("{} Failed to store archive chunks: {}", "!".yellow(), e);
                             }
                         } else {
                             archive_indexed = archive_chunks.len();
@@ -1145,11 +1150,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                     }
                     Err(e) => {
                         if !output.quiet && !output.json {
-                            println!(
-                                "{} Failed to embed archive records: {}",
-                                "!".yellow(),
-                                e
-                            );
+                            println!("{} Failed to embed archive records: {}", "!".yellow(), e);
                         }
                     }
                 }
@@ -1222,10 +1223,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         if profile.total_chunks_embedded > 0 && profile.embed_ms > 0 {
             let chunks_per_sec =
                 profile.total_chunks_embedded as f64 / (profile.embed_ms as f64 / 1000.0);
-            println!(
-                "  embed throughput: {:.1} chunks/s",
-                chunks_per_sec
-            );
+            println!("  embed throughput: {:.1} chunks/s", chunks_per_sec);
         }
     }
 
@@ -1329,7 +1327,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     // Auto-calibrate if needed (unless --skip-calibrate)
     if !args.skip_calibrate {
-        use super::calibrate::{load_calibration, CalibrateArgs, DefaultCalibrationGuard, CalibrationGuard};
+        use super::calibrate::{
+            load_calibration, CalibrateArgs, CalibrationGuard, DefaultCalibrationGuard,
+        };
 
         let calibration = load_calibration(&source_root);
         // Capture a lightweight snapshot for the guard check
@@ -1343,14 +1343,16 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             }
             let cal_args = CalibrateArgs::default_for_auto(source_root.clone());
             // Use quiet output — calibration is a background step, not the primary command
-            let cal_output = OutputConfig { json: false, quiet: true, verbose: false, server: None, role: "default".to_string() };
+            let cal_output = OutputConfig {
+                json: false,
+                quiet: true,
+                verbose: false,
+                server: None,
+                role: "default".to_string(),
+            };
             if let Err(e) = super::calibrate::run(cal_args, cal_output).await {
                 if !output.quiet && !output.json {
-                    eprintln!(
-                        "  {} Auto-calibration failed: {}",
-                        "!".yellow(),
-                        e
-                    );
+                    eprintln!("  {} Auto-calibration failed: {}", "!".yellow(), e);
                 }
             }
         } else if !output.quiet && !output.json && output.verbose {
@@ -1371,8 +1373,7 @@ fn read_indexable_content(path: &Path, config: &Config) -> Result<String> {
     if config.index.multimodal && crate::index::multimodal::is_multimodal_file(path) {
         crate::index::multimodal::extract_text(path)
     } else {
-        std::fs::read_to_string(path)
-            .with_context(|| format!("Failed to read {}", path.display()))
+        std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))
     }
 }
 
@@ -1468,7 +1469,9 @@ async fn process_batch(
             .iter()
             .zip(result.chunks.iter())
             .map(|(ctx, chunk)| {
-                ctx.as_ref().cloned().unwrap_or_else(|| chunk.content.clone())
+                ctx.as_ref()
+                    .cloned()
+                    .unwrap_or_else(|| chunk.content.clone())
             })
             .collect();
         file_chunk_counts.push(texts.len());

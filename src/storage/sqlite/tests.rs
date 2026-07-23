@@ -211,9 +211,18 @@ fn test_file_hashes_bulk() {
     ];
     store.set_file_hashes_bulk(&entries).unwrap();
 
-    assert_eq!(store.get_file_hash("src/a.rs").unwrap(), Some("hash_a".to_string()));
-    assert_eq!(store.get_file_hash("src/b.rs").unwrap(), Some("hash_b".to_string()));
-    assert_eq!(store.get_file_hash("src/c.rs").unwrap(), Some("hash_c".to_string()));
+    assert_eq!(
+        store.get_file_hash("src/a.rs").unwrap(),
+        Some("hash_a".to_string())
+    );
+    assert_eq!(
+        store.get_file_hash("src/b.rs").unwrap(),
+        Some("hash_b".to_string())
+    );
+    assert_eq!(
+        store.get_file_hash("src/c.rs").unwrap(),
+        Some("hash_c".to_string())
+    );
 }
 
 #[test]
@@ -224,10 +233,15 @@ fn test_delete_file_hashes() {
     store.set_file_hash("src/b.rs", "hash_b").unwrap();
     store.set_file_hash("src/c.rs", "hash_c").unwrap();
 
-    store.delete_file_hashes(&["src/a.rs".to_string(), "src/c.rs".to_string()]).unwrap();
+    store
+        .delete_file_hashes(&["src/a.rs".to_string(), "src/c.rs".to_string()])
+        .unwrap();
 
     assert!(store.get_file_hash("src/a.rs").unwrap().is_none());
-    assert_eq!(store.get_file_hash("src/b.rs").unwrap(), Some("hash_b".to_string()));
+    assert_eq!(
+        store.get_file_hash("src/b.rs").unwrap(),
+        Some("hash_b".to_string())
+    );
     assert!(store.get_file_hash("src/c.rs").unwrap().is_none());
 }
 
@@ -246,7 +260,10 @@ fn test_delete_file_hashes_exceeds_bind_var_limit() {
     store.delete_file_hashes(&paths).unwrap();
 
     assert!(store.get_file_hash("src/file_0.rs").unwrap().is_none());
-    assert!(store.get_file_hash(&format!("src/file_{}.rs", n - 1)).unwrap().is_none());
+    assert!(store
+        .get_file_hash(&format!("src/file_{}.rs", n - 1))
+        .unwrap()
+        .is_none());
     assert!(store.get_all_indexed_files().unwrap().is_empty());
 }
 
@@ -303,7 +320,10 @@ fn test_bead_lineage_record_and_list() {
     // Filter by bead id
     let by_bead = store.list_bead_lineage(Some("bo-abc"), None, 10).unwrap();
     assert_eq!(by_bead.len(), 1);
-    assert!(store.list_bead_lineage(Some("bo-zzz"), None, 10).unwrap().is_empty());
+    assert!(store
+        .list_bead_lineage(Some("bo-zzz"), None, 10)
+        .unwrap()
+        .is_empty());
 
     // Filter by commit
     let by_commit = store.list_bead_lineage(None, Some("deadbeef"), 10).unwrap();
@@ -405,7 +425,12 @@ fn test_bead_lineage_migration_idempotent() {
             .unwrap();
         rows
     };
-    for expected in ["feature_id", "lines_added", "lines_deleted", "touched_symbols"] {
+    for expected in [
+        "feature_id",
+        "lines_added",
+        "lines_deleted",
+        "touched_symbols",
+    ] {
         assert_eq!(
             cols.iter().filter(|c| c.as_str() == expected).count(),
             1,

@@ -66,7 +66,9 @@ fn detect_forge(host: &str) -> ForgeType {
 
 /// Extract the hostname from a web base URL.
 fn host_from_url(url: &str) -> Option<&str> {
-    let rest = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://"))?;
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
     // host might include port
     Some(rest.split('/').next()?.split(':').next()?)
 }
@@ -155,7 +157,13 @@ pub(crate) fn resolve_sources(
             }
             let repo_path = entry.path();
             if let Ok(output) = std::process::Command::new("git")
-                .args(["-C", &repo_path.to_string_lossy(), "remote", "get-url", "origin"])
+                .args([
+                    "-C",
+                    &repo_path.to_string_lossy(),
+                    "remote",
+                    "get-url",
+                    "origin",
+                ])
                 .output()
             {
                 if output.status.success() {
@@ -215,15 +223,15 @@ pub(super) async fn webhook_push(
 
     let git_ref = payload.git_ref.as_deref().unwrap_or("unknown");
 
-    tracing::info!(
-        repo = repo_name,
-        git_ref = git_ref,
-        "Received push webhook"
-    );
+    tracing::info!(repo = repo_name, git_ref = git_ref, "Received push webhook");
 
     // Try to map repo full_name to our indexed repo name
     // e.g., "stiwi/bobbin" -> "bobbin"
-    let short_repo = repo_name.rsplit('/').next().unwrap_or(repo_name).to_string();
+    let short_repo = repo_name
+        .rsplit('/')
+        .next()
+        .unwrap_or(repo_name)
+        .to_string();
 
     // Verify this repo is indexed
     let repos_dir = state.repo_root.join("repos");
@@ -290,8 +298,6 @@ async fn run_incremental_index(
     let lance_path = Config::lance_path(&repo_root);
     let mut vector_store = VectorStore::open(&lance_path).await?;
 
-
-
     let model_dir = Config::model_cache_dir()?;
     let embedder = Embedder::load(&model_dir, &config.embedding.model)?;
     let mut parser = Parser::new()?.with_chunking(
@@ -329,8 +335,8 @@ async fn run_incremental_index(
             .to_string_lossy()
             .to_string();
 
-        let matches_include = include_globs.is_empty()
-            || include_globs.iter().any(|g| g.matches(&rel_path));
+        let matches_include =
+            include_globs.is_empty() || include_globs.iter().any(|g| g.matches(&rel_path));
         let matches_exclude = exclude_globs.iter().any(|g| g.matches(&rel_path));
 
         if matches_include && !matches_exclude {
@@ -439,13 +445,11 @@ mod tests {
     #[test]
     fn test_build_source_url_auto_github() {
         let overrides = std::collections::HashMap::new();
-        let url = build_source_url(
-            "https://github.com/owner/repo",
-            "",
-            "repo",
-            &overrides,
+        let url = build_source_url("https://github.com/owner/repo", "", "repo", &overrides);
+        assert_eq!(
+            url,
+            "https://github.com/owner/repo/blob/main/{path}#L{line}"
         );
-        assert_eq!(url, "https://github.com/owner/repo/blob/main/{path}#L{line}");
     }
 
     #[test]
@@ -457,7 +461,10 @@ mod tests {
             "bobbin",
             &overrides,
         );
-        assert_eq!(url, "http://git.example:3000/stiwi/bobbin/src/branch/main/{path}#L{line}");
+        assert_eq!(
+            url,
+            "http://git.example:3000/stiwi/bobbin/src/branch/main/{path}#L{line}"
+        );
     }
 
     #[test]
@@ -469,7 +476,10 @@ mod tests {
             "repo",
             &overrides,
         );
-        assert_eq!(url, "https://github.com/owner/repo/tree/develop/{path}#L{line}");
+        assert_eq!(
+            url,
+            "https://github.com/owner/repo/tree/develop/{path}#L{line}"
+        );
     }
 
     #[test]
@@ -483,13 +493,22 @@ mod tests {
             &overrides,
         );
         // git.example overridden to gitlab
-        assert_eq!(url, "http://git.example:3000/stiwi/bobbin/-/blob/main/{path}#L{line}");
+        assert_eq!(
+            url,
+            "http://git.example:3000/stiwi/bobbin/-/blob/main/{path}#L{line}"
+        );
     }
 
     #[test]
     fn test_host_from_url() {
-        assert_eq!(host_from_url("https://github.com/owner/repo"), Some("github.com"));
-        assert_eq!(host_from_url("http://git.example:3000/stiwi/bobbin"), Some("git.example"));
+        assert_eq!(
+            host_from_url("https://github.com/owner/repo"),
+            Some("github.com")
+        );
+        assert_eq!(
+            host_from_url("http://git.example:3000/stiwi/bobbin"),
+            Some("git.example")
+        );
         assert_eq!(host_from_url("not-a-url"), None);
     }
 }

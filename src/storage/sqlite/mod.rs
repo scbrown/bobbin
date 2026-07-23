@@ -233,9 +233,9 @@ impl MetadataStore {
 
     /// Get all metadata entries matching a key prefix (e.g., "repo_source:")
     pub fn get_meta_by_prefix(&self, prefix: &str) -> Result<Vec<(String, String)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT key, value FROM meta WHERE key LIKE ?1"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT key, value FROM meta WHERE key LIKE ?1")?;
         let pattern = format!("{}%", prefix);
         let rows = stmt.query_map([&pattern], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -330,10 +330,7 @@ impl MetadataStore {
 
     /// Upsert a cross-repo coupling edge (bo-oqny). Caller is responsible for
     /// canonical ordering of the pair (see `CrossRepoCoupling`).
-    pub fn upsert_cross_repo_coupling(
-        &self,
-        c: &crate::types::CrossRepoCoupling,
-    ) -> Result<()> {
+    pub fn upsert_cross_repo_coupling(&self, c: &crate::types::CrossRepoCoupling) -> Result<()> {
         self.conn.execute(
             r#"INSERT INTO cross_repo_coupling
                    (repo_a, path_a, repo_b, path_b, score, co_changes, last_co_change)
@@ -384,9 +381,8 @@ impl MetadataStore {
     pub fn set_file_hashes_bulk(&self, entries: &[(&str, &str)]) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         {
-            let mut stmt = tx.prepare(
-                "INSERT OR REPLACE INTO file_hashes (file_path, hash) VALUES (?1, ?2)",
-            )?;
+            let mut stmt =
+                tx.prepare("INSERT OR REPLACE INTO file_hashes (file_path, hash) VALUES (?1, ?2)")?;
             for (path, hash) in entries {
                 stmt.execute([path, hash])?;
             }

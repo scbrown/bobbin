@@ -9,10 +9,10 @@ impl MetadataStore {
     /// Returns the row id of the inserted record. `touched_files` is stored as
     /// a JSON array so later layers can aggregate over changesets.
     pub fn record_bead_lineage(&self, rec: &NewBeadLineage) -> Result<i64> {
-        let touched_files_json = serde_json::to_string(&rec.touched_files)
-            .unwrap_or_else(|_| "[]".to_string());
-        let touched_symbols_json = serde_json::to_string(&rec.touched_symbols)
-            .unwrap_or_else(|_| "[]".to_string());
+        let touched_files_json =
+            serde_json::to_string(&rec.touched_files).unwrap_or_else(|_| "[]".to_string());
+        let touched_symbols_json =
+            serde_json::to_string(&rec.touched_symbols).unwrap_or_else(|_| "[]".to_string());
         self.conn.execute(
             r#"INSERT INTO bead_lineage
                    (bead_id, bead_type, commit_sha, bundle_slugs, touched_files, action_type,
@@ -103,7 +103,9 @@ impl MetadataStore {
             "SELECT bead_id, MAX(bead_type) FROM bead_lineage GROUP BY bead_id ORDER BY bead_id",
         )?;
         let rows = stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)))?
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }

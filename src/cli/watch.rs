@@ -180,20 +180,14 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
     // whole tree against the index, catching any events the watcher dropped.
     let reindex_enabled = args.reindex_interval_secs > 0;
     let reindex_period = Duration::from_secs(args.reindex_interval_secs.max(1));
-    let mut reindex_interval = tokio::time::interval_at(
-        tokio::time::Instant::now() + reindex_period,
-        reindex_period,
-    );
+    let mut reindex_interval =
+        tokio::time::interval_at(tokio::time::Instant::now() + reindex_period, reindex_period);
     reindex_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     if !output.quiet && reindex_enabled {
-        println!(
-            "  Reindex backstop: every {}s",
-            args.reindex_interval_secs
-        );
+        println!("  Reindex backstop: every {}s", args.reindex_interval_secs);
     }
 
-    let mut sigterm =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
 
     loop {
         tokio::select! {
@@ -456,8 +450,7 @@ async fn reindex_files(
         let effective_repo = if let Some(cached) = repo_cache.get(dir) {
             cached.clone()
         } else {
-            let detected = detect_git_repo_name(dir)
-                .unwrap_or_else(|| repo_name.to_string());
+            let detected = detect_git_repo_name(dir).unwrap_or_else(|| repo_name.to_string());
             repo_cache.insert(dir.to_path_buf(), detected.clone());
             detected
         };
