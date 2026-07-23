@@ -1,5 +1,7 @@
 # Smart Hook Context Injection
 
+> **Implementation status (2026-07-23, dearing):** ✅ **Implemented** (doc self-declares COMPLETE; confirmed by mechanism). All 4 sub-beads bo-slk-1..4 in src/cli/hook.rs + src/search/context.rs + src/config.rs, fully tested: top-score gate (`top_semantic_score` context.rs:309, gate check hook.rs:2907, `--gate-threshold`:358); session-aware dedup (`HookState`/`ChunkFrequency`:2223, `.bobbin/hook_state.json`, `--no-dedup`, tests hook.rs:7076); hot-topics file (generate_hot_topics:2574, auto-trigger every 10 injections → `.bobbin/hot-topics.md`); status output + docs/configuration.md. NOTE: the deployed defaults have been TUNED away from this doc's original numbers — `gate_threshold` 0.45 (doc said 0.75), `min_prompt_length` 20 (doc said 10). The code is the deployed truth; this doc's numbers below are updated to match.
+
 **Bead**: bo-slk
 **Status**: COMPLETE (all 4 sub-beads shipped)
 **Priority**: P1
@@ -30,8 +32,8 @@ Bobbin's Claude Code hook injects relevant code context on every prompt. Three p
 threshold = 0.5           # Per-result filter on normalized RRF scores (existing)
 budget = 150              # Max lines of injected context (existing)
 content_mode = "preview"  # full | preview | none (existing)
-min_prompt_length = 10    # Skip injection for very short prompts (existing)
-gate_threshold = 0.75     # NEW: Min raw semantic similarity to inject at all
+min_prompt_length = 20    # Skip injection for very short prompts (existing)
+gate_threshold = 0.45     # NEW: Min raw semantic similarity to inject at all
 dedup_enabled = true      # NEW: Skip injection when search results haven't changed
 ```
 
@@ -44,8 +46,8 @@ pub struct HooksConfig {
     pub threshold: f32,           // 0.5
     pub budget: usize,            // 150
     pub content_mode: String,     // "preview"
-    pub min_prompt_length: usize, // 10
-    pub gate_threshold: f32,      // NEW: 0.75
+    pub min_prompt_length: usize, // 20
+    pub gate_threshold: f32,      // NEW: 0.45
     pub dedup_enabled: bool,      // NEW: true
 }
 ```
@@ -256,7 +258,7 @@ No new source files — all logic fits in existing hook.rs alongside current imp
 ### bo-slk-1: Top-score gate (gate_threshold)
 - Add `top_semantic_score: f32` to `ContextSummary` in context.rs
 - Capture `semantic_results[0].score` before RRF in `run_hybrid_search()`
-- Add `gate_threshold: f32` to `HooksConfig` (default 0.75)
+- Add `gate_threshold: f32` to `HooksConfig` (default 0.45 (tuned; doc originally 0.75))
 - Add `--gate-threshold` CLI arg to `InjectContextArgs`
 - Gate check in `inject_context_inner()`: skip if top_semantic_score < gate
 - Update `HookStatusOutput` to include gate_threshold
