@@ -305,7 +305,10 @@ pub struct SearchConfig {
     pub doc_demotion: f32,
     /// Personalized PageRank ranking weight (0.0 = disabled). Requires the
     /// `knowledge` feature + a populated Quipu coupling graph. Bounded boost:
-    /// `score *= 1.0 + ppr_weight * ppr_score`.
+    /// `score *= 1.0 + ppr_weight * ppr_score`. The DEFAULT is feature-gated: a
+    /// provisional 0.3 on `knowledge` builds (so the opt-in integration actually
+    /// re-ranks), and 0.0 without the feature — a non-zero weight bail!s in a
+    /// non-knowledge binary. The 0.3 is to be tuned by the GH#56 calibration sweep.
     #[serde(default)]
     pub ppr_weight: f32,
 }
@@ -319,7 +322,10 @@ impl Default for SearchConfig {
             recency_weight: 0.3,
             rrf_k: 60.0,
             doc_demotion: 0.3,
-            ppr_weight: 0.0,
+            // Feature-gated: knowledge builds default to a provisional non-zero PPR
+            // weight so the opt-in integration re-ranks; non-knowledge builds keep
+            // 0.0 (a non-zero weight bail!s without the feature). Tune from GH#56.
+            ppr_weight: if cfg!(feature = "knowledge") { 0.3 } else { 0.0 },
         }
     }
 }
