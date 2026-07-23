@@ -1,5 +1,10 @@
 # Bobbin Feature Backlog
 
+> **Implementation status (2026-07-23, harding):** ➖ **N/A — this is a backlog, not a plan.** It is a
+> high-level idea list for Phase 4 (Higher-Order Analysis); its items are tracked/implemented under their own
+> plan docs and issues as they mature. Nothing to assess or label here as implemented/planned — left as the
+> living backlog it is.
+
 High-level feature ideas for Phase 4: Higher-Order Analysis. These compose
 bobbin's existing signals (embeddings, coupling, complexity, deps, refs, history)
 into capabilities that are greater than the sum of their parts.

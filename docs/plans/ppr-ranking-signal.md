@@ -1,5 +1,13 @@
 # 🧠 Personalized PageRank Ranking Signal
 
+> **Implementation status (2026-07-23, harding):** 🟡 **Partial — built in source, DARK in every artifact.**
+> The signal is fully coded and unit-tested — `src/search/ppr.rs` (4 tests), wired at
+> `src/search/context.rs:1061`, config `ppr_weight` (`src/config.rs:310`). But it is gated behind the
+> `knowledge` cargo feature (`Cargo.toml:145`) that **no build path enables** (not `ci.yml`, not
+> `release.yml`, not the `justfile`), so it is compiled out of every shipped binary and CI has never
+> compiled it; `ppr_weight` also defaults to `0.0`. It has **never run**. Un-darking (build wiring +
+> a non-zero weight + a wired Quipu store + a real end-to-end run) is scoped in **GH #56**.
+
 > HippoRAG ranks by graph structure. Bobbin ranks by hybrid similarity and
 > *expands* via graph. This plan closes that gap: a Personalized PageRank (PPR)
 > signal that lets graph connectivity influence the ranking itself.

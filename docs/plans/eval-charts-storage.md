@@ -1,5 +1,11 @@
 # Plan: Eval Results Preservation + Matplotlib Charts
 
+> **Implementation status (2026-07-23, harding):** ✅ **Implemented.** Both problems solved: (1) run-based
+> permanent storage — `eval/results/runs/<run_id>/` with **237 git-tracked** files (manifests + per-task JSON),
+> `eval/analysis/report.py` scans `results/runs/*/*.json`, and `eval/.gitignore` no longer excludes results;
+> (2) real charts — `eval/analysis/mpl_charts.py` (matplotlib, referenced from the mdbook eval pages), replacing
+> the hand-rolled SVG rectangles. No gaps.
+
 ## Context
 
 The eval framework has two problems: (1) result JSON files are gitignored so historical runs are lost, and (2) the mdbook charts are hand-rolled SVG rectangles that are extremely basic. An earlier run showed bobbin winning (+50pp precision, -39% duration) but a re-run overwrote those results with identical metrics. We need permanent storage of all runs and charts worth looking at.

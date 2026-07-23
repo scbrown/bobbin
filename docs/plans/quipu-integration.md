@@ -1,5 +1,12 @@
 # 🪢 Quipu Integration Plan
 
+> **Implementation status (2026-07-23, harding):** 🟡 **Partial — all phases in source, DARK in every artifact.**
+> Verified by mechanism: Phase 1 crate dep (`knowledge = ["dep:quipu"]`, `Cargo.toml:145`), Phase 3 MCP
+> surface (`src/mcp/*` quipu tool refs), Phase 4 unified search (`src/search/context.rs` + `src/http/handlers/search.rs`,
+> ~60 knowledge refs), Phase 5 coupling export (`src/knowledge/coupling.rs`) all exist. But the entire
+> integration sits behind the `knowledge` feature that **no build path enables**, so it is absent from every
+> shipped binary and uncompiled by CI. Same single gate as the PPR re-ranker — un-darking scoped in **GH #56**.
+
 > Bobbin holds the thread (code context). Quipu ties knots of structured meaning into it.
 
 ## Goal

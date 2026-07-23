@@ -1,5 +1,9 @@
 # Plan: Eval Results in mdbook + New Language Tasks
 
+> **Implementation status (2026-07-23, harding):** ✅ **Implemented.** mdbook eval section exists
+> (`docs/book/src/eval/` — per-language pages + `charts/`), and the "new language tasks" landed across **8
+> languages** (`eval/tasks/*.yaml`: cargo, django, go, nushell, pandas, polars, ruff, typst). No gaps.
+
 ## Context
 
 We just validated the eval framework end-to-end on flask-001 and found:

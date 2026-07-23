@@ -1,5 +1,10 @@
 # Eval: Collect Claude Code Tool Use Traces via stream-json
 
+> **Implementation status (2026-07-23, harding):** ✅ **Implemented.** `eval/runner/agent_runner.py` runs
+> `claude --output-format stream-json --verbose` (`:185`), parses the JSONL (`parse_stream_json`, `:79`),
+> and extracts the full `tool_use_summary` — `by_tool`, `tool_sequence`, `first_edit_turn`, `bobbin_commands`
+> (`:86,:129,:243,:262`) — exactly the per-agent tool visibility this plan asked for. No gaps.
+
 ## Context
 
 The bobbin eval framework runs Claude Code headless on coding tasks and compares results with/without bobbin. Currently it uses `--output-format json` which returns only a final summary (cost, tokens, num_turns). We have **zero visibility** into agent behavior: which tools it calls, how many times, whether it uses bobbin CLI commands, how quickly it starts editing.
