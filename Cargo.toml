@@ -1,7 +1,7 @@
 [package]
 name = "bobbin"
 publish = false
-version = "0.6.2"
+version = "0.6.3"
 edition = "2021"
 authors = ["Bobbin Team"]
 description = "Local-first context injection engine for AI coding agents"
