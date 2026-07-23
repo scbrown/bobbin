@@ -93,6 +93,16 @@ impl Default for IndexConfig {
                 "**/*.cpp".into(),
                 "**/*.cc".into(),
                 "**/*.hpp".into(),
+                // Infrastructure-as-code, config and scripts. No tree-sitter parser
+                // is wired for these, so they fall through to line-based chunking
+                // (like markdown) and are searchable via embeddings. Without them an
+                // ansible/IaC repo is invisible to code search — its roles,
+                // templates, playbooks and inventory are all yaml/jinja (bobbin-ywzq8).
+                "**/*.yml".into(),
+                "**/*.yaml".into(),
+                "**/*.j2".into(),
+                "**/*.tf".into(),
+                "**/*.sh".into(),
                 "**/*.md".into(),
             ],
             exclude: vec![
@@ -1038,6 +1048,18 @@ mod tests {
             "**/*.rs",
             "**/*.py",
         ] {
+            assert!(include.contains(&pat.to_string()), "default include missing {pat}");
+        }
+    }
+
+    #[test]
+    fn test_default_index_include_has_iac_extensions() {
+        // An ansible/IaC repo (yaml + jinja templates, terraform, shell) must be
+        // visible to code search. Before bobbin-ywzq8 the include list stopped at
+        // code + markdown, so an entire IaC corpus was silently uncovered and
+        // searches answered from markdown/commit-messages only, confidently.
+        let include = IndexConfig::default().include;
+        for pat in ["**/*.yml", "**/*.yaml", "**/*.j2", "**/*.tf", "**/*.sh"] {
             assert!(include.contains(&pat.to_string()), "default include missing {pat}");
         }
     }

@@ -862,6 +862,15 @@ fn detect_language(path: &Path) -> Option<String> {
         "c" | "h" => Some("c".to_string()),
         "cpp" | "cc" | "hpp" => Some("cpp".to_string()),
         "md" => Some("markdown".to_string()),
+        // IaC / config / scripts. No tree-sitter parser is wired for these, so they
+        // fall through to line-based chunking in parse_file (the `_ => chunk_by_lines`
+        // arm). Tagging them here — rather than letting them fall through to `None`
+        // and chunk as "unknown" — makes them searchable AND surfaces them as a real
+        // language in /status instead of a "unknown" blob (bobbin-ywzq8).
+        "yml" | "yaml" => Some("yaml".to_string()),
+        "j2" => Some("jinja".to_string()),
+        "tf" => Some("terraform".to_string()),
+        "sh" => Some("shell".to_string()),
         // PDF text (extracted upstream by index::multimodal). Falls through to
         // line-based chunking in parse_file, tagged with language = "pdf".
         "pdf" => Some("pdf".to_string()),
@@ -1829,6 +1838,25 @@ struct Vec3 {
         assert_eq!(
             detect_language(Path::new("foo.hpp")),
             Some("cpp".to_string())
+        );
+        // IaC / config / scripts — line-chunked but tagged so they are searchable
+        // and show up as a language, not "unknown" (bobbin-ywzq8).
+        assert_eq!(
+            detect_language(Path::new("roles/x/defaults/main.yml")),
+            Some("yaml".to_string())
+        );
+        assert_eq!(
+            detect_language(Path::new("group_vars/all.yaml")),
+            Some("yaml".to_string())
+        );
+        assert_eq!(
+            detect_language(Path::new("templates/nftables.conf.j2")),
+            Some("jinja".to_string())
+        );
+        assert_eq!(detect_language(Path::new("main.tf")), Some("terraform".to_string()));
+        assert_eq!(
+            detect_language(Path::new("scripts/deploy.sh")),
+            Some("shell".to_string())
         );
         assert_eq!(detect_language(Path::new("foo.unknown")), None);
     }
