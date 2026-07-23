@@ -1,5 +1,7 @@
 # Eval Framework Improvements: Metrics, Gate Tuning & Agent Guidance
 
+> **Implementation status (2026-07-23, franklin):** ✅ **Implemented** — the core changes landed: gate threshold default 0.75→0.45 (`src/config.rs:556` `gate_threshold: 0.45`, test-asserted at :1358); token/cost capture in the report (`eval/analysis/report.py` reads `token_usage.total_cost_usd`/`input_tokens`); and the workspace CLAUDE.md instructing bobbin CLI usage (`eval/workspace-claude-md.md`). Verified by grep 2026-07-23. Targets the eval framework, which is fully built (see eval-framework.md).
+
 ## Context
 
 Flask eval reruns showed bobbin **never injected context** (gate_skip on all 5 tasks, 0 injections, 0 manual bobbin commands). The agent gets the prime context but never uses bobbin CLI tools. We're also missing token usage, gate score details, and tool use traces — data needed to understand gaps and tune the system.

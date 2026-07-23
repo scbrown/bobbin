@@ -1,5 +1,7 @@
 # Calibration Sweep Results
 
+> **Implementation status (2026-07-23, franklin):** ✅ **Record (findings applied)** — this is a results/record doc, not a plan. Its single biggest finding — filtering commit chunks from context injection — is landed (`a975e76` "fix: filter ChunkType::Commit out of context injection"). The sweeps are reproducible via `bobbin calibrate` (src/cli/calibrate.rs). Verified 2026-07-23.
+
 ## Round 2: Post Commit-Chunk Filter (2026-02-26)
 
 180-config grid (5 sw × 3 dd × 1 k × 3 b × 4 sl), 20 samples per repo.
