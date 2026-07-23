@@ -1,5 +1,11 @@
 # Bobbin Architecture
 
+> **Implementation status (2026-07-23, kelly):** ✅ **Implemented — documents the
+> current system** (not a forward-looking plan). Everything described is shipped and in
+> `src/`: tree-sitter structural parsing, pulldown-cmark markdown chunking, ONNX MiniLM
+> embeddings, LanceDB primary storage, SQLite for coupling/metadata, and the rmcp MCP
+> server. The module-structure map matches the source tree.
+
 ## Overview
 
 Bobbin is a local-first code context engine built in Rust. It provides semantic and keyword search over codebases using:

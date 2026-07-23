@@ -1,5 +1,13 @@
 # Roadmap
 
+> **Implementation status (2026-07-23, kelly):** 🟡 **Phased — 1-2 complete, 3-4 in
+> progress** (self-tracked by the `[x]` checkboxes below, which are the per-item source
+> of truth). Spot-checked against `src/`: the Phase 1-2 items (tree-sitter indexing,
+> LanceDB storage, hybrid search, git coupling, related-files) are shipped. NOTE the
+> "Phase 4: Higher-Order Analysis -- In Progress" header UNDERSTATES — its features
+> (`similar` / `hotspots` / `review` / `impact` / `refs`) are actually shipped as CLI
+> subcommands + MCP tools (see `docs/design/phase-4-features.md`, ✅).
+
 ## Phase 1: Foundation (MVP) -- Complete
 
 - [x] Tree-sitter code indexing (Rust, TypeScript, Python)
