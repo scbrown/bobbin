@@ -25,6 +25,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-07-23
+
+### Added
+
+- *(config)* Feature-gate a non-zero default ppr_weight (0.3) on knowledge builds([297f77c](https://github.com/scbrown/bobbin/commit/297f77c1bdc18bae545a3e809097af6fe38068cf))
+
+### Documentation
+
+- *(plans)* Status-label the 3 hardening/metrics/hooks plans vs main([aa3f24c](https://github.com/scbrown/bobbin/commit/aa3f24c2f84e14877b0847587dfc5b44f471619c))
+- *(plans)* Label 5 plan docs with implementation status + frontmatter for 4 guide pages([ef2714a](https://github.com/scbrown/bobbin/commit/ef2714a3c591f3ea8504ee340adaec2b9a337563))
+- *(plans)* Status-label the 4 eval plans — all implemented/record ( sweep) (#48)([3c324e7](https://github.com/scbrown/bobbin/commit/3c324e7af60b9a641f1c0876673275bbe5361cbd))
+- *(plans)* Label 4 plan docs with verified implementation status (#49)([a9ca093](https://github.com/scbrown/bobbin/commit/a9ca0933611c9fb880e8330db0074fc2ca79a19f))
+- *(plans)* Status-label the last 6 plan docs — 3 done, 2 dark-behind-a-feature, 1 backlog([6d14759](https://github.com/scbrown/bobbin/commit/6d147594a136615a72dcc90a1cd6dcb58b38484e))
+- *(design)* Status-label the 8 design docs outside docs/plans/([786834e](https://github.com/scbrown/bobbin/commit/786834e71b50fec929474317d88eeccb45df384b))
+- *(plans)* Note the named-graph (quipu #36/#49) substrate for subset-export (#57)([38a1c53](https://github.com/scbrown/bobbin/commit/38a1c53a783f344868025fc43bc4331de8cab300))
+- *(design)* Correct micro-ui status ⬜→🟡 — the embedding IS built([13ec199](https://github.com/scbrown/bobbin/commit/13ec199ef9c37d18a2fe76320dd18b7416f60411))
+
+### Fixed
+
+- *(release)* Match release-plz git_tag_name to the repo's v-prefix tags([e064e56](https://github.com/scbrown/bobbin/commit/e064e5634add7c1ac5d5d53fe379e475b02aaa5c))
+- *(release)* Move publish restriction out of the manifest so release-plz opens PRs([a8cffbe](https://github.com/scbrown/bobbin/commit/a8cffbe784815cdf7677c4fb14253cf3e249688a))
+- *(serve)* Wire the Quipu store into the HTTP /context path so PPR runs there too([4c6ed6e](https://github.com/scbrown/bobbin/commit/4c6ed6e1d43626fdcd95f2c23b19dd058119fdba))
+
 ## [0.6.0] - 2026-07-13
 
 Multimodal PDF ingest, index-freshness safety net, and two indexing/telemetry
