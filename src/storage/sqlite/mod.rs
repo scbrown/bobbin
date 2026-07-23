@@ -291,6 +291,19 @@ impl MetadataStore {
         Ok(())
     }
 
+    /// Delete a metadata key. Returns the number of rows removed (0 if absent).
+    ///
+    /// Used to reset a per-repo commit/coupling WATERMARK when that repo's
+    /// chunks are bulk-deleted: a watermark that outlives its
+    /// chunks makes the next incremental index ask `git log <watermark>..HEAD`
+    /// and re-add only NEW commits, silently stranding the wiped history.
+    /// Clearing the watermark forces the next index to rebuild from scratch
+    /// (`since=None` → `git log` → all commits).
+    pub fn delete_meta(&self, key: &str) -> Result<usize> {
+        let n = self.conn.execute("DELETE FROM meta WHERE key = ?1", [key])?;
+        Ok(n)
+    }
+
     /// Get all metadata entries matching a key prefix (e.g., "repo_source:")
     pub fn get_meta_by_prefix(&self, prefix: &str) -> Result<Vec<(String, String)>> {
         let mut stmt = self

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use super::OutputConfig;
 use crate::config::Config;
-use crate::storage::VectorStore;
+use crate::storage::{MetadataStore, VectorStore};
 
 #[derive(Args)]
 pub struct PurgeArgs {
@@ -85,6 +85,19 @@ pub async fn run(args: PurgeArgs, output: OutputConfig) -> Result<()> {
     }
 
     vector_store.delete_by_repo(&args.repo).await?;
+
+    // Reset this repo's commit + coupling watermarks. Purge wipes
+    // the repo's chunks but does NOT reindex, so a surviving watermark would
+    // make the NEXT `bobbin index` (the production incremental path, non-force)
+    // ask `git log <watermark>..HEAD` and re-add only NEW commits — leaving the
+    // purged commit-history corpus gone while reporting success. Clearing the
+    // watermarks forces that next index to rebuild the full history
+    // (`since=None` → `git log` → all commits). Best-effort: a purge that
+    // succeeded on the chunks must not fail because the metadata db is absent.
+    if let Ok(metadata_store) = MetadataStore::open(&Config::db_path(&repo_root)) {
+        let _ = metadata_store.delete_meta(&format!("last_indexed_commit:{}", args.repo));
+        let _ = metadata_store.delete_meta(&format!("last_coupling_commit:{}", args.repo));
+    }
 
     let stats_after = vector_store.get_stats(Some(&args.repo)).await?;
 

@@ -622,3 +622,30 @@ fn test_get_all_indexed_files() {
     assert!(files.contains("src/a.rs"));
     assert!(files.contains("src/b.rs"));
 }
+
+// a purge must reset the per-repo commit watermark so the next
+// incremental index rebuilds full history instead of only post-watermark
+// commits. delete_meta is the mechanism; here we prove it removes exactly the
+// targeted key, returns the row count, and is a safe no-op when absent.
+#[test]
+fn test_delete_meta_resets_watermark_exactly() {
+    let (store, _dir) = create_test_store();
+    store.set_meta("last_indexed_commit:repoA", "aaaa").unwrap();
+    store.set_meta("last_indexed_commit:repoB", "bbbb").unwrap();
+
+    // Delete repoA's watermark only.
+    let n = store.delete_meta("last_indexed_commit:repoA").unwrap();
+    assert_eq!(n, 1, "delete_meta must report the row it removed");
+    assert!(
+        store.get_meta("last_indexed_commit:repoA").unwrap().is_none(),
+        "repoA watermark must be gone -> next index rebuilds from scratch",
+    );
+    assert_eq!(
+        store.get_meta("last_indexed_commit:repoB").unwrap().as_deref(),
+        Some("bbbb"),
+        "a scoped watermark reset must spare other repos",
+    );
+
+    // Deleting an absent key is a harmless no-op (best-effort purge cleanup).
+    assert_eq!(store.delete_meta("last_indexed_commit:repoA").unwrap(), 0);
+}
