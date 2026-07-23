@@ -1,5 +1,7 @@
 # Bobbin Production Hardening Plan
 
+> **Implementation status (2026-07-23, arnold):** 🟡 **Partial** — ~7/9 items done, each verified by grep on `main`. ✅ Bead 1 (`setup` recipe + protoc in CONTRIBUTING), Bead 2 (tambour cleanup done — only historical doc mentions remain), Bead 3 (production `unwrap()` sites fixed, e.g. `embedder.rs:135,143`), Bead 4 (7 integration tests under `tests/`), Bead 8 (`.github/workflows/ci.yml`), Bead 9 (docs tambour-clean). 🟡 Gaps: Bead 5 (`history`/`status` MCP tools missing — only `deps` exists), Bead 6 (`/deps` + `/history` HTTP endpoints missing — the other 6 exist), Bead 7 (`get_commit_files`/`get_changed_files` still `#[allow(dead_code)]` at `git.rs:279,303`, incremental indexing unwired). Remaining work scoped in [issue #55](https://github.com/scbrown/bobbin/issues/55).
+
 ## Context
 
 Bobbin is a local-first Rust code context engine (~17k LOC), feature-complete at Phase 3. The build is broken on fresh machines (`protoc` missing), tambour references remain after extraction, and several production hardening gaps need addressing. This plan creates a series of independently committable work items.

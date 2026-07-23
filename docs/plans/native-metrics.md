@@ -1,5 +1,7 @@
 # Plan: Bobbin Native Metrics & Eval Observability
 
+> **Implementation status (2026-07-23, arnold):** ✅ **Implemented** — verified on `main`. `src/metrics.rs` emits structured events to `.bobbin/metrics.jsonl` carrying `source` and `session_id` fields (the Part-1 source identity). The `prime` command is a real subcommand (`src/cli/mod.rs`: `Commands::Prime` → `prime::run`), and the SessionStart primer is wired as the `PrimeContext` hook (`src/cli/hook.rs`). Track any sub-part drift here.
+
 ## Context
 
 Bobbin evals have near-zero observability. We can't tell if hooks fire, if the agent uses bobbin tools, or if injected context points at the right files. The fix belongs in **bobbin itself** — structured metrics emitted to `.bobbin/metrics.jsonl` for every command and hook event. The eval framework then reads this file after the run.

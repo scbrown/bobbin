@@ -1,7 +1,9 @@
 # Bobbin Hooks Integration Plan
 
+> **Implementation status (2026-07-23, arnold):** ✅ **Implemented** — the `bobbin hook` subcommand family is built (`src/cli/hook.rs`) with all six Claude Code hook types: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, PreCompact. This supersedes the "Status: Planning" line below, which predates the implementation.
+
 **Bead**: bobbin-62g
-**Status**: Planning
+**Status**: Implemented (see status block above)
 **Priority**: P1
 
 ## Context
