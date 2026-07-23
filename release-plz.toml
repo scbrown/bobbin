@@ -3,6 +3,17 @@ changelog_config = "cliff.toml"
 publish = false
 git_release_enable = true
 git_tag_enable = true
+# Match the repo's ACTUAL tag convention. release-plz's default
+# git tag name for a package is `{{ package }}-v{{ version }}` (=`bobbin-v0.6.3`),
+# but every real tag here is `v{{ version }}` (=`v0.6.3`) and release.yml fires
+# the binary build on `refs/tags/v*`. With the default, release-plz looked for a
+# baseline tag that does not exist, found NO prior release for the package, and
+# answered "nothing to release" over real feats — so v0.6.2 and v0.6.3 were both
+# hand-cut. Confirmed by mechanism: the post-bootstrap feat run logged
+# `release_pr_output: {"prs":[]}` + `nothing to release`. Aligning the template
+# to the existing convention (not renaming tags — release.yml depends on `v*`)
+# lets release-plz recognize the baseline and open release PRs unaided.
+git_tag_name = "v{{ version }}"
 
 [[package]]
 name = "bobbin"
