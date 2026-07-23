@@ -1,5 +1,7 @@
 # Design: Adaptive Defaults — Project-Aware Search Configuration
 
+> **Implementation status (2026-07-23, franklin):** ✅ **Implemented** — corroborates the doc's own COMPLETE self-claim by mechanism: shipped as the `bobbin calibrate` command (`src/cli/calibrate.rs` — `CalibrateArgs`, writes best config to `.bobbin/calibration.json`), wired as a CLI subcommand (`src/cli/mod.rs:84` `Calibrate(...)`), and auto-runs at the end of `bobbin index` (skippable via `--skip-calibrate`). Verified 2026-07-23.
+
 **Status**: COMPLETE — All 4 phases shipped (2026-02-26)
 
 ## Problem

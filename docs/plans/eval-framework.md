@@ -1,5 +1,7 @@
 # Bobbin Eval Framework
 
+> **Implementation status (2026-07-23, franklin):** ✅ **Implemented** — the framework exists as designed: `eval/runner/{cli,workspace,bobbin_setup,agent_runner,task_loader}.py`, `eval/scorer/{aggregator,diff_scorer,llm_judge,test_scorer,injection_scorer}.py`, 40 task YAMLs under `eval/tasks/*.yaml` (cargo/django/go/nushell/pandas/polars/ruff/typst), and the pairwise LLM judge `eval/prompts/pairwise_judge.md.j2` + `eval/scorer/llm_judge.py`. Verified by directory listing 2026-07-23. Additional study runners (`run-baseline-study.sh`, `run-ablation-study.sh`, `analyze-baselines.py`) wrap this core.
+
 ## Context
 
 Bobbin injects relevant code context into Claude Code via hooks, but we have no empirical proof it helps. We need a reproducible evaluation framework that compares Claude Code **with** and **without** bobbin on real coding tasks, using real human commits as ground truth. This serves two purposes: (1) guide iterative improvement of bobbin, and (2) produce compelling results to attract users.
