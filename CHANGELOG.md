@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-07-23
+
+### Added
+
+- *(deploy)* Glibc-safe build + gated, rollback-capable cutover([3b52b9a](https://github.com/scbrown/bobbin/commit/3b52b9aaf342228b0c54f72dc6d89d0daeeb7eb7))
+
+### CI/CD
+
+- *(release)* Adopt release-plz — config AND the job that executes it([749984c](https://github.com/scbrown/bobbin/commit/749984c048ecb024b121b2c59864b50869cf808c))
+
+### Fixed
+
+- *(release)* Track Cargo.lock — release-plz cannot determine versions without it([bbd8b3f](https://github.com/scbrown/bobbin/commit/bbd8b3f874a07b983d43cde1454578a1cb091207))
+- *(release)* Declare publish = false — the crates.io 'bobbin' is an unrelated crate([3ccdcc5](https://github.com/scbrown/bobbin/commit/3ccdcc581e7793363f2fba714a1a4ffa949499c5))
+- *(calibrate)* Auto-calibration failed every run — passed source tree as calibrate path instead of bobbin home([f94f7a0](https://github.com/scbrown/bobbin/commit/f94f7a0e31812275197ebcd7579b73e06c8deef3))
+- *(release)* Untrack committed-but-gitignored data files — they fail release-plz's clean-tree check([0ea99cd](https://github.com/scbrown/bobbin/commit/0ea99cd7f7ca2613ffa73cf38e0c6e82d68da49a))
+- *(release)* Release = true — release-plz skips publish=false crates by default([9563aae](https://github.com/scbrown/bobbin/commit/9563aaeac13a932d59afe4abdb453609edd6ed74))
+
 ## [Unreleased]
 
 ## [0.6.0] - 2026-07-13
