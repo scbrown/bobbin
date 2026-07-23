@@ -1,3 +1,11 @@
+---
+title: Access Control (RBAC)
+description: Role-based access control to restrict which repos and file paths are visible in search results.
+tags: [access-control, rbac, security, guide]
+status: draft
+category: guide
+---
+
 # Access Control (RBAC)
 
 Bobbin supports role-based access control to restrict which repos and file paths are visible in search results. This is especially useful in multi-agent environments like Gas Town, where different agents should only see repos relevant to their domain.

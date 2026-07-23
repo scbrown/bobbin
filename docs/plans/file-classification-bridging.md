@@ -1,5 +1,7 @@
 # Plan: File Classification + Git Temporal Awareness (Line-Level Provenance)
 
+> **Implementation status (2026-07-23, lowery):** ✅ Implemented — all four designed changes are live and tested, shipped richer than planned: `FileCategory`/`classify_file()` (`src/types.rs:262,326`), `blame_lines()` porcelain provenance + `BlameEntry` (`src/index/git.rs:553,35`), doc→source bridging → `FileRelevance::Bridged` (`src/search/context.rs:602,1778`), `=== Source Files ===`/`=== Documentation ===` sectioned output (`src/cli/hook.rs:2135,2143`), and the `show_docs` config + `--show-docs` flag (`src/config.rs:462`). Adds commit→source bridging, SZZ culprits, and config-driven file-type rules beyond the plan. Only open item is the plan's eval-outcome verification (source-file ratio / ground-truth overlap), a measurement not a code artifact.
+
 ## Context
 
 Bobbin's hook injection is dominated by changelog/markdown files (31/37 = 84% across 5 ruff eval tasks). Changelogs score high on semantic similarity because they mention feature names, but they're useless for fixing bugs. Ground truth overlap is ~6%.

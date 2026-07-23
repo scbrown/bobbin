@@ -1,5 +1,7 @@
 # Plan: Comprehensive Documentation Strategy (bo-rd42)
 
+> **Implementation status (2026-07-23, lowery):** ✅ Implemented — the full `docs/book/` mdbook (book.toml, all sections, SUMMARY.md, 26 CLI pages + 15 guides), the frontmatter schema, the Vale + markdownlint + prettier lint stack, the `just docs` recipe, `.github/workflows/docs.yml` CI (lint/vale/build/Pages-deploy), the coverage + frontmatter validation scripts, and both `bobbin prime` (CLI + MCP + primer.md) and `bobbin tour` all exist and match §1–§7. This PR closes the one actionable gap — frontmatter added to 4 guide pages that lacked it (bundles, tags-playbook, access-control, tags).
+
 ## Context
 
 Bobbin has ~16 CLI commands, MCP tools, and rich analysis features, but documentation is scattered across README.md, docs/commands.md (only 9 of 16 commands documented), docs/architecture.md, docs/configuration.md, and various internal plan/task/design docs. There's no unified documentation site, no linting, and no frontmatter metadata. The goal is a comprehensive mdbook, frontmatter schema that dogfoods bobbin's own indexing, doc linting with auto-formatting, a `bobbin prime` command for LLM users, and a process to keep docs current as features land.

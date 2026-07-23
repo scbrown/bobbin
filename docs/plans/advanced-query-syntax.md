@@ -1,5 +1,7 @@
 # Advanced Query Syntax
 
+> **Implementation status (2026-07-23, lowery):** 🟡 Partial — Server-side query language fully landed (`src/search/query.rs` parser + `filters_to_sql`, OR/NOT/regex execution in `src/http/handlers/search.rs`, filter-chip UI + `/suggest` autocomplete, ~40 tests). Gaps: the `bobbin search` CLI never calls the parser (raw FTS only), no `parsed` field in the JSON response, `+` shorthand is a no-op, and parenthesized/nested booleans are unimplemented (flat OR-split, no `Term` AST). Scoped in [#50](https://github.com/scbrown/bobbin/issues/50).
+
 **Status**: Design
 **Author**: ian (PO)
 **Date**: 2026-03-03

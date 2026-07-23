@@ -1,3 +1,11 @@
+---
+title: Tags Deployment Playbook
+description: A practical guide to deploying and iterating on bobbin's tag taxonomy across many repos.
+tags: [tags, deployment, playbook, guide]
+status: draft
+category: guide
+---
+
 # Tags Deployment Playbook
 
 A practical guide to deploying and iterating on bobbin's tag taxonomy. Based on

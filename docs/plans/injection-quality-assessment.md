@@ -1,5 +1,7 @@
 # Injection Context Quality Assessment
 
+> **Implementation status (2026-07-23, lowery):** ✅ Implemented — all 14 shipped quality features verified in code (FileCategory `types.rs:326`, doc→source `BridgeMode` `search/context.rs:14`, doc-demotion `context.rs:1143`, query preprocess `search/preprocess.rs`, recency `config.rs:280`, dedup/hot-topics/gate in `cli/hook.rs`, `cli/calibrate.rs` + auto-cal guard in `cli/index.rs`, calibration status in `cli/status.rs`); code has moved past the doc (gate 0.45 not 0.50, `search_limit` calibration-driven default 12 not hardcoded 20). Remaining items are the plan's own deferred Tier-3: embedding-model upgrade and chunk-boundary refinement (both still `all-MiniLM-L6-v2`) plus a fresh calibrated eval run — scoped in [#54](https://github.com/scbrown/bobbin/issues/54).
+
 _Strider patrol — 2026-02-22 (updated 2026-02-26)_
 
 ## Goal

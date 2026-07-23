@@ -1,3 +1,11 @@
+---
+title: Tags & Effects
+description: Control how bobbin scores and filters results by assigning tags via rules and configuring boost, demote, exclude, and pin effects.
+tags: [tags, scoring, effects, guide]
+status: draft
+category: guide
+---
+
 # Tags & Effects
 
 Tags let you control how bobbin scores and filters search results. By assigning

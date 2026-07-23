@@ -1,3 +1,11 @@
+---
+title: Context Bundles
+description: Curated knowledge anchors — named groups of files, symbols, docs, and keywords that bootstrap context for a topic instantly.
+tags: [bundles, context, guide]
+status: draft
+category: guide
+---
+
 # Context Bundles
 
 Context bundles are **curated knowledge anchors** — named groups of files, symbols, docs, and keywords that capture a concept or subsystem. They let agents (and humans) bootstrap context for a topic instantly instead of searching from scratch each time.

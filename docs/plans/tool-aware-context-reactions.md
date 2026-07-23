@@ -1,5 +1,7 @@
 # Tool-Aware Context Reactions
 
+> **Implementation status (2026-07-23, lowery):** 🟡 Partial — Rule engine, coupling, PostToolUse hook injection, session dedup, 5 built-in rules, and per-reaction injection IDs are implemented and tested (`src/reactions.rs`, wired in `src/cli/hook.rs`). Gaps: search-based reactions are built but unwired (`pending_searches` never called → `search_query`/`group`/`tags` inject no files; index-validation warnings therefore absent); metrics are JSONL `reaction_fired` events only, not the specified `bobbin_reaction_*` counters; Phase-4 feedback auto-tuning (per-rule aggregation, dashboard, noise auto-flag) not started. Same-repo search wiring + no-results + metrics scoped in [#53](https://github.com/scbrown/bobbin/issues/53); cross-`search_group` and feedback auto-tuning are larger follow-ons noted there.
+
 **Date**: 2026-03-02
 **Author**: aegis/crew/stryder
 **Status**: Draft v2 — incorporates Stiwi feedback
