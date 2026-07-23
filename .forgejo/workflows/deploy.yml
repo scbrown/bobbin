@@ -1,21 +1,35 @@
-# aegis-mqnl: internal hostnames/user/webhook were REMOVED from this
-# public file and replaced with Forgejo repo variables. If this workflow
-# still runs on a Forgejo instance, set: BUILD_HOST, BUILD_USER,
-# DEPLOY_HOST, DEPLOY_NOTIFY_URL — or it fails (loudly, by design).
-# Likely VESTIGIAL: bobbin migrated to GitHub, which does not run
-# .forgejo/ workflows. Kept parameterized rather than deleted, pending
-# owner confirmation it is retired.
+# Deploy Bobbin — glibc-safe build + gated, rollback-capable cutover (bobbin-nimn0).
+#
+# HISTORY / SCOPE. The previous deploy built on a remote build host and then `mv`d
+# the binary over the live one and restarted BEFORE anything checked it — so a
+# binary built for a newer glibc than the serving host (the build-host-glibc-drift
+# landmine) took the service DOWN with no rollback. This rewires both halves:
+#   - BUILD is glibc-safe BY CONSTRUCTION: bobbin's only build-time ABI constraint
+#     is glibc (ort/onnxruntime are dlopen'd at RUNTIME — `load-dynamic`), so we
+#     build in an image whose glibc is <= the serving host's. No CUDA/onnxruntime
+#     is needed in the build image.
+#   - CUTOVER is gated: scripts/deploy-cutover.sh runs `--version` on the STAGED
+#     binary ON THE SERVING HOST (where a glibc mismatch dies) before it can touch
+#     the live one, snapshots live -> bobbin.prev, atomic-swaps, and rolls back on
+#     any smoke failure. Proven by scripts/test-deploy-cutover.sh (no host needed).
+#
+# Internal hostnames are Forgejo repo variables (DEPLOY_HOST) / secrets, not baked
+# in (the scrub ratchet). RE-ENABLE / PLATFORM is the owner's call: this is a .forgejo/
+# workflow and bobbin's canonical remote is GitHub (which runs .github/ only), so
+# standing this back up means either a Forgejo runner labelled `deploy` (with docker
+# for the container build) or porting to .github/ on a self-hosted runner.
 name: Deploy Bobbin
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - 'src/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'scripts/deploy-cutover.sh'
       - '.forgejo/workflows/deploy.yml'
-  workflow_dispatch:
 
 jobs:
   deploy:
@@ -23,6 +37,9 @@ jobs:
     runs-on: deploy
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Setup SSH
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -34,105 +51,31 @@ jobs:
           mkdir -p ~/.ssh
           echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ vars.BUILD_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
           ssh-keyscan -H ${{ vars.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Build on build host
+      - name: Build (glibc-safe container)
         run: |
-          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
+          # glibc 2.31 (bullseye) <= the serving host's glibc, so the binary runs
+          # there regardless of the runner's own glibc. ort is load-dynamic, so no
+          # onnxruntime/CUDA is needed at build time — only rust + glibc. If this
+          # runner has no docker, the step fails HERE, loudly, before touching the
+          # serving host (a failed build is safe; a bad cutover is not).
+          docker run --rm \
+            -v "$PWD":/src -w /src \
+            -v bobbin-cargo-registry:/usr/local/cargo/registry \
+            rust:1-bullseye \
+            bash -euc 'cargo build --release && cargo test'
+          test -x target/release/bobbin
+          echo "built: $(file target/release/bobbin | cut -d, -f1-2)"
 
-          # Build in dedicated CI directory (preserves cargo cache across runs)
-          # Source: GitHub (canonical) — Forgejo mirror has divergent CLI code
-          $SSH ${{ vars.BUILD_USER }}@${{ vars.BUILD_HOST }} "
-            set -e
-            . ~/.cargo/env
-            if [ ! -d ~/bobbin-ci/.git ]; then
-              git clone git@github.com:scbrown/bobbin.git ~/bobbin-ci
-            fi
-            cd ~/bobbin-ci
-            # Ensure remote points to GitHub (migration from Forgejo)
-            git remote set-url origin git@github.com:scbrown/bobbin.git
-            git fetch origin main
-            git reset --hard origin/main
-            cargo build --release 2>&1 | tail -20
-            cargo test 2>&1 | tail -30
-            echo '---'
-            ls -lh target/release/bobbin
-          "
-
-      - name: Deploy to build host
+      - name: Cut over to serving host (gated + rollback)
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
         run: |
-          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
-          $SSH ${{ vars.BUILD_USER }}@${{ vars.BUILD_HOST }} "
-            cp ~/bobbin-ci/target/release/bobbin ~/.local/bin/bobbin
-            echo \"build host: \$(~/.local/bin/bobbin --version)\"
-          "
-
-      - name: Deploy to serving host
-        run: |
-          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
-          SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
-
-          # Pull binary from build host to runner
-          $SCP ${{ vars.BUILD_USER }}@${{ vars.BUILD_HOST }}:~/bobbin-ci/target/release/bobbin /tmp/bobbin
-
-          # Zero-downtime deploy: copy to staging path, then atomic mv + restart
-          # This minimizes the window where the binary is unavailable
-          $SCP /tmp/bobbin root@${{ vars.DEPLOY_HOST }}:/usr/local/bin/bobbin.new
-          $SSH root@${{ vars.DEPLOY_HOST }} "
-            chmod +x /usr/local/bin/bobbin.new
-            mv /usr/local/bin/bobbin.new /usr/local/bin/bobbin
-            mkdir -p /opt/bobbin
-            cp /usr/local/bin/bobbin /opt/bobbin/bobbin
-            systemctl restart bobbin
-          "
-          sleep 3
-
-          rm -f /tmp/bobbin
-
-      - name: Smoke test
-        run: |
-          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
-          PASSED=0
-          FAILED=0
-
-          # Test 1: build host binary works
-          VER=$($SSH ${{ vars.BUILD_USER }}@${{ vars.BUILD_HOST }} "~/.local/bin/bobbin --version" 2>&1) || VER="error"
-          if echo "$VER" | grep -q "bobbin"; then
-            echo "  PASS: build host — $VER"
-            PASSED=$((PASSED + 1))
-          else
-            echo "  FAIL: build host version — $VER"
-            FAILED=$((FAILED + 1))
-          fi
-
-          # Test 2: serving host service active
-          STATUS=$($SSH root@${{ vars.DEPLOY_HOST }} "systemctl is-active bobbin" 2>&1) || STATUS="unknown"
-          if [ "$STATUS" = "active" ]; then
-            echo "  PASS: serving host service active"
-            PASSED=$((PASSED + 1))
-          else
-            echo "  FAIL: serving host service — $STATUS"
-            FAILED=$((FAILED + 1))
-          fi
-
-          # Test 3: serving host HTTP health
-          HTTP=$($SSH root@${{ vars.DEPLOY_HOST }} "curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/status" 2>&1) || HTTP="000"
-          if [ "$HTTP" = "200" ]; then
-            echo "  PASS: serving host HTTP 200"
-            PASSED=$((PASSED + 1))
-          else
-            echo "  FAIL: serving host HTTP — $HTTP"
-            FAILED=$((FAILED + 1))
-          fi
-
-          echo ""
-          echo "=== Smoke: ${PASSED} passed, ${FAILED} failed ==="
-          if [ "$FAILED" -gt 0 ]; then exit 1; fi
-
-      - name: Cleanup
-        if: always()
-        run: rm -f /tmp/bobbin
+          # The atomic, --version-gated, rollback-capable cutover. A glibc-
+          # mismatched or otherwise-broken binary is REFUSED here and the live
+          # binary is left untouched (bobbin-nimn0). See the script for the contract.
+          bash scripts/deploy-cutover.sh target/release/bobbin
 
       - name: Notify (Success)
         if: success()
@@ -142,7 +85,7 @@ jobs:
             -d '{
               "status": "SUCCESS",
               "title": "Bobbin Deploy Complete",
-              "message": "Built and deployed to build + serving hosts, smoke tests passed",
+              "message": "Built (glibc-safe) and cut over to the serving host; gate + smoke passed",
               "ruleUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }' || echo "Webhook failed"
 
@@ -154,6 +97,6 @@ jobs:
             -d '{
               "status": "FAILED",
               "title": "Bobbin Deploy Failed",
-              "message": "Build or deploy failed — check CI logs",
+              "message": "Build failed, or cutover was REFUSED / rolled back (serving host untouched or restored) — check CI logs",
               "ruleUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }' || echo "Webhook failed"
