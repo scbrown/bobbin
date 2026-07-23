@@ -1,5 +1,7 @@
 # Bobbin: Tool-Result Context + Breadcrumb System
 
+> **Implementation status (2026-07-23, dearing):** ⬜ **Planned — not started.** Verified by mechanism: zero breadcrumb code exists. No `tool_response` field on `PostToolUseInput` (src/cli/hook.rs:2002 has only tool_name/tool_input/cwd/session_id), no `DiscoveredFiles` dispatch mode (hook.rs:3717 lists only EditRelated/SearchQuery/RefsOnly/ReactionsOnly), no `src/breadcrumb.rs` / `src/cli/breadcrumb.rs`, no `Breadcrumb`/`BreadcrumbStore` types (0 hits), no `bobbin bc` command, no `.bobbin/breadcrumbs.json`. The pre-existing `dp record` is unrelated (source claude-code, predates this plan). Greenfield multi-file work across all three features — scoped in a GitHub issue.
+
 ## Context
 
 Agents waste significant time rediscovering context across sessions. Two gaps:

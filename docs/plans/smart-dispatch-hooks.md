@@ -1,5 +1,7 @@
 # Plan: Smart Dispatch — Tool-Aware Hook Responses
 
+> **Implementation status (2026-07-23, dearing):** ✅ **Implemented.** All four phases are working code in src/cli/hook.rs: PostToolUse always does real work + emits `hook_post_tool_use` (run_post_tool_use_inner:3705, metric:4357); Edit/Write→related via `DispatchMode::EditRelated` + `get_coupling` (:3718/:3941); Bash grep/find/rg + Grep + Glob → semantic search (extract_search_query_from_bash:3475, clean_regex_for_search:3638, guarded by is_meaningful_search_query:3661); Read/Edit → symbol refs (RefsOnly:3720, refs section:4101 via RefAnalyzer::list_symbols/find_refs); dedup + budget gating (:3707/:4104). Installed matcher `Write|Edit|Bash|Grep|Glob|Read` (:507). 🟡 Small follow-up: the plan's named A/B eval metrics (dispatch_hit_rate, turns_to_edit) aren't aggregated, though the raw per-event data is emitted (:4364) — eval-harness side, not a code defect. The account-settings install fix was a Gas Town env change, not a bobbin deliverable (by the plan's own Risks note).
+
 _Strider — 2026-02-27_
 
 ## Problem
