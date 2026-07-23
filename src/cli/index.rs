@@ -1369,7 +1369,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             load_calibration, CalibrateArgs, CalibrationGuard, DefaultCalibrationGuard,
         };
 
-        let calibration = load_calibration(&source_root);
+        // Calibration state (calibration.json) lives in the bobbin HOME's .bobbin data
+        // dir — read it from repo_root, NOT source_root. Reading from source_root (no
+        // .bobbin there) always returned None, so the guard recalibrated EVERY run
+        // (bobbin-ewtu2 defect 1a).
+        let calibration = load_calibration(&repo_root);
         // Capture a lightweight snapshot for the guard check
         let guard_snapshot = super::calibrate::capture_snapshot_from_index(
             vector_store.count().await.unwrap_or(0) as usize,
@@ -1379,7 +1383,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             if !output.quiet && !output.json {
                 eprintln!("  Calibrating search parameters...");
             }
-            let cal_args = CalibrateArgs::default_for_auto(source_root.clone());
+            // path=repo_root (home) so calibrate's init check finds .bobbin/config.toml;
+            // source=source_root so it samples the indexed git tree; repo carries the
+            // multi-repo name. Passing source_root as path was bobbin-ewtu2 defect 1b.
+            let cal_args = CalibrateArgs::default_for_auto(
+                repo_root.clone(),
+                args.repo.clone(),
+                Some(source_root.clone()),
+            );
             // Use quiet output — calibration is a background step, not the primary command
             let cal_output = OutputConfig {
                 json: false,

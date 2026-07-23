@@ -1501,7 +1501,13 @@ impl CalibrationGuard for DefaultCalibrationGuard {
 
 impl CalibrateArgs {
     /// Construct args suitable for auto-calibration after indexing.
-    pub fn default_for_auto(path: PathBuf) -> Self {
+    ///
+    /// `path` must be the bobbin HOME (repo_root) — where `.bobbin/config.toml` and
+    /// `calibration.json` live — NOT the indexed source tree. `source`/`repo` carry the
+    /// git tree to sample commits from. Passing the source tree as `path` (the bobbin-ewtu2
+    /// bug) makes calibrate's `config_path(path)` check miss `.bobbin/config.toml` and bail
+    /// "Bobbin not initialized", which fired on every incremental run.
+    pub fn default_for_auto(path: PathBuf, repo: Option<String>, source: Option<PathBuf>) -> Self {
         Self {
             samples: 20,
             since: "6 months ago".to_string(),
@@ -1512,8 +1518,8 @@ impl CalibrateArgs {
             full: false,
             resume: false,
             bridge_sweep: false,
-            repo: None,
-            source: None,
+            repo,
+            source,
             path,
         }
     }
@@ -1867,13 +1873,25 @@ mod tests {
 
     #[test]
     fn test_default_for_auto() {
-        let args = CalibrateArgs::default_for_auto(PathBuf::from("/tmp/test"));
+        let home = PathBuf::from("/var/lib/bobbin");
+        let source = PathBuf::from("/var/lib/bobbin/repos/demo");
+        let args = CalibrateArgs::default_for_auto(
+            home.clone(),
+            Some("demo".to_string()),
+            Some(source.clone()),
+        );
         assert!(args.apply);
         assert!(!args.verbose);
         assert_eq!(args.samples, 20);
         assert_eq!(args.search_limit, Some(20));
         assert_eq!(args.budget, Some(300));
-        assert_eq!(args.path, PathBuf::from("/tmp/test"));
+        // bobbin-ewtu2 regression guard: path MUST be the bobbin home (where
+        // .bobbin/config.toml lives) so the init check passes — NOT the source tree.
+        // repo/source must carry the git tree to sample. Reverting any of these
+        // reintroduces the "Bobbin not initialized" failure on every incremental run.
+        assert_eq!(args.path, home);
+        assert_eq!(args.repo, Some("demo".to_string()));
+        assert_eq!(args.source, Some(source));
     }
 
     #[test]
