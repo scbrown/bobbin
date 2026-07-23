@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 use super::OutputConfig;
 use crate::access::RepoFilter;
-use crate::analysis::impact::{ImpactAnalyzer, ImpactConfig, ImpactMode, ImpactSignal};
+use crate::analysis::backend::{IndexBackend, StructuralBackend};
+use crate::analysis::impact::{ImpactConfig, ImpactMode, ImpactSignal};
 use crate::config::Config;
 use crate::index::Embedder;
 use crate::storage::{MetadataStore, VectorStore};
@@ -100,17 +101,18 @@ pub async fn run(args: ImpactArgs, output: OutputConfig) -> Result<()> {
         limit: args.limit,
     };
 
-    let metadata_store = MetadataStore::open(&Config::db_path(&repo_root))
+    let mut metadata_store = MetadataStore::open(&Config::db_path(&repo_root))
         .context("Failed to open metadata store")?;
-    let vector_store = VectorStore::open(&Config::lance_path(&repo_root))
+    let mut vector_store = VectorStore::open(&Config::lance_path(&repo_root))
         .await
         .context("Failed to open vector store")?;
     let model_dir = Config::model_cache_dir()?;
-    let embedder = Embedder::from_config(&config.embedding, &model_dir)?;
+    let mut embedder = Embedder::from_config(&config.embedding, &model_dir)?;
 
-    let mut analyzer = ImpactAnalyzer::new(metadata_store, vector_store, embedder);
-    let results = analyzer
-        .analyze(&args.target, &impact_config, args.depth, args.repo.as_deref())
+    let mut backend =
+        IndexBackend::with_impact(&mut vector_store, &mut metadata_store, &mut embedder);
+    let results = backend
+        .impact(&args.target, &impact_config, args.depth, args.repo.as_deref())
         .await?;
 
     // Apply role-based access filtering

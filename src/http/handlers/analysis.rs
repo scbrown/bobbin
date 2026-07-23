@@ -8,9 +8,9 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
+use crate::analysis::backend::{IndexBackend, StructuralBackend};
 use crate::analysis::complexity::ComplexityAnalyzer;
-use crate::analysis::impact::{ImpactAnalyzer, ImpactConfig, ImpactMode, ImpactSignal};
-use crate::analysis::refs::RefAnalyzer;
+use crate::analysis::impact::{ImpactConfig, ImpactMode, ImpactSignal};
 use crate::index::GitAnalyzer;
 
 use super::{
@@ -175,8 +175,8 @@ pub(super) async fn find_refs(
     let limit = params.limit.unwrap_or(20);
 
     let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
-    let mut analyzer = RefAnalyzer::new(&mut vector_store);
-    let refs = analyzer
+    let mut backend = IndexBackend::new(&mut vector_store);
+    let refs = backend
         .find_refs(
             &params.symbol,
             params.r#type.as_deref(),
@@ -268,8 +268,8 @@ pub(super) async fn list_symbols(
     }
 
     let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
-    let analyzer = RefAnalyzer::new(&mut vector_store);
-    let file_symbols = analyzer
+    let mut backend = IndexBackend::new(&mut vector_store);
+    let file_symbols = backend
         .list_symbols(&params.file, params.repo.as_deref())
         .await
         .map_err(internal_error)?;
@@ -460,13 +460,14 @@ pub(super) async fn impact(
         limit,
     };
 
-    let metadata_store = open_metadata_store(&state).map_err(internal_error)?;
-    let vector_store = open_vector_store(&state).await.map_err(internal_error)?;
-    let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
+    let mut metadata_store = open_metadata_store(&state).map_err(internal_error)?;
+    let mut vector_store = open_vector_store(&state).await.map_err(internal_error)?;
+    let mut embedder = state.get_embedder().await.map_err(internal_error)?.clone();
 
-    let mut analyzer = ImpactAnalyzer::new(metadata_store, vector_store, embedder);
-    let results = analyzer
-        .analyze(&params.target, &impact_config, depth, params.repo.as_deref())
+    let mut backend =
+        IndexBackend::with_impact(&mut vector_store, &mut metadata_store, &mut embedder);
+    let results = backend
+        .impact(&params.target, &impact_config, depth, params.repo.as_deref())
         .await
         .map_err(internal_error)?;
 

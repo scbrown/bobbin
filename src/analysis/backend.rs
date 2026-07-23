@@ -33,8 +33,23 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use super::impact::{ImpactConfig, ImpactResult};
+use super::impact::{ImpactAnalyzer, ImpactConfig, ImpactResult};
 use super::refs::{FileSymbols, RefAnalyzer, SymbolRefs};
+use crate::index::Embedder;
+use crate::storage::{MetadataStore, VectorStore};
+
+/// The ops a [`StructuralBackend`] may serve, for per-op capability probing.
+///
+/// Whether a backend serves an op is a property of the CONSTRUCTED backend
+/// (which stores/engine endpoints it was given), not of the type — probe with
+/// [`StructuralBackend::supports`] before calling; an unsupported op errors
+/// loudly rather than downgrading.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StructuralOp {
+    FindRefs,
+    ListSymbols,
+    Impact,
+}
 
 /// The structural operations bobbin exposes, as a swappable capability.
 ///
@@ -52,6 +67,11 @@ pub trait StructuralBackend: Send {
     /// precision differs across backends, and an answer that does not say
     /// where it came from cannot be trusted at the right tier.
     fn name(&self) -> &'static str;
+
+    /// Whether this backend, as constructed, serves the given op. Callers
+    /// probe here instead of assuming from the backend's presence; calling an
+    /// unsupported op is an error, never a silent downgrade.
+    fn supports(&self, op: StructuralOp) -> bool;
 
     /// Find a symbol's definition(s) and usages.
     async fn find_refs(
@@ -78,14 +98,47 @@ pub trait StructuralBackend: Send {
 /// The index-backed implementation: bobbin's existing analyzers, unchanged in
 /// behavior, now reachable through the seam. This is the reference
 /// implementation an engine backend must meet or beat per-op.
+///
+/// Holds the store handles directly and constructs the analyzers per-op, so
+/// one backend can serve ops with different store needs (`find_refs` /
+/// `list_symbols` need the vector store; `impact` additionally needs the
+/// metadata store and embedder). Impact capability is what it was CONSTRUCTED
+/// with — [`Self::new`] serves refs/symbols only, [`Self::with_impact`] all
+/// three — and is reported honestly through `supports`.
 pub struct IndexBackend<'a> {
-    refs: RefAnalyzer<'a>,
+    vector_store: &'a mut VectorStore,
+    impact_deps: Option<ImpactDeps<'a>>,
+}
+
+/// The extra stores `impact` needs beyond the vector store. Mutable borrows
+/// for the same `Send`-without-`Sync` reason as [`ImpactAnalyzer`].
+struct ImpactDeps<'a> {
+    metadata_store: &'a mut MetadataStore,
+    embedder: &'a mut Embedder,
 }
 
 impl<'a> IndexBackend<'a> {
-    pub fn new(vector_store: &'a mut crate::storage::VectorStore) -> Self {
+    /// A backend serving `find_refs` and `list_symbols`; `impact` is
+    /// unsupported (probe `supports`, calls error loudly).
+    pub fn new(vector_store: &'a mut VectorStore) -> Self {
         Self {
-            refs: RefAnalyzer::new(vector_store),
+            vector_store,
+            impact_deps: None,
+        }
+    }
+
+    /// A backend serving all ops, including `impact`.
+    pub fn with_impact(
+        vector_store: &'a mut VectorStore,
+        metadata_store: &'a mut MetadataStore,
+        embedder: &'a mut Embedder,
+    ) -> Self {
+        Self {
+            vector_store,
+            impact_deps: Some(ImpactDeps {
+                metadata_store,
+                embedder,
+            }),
         }
     }
 }
@@ -96,6 +149,13 @@ impl<'a> StructuralBackend for IndexBackend<'a> {
         "index"
     }
 
+    fn supports(&self, op: StructuralOp) -> bool {
+        match op {
+            StructuralOp::FindRefs | StructuralOp::ListSymbols => true,
+            StructuralOp::Impact => self.impact_deps.is_some(),
+        }
+    }
+
     async fn find_refs(
         &mut self,
         symbol_name: &str,
@@ -103,31 +163,38 @@ impl<'a> StructuralBackend for IndexBackend<'a> {
         limit: usize,
         repo: Option<&str>,
     ) -> Result<SymbolRefs> {
-        self.refs
+        RefAnalyzer::new(self.vector_store)
             .find_refs(symbol_name, symbol_type, limit, repo)
             .await
     }
 
     async fn list_symbols(&mut self, file_path: &str, repo: Option<&str>) -> Result<FileSymbols> {
-        self.refs.list_symbols(file_path, repo).await
+        RefAnalyzer::new(self.vector_store)
+            .list_symbols(file_path, repo)
+            .await
     }
 
     async fn impact(
         &mut self,
-        _target: &str,
-        _config: &ImpactConfig,
-        _depth: u32,
-        _repo: Option<&str>,
+        target: &str,
+        config: &ImpactConfig,
+        depth: u32,
+        repo: Option<&str>,
     ) -> Result<Vec<ImpactResult>> {
-        // ImpactAnalyzer carries its own store handle and config; routing it
-        // through the seam is the next increment (it needs the analyzer's
-        // constructor signature untangled from the CLI). Deliberately
-        // unimplemented rather than half-wired: an op is either behind the
-        // seam or it is not.
-        anyhow::bail!(
-            "impact is not routed through the structural seam yet — call ImpactAnalyzer directly \
-             (seam increment tracked in the swappable-backend work)"
-        )
+        let Some(deps) = self.impact_deps.as_mut() else {
+            // Loud, not a downgrade: the caller constructed this backend
+            // without the impact stores — that is a wiring bug at the call
+            // site, not a reason to answer from a weaker signal.
+            anyhow::bail!(
+                "impact is not available on the '{}' backend as constructed — it needs the \
+                 metadata store and embedder (IndexBackend::with_impact); probe \
+                 supports(StructuralOp::Impact) before calling",
+                "index"
+            )
+        };
+        ImpactAnalyzer::new(deps.metadata_store, self.vector_store, deps.embedder)
+            .analyze(target, config, depth, repo)
+            .await
     }
 }
 

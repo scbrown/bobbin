@@ -26,9 +26,9 @@ use crate::index::Embedder;
 use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig, FileRelevance};
 use crate::search::{HybridSearch, SemanticSearch};
 use crate::storage::{FeedbackStore, MetadataStore, VectorStore};
+use crate::analysis::backend::{IndexBackend, StructuralBackend};
 use crate::analysis::complexity::ComplexityAnalyzer;
-use crate::analysis::impact::{ImpactAnalyzer, ImpactConfig, ImpactMode, ImpactSignal};
-use crate::analysis::refs::RefAnalyzer;
+use crate::analysis::impact::{ImpactConfig, ImpactMode, ImpactSignal};
 use crate::analysis::similar::{SimilarTarget, SimilarityAnalyzer};
 use crate::tags::{build_tag_exclude_filter, build_tag_include_filter};
 use crate::index::GitAnalyzer;
@@ -892,8 +892,8 @@ impl BobbinMcpServer {
         let mut vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let mut analyzer = RefAnalyzer::new(&mut vector_store);
-        let refs = analyzer
+        let mut backend = IndexBackend::new(&mut vector_store);
+        let refs = backend
             .find_refs(&req.symbol, req.r#type.as_deref(), limit, req.repo.as_deref())
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -935,8 +935,8 @@ impl BobbinMcpServer {
         let mut vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let analyzer = RefAnalyzer::new(&mut vector_store);
-        let file_symbols = analyzer
+        let mut backend = IndexBackend::new(&mut vector_store);
+        let file_symbols = backend
             .list_symbols(&req.file, req.repo.as_deref())
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -1109,18 +1109,19 @@ impl BobbinMcpServer {
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let metadata_store = self.open_metadata_store()
+        let mut metadata_store = self.open_metadata_store()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-        let vector_store = self.open_vector_store().await
+        let mut vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let model_dir = Config::model_cache_dir()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-        let embedder = Embedder::from_config(&config.embedding, &model_dir)
+        let mut embedder = Embedder::from_config(&config.embedding, &model_dir)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let mut analyzer = ImpactAnalyzer::new(metadata_store, vector_store, embedder);
-        let results = analyzer
-            .analyze(&req.target, &impact_config, depth, req.repo.as_deref())
+        let mut backend =
+            IndexBackend::with_impact(&mut vector_store, &mut metadata_store, &mut embedder);
+        let results = backend
+            .impact(&req.target, &impact_config, depth, req.repo.as_deref())
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 

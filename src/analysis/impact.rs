@@ -56,17 +56,25 @@ impl Default for ImpactConfig {
 
 /// Analyzes what code is affected when a target file or function changes,
 /// by combining coupling, semantic similarity, and dependency signals.
-pub struct ImpactAnalyzer {
-    metadata_store: MetadataStore,
-    vector_store: VectorStore,
-    embedder: Embedder,
+///
+/// Borrows its stores rather than owning them so it can sit behind the
+/// structural-backend seam ([`crate::analysis::backend::StructuralBackend`]),
+/// where the backend holds the store handles and constructs analyzers per-op.
+/// The borrows are mutable not because the ops mutate — every store call is
+/// `&self` — but because `&mut T` keeps the handler futures `Send` without
+/// requiring `Sync` from stores that don't have it (`MetadataStore` wraps a
+/// `rusqlite::Connection`: `Send`, not `Sync`).
+pub struct ImpactAnalyzer<'a> {
+    metadata_store: &'a mut MetadataStore,
+    vector_store: &'a mut VectorStore,
+    embedder: &'a mut Embedder,
 }
 
-impl ImpactAnalyzer {
+impl<'a> ImpactAnalyzer<'a> {
     pub fn new(
-        metadata_store: MetadataStore,
-        vector_store: VectorStore,
-        embedder: Embedder,
+        metadata_store: &'a mut MetadataStore,
+        vector_store: &'a mut VectorStore,
+        embedder: &'a mut Embedder,
     ) -> Self {
         Self {
             metadata_store,
