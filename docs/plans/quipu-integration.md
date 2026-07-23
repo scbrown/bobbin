@@ -7,6 +7,14 @@
 > integration sits behind the `knowledge` feature that **no build path enables**, so it is absent from every
 > shipped binary and uncompiled by CI. Same single gate as the PPR re-ranker — un-darking scoped in **GH #56**.
 
+> **Graph-export substrate (2026-07-23, billy — additive to harding's block above):**
+> Phase 4's "query a **selected subset** of graphs" (and later federation) rests on
+> Quipu's named-graph (quad) support, quipu #36. Its store layer shipped; the SPARQL
+> query surface (`GRAPH <iri>` / `GRAPH ?g`) that lets a consumer read one named
+> subgraph is added in [quipu#49](https://github.com/scbrown/quipu/pull/49). So the
+> export substrate is landing upstream even while this integration stays feature-dark
+> (GH #56).
+
 > Bobbin holds the thread (code context). Quipu ties knots of structured meaning into it.
 
 ## Goal
