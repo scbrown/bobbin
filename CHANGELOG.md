@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-07-23
+
+### Documentation
+
+- *(plans)* Status-label the 3 hardening/metrics/hooks plans vs main([aa3f24c](https://github.com/scbrown/bobbin/commit/aa3f24c2f84e14877b0847587dfc5b44f471619c))
+- *(plans)* Label 5 plan docs with implementation status + frontmatter for 4 guide pages([ef2714a](https://github.com/scbrown/bobbin/commit/ef2714a3c591f3ea8504ee340adaec2b9a337563))
+- *(plans)* Status-label the 4 eval plans — all implemented/record ( sweep) (#48)([3c324e7](https://github.com/scbrown/bobbin/commit/3c324e7af60b9a641f1c0876673275bbe5361cbd))
+- *(plans)* Label 4 plan docs with verified implementation status (#49)([a9ca093](https://github.com/scbrown/bobbin/commit/a9ca0933611c9fb880e8330db0074fc2ca79a19f))
+- *(plans)* Status-label the last 6 plan docs — 3 done, 2 dark-behind-a-feature, 1 backlog([6d14759](https://github.com/scbrown/bobbin/commit/6d147594a136615a72dcc90a1cd6dcb58b38484e))
+
+### Fixed
+
+- *(release)* Match release-plz git_tag_name to the repo's v-prefix tags([e064e56](https://github.com/scbrown/bobbin/commit/e064e5634add7c1ac5d5d53fe379e475b02aaa5c))
+- *(release)* Move publish restriction out of the manifest so release-plz opens PRs([a8cffbe](https://github.com/scbrown/bobbin/commit/a8cffbe784815cdf7677c4fb14253cf3e249688a))
+
 ## [0.6.0] - 2026-07-13
 
 Multimodal PDF ingest, index-freshness safety net, and two indexing/telemetry
