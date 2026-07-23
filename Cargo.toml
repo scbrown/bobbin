@@ -1,6 +1,15 @@
 [package]
 name = "bobbin"
-publish = false
+# publish restriction lives in release-plz.toml [workspace] (publish = false),
+# NOT here in the manifest. A manifest-level `publish = false` excludes the
+# package from release-plz's release-PR processing entirely — release-plz.toml
+# `release = true` re-includes it only for the tag/release step, not the
+# version-bump PR — so release-plz answered "nothing to release" over real
+# feats and every version was hand-cut. quipu (whose release-plz works)
+# controls publish from release-plz.toml alone with no manifest guard; this
+# matches that proven shape. Safe: the crates.io `bobbin` name is owned by an
+# unrelated party, so an accidental `cargo publish` errors on ownership rather
+# than leaking anything.
 version = "0.6.3"
 edition = "2021"
 authors = ["Bobbin Team"]
