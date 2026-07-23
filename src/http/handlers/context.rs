@@ -168,10 +168,32 @@ pub(super) async fn context(
         feedback_boost_weight: state.config.feedback.boost_weight,
         repo_path_prefix: state.config.server.repo_path_prefix.clone(),
         feedback_scores,
+        // PPR ranking signal: weight from config, and repo_root so the seed IRIs are
+        // built repo-relative (the seed-IRI path-keying fix) — else every seed misses.
+        ppr_weight: state.config.search.ppr_weight,
+        repo_root: Some(state.repo_root.clone()),
         ..ContextConfig::default()
     };
 
     let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+
+    // Wire the Quipu store so PPR runs on the served /context path too (knowledge build only).
+    // Mirrors cli/context.rs; without this the HTTP endpoint left quipu_store None and PPR was dark
+    // in the serve path even in a --features knowledge binary.
+    #[cfg(feature = "knowledge")]
+    if state.config.search.ppr_weight > 0.0 {
+        let quipu_config = quipu::QuipuConfig::load(&state.repo_root);
+        let qpath = if quipu_config.store_path.is_relative() {
+            state.repo_root.join(&quipu_config.store_path)
+        } else {
+            quipu_config.store_path.clone()
+        };
+        match quipu::Store::open(qpath.to_string_lossy().as_ref()) {
+            Ok(store) => assembler = assembler.with_quipu_store(store),
+            Err(e) => tracing::warn!("PPR enabled but Quipu store unavailable: {}", e),
+        }
+    }
+
     let mut bundle = assembler
         .assemble(&params.q, params.repo.as_deref())
         .await
