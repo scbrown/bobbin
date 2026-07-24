@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-07-24
+
+### Added
+
+- *(deploy)* Fail the cutover on a featureless binary, not just a glibc mismatch([7aafb2c](https://github.com/scbrown/bobbin/commit/7aafb2c51ce69b417faeff2b9c0fc6d6a6feae85))
+
+### Fixed
+
+- *(deploy)* Build the shipped binary WITH --features knowledge([864c710](https://github.com/scbrown/bobbin/commit/864c710d34123adea091885f52b0f41773a6bd8a))
+- *(beads)* /beads pushes the Issue filter into LanceDB instead of over-fetch-then-filter([2eba8f2](https://github.com/scbrown/bobbin/commit/2eba8f29447ec57da16c1eb6522f49eca1e7154a))
+
 ## [0.6.0] - 2026-07-13
 
 Multimodal PDF ingest, index-freshness safety net, and two indexing/telemetry
