@@ -26,6 +26,10 @@ case "$cmd" in
   *--version*)              # the LIVE binary's --version (smoke)
     [ "${MOCK_SMOKE_VER:-good}" = bad ] && exit 1
     echo "bobbin 0.6.0"; exit 0 ;;
+  *grep*Knowledge\ graph\ tools*bobbin.new*)  # THE FEATURE GATE — sentinel probe on the staged binary
+    # grep exits 0 when the featureless sentinel is FOUND. Default: a knowledge
+    # build (sentinel absent) -> exit 1. MOCK_STAGE_FEATURE=featureless -> found -> 0.
+    [ "${MOCK_STAGE_FEATURE:-knowledge}" = featureless ] && exit 0 ; exit 1 ;;
   *is-active*)
     [ "${MOCK_SMOKE_ACTIVE:-good}" = bad ] && exit 1 ; exit 0 ;;
   *curl*)
@@ -79,6 +83,24 @@ check "good binary deploys + prev snapshot exists" 0 $? \
 run_cutover MOCK_STAGE=good MOCK_SMOKE_HTTP=bad
 check "smoke failure rolls back to prev" 1 $? \
   "cp -f '/opt/bobbin/bobbin.prev' '/usr/local/bin/bobbin'"
+
+# 4. FEATURE GATE (deploy-feature regression): a featureless staged binary passes --version but MUST
+#    be refused by the knowledge probe — no cutover, live binary untouched.
+run_cutover MOCK_STAGE=good MOCK_STAGE_FEATURE=featureless
+check "featureless binary is REFUSED, no cutover" 1 $? \
+  "!mv -f '/usr/local/bin/bobbin.new' '/usr/local/bin/bobbin'" \
+  "!systemctl restart bobbin"
+
+# 5. A knowledge-enabled binary passes the feature gate and deploys normally.
+run_cutover MOCK_STAGE=good MOCK_STAGE_FEATURE=knowledge
+check "knowledge binary passes the feature gate + deploys" 0 $? \
+  "mv -f '/usr/local/bin/bobbin.new' '/usr/local/bin/bobbin'"
+
+# 6. The escape hatch: REQUIRE_KNOWLEDGE=0 lets a featureless binary through
+#    deliberately (never silently — the operator typed it).
+run_cutover MOCK_STAGE=good MOCK_STAGE_FEATURE=featureless REQUIRE_KNOWLEDGE=0
+check "REQUIRE_KNOWLEDGE=0 allows a deliberate featureless deploy" 0 $? \
+  "mv -f '/usr/local/bin/bobbin.new' '/usr/local/bin/bobbin'"
 
 echo "cutover selftest: ${pass} passed, ${fail} failed"
 [ "$fail" -eq 0 ]

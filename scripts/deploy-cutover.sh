@@ -59,6 +59,29 @@ if ! ver="$(on_host "'$STAGE' --version" 2>&1)" || ! printf '%s' "$ver" | grep -
 fi
 echo "gate PASS on $HOST: $ver"
 
+# --- 1b. THE FEATURE GATE: the staged binary must be knowledge-enabled -------
+# --version is an ABI probe; it CANNOT tell a knowledge build from a featureless
+# one (a featureless binary prints its version and passes step 1 cleanly). That
+# gap shipped a real risk (deploy-feature regression): `cargo build --release` without
+# `--features knowledge` produces a binary that passes the gate and then silently
+# breaks the live knowledge_query / knowledge_context MCP tools fleet-wide.
+# The build now forces the feature, but the SMOKE-GATE must catch a featureless
+# binary regardless of how it was built — a gate that only trusts the build is
+# one careless build-flag edit away from the outage it exists to prevent.
+#
+# Positive detector: the string below is compiled in ONLY under
+# cfg(not(feature="knowledge")) (src/mcp/server.rs), so its PRESENCE in the binary
+# is proof of a featureless build. `grep -a` needs no `strings` on the host.
+# Escape hatch for a deliberate featureless deploy: REQUIRE_KNOWLEDGE=0.
+if [ "${REQUIRE_KNOWLEDGE:-1}" = 1 ]; then
+  if on_host "grep -qa \"Knowledge graph tools require the 'knowledge' feature\" '$STAGE'"; then
+    echo "::error::REFUSED cutover — staged binary was built WITHOUT --features knowledge (the featureless sentinel is present). It would break knowledge_query/knowledge_context. Rebuild with --features knowledge, or set REQUIRE_KNOWLEDGE=0 to deploy featureless deliberately." >&2
+    on_host "rm -f '$STAGE'" || true
+    exit 1
+  fi
+  echo "feature gate PASS on $HOST: knowledge-enabled"
+fi
+
 # --- 2. snapshot the live binary, then atomic swap + restart ----------------
 on_host "mkdir -p \"\$(dirname '$PREV')\" && cp -f '$LIVE' '$PREV' && mv -f '$STAGE' '$LIVE' && cp -f '$LIVE' /opt/bobbin/bobbin && systemctl restart bobbin"
 sleep "${SMOKE_WAIT:-3}"
