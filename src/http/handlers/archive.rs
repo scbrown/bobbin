@@ -440,16 +440,21 @@ pub(super) async fn search_beads(
     let mut search =
         HybridSearch::new(embedder, vector_store, state.config.search.semantic_weight);
 
+    // Push the Issue filter INTO the LanceDB query instead of over-fetching the
+    // whole corpus and keeping Issue chunks in Rust. Issue chunks are ~0.1% of the
+    // index, so for a common-term query the top limit*5 candidates were all
+    // code/markdown and the post-filter yielded ZERO — /beads?q=dolt returned
+    // nothing while /search?q=dolt&mode=keyword returned the same beads.
+    // search_filtered pushes `chunk_type = 'issue'` into both the semantic and
+    // keyword halves (the exact pattern the archive /search path uses above), so
+    // retrieval returns Issue chunks directly and never starves. The predicate
+    // value is lowercase 'issue' to match chunk_type_to_str (storage/lance.rs).
     let search_results = search
-        .search(&params.q, limit * 5, None)
+        .search_filtered(&params.q, limit, None, Some("chunk_type = 'issue'"))
         .await
         .map_err(|e| internal_error(e.into()))?;
 
-    // Filter to only Issue chunks
-    let mut filtered: Vec<SearchResult> = search_results
-        .into_iter()
-        .filter(|r| r.chunk.chunk_type == ChunkType::Issue)
-        .collect();
+    let mut filtered: Vec<SearchResult> = search_results.into_iter().collect();
 
     // Apply rig filter
     if let Some(ref rig) = params.rig {
