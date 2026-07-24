@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-07-24
+
+### Fixed
+
+- *(deploy)* Build the shipped binary WITH --features knowledge([864c710](https://github.com/scbrown/bobbin/commit/864c710d34123adea091885f52b0f41773a6bd8a))
+
 ## [0.6.0] - 2026-07-13
 
 Multimodal PDF ingest, index-freshness safety net, and two indexing/telemetry
