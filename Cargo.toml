@@ -10,7 +10,7 @@ name = "bobbin"
 # matches that proven shape. Safe: the crates.io `bobbin` name is owned by an
 # unrelated party, so an accidental `cargo publish` errors on ownership rather
 # than leaking anything.
-version = "0.6.3"
+version = "0.6.4"
 edition = "2021"
 authors = ["Bobbin Team"]
 description = "Local-first context injection engine for AI coding agents"
