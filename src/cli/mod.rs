@@ -39,7 +39,11 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(name = "bobbin")]
 #[command(about = "Local-first code context engine")]
-#[command(version)]
+// version carries the git sha too: "0.6.4 (a1b2c3d)" — a deployed-commit probe. `bobbin 0.6.4`
+// alone is ambiguous — the tag and several commits past it share it — so a
+// version-equality drift check would report CURRENT for a stale binary. The HTTP
+// /version route is the preferred probe (no ssh needed); this is the on-host fallback.
+#[command(version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("BOBBIN_GIT_SHA"), ")"))]
 pub struct Cli {
     #[command(subcommand)]
     command: Commands,

@@ -56,6 +56,41 @@ pub(super) async fn status(
 }
 
 // ---------------------------------------------------------------------------
+// /version — the deployed-commit probe
+// ---------------------------------------------------------------------------
+//
+// Emits the build's git sha + dirty flag + feature set so a deploy is VERIFIABLE:
+// the CD driver can assert the running service reports the sha it just built,
+// instead of trusting a bare 200. Mirrors quipu's /version JSON shape
+// ({version, git_sha, git_dirty, features}) so the CD manifest can treat both the
+// same way. `knowledge` is surfaced because a featureless build silently disables
+// the knowledge MCP tools — this lets a probe catch that at runtime too.
+
+#[derive(Serialize)]
+pub(super) struct VersionFeatures {
+    knowledge: bool,
+}
+
+#[derive(Serialize)]
+pub(super) struct VersionResponse {
+    version: &'static str,
+    git_sha: &'static str,
+    git_dirty: bool,
+    features: VersionFeatures,
+}
+
+pub(super) async fn version() -> Json<VersionResponse> {
+    Json(VersionResponse {
+        version: env!("CARGO_PKG_VERSION"),
+        git_sha: env!("BOBBIN_GIT_SHA"),
+        git_dirty: env!("BOBBIN_GIT_DIRTY") == "true",
+        features: VersionFeatures {
+            knowledge: cfg!(feature = "knowledge"),
+        },
+    })
+}
+
+// ---------------------------------------------------------------------------
 // /metrics
 // ---------------------------------------------------------------------------
 

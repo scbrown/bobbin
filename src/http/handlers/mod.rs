@@ -64,6 +64,7 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/archive/entry/{id}", get(archive::archive_entry))
         .route("/archive/recent", get(archive::archive_recent))
         .route("/status", get(admin::status))
+        .route("/version", get(admin::version))
         .route("/healthz", get(admin::healthz))
         .route("/repos", get(admin::list_repos))
         .route("/groups", get(admin::list_groups))
