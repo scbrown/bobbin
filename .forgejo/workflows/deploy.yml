@@ -60,11 +60,24 @@ jobs:
           # onnxruntime/CUDA is needed at build time — only rust + glibc. If this
           # runner has no docker, the step fails HERE, loudly, before touching the
           # serving host (a failed build is safe; a bad cutover is not).
+          #
+          # --features knowledge is LOAD-BEARING, not a nicety. The serving host
+          # runs a knowledge-ENABLED binary (#56). A featureless
+          # `cargo build --release` here produces a binary that PASSES the cutover
+          # --version gate (a featureless binary still prints its version) and then
+          # SILENTLY STRIPS the knowledge feature off the serving host on cutover —
+          # the gate cannot see the difference (a feature-AWARE gate that refuses a
+          # cutover dropping a feature is a separate, still-open follow-up). So the
+          # SHIPPED artifact must be built with the features the serving host runs.
+          # `cargo test` stays featureless on purpose: it recompiles independently,
+          # the knowledge tests can need a live Quipu the build container has not
+          # got, and turning them on in CI is a separate deliberate call — this
+          # change only fixes the shipped BINARY.
           docker run --rm \
             -v "$PWD":/src -w /src \
             -v bobbin-cargo-registry:/usr/local/cargo/registry \
             rust:1-bullseye \
-            bash -euc 'cargo build --release && cargo test'
+            bash -euc 'cargo build --release --features knowledge && cargo test'
           test -x target/release/bobbin
           echo "built: $(file target/release/bobbin | cut -d, -f1-2)"
 
