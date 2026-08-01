@@ -886,7 +886,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                             })
                             .collect();
 
-                        // Embed commit messages in batches
+                        // Embed commit messages. This hands the WHOLE commit set
+                        // to the embedder in one call and relies on
+                        // `Embedder::embed_batch` to slice it — under `--force`
+                        // `since` is None, so this is the entire history, not an
+                        // increment. It used to reach the model unsliced, which
+                        // OOM-killed the nightly reindex on the first repo.
                         let embed_texts: Vec<String> =
                             commit_chunks.iter().map(|c| c.content.clone()).collect();
                         let embed_refs: Vec<&str> =

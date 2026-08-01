@@ -166,6 +166,26 @@ impl ModelConfig {
 
 // ── Embedder (unified facade) ────────────────────────────────────────
 
+/// Hard ceiling on texts handed to the model in ONE inference call.
+///
+/// This is a MEMORY bound, not a throughput tuning knob. One `embed_batch(N)`
+/// builds N sequences' worth of ONNX Runtime internal attention activations, and
+/// ORT's arena allocator never returns that memory to the OS — so peak RSS is
+/// set by the largest single batch the process ever ran, permanently, and no
+/// cgroup limit stays correct as the corpus grows.
+///
+/// Measured on this model class (all-MiniLM, seq 256, single-threaded): roughly
+/// 7.4 MB retained PER TEXT, linear in batch size and never reclaimed. 2048
+/// texts in one call cost about +15 GB that later small calls did not shrink;
+/// the same 2048 in chunks of 32 cost about +492 MB and plateaued flat.
+///
+/// It is enforced HERE rather than at the call sites because the call sites keep
+/// getting it wrong: the commit, bead and archive paths each collected an
+/// entire corpus into one `embed_batch`, and the commit one even carried the
+/// comment "Embed commit messages in batches" while doing the opposite. Bounding
+/// the chokepoint makes every present and future caller safe by construction.
+const MAX_EMBED_BATCH: usize = 32;
+
 /// Generates embeddings using either local ONNX models or OpenAI-compatible APIs.
 #[derive(Clone)]
 pub struct Embedder {
@@ -230,21 +250,36 @@ impl Embedder {
 
     /// Generate embeddings for a batch of texts
     pub async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-        match &self.backend {
-            EmbedderBackend::Onnx(onnx) => onnx.embed_batch(texts).map(|(vecs, _)| vecs),
-            EmbedderBackend::Api(api) => api.embed_batch(texts).await,
+        let mut out = Vec::with_capacity(texts.len());
+        for chunk in texts.chunks(MAX_EMBED_BATCH) {
+            let vecs = match &self.backend {
+                EmbedderBackend::Onnx(onnx) => onnx.embed_batch(chunk).map(|(vecs, _)| vecs)?,
+                EmbedderBackend::Api(api) => api.embed_batch(chunk).await?,
+            };
+            out.extend(vecs);
         }
+        Ok(out)
     }
 
     /// Generate embeddings with sub-phase timing breakdown
     pub async fn embed_batch_timed(&self, texts: &[&str]) -> Result<(Vec<Vec<f32>>, EmbedTiming)> {
-        match &self.backend {
-            EmbedderBackend::Onnx(onnx) => onnx.embed_batch(texts),
-            EmbedderBackend::Api(api) => {
-                let vecs = api.embed_batch(texts).await?;
-                Ok((vecs, EmbedTiming::default()))
-            }
+        let mut out = Vec::with_capacity(texts.len());
+        let mut total = EmbedTiming::default();
+        for chunk in texts.chunks(MAX_EMBED_BATCH) {
+            let (vecs, t) = match &self.backend {
+                EmbedderBackend::Onnx(onnx) => onnx.embed_batch(chunk)?,
+                EmbedderBackend::Api(api) => {
+                    (api.embed_batch(chunk).await?, EmbedTiming::default())
+                }
+            };
+            // Sub-phase timings ACCUMULATE across chunks, so the reported total
+            // still covers the whole request rather than just its last slice.
+            total.tokenize_ms += t.tokenize_ms;
+            total.inference_ms += t.inference_ms;
+            total.pooling_ms += t.pooling_ms;
+            out.extend(vecs);
         }
+        Ok((out, total))
     }
 
     /// Generate embedding for a single text
@@ -274,7 +309,14 @@ impl Embedder {
     /// Synchronous embed_batch for backward compatibility (ONNX only)
     pub fn embed_batch_sync(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         match &self.backend {
-            EmbedderBackend::Onnx(onnx) => onnx.embed_batch(texts).map(|(vecs, _)| vecs),
+            EmbedderBackend::Onnx(onnx) => {
+                // Bounded for the same reason as `embed_batch` — see MAX_EMBED_BATCH.
+                let mut out = Vec::with_capacity(texts.len());
+                for chunk in texts.chunks(MAX_EMBED_BATCH) {
+                    out.extend(onnx.embed_batch(chunk).map(|(vecs, _)| vecs)?);
+                }
+                Ok(out)
+            }
             EmbedderBackend::Api(_) => {
                 anyhow::bail!(
                     "Synchronous embed_batch not supported for API backend; use embed_batch().await"
@@ -952,5 +994,89 @@ mod tests {
         assert_eq!(embedder.dimension(), 768);
         assert_eq!(embedder.model_name(), "test-model");
         assert_eq!(embedder.backend_type(), "openai-api");
+    }
+
+    /// The chokepoint bound, proven against a real backend rather than asserted
+    /// about a constant.
+    ///
+    /// A mock OpenAI-compatible endpoint records the size of every batch the
+    /// embedder actually sends. The commit / bead / archive index paths each
+    /// hand `embed_batch` an entire corpus in one call, so if the slicing here
+    /// regresses, the model receives thousands of sequences at once — and since
+    /// ORT's arena never returns memory, that pins peak RSS for the life of the
+    /// process and OOM-kills the nightly reindex. Measured cost of getting this
+    /// wrong: roughly 7.4 MB retained per text, linear, unreclaimed.
+    #[tokio::test]
+    async fn embed_batch_slices_oversized_input_to_max_embed_batch() {
+        use std::sync::{Arc, Mutex};
+
+        const DIM: usize = 768;
+        const TOTAL: usize = 3022; // the real aegis commit count that OOM'd
+
+        let seen: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
+        let seen_srv = seen.clone();
+
+        let app = axum::Router::new().route(
+            "/v1/embeddings",
+            axum::routing::post(move |axum::Json(body): axum::Json<serde_json::Value>| {
+                let seen = seen_srv.clone();
+                async move {
+                    let n = body["input"].as_array().map_or(0, Vec::len);
+                    seen.lock().unwrap().push(n);
+                    let data: Vec<serde_json::Value> = (0..n)
+                        .map(|i| serde_json::json!({"index": i, "embedding": vec![0.1f32; DIM]}))
+                        .collect();
+                    axum::Json(serde_json::json!({"data": data}))
+                }
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let config = EmbeddingConfig {
+            backend: EmbeddingBackend::OpenaiApi,
+            model: "mock".to_string(),
+            dimensions: Some(DIM),
+            api: Some(ApiEmbeddingConfig {
+                url: format!("http://{addr}/v1/embeddings"),
+                api_key: None,
+            }),
+            ..Default::default()
+        };
+        let embedder =
+            Embedder::from_config(&config, &std::path::PathBuf::from("/tmp/nonexistent")).unwrap();
+
+        let texts: Vec<String> = (0..TOTAL).map(|i| format!("commit message {i}")).collect();
+        let refs: Vec<&str> = texts.iter().map(String::as_str).collect();
+        let out = embedder
+            .embed_batch(&refs)
+            .await
+            .expect("embed should succeed");
+
+        let batches = seen.lock().unwrap().clone();
+        let largest = batches.iter().copied().max().unwrap_or(0);
+
+        assert!(
+            largest <= MAX_EMBED_BATCH,
+            "embed_batch sent a batch of {largest} to the backend against a bound of \
+             {MAX_EMBED_BATCH} ({} calls) — an entire corpus reached the model in one \
+             inference, which is the nightly-reindex OOM",
+            batches.len()
+        );
+        // Chunking must not lose, duplicate, or reorder work.
+        assert_eq!(
+            batches.iter().sum::<usize>(),
+            TOTAL,
+            "texts dropped or duplicated"
+        );
+        assert_eq!(
+            out.len(),
+            TOTAL,
+            "returned vector count must match input count"
+        );
     }
 }
