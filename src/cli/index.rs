@@ -1206,18 +1206,27 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
+    let t_compact = Instant::now();
+    // PRUNE FIRST, THEN COMPACT. This order is load-bearing, not stylistic.
+    //
+    // Prune is cheap: it deletes whole version manifests and the fragment files
+    // no live version references, without reading vector or text data into RAM.
+    // Compact is expensive: it rewrites rows. With compact first, a compaction
+    // that OOMs takes the cheap reclaim down with it — prune never runs, disk
+    // keeps growing, the next compaction is bigger, and the cycle is
+    // self-perpetuating. That is exactly what happened: the nightly reindex was
+    // OOM-killed for months, so pruning (its job) never ran, and the store grew
+    // to 29G / 1694 fragments / 2537 versions.
+    //
+    // Pruning first also shrinks the input compaction has to consider.
+    if let Err(e) = vector_store.prune().await {
+        eprintln!("warning: lance prune failed: {e:#}");
+    }
     // Compact fragmented lance data after indexing — each file insert creates a
     // new fragment, and compaction merges them for better read performance.
     // Stats queries on heavily fragmented tables return incomplete results.
-    let t_compact = Instant::now();
     if let Err(e) = vector_store.compact().await {
         eprintln!("warning: lance compaction failed: {e:#}");
-    }
-    // Prune old versions to prevent unbounded disk growth.
-    // Without pruning, LanceDB keeps all historical versions (manifests + data
-    // fragments), growing ~20-30GB/day under daily --force reindexing.
-    if let Err(e) = vector_store.prune().await {
-        eprintln!("warning: lance prune failed: {e:#}");
     }
     profile.compact_ms = t_compact.elapsed().as_millis();
 

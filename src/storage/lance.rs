@@ -41,6 +41,43 @@ const SCAN_ALL_LIMIT: usize = i64::MAX as usize;
 /// Default embedding dimension (for backward compatibility)
 const DEFAULT_EMBEDDING_DIM: i32 = 384;
 
+/// Target rows per compacted fragment.
+///
+/// `CompactionOptions::default()` uses 1,048,576. That default is the whole
+/// bug for a store our size: compaction treats every fragment with FEWER rows
+/// than this as a candidate, so on a ~152k-row table *every* fragment always
+/// qualifies and the target is effectively "rewrite the entire store into one
+/// fragment". Peak memory is therefore store-scale BY CONSTRUCTION — it grows
+/// with the corpus and never with the amount of new work — which is why the
+/// nightly reindex was OOM-killed at a 16G cap, and still at 8G after the
+/// store had shrunk to 3.3G. Bounding this makes compaction rewrite a bounded
+/// slice at a time instead.
+const COMPACT_TARGET_ROWS_PER_FRAGMENT: usize = 65_536;
+
+/// Scanner batch size while reading input fragments during compaction.
+/// Unset, lance uses a default tuned for throughput; our rows carry full chunk
+/// TEXT (the 3.3G store is ~230MB of vectors and the rest text), so in-flight
+/// batches dominate compaction memory.
+const COMPACT_SCAN_BATCH_SIZE: usize = 1_024;
+
+/// Compaction options with an explicit memory bound.
+///
+/// Every knob here exists to keep peak RSS a function of the BATCH, not of the
+/// corpus. See [`COMPACT_TARGET_ROWS_PER_FRAGMENT`] for why the library
+/// defaults cannot be used on a store of this shape.
+fn bounded_compaction_options() -> CompactionOptions {
+    CompactionOptions {
+        target_rows_per_fragment: COMPACT_TARGET_ROWS_PER_FRAGMENT,
+        batch_size: Some(COMPACT_SCAN_BATCH_SIZE),
+        // One compaction task at a time. The default is the compute-CPU count,
+        // which multiplies peak memory by that factor; on a host shared with
+        // other memory-hungry services that multiplier is what turns a large
+        // compaction into an OOM of the whole unit.
+        num_threads: Some(1),
+        ..CompactionOptions::default()
+    }
+}
+
 /// Extract a named string column from a RecordBatch, returning a Result instead of panicking.
 fn string_column<'a>(batch: &'a RecordBatch, name: &str) -> Result<&'a StringArray> {
     batch
@@ -645,6 +682,9 @@ impl VectorStore {
     /// this leads to heavy fragmentation that hurts read performance. Compaction
     /// merges small fragments into larger ones.
     ///
+    /// Memory is bounded by [`bounded_compaction_options`] — with
+    /// `CompactionOptions::default()` this OOM-killed the nightly reindex.
+    ///
     /// Gated on the maintenance lock: at most ONE compaction runs at a time
     /// across every process sharing the store; contenders skip (Ok) rather
     /// than queue — compaction is best-effort maintenance, and an interrupted
@@ -662,7 +702,7 @@ impl VectorStore {
         retry_on_conflict!(
             table,
             table.optimize(OptimizeAction::Compact {
-                options: CompactionOptions::default(),
+                options: bounded_compaction_options(),
                 remap_options: None,
             })
         )
@@ -3166,6 +3206,44 @@ mod tests {
             let results = store.search(&sample_embedding(), 10, None).await.unwrap();
             assert_eq!(results[0].chunk.name, Some("persistent".to_string()));
         }
+    }
+
+    #[test]
+    fn compaction_options_bound_memory_instead_of_using_library_defaults() {
+        // Guards the nightly-reindex OOM fix. The failure this prevents is not
+        // "compaction is slow" — it is that with the library defaults, peak
+        // compaction memory is a function of the CORPUS rather than of the
+        // batch, so the reindex OOMs harder as the index grows and no cap can
+        // be set that stays correct.
+        let opts = bounded_compaction_options();
+        let default = CompactionOptions::default();
+
+        // THE bound. The default is 1,048,576 rows; every fragment in a table
+        // smaller than that is always a compaction candidate, which makes the
+        // effective target "rewrite the whole store as one fragment".
+        assert!(
+            opts.target_rows_per_fragment < default.target_rows_per_fragment,
+            "target_rows_per_fragment ({}) must be below the library default \
+             ({}), or compaction rewrites the entire store in one pass and peak \
+             memory scales with the corpus",
+            opts.target_rows_per_fragment,
+            default.target_rows_per_fragment
+        );
+
+        // Parallel compaction tasks multiply peak memory by the thread count.
+        assert_eq!(
+            opts.num_threads,
+            Some(1),
+            "compaction must run one task at a time; the default is the \
+             compute-CPU count, which multiplies peak RSS by that factor"
+        );
+
+        // Rows carry full chunk text, so in-flight scan batches dominate.
+        assert!(
+            opts.batch_size.is_some_and(|b| b <= 8_192),
+            "compaction scan batch_size must be explicitly bounded, got {:?}",
+            opts.batch_size
+        );
     }
 
     #[test]

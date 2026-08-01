@@ -330,14 +330,19 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
                         || (compact_counter > 0
                             && last_compact.elapsed() >= COMPACT_MIN_INTERVAL);
                     if should_compact {
-                        if let Err(e) = vector_store.compact().await {
-                            if !output.quiet {
-                                eprintln!("  {} Compact error: {}", "!".yellow(), e);
-                            }
-                        }
+                        // Prune BEFORE compact — same reason as the reindex path
+                        // in cli/index.rs: prune is the cheap reclaim and must
+                        // not sit downstream of the operation that can OOM, or a
+                        // failing compaction permanently starves it and disk
+                        // growth becomes self-perpetuating.
                         if let Err(e) = vector_store.prune().await {
                             if !output.quiet {
                                 eprintln!("  {} Prune error: {}", "!".yellow(), e);
+                            }
+                        }
+                        if let Err(e) = vector_store.compact().await {
+                            if !output.quiet {
+                                eprintln!("  {} Compact error: {}", "!".yellow(), e);
                             }
                         }
                         // Compaction/prune can invalidate the FTS index, which
