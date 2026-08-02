@@ -689,50 +689,84 @@ impl VectorStore {
     /// across every process sharing the store; contenders skip (Ok) rather
     /// than queue — compaction is best-effort maintenance, and an interrupted
     /// compaction is strictly worse than a deferred one.
+    /// Every table this store owns, for maintenance sweeps.
+    ///
+    /// `compact`/`prune` used to touch ONLY `self.table`, so `dependencies`,
+    /// `chunk_edges` and `entities` were never compacted and never pruned — not
+    /// once, ever. Their version manifests therefore grew monotonically for the
+    /// life of the store: `dependencies` was measured at 280,895 manifest
+    /// versions while `chunks`, which does get pruned, sat around 4,000. Any new
+    /// table MUST be added here or it silently inherits that unbounded growth.
+    fn maintenance_tables(&self) -> Vec<(&'static str, &Table)> {
+        [
+            ("chunks", self.table.as_ref()),
+            ("dependencies", self.deps_table.as_ref()),
+            ("chunk_edges", self.chunk_edges_table.as_ref()),
+            ("entities", self.entities_table.as_ref()),
+        ]
+        .into_iter()
+        .filter_map(|(name, t)| t.map(|t| (name, t)))
+        .collect()
+    }
+
     pub async fn compact(&self) -> Result<()> {
-        let table = match &self.table {
-            Some(t) => t,
-            None => return Ok(()),
-        };
+        let tables = self.maintenance_tables();
+        if tables.is_empty() {
+            return Ok(());
+        }
 
         let Some(_lock) = self.try_maintenance_lock() else {
             return Ok(());
         };
 
-        retry_on_conflict!(
-            table,
-            table.optimize(OptimizeAction::Compact {
-                options: bounded_compaction_options(),
-                remap_options: None,
-            })
-        )
-        .context("Failed to compact table")?;
-
-        Ok(())
+        // One table's failure must not skip the rest — they are independent
+        // datasets and a partial sweep still reclaims.
+        let mut first_err = None;
+        for (name, table) in tables {
+            let r = retry_on_conflict!(
+                table,
+                table.optimize(OptimizeAction::Compact {
+                    options: bounded_compaction_options(),
+                    remap_options: None,
+                })
+            )
+            .with_context(|| format!("Failed to compact {name} table"));
+            if let Err(e) = r {
+                first_err.get_or_insert(e);
+            }
+        }
+        first_err.map_or(Ok(()), Err)
     }
 
     /// Remove old dataset versions to reclaim disk space.
     /// Removes versions older than 1 hour by default.
     /// Gated on the maintenance lock exactly like [`Self::compact`].
     pub async fn prune(&self) -> Result<()> {
-        let table = match &self.table {
-            Some(t) => t,
-            None => return Ok(()),
-        };
+        let tables = self.maintenance_tables();
+        if tables.is_empty() {
+            return Ok(());
+        }
 
         let Some(_lock) = self.try_maintenance_lock() else {
             return Ok(());
         };
 
-        retry_on_conflict!(
-            table,
-            table.optimize(OptimizeAction::Prune {
-                older_than: Some(Duration::try_hours(1).expect("valid delta")),
-                delete_unverified: Some(true),
-                error_if_tagged_old_versions: None,
-            })
-        )
-        .context("Failed to prune old versions")?;
+        let mut first_err = None;
+        for (name, table) in tables {
+            let r = retry_on_conflict!(
+                table,
+                table.optimize(OptimizeAction::Prune {
+                    older_than: Some(Duration::try_hours(1).expect("valid delta")),
+                    delete_unverified: Some(true),
+                    error_if_tagged_old_versions: None,
+                })
+            )
+            .with_context(|| format!("Failed to prune old versions of {name} table"));
+            if let Err(e) = r {
+                first_err.get_or_insert(e);
+            }
+        }
+        first_err.map_or(Ok(()), Err)?;
 
         Ok(())
     }
@@ -3206,6 +3240,68 @@ mod tests {
             let results = store.search(&sample_embedding(), 10, None).await.unwrap();
             assert_eq!(results[0].chunk.name, Some("persistent".to_string()));
         }
+    }
+
+    /// Maintenance must sweep EVERY table this store owns, not just `chunks`.
+    ///
+    /// `compact`/`prune` operated on `self.table` alone, so `dependencies`,
+    /// `chunk_edges` and `entities` were never compacted and never pruned for
+    /// the life of the store. Measured consequence: the dependencies dataset
+    /// reached 280,895 version manifests while the chunks dataset — the one that
+    /// does get pruned — sat around 4,000. That is unbounded disk growth by
+    /// construction, and it is invisible because the store still answers queries
+    /// correctly the whole time.
+    #[tokio::test]
+    async fn maintenance_sweeps_every_table_not_just_chunks() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        // Materialise chunks + dependencies so both tables exist.
+        store
+            .insert(
+                &[sample_chunk("chunk1", "main")],
+                &[sample_embedding()],
+                &no_contexts(1),
+                "default",
+                "abc123",
+                "1234567890",
+            )
+            .await
+            .unwrap();
+        store
+            .upsert_dependencies(&[sample_dep("src/main.rs", "src/types.rs", true)])
+            .await
+            .unwrap();
+
+        let swept: Vec<&str> = store
+            .maintenance_tables()
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        assert!(
+            swept.contains(&"chunks"),
+            "chunks table missing from the maintenance sweep: {swept:?}"
+        );
+        assert!(
+            swept.contains(&"dependencies"),
+            "dependencies table is NOT swept ({swept:?}) — it will accumulate version \
+             manifests forever, which is how it reached 280,895 while chunks stayed near 4,000"
+        );
+
+        // And the sweep itself must succeed over multiple tables.
+        store.prune().await.expect("prune should sweep every table");
+        store
+            .compact()
+            .await
+            .expect("compact should sweep every table");
+
+        // Data survives the multi-table sweep.
+        assert_eq!(
+            store.get_dependencies("src/main.rs").await.unwrap().len(),
+            1,
+            "dependency rows lost during the maintenance sweep"
+        );
     }
 
     #[test]
