@@ -2895,7 +2895,35 @@ pub async fn run_http_server(repo_root: PathBuf, port: u16) -> Result<()> {
             },
             Arc::new(LocalSessionManager::default()),
             StreamableHttpServerConfig {
-                stateful_mode: true,
+                // STATELESS ON PURPOSE — do not flip this back to `true` (aegis-ks9cl).
+                //
+                // `LocalSessionManager` holds sessions in memory, and this MCP server
+                // shares ONE process with the search server (see cli/serve.rs: both are
+                // driven by a single `tokio::select!`). So every `systemctl restart
+                // bobbin` — i.e. EVERY DEPLOY — wiped all MCP sessions, and each agent
+                // session that had already completed `initialize` kept sending an
+                // `Mcp-Session-Id` the new process had never issued.
+                //
+                // rmcp answers an unknown session id with 401 "Unauthorized: Session not
+                // found" (rmcp-0.12 streamable_http_server/tower.rs:199-204). An MCP
+                // client reads 401 as an auth challenge and goes looking for OAuth
+                // metadata; our router only mounts /mcp, so /.well-known/* returns 404
+                // with an EMPTY body, and the client surfaces the useless
+                //     HTTP 404: Invalid OAuth error response ... Raw body: <EMPTY>
+                // for EVERY bobbin tool, while the server itself is perfectly healthy.
+                // The failure is permanent for that agent session: the client never
+                // re-initializes, so the agent silently falls back to grep for the rest
+                // of its life. (The MCP spec says an expired session SHOULD get 404, on
+                // which clients MUST re-initialize; rmcp's 401 is what routes it into
+                // the OAuth path instead.)
+                //
+                // Stateless mode removes the session concept altogether: every POST is
+                // self-contained, so a restart cannot orphan a client. It is ~free here
+                // because `BobbinMcpServer::new` only checks that the config file exists
+                // and builds the tool router — every store is opened per tool call.
+                // GET/DELETE now return 405, which the spec explicitly permits for
+                // servers that offer no server-initiated SSE stream.
+                stateful_mode: false,
                 sse_keep_alive: Some(std::time::Duration::from_secs(15)),
                 cancellation_token: ct.child_token(),
             },
