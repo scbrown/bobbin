@@ -133,6 +133,48 @@ impl BobbinMcpServer {
             .with_context(|| format!("parsing remote quipu {path} response"))
     }
 
+    /// Trim a knowledge payload so it fits a caller's tool-output budget.
+    ///
+    /// aegis-rczil: the un-trimmed reply to one ownership question was 83KB /
+    /// 2205 lines and EXCEEDED the caller's limit — they received an error and a
+    /// file path instead of an answer, with the two lines they wanted diluted 4:1
+    /// by the file-coupling graph. A correct answer nobody can receive is not an
+    /// answer.
+    ///
+    /// Truncation is ALWAYS ANNOUNCED IN BAND — an elided array gains a
+    /// "… [+N more]" element and a clipped string says how much was dropped.
+    /// Silent truncation would be the same defect this whole area keeps hitting:
+    /// a well-formed reply that quietly answers less than it appears to.
+    #[cfg(feature = "knowledge")]
+    fn trim_payload(v: &mut serde_json::Value, max_str: usize, max_arr: usize) {
+        use serde_json::Value;
+        match v {
+            Value::String(s) => {
+                if s.chars().count() > max_str {
+                    let kept: String = s.chars().take(max_str).collect();
+                    let dropped = s.chars().count() - max_str;
+                    *s = format!("{kept}… [+{dropped} chars omitted]");
+                }
+            }
+            Value::Array(a) => {
+                let total = a.len();
+                if total > max_arr {
+                    a.truncate(max_arr);
+                    a.push(Value::String(format!("… [+{} more omitted]", total - max_arr)));
+                }
+                for item in a.iter_mut() {
+                    Self::trim_payload(item, max_str, max_arr);
+                }
+            }
+            Value::Object(o) => {
+                for (_k, val) in o.iter_mut() {
+                    Self::trim_payload(val, max_str, max_arr);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Describe which store(s) a knowledge answer came from.
     ///
     /// A caller that cannot tell WHICH graph replied cannot tell a miss from an
@@ -2710,6 +2752,13 @@ not an empty result — do not read it as 'the fact is absent'.",
                 }
             };
 
+            // The ontology is the answer to the question asked; the local code graph
+            // is context. Trim the context harder so it cannot bury the answer.
+            let mut ontology = ontology;
+            let mut local = local;
+            Self::trim_payload(&mut ontology, 600, 40);
+            Self::trim_payload(&mut local, 200, 8);
+
             let result = serde_json::json!({
                 "ontology": ontology,
                 "local_code_graph": local,
@@ -2755,7 +2804,10 @@ Example: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10'")]
 
             let local = quipu::tool_query(&store, &input)
                 .map_err(|e| McpError::internal_error(format!("SPARQL query failed: {e}"), None))?;
-            let ontology = self.ontology_sparql_section(input.clone()).await;
+            let mut ontology = self.ontology_sparql_section(input.clone()).await;
+            let mut local = local;
+            Self::trim_payload(&mut ontology, 600, 60);
+            Self::trim_payload(&mut local, 200, 20);
 
             let result = serde_json::json!({
                 "ontology": ontology,
