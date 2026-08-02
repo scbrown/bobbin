@@ -884,8 +884,55 @@ impl VectorStore {
             Err(waited) => return Ok(MaintenanceOutcome::SkippedLockHeld { waited }),
         };
 
-        // One table's failure must not skip the rest — they are independent
-        // datasets and a partial sweep still reclaims.
+        let r = self.compact_locked(&tables).await;
+        // Stamped while still holding the lock, and only for a sweep that
+        // actually ran — a skip must never look like maintenance.
+        self.record_maintenance(true, false);
+        r.map(|()| MaintenanceOutcome::Ran)
+    }
+
+    /// The full SCHEDULED sweep — prune, then compact — under a SINGLE
+    /// acquisition of the maintenance lock.
+    ///
+    /// Two reasons this is not just `prune().await; compact().await`:
+    ///
+    /// 1. **One wait, not two.** The nightly runs one `index` per repo (27 of
+    ///    them here), and each waits for the lock. Charging each of prune and
+    ///    compact its own full wait budget doubles the worst case for every
+    ///    repo, and the second wait is nearly always redundant — a contender
+    ///    that held the lock through the first will usually hold it through the
+    ///    second.
+    /// 2. **No steal window.** Between two separate acquisitions an
+    ///    opportunistic contender can take the lock, so the run could prune and
+    ///    then silently fail to compact. Holding it across both makes the
+    ///    prune-before-compact ordering actually hold end to end.
+    pub async fn maintain(&self, wait: LockWait) -> Result<MaintenanceOutcome> {
+        let tables = self.maintenance_tables();
+        if tables.is_empty() {
+            return Ok(MaintenanceOutcome::NoTables);
+        }
+
+        let _lock = match self.acquire_maintenance_lock(wait).await {
+            Ok(lock) => lock,
+            Err(waited) => return Ok(MaintenanceOutcome::SkippedLockHeld { waited }),
+        };
+
+        // PRUNE FIRST. Prune is the cheap reclaim (it drops version manifests
+        // and unreferenced fragment files without reading data into RAM);
+        // compact rewrites rows and is the one that can die on memory. With
+        // compact first, a compaction that fails takes the cheap reclaim down
+        // with it and the next compaction is bigger — self-perpetuating.
+        let pruned = self.prune_locked(&tables).await;
+        let compacted = self.compact_locked(&tables).await;
+        self.record_maintenance(compacted.is_ok(), pruned.is_ok());
+        pruned.and(compacted).map(|()| MaintenanceOutcome::Ran)
+    }
+
+    /// Compact every table. CALLER MUST HOLD the maintenance lock.
+    ///
+    /// One table's failure must not skip the rest — they are independent
+    /// datasets and a partial sweep still reclaims.
+    async fn compact_locked(&self, tables: &[(&'static str, &Table)]) -> Result<()> {
         let mut first_err = None;
         for (name, table) in tables {
             let r = retry_on_conflict!(
@@ -900,10 +947,27 @@ impl VectorStore {
                 first_err.get_or_insert(e);
             }
         }
-        // Stamped while still holding the lock, and only for a sweep that
-        // actually ran — a skip must never look like maintenance.
-        self.record_maintenance(true, false);
-        first_err.map_or(Ok(MaintenanceOutcome::Ran), Err)
+        first_err.map_or(Ok(()), Err)
+    }
+
+    /// Prune every table. CALLER MUST HOLD the maintenance lock.
+    async fn prune_locked(&self, tables: &[(&'static str, &Table)]) -> Result<()> {
+        let mut first_err = None;
+        for (name, table) in tables {
+            let r = retry_on_conflict!(
+                table,
+                table.optimize(OptimizeAction::Prune {
+                    older_than: Some(Duration::try_hours(1).expect("valid delta")),
+                    delete_unverified: Some(true),
+                    error_if_tagged_old_versions: None,
+                })
+            )
+            .with_context(|| format!("Failed to prune old versions of {name} table"));
+            if let Err(e) = r {
+                first_err.get_or_insert(e);
+            }
+        }
+        first_err.map_or(Ok(()), Err)
     }
 
     /// Remove old dataset versions to reclaim disk space.
@@ -920,23 +984,9 @@ impl VectorStore {
             Err(waited) => return Ok(MaintenanceOutcome::SkippedLockHeld { waited }),
         };
 
-        let mut first_err = None;
-        for (name, table) in tables {
-            let r = retry_on_conflict!(
-                table,
-                table.optimize(OptimizeAction::Prune {
-                    older_than: Some(Duration::try_hours(1).expect("valid delta")),
-                    delete_unverified: Some(true),
-                    error_if_tagged_old_versions: None,
-                })
-            )
-            .with_context(|| format!("Failed to prune old versions of {name} table"));
-            if let Err(e) = r {
-                first_err.get_or_insert(e);
-            }
-        }
+        let r = self.prune_locked(&tables).await;
         self.record_maintenance(false, true);
-        first_err.map_or(Ok(MaintenanceOutcome::Ran), Err)
+        r.map(|()| MaintenanceOutcome::Ran)
     }
 
     /// Read-path compaction throttle: attempt a compaction at most once per
@@ -3671,6 +3721,64 @@ mod tests {
             "an expired wait must report the skip, got {outcome:?}"
         );
         drop(held);
+    }
+
+    #[tokio::test]
+    async fn maintain_takes_the_lock_once_and_charges_one_wait_budget() {
+        // The nightly runs one `index` per repo, so the wait budget is paid
+        // once PER REPO. Charging prune and compact a full budget each would
+        // double that for all 27 of them, and a second acquisition leaves a
+        // window for a contender to steal the lock between the prune and the
+        // compaction it is supposed to precede.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+        store
+            .insert(
+                &[sample_chunk("chunk1", "main")],
+                &[sample_embedding()],
+                &no_contexts(1),
+                "default",
+                "abc123",
+                "1234567890",
+            )
+            .await
+            .unwrap();
+
+        let other = VectorStore::open(&path).await.unwrap();
+        let held = store.try_maintenance_lock().expect("take the lock");
+
+        let budget = std::time::Duration::from_millis(400);
+        let started = std::time::Instant::now();
+        let outcome = other
+            .maintain(LockWait::UpTo(budget))
+            .await
+            .expect("expired wait is not an error");
+        let elapsed = started.elapsed();
+        drop(held);
+
+        assert!(
+            outcome.skipped_lock_held(),
+            "a starved sweep must say so, got {outcome:?}"
+        );
+        assert!(
+            elapsed < budget * 2,
+            "maintain must charge ONE wait budget, not one per operation \
+             (waited {elapsed:?} against a {budget:?} budget)"
+        );
+
+        // Uncontended, one call records BOTH operations.
+        let outcome = other.maintain(LockWait::NoWait).await.expect("sweep runs");
+        assert!(
+            outcome.ran(),
+            "uncontended maintain must run, got {outcome:?}"
+        );
+        let status = other.maintenance_status();
+        assert!(
+            status.last_prune_unix.is_some() && status.last_compact_unix.is_some(),
+            "one maintain records both operations, got {status:?}"
+        );
     }
 
     #[tokio::test]

@@ -346,23 +346,17 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
                             std::time::Duration::from_secs(60);
                         let lock_wait = LockWait::UpTo(WATCH_LOCK_WAIT);
 
-                        let mut starved = false;
-                        match vector_store.prune(lock_wait).await {
-                            Ok(o) => starved |= o.skipped_lock_held(),
+                        // One acquisition for prune+compact, so a contender
+                        // cannot take the lock between them.
+                        let starved = match vector_store.maintain(lock_wait).await {
+                            Ok(o) => o.skipped_lock_held(),
                             Err(e) => {
                                 if !output.quiet {
-                                    eprintln!("  {} Prune error: {}", "!".yellow(), e);
+                                    eprintln!("  {} Maintenance error: {}", "!".yellow(), e);
                                 }
+                                false
                             }
-                        }
-                        match vector_store.compact(lock_wait).await {
-                            Ok(o) => starved |= o.skipped_lock_held(),
-                            Err(e) => {
-                                if !output.quiet {
-                                    eprintln!("  {} Compact error: {}", "!".yellow(), e);
-                                }
-                            }
-                        }
+                        };
                         // Say so. The success line below prints either way, and
                         // "Compacted lance dataset" after a skip is the exact
                         // lie this bug was made of.

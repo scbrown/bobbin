@@ -22,9 +22,17 @@ use crate::types::{Chunk, ChunkType, ImportDependency, ImportEdge};
 const BEADS_HASH_REPO: &str = "beads-issues";
 
 /// How long the reindex waits for the store-wide maintenance lock before giving
-/// up. Generous, because the contenders are opportunistic and short: a read-path
-/// compaction on a bounded store, not another full sweep.
-const DEFAULT_MAINTENANCE_LOCK_WAIT_SECS: u64 = 600;
+/// up.
+///
+/// Sized against the CONTENDER, not against comfort: with the read path
+/// throttled store-wide, the only thing that can hold this lock is one
+/// opportunistic, memory-bounded compaction — not another full sweep. It is
+/// also multiplied by the number of repos, because the nightly runs one `index`
+/// per repo (27 here), so a "generous" budget is really 27x that in the
+/// pathological case. Two minutes is long enough to outlast a bounded
+/// compaction and short enough that a genuinely stuck lock costs a bounded
+/// amount of nightly — and every expiry now says so out loud.
+const DEFAULT_MAINTENANCE_LOCK_WAIT_SECS: u64 = 120;
 
 /// Environment override for [`DEFAULT_MAINTENANCE_LOCK_WAIT_SECS`], so a host
 /// whose reindex unit has a tighter `TimeoutStartSec` can shorten the wait
@@ -45,42 +53,40 @@ fn maintenance_lock_wait() -> LockWait {
 
 /// What the maintenance step of a reindex actually did, so the run can say so.
 ///
-/// `None` means the call errored (already reported); the interesting state is
-/// `Some(SkippedLockHeld)` — maintenance that did nothing while the command
-/// still exits 0.
-#[derive(Default)]
+/// The interesting state is `SkippedLockHeld` — maintenance that did nothing
+/// while the command still exits 0. That was previously indistinguishable from
+/// a sweep that reclaimed gigabytes, and the difference went unnoticed for
+/// months because nothing could report it.
 struct MaintenanceReport {
-    prune: Option<MaintenanceOutcome>,
-    compact: Option<MaintenanceOutcome>,
+    /// `None` means the sweep ERRORED (already reported on stderr by us).
+    outcome: Option<MaintenanceOutcome>,
+}
+
+impl From<anyhow::Result<MaintenanceOutcome>> for MaintenanceReport {
+    fn from(r: anyhow::Result<MaintenanceOutcome>) -> Self {
+        match r {
+            Ok(outcome) => Self {
+                outcome: Some(outcome),
+            },
+            Err(e) => {
+                eprintln!("warning: lance maintenance failed: {e:#}");
+                Self { outcome: None }
+            }
+        }
+    }
 }
 
 impl MaintenanceReport {
-    fn starved(&self) -> bool {
-        self.prune
-            .is_some_and(MaintenanceOutcome::skipped_lock_held)
-            || self
-                .compact
-                .is_some_and(MaintenanceOutcome::skipped_lock_held)
-    }
-
     /// Print an unmissable stderr warning when the sweep was starved.
     ///
     /// stderr and not stdout, and unconditional: `--json` and `--quiet` are the
     /// modes the scheduled reindex actually runs in, and those are exactly the
     /// runs where a silent skip went unnoticed for months.
     fn warn_if_starved(&self) {
-        if !self.starved() {
+        let Some(MaintenanceOutcome::SkippedLockHeld { waited }) = self.outcome else {
             return;
-        }
-        let waited = [self.prune, self.compact]
-            .into_iter()
-            .flatten()
-            .filter_map(|o| match o {
-                MaintenanceOutcome::SkippedLockHeld { waited } => Some(waited.as_secs()),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(0);
+        };
+        let waited = waited.as_secs();
         eprintln!(
             "warning: MAINTENANCE SKIPPED — another process held the store maintenance \
              lock for the whole {waited}s wait. Nothing was pruned or compacted by this \
@@ -89,16 +95,12 @@ impl MaintenanceReport {
         );
     }
 
-    /// Machine-readable summary for `--json`, e.g. `"prune=ran compact=ran"`.
+    /// Machine-readable summary for `--json`, e.g. `"ran"` or
+    /// `"skipped_lock_held"`.
     fn json_label(&self) -> String {
-        let part = |name: &str, o: Option<MaintenanceOutcome>| {
-            format!("{name}={}", o.map_or("failed", MaintenanceOutcome::label))
-        };
-        format!(
-            "{} {}",
-            part("prune", self.prune),
-            part("compact", self.compact)
-        )
+        self.outcome
+            .map_or("failed", MaintenanceOutcome::label)
+            .to_string()
     }
 }
 
@@ -1320,20 +1322,13 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     // the one that must not be pre-empted. Before this, a `bobbin status` from
     // the incremental service holding the lock made the whole maintenance step
     // a no-op that still exited 0.
-    let lock_wait = maintenance_lock_wait();
-    let mut maintenance = MaintenanceReport::default();
-
-    match vector_store.prune(lock_wait).await {
-        Ok(o) => maintenance.prune = Some(o),
-        Err(e) => eprintln!("warning: lance prune failed: {e:#}"),
-    }
-    // Compact fragmented lance data after indexing — each file insert creates a
-    // new fragment, and compaction merges them for better read performance.
-    // Stats queries on heavily fragmented tables return incomplete results.
-    match vector_store.compact(lock_wait).await {
-        Ok(o) => maintenance.compact = Some(o),
-        Err(e) => eprintln!("warning: lance compaction failed: {e:#}"),
-    }
+    //
+    // ONE acquisition for prune+compact (`maintain`), not one each: the nightly
+    // runs an `index` per repo, so a per-operation budget would double the
+    // worst-case wait for every one of them, and a separate acquisition leaves
+    // a window for a contender to steal the lock between the prune and the
+    // compaction it is supposed to precede.
+    let maintenance = MaintenanceReport::from(vector_store.maintain(maintenance_lock_wait()).await);
     profile.compact_ms = t_compact.elapsed().as_millis();
 
     // A starved sweep is reported LOUDLY on stderr even under --quiet/--json.
