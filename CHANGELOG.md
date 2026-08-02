@@ -25,6 +25,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-08-02
+
+### Added
+
+- *(deploy)* Fail the cutover on a featureless binary, not just a glibc mismatch([7aafb2c](https://github.com/scbrown/bobbin/commit/7aafb2c51ce69b417faeff2b9c0fc6d6a6feae85))
+- *(version)* Emit the build git sha so a deploy is verifiable (/version + --version)([300b9c0](https://github.com/scbrown/bobbin/commit/300b9c06bfc8e2f0282645dc07967a0fd35ed370))
+
+### Fixed
+
+- *(deploy)* Build the shipped binary WITH --features knowledge([864c710](https://github.com/scbrown/bobbin/commit/864c710d34123adea091885f52b0f41773a6bd8a))
+- *(beads)* /beads pushes the Issue filter into LanceDB instead of over-fetch-then-filter([2eba8f2](https://github.com/scbrown/bobbin/commit/2eba8f29447ec57da16c1eb6522f49eca1e7154a))
+- *(lance)* Bound compaction memory and prune before compacting([585a02e](https://github.com/scbrown/bobbin/commit/585a02eece732de9d903a6d0aea4091cca0dea4e))
+- *(embed)* Bound the embed batch at the chokepoint — a whole corpus reached the model in one call([b7f340b](https://github.com/scbrown/bobbin/commit/b7f340b38cd0a1ea92a02bc19e7206b8bcfe61af))
+- *(lance)* Maintenance must sweep every table, not just chunks([90ea77a](https://github.com/scbrown/bobbin/commit/90ea77ad15000bb4200f55b7b6b62b0789ed0dbf))
+- *(lance)* Scheduled maintenance WAITS for the lock; a skip is no longer silent([2795d71](https://github.com/scbrown/bobbin/commit/2795d71877658d4e26f8fa6ac565108116d10c3f))
+- *(lance)* One lock acquisition per sweep — a per-op wait multiplies by 27 repos([3b68aea](https://github.com/scbrown/bobbin/commit/3b68aeaedd4c63995e90d78a10d5c21da29964a6))
+- *(release)* The aarch64 leg OOM-kills the runner under fat LTO — 4 tags, 0 releases([f84f7b7](https://github.com/scbrown/bobbin/commit/f84f7b758fe7d3bb58b0b4c46e1a43a086a95851))
+
+### Testing
+
+- *(release)* Comment out git_tag_name — single-variable experiment on the no-bump defect([4160baa](https://github.com/scbrown/bobbin/commit/4160baa3a77ce9743eec5c1c368054a9a2cd5d7e))
+- *(release)* Comment out `release = true` — config is now identical to the repo that WORKS([91f47c0](https://github.com/scbrown/bobbin/commit/91f47c0b41d77b68d0ff12d89e1db98c4245263f))
+- *(release)* Experiments 1+2 concluded — the no-bump cause is NOT in this file([31f60ea](https://github.com/scbrown/bobbin/commit/31f60ea62e97d9c75bbabd12373c3d42660f85db))
+
 ## [0.6.0] - 2026-07-13
 
 Multimodal PDF ingest, index-freshness safety net, and two indexing/telemetry
