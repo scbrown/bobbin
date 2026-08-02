@@ -25,6 +25,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-08-02
+
+### Added
+
+- *(deploy)* Fail the cutover on a featureless binary, not just a glibc mismatch([7aafb2c](https://github.com/scbrown/bobbin/commit/7aafb2c51ce69b417faeff2b9c0fc6d6a6feae85))
+- *(version)* Emit the build git sha so a deploy is verifiable (/version + --version)([300b9c0](https://github.com/scbrown/bobbin/commit/300b9c06bfc8e2f0282645dc07967a0fd35ed370))
+
+### Fixed
+
+- *(deploy)* Build the shipped binary WITH --features knowledge([864c710](https://github.com/scbrown/bobbin/commit/864c710d34123adea091885f52b0f41773a6bd8a))
+- *(beads)* /beads pushes the Issue filter into LanceDB instead of over-fetch-then-filter([2eba8f2](https://github.com/scbrown/bobbin/commit/2eba8f29447ec57da16c1eb6522f49eca1e7154a))
+- *(lance)* Bound compaction memory and prune before compacting([585a02e](https://github.com/scbrown/bobbin/commit/585a02eece732de9d903a6d0aea4091cca0dea4e))
+- *(embed)* Bound the embed batch at the chokepoint — a whole corpus reached the model in one call([b7f340b](https://github.com/scbrown/bobbin/commit/b7f340b38cd0a1ea92a02bc19e7206b8bcfe61af))
+- *(lance)* Maintenance must sweep every table, not just chunks([90ea77a](https://github.com/scbrown/bobbin/commit/90ea77ad15000bb4200f55b7b6b62b0789ed0dbf))
+- *(lance)* Scheduled maintenance WAITS for the lock; a skip is no longer silent([2795d71](https://github.com/scbrown/bobbin/commit/2795d71877658d4e26f8fa6ac565108116d10c3f))
+
 ## [0.6.0] - 2026-07-13
 
 Multimodal PDF ingest, index-freshness safety net, and two indexing/telemetry
