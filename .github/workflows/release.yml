@@ -85,6 +85,41 @@ jobs:
             export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
             export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
             export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
+
+            # THIS LEG OOM-KILLS THE RUNNER UNDER FAT LTO. Not a guess -- measured.
+            #
+            # [profile.release] is lto = true + codegen-units = 1, i.e. a
+            # single-threaded whole-program link. That fits on the x86_64 legs. On this
+            # one it does not, and it has silently cost us every release since v0.6.0:
+            # tags v0.6.1, v0.6.2, v0.6.3 and v0.6.4 were all pushed and all produced NO
+            # GitHub Release, because `checksums` needs: build and `release` needs:
+            # [build, checksums] -- so this single leg took the whole lane down, four
+            # times, for 19 days, with no alert (a tag with no Release is
+            # indistinguishable from no tag at all).
+            #
+            # The variable is in the repo's own history: v0.6.0 built WITHOUT
+            # `--features knowledge` and released fine; commit 296238c added the flag and
+            # every one of the 5 subsequent tag runs died here. The feature pulls the
+            # quipu/RDF dependency tree through that fat-LTO link.
+            #
+            # Measured on a 4-core/16GB runner, one run, single variable
+            # (probe/aarch64-oom, run 30753070604):
+            #
+            #   baseline (lto=true, cgu=1)  peak 15719M used / 21M available /
+            #                               3071M swap exhausted -> exit 143 at 24m
+            #   thin (this setting)         peak  3440M used / 12154M available
+            #                               -> SUCCESS in 18m37s, max RSS 2.4GB
+            #
+            # So: ~4.6x less peak memory, and it builds. Scoped to this target on
+            # purpose -- the x86_64 legs keep fat LTO because they are the artifacts
+            # anyone actually runs, and they are not the ones failing.
+            #
+            # KNOWN UNMEASURED: the x86_64 legs' remaining headroom. They pass today,
+            # but nothing here tells us by how much, so a future dependency bump could
+            # walk them into the same wall. If a linux leg starts dying at ~20+ minutes
+            # of log silence with exit 143, this is the cause -- come straight here.
+            export CARGO_PROFILE_RELEASE_LTO=thin
+            export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
           fi
           # --features knowledge is REQUIRED, not optional: it gates bobbin's entire
           # Quipu integration (MCP surface, coupling exporter, PPR reranking) and is
