@@ -73,11 +73,17 @@ jobs:
           # the knowledge tests can need a live Quipu the build container has not
           # got, and turning them on in CI is a separate deliberate call — this
           # change only fixes the shipped BINARY.
+          # protobuf-compiler is REQUIRED and the image does not carry it: lance-encoding's
+          # build script shells out to `protoc` and the build dies with "Could not find
+          # `protoc`" partway through, AFTER several minutes of compiling. Measured
+          # 2026-08-02 (aegis-ks9cl) doing this build by hand — and note the failure is
+          # easy to misread, because piping this step to `tail` reports the pipe's exit
+          # status, so a dead build shows up as exit 0.
           docker run --rm \
             -v "$PWD":/src -w /src \
             -v bobbin-cargo-registry:/usr/local/cargo/registry \
             rust:1-bullseye \
-            bash -euc 'cargo build --release --features knowledge && cargo test'
+            bash -euc 'apt-get update -qq && apt-get install -y -qq protobuf-compiler && cargo build --release --features knowledge && cargo test'
           test -x target/release/bobbin
           echo "built: $(file target/release/bobbin | cut -d, -f1-2)"
 
