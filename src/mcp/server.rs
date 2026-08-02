@@ -85,13 +85,23 @@ impl BobbinMcpServer {
         }
     }
 
-    /// URL of the REMOTE Quipu instance holding the organisation ontology, if one
-    /// is configured. Deliberately env-only and unset by default: the hostname is
-    /// deployment-specific and must not be baked into this repo.
+    /// URL of the REMOTE Quipu instance holding the organisation ontology.
+    ///
+    /// This is the EXISTING `quipu_endpoint` config key — the same one the search
+    /// handler already uses for spotlight annotations — rather than a second knob
+    /// meaning the same thing. A deployment that already annotates search results
+    /// from its ontology gets federated knowledge tools with no config change, and
+    /// there is no way to have one working while the other silently is not.
+    /// `BOBBIN_QUIPU_REMOTE` overrides it for testing. Unset => local graph only.
     #[cfg(feature = "knowledge")]
     fn quipu_remote_url(&self) -> Option<String> {
         std::env::var("BOBBIN_QUIPU_REMOTE")
             .ok()
+            .or_else(|| {
+                Config::load(&Config::config_path(&self.repo_root))
+                    .ok()
+                    .and_then(|c| c.quipu_endpoint)
+            })
             .map(|s| s.trim().trim_end_matches('/').to_string())
             .filter(|s| !s.is_empty())
     }
@@ -144,9 +154,9 @@ derived from git history (IRIs under https://bobbin.dev/)",
                 }),
                 None => serde_json::json!({
                     "configured": false,
-                    "note": "No remote Quipu configured (set BOBBIN_QUIPU_REMOTE). \
-Ontology facts are NOT being consulted — an empty ontology section here means \
-NOT ASKED, not 'not present'.",
+                    "note": "No ontology Quipu configured (set `quipu_endpoint` in \
+bobbin's config, or BOBBIN_QUIPU_REMOTE). Ontology facts are NOT being consulted — \
+an empty ontology section here means NOT ASKED, not 'not present'.",
                 }),
             },
         })
@@ -162,7 +172,7 @@ NOT ASKED, not 'not present'.",
         let Some(base) = self.quipu_remote_url() else {
             return serde_json::json!({
                 "consulted": false,
-                "reason": "no remote Quipu configured (BOBBIN_QUIPU_REMOTE unset)",
+                "reason": "no ontology Quipu configured (quipu_endpoint / BOBBIN_QUIPU_REMOTE unset)",
             });
         };
         match Self::quipu_remote_post(&base, "/query", body).await {
@@ -2653,7 +2663,7 @@ an 'error' that is a TRANSPORT FAILURE — neither is evidence a fact is absent.
             let ontology = match self.quipu_remote_url() {
                 None => serde_json::json!({
                     "consulted": false,
-                    "reason": "no remote Quipu configured (BOBBIN_QUIPU_REMOTE unset)",
+                    "reason": "no ontology Quipu configured (quipu_endpoint / BOBBIN_QUIPU_REMOTE unset)",
                 }),
                 Some(base) => {
                     let max = req.max_entities.unwrap_or(20).min(25);
