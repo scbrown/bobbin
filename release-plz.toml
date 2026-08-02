@@ -13,33 +13,19 @@ git_tag_enable = true
 # `release_pr_output: {"prs":[]}` + `nothing to release`. Aligning the template
 # to the existing convention (not renaming tags — release.yml depends on `v*`)
 # lets release-plz recognize the baseline and open release PRs unaided.
-# EXPERIMENT, aegis-pesj — this line is COMMENTED OUT, not deleted, and here is why.
+# aegis-pesj EXPERIMENT 1, CONCLUDED AND REVERTED. This line was commented out
+# to test whether it was SUPPRESSING the version bump (the only repo without it,
+# quipu, was the only one bumping). It is not: with it commented, release-plz
+# still produced a CHANGELOG-only branch, no bump. The correlation was
+# coincidence.
 #
-# The reasoning above is sound and the defect it names is real. But it did not
-# work: ten days on, release-plz still derives NO version bump here. Measured
-# across the fleet, `git_tag_name` correlates with failure, inversely and
-# exactly:
+# RESTORED because it is correct on its own merits: this repo's tags really are
+# `v{{ version }}` and release.yml fires the binary build on `refs/tags/v*`.
+# Without it release-plz would tag `bobbin-v0.6.5` the moment it starts working,
+# silently breaking the deploy trigger — a latent hazard for no benefit.
 #
-#     repo     crates.io   git_tag_name   bumps?
-#     quipu    EXISTS      ABSENT         YES -> 0.3.16
-#     bobbin   EXISTS      present        NO
-#     hank     ABSENT      present        NO
-#
-# The only repo WITHOUT the line is the only one that bumps. bobbin vs quipu is
-# a clean pair — both have a crates.io package, both publish=false, they differ
-# in exactly this line, opposite outcomes. So the line may be ACTIVE HARM rather
-# than merely ineffective.
-#
-# Commented rather than removed so the reasoning survives and the revert is one
-# character. ACCEPTANCE: does the next release-plz branch diff touch
-# `Cargo.toml` version? quipu's does; bobbin's does not. Readable WITHOUT the
-# PR-permission fix, because the branch is pushed either way.
-#
-# IF THIS SUCCEEDS, do NOT simply re-add the line to fix tag naming: the default
-# template is `bobbin-v{{version}}` and release.yml fires on `refs/tags/v*`, so
-# the tag shape must then be solved in release.yml, not by restoring the line
-# that suppressed the bump.
-# git_tag_name = "v{{ version }}"
+# What it does NOT do is fix the no-bump defect. Do not read it as that fix.
+git_tag_name = "v{{ version }}"
 
 [[package]]
 name = "bobbin"
