@@ -130,6 +130,31 @@ pub(super) async fn metrics(
         ));
     }
 
+    // Maintenance freshness. This is the alertable signal for a starved sweep: the
+    // nightly can skip its whole prune/compact step (lock held by a contender)
+    // and still exit 0, so unit success proves nothing about the store being
+    // maintained. Age of the last COMPLETED sweep does.
+    //
+    // Read from the shared on-disk record, so it reports maintenance done by
+    // ANY participant — the reindex CLI, watch, or this server — not just this
+    // process. Absent series = never swept; alert on absence too.
+    let status = store.maintenance_status();
+    out.push_str(
+        "# HELP bobbin_maintenance_last_success_timestamp_seconds \
+         Unix time of the last completed prune/compact sweep of the vector store.\n",
+    );
+    out.push_str("# TYPE bobbin_maintenance_last_success_timestamp_seconds gauge\n");
+    for (op, ts) in [
+        ("prune", status.last_prune_unix),
+        ("compact", status.last_compact_unix),
+    ] {
+        if let Some(ts) = ts {
+            out.push_str(&format!(
+                "bobbin_maintenance_last_success_timestamp_seconds{{op=\"{op}\"}} {ts}\n"
+            ));
+        }
+    }
+
     (
         StatusCode::OK,
         [("content-type", "text/plain; version=0.0.4; charset=utf-8")],

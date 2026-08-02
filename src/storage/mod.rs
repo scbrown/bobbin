@@ -3,5 +3,5 @@ pub mod lance;
 pub mod sqlite;
 
 pub use self::feedback::FeedbackStore;
-pub use self::lance::VectorStore;
+pub use self::lance::{LockWait, MaintenanceOutcome, MaintenanceStatus, VectorStore};
 pub use self::sqlite::MetadataStore;

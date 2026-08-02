@@ -78,6 +78,98 @@ fn bounded_compaction_options() -> CompactionOptions {
     }
 }
 
+/// Cross-process record of the last COMPLETED maintenance sweep, written into
+/// the dataset directory beside `.maintenance.lock`.
+///
+/// It exists because the read-path throttle it feeds was per-PROCESS, and the
+/// heaviest contender for the maintenance lock is a short-lived CLI: every
+/// `bobbin status` is a fresh process whose in-memory "last compacted" is
+/// "never", so every one of them took the store-wide lock. See
+/// [`VectorStore::compact_if_stale`].
+const MAINTENANCE_STATUS_FILE: &str = ".maintenance.json";
+
+/// How long the read path lets a compaction stay deferred. Shared by the
+/// in-process throttle and the cross-process one, so a `bobbin status` storm
+/// and a long-lived server obey the same budget.
+const READ_PATH_COMPACT_INTERVAL_SECS: u64 = 300;
+
+/// How often to re-try the maintenance lock while waiting for it.
+const LOCK_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// How a caller wants to acquire the store-wide maintenance lock.
+///
+/// The distinction is the whole point of this type: the two kinds of caller
+/// have opposite correct behaviour, and collapsing them is what let a routine
+/// `bobbin status` starve the only job that prunes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LockWait {
+    /// **Opportunistic** — try once, give up immediately if another
+    /// participant holds the lock. Correct for the READ path: a stats query
+    /// compacts as a courtesy, and queueing behind someone else's sweep would
+    /// make every request pay for it.
+    NoWait,
+    /// **Scheduled** — poll for the lock up to this long before giving up.
+    /// Correct for the reindex/watch maintenance step, which is the ONLY thing
+    /// that prunes: it must not be pre-empted by an opportunistic contender.
+    UpTo(std::time::Duration),
+}
+
+/// What a maintenance sweep actually DID.
+///
+/// `compact`/`prune` used to return `Ok(())` whether they swept every table or
+/// skipped entirely because the lock was held, so a starved nightly was
+/// indistinguishable from a successful one — for months. A caller that cannot
+/// tell the difference cannot report it, and nothing did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaintenanceOutcome {
+    /// The lock was held by us and every table was swept.
+    Ran,
+    /// Another participant held the maintenance lock; NOTHING was reclaimed.
+    SkippedLockHeld { waited: std::time::Duration },
+    /// The store has no tables open — nothing to sweep.
+    NoTables,
+}
+
+impl MaintenanceOutcome {
+    /// True only when the sweep actually touched the store.
+    pub fn ran(self) -> bool {
+        matches!(self, Self::Ran)
+    }
+
+    /// True when the sweep was starved by a lock contender — the case worth
+    /// reporting, because the caller's exit status will not show it.
+    pub fn skipped_lock_held(self) -> bool {
+        matches!(self, Self::SkippedLockHeld { .. })
+    }
+
+    /// Stable machine-readable label for JSON output and logs.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Ran => "ran",
+            Self::SkippedLockHeld { .. } => "skipped_lock_held",
+            Self::NoTables => "no_tables",
+        }
+    }
+}
+
+/// Wall-clock record of the last successful maintenance, read from
+/// [`MAINTENANCE_STATUS_FILE`]. Unix seconds; `None` means "never, as far as
+/// this store's directory knows".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MaintenanceStatus {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_compact_unix: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_prune_unix: Option<u64>,
+}
+
+/// Seconds since the unix epoch, or 0 if the clock is before it.
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
 /// Extract a named string column from a RecordBatch, returning a Result instead of panicking.
 fn string_column<'a>(batch: &'a RecordBatch, name: &str) -> Result<&'a StringArray> {
     batch
@@ -676,6 +768,78 @@ impl VectorStore {
         }
     }
 
+    /// Acquire the maintenance lock according to `wait`.
+    ///
+    /// `Err(waited)` means we gave up; `waited` is how long we spent trying,
+    /// which is the number a caller needs in order to say something truthful
+    /// about the skip.
+    ///
+    /// The wait is a POLL, not a blocking `flock`, for two reasons: it stays
+    /// bounded (a blocking acquire behind a wedged holder is the two-day-hang
+    /// failure mode this fleet already has scar tissue for), and it yields to
+    /// the async runtime instead of parking a worker thread.
+    async fn acquire_maintenance_lock(
+        &self,
+        wait: LockWait,
+    ) -> std::result::Result<std::fs::File, std::time::Duration> {
+        let started = std::time::Instant::now();
+        let budget = match wait {
+            LockWait::NoWait => std::time::Duration::ZERO,
+            LockWait::UpTo(d) => d,
+        };
+        loop {
+            if let Some(file) = self.try_maintenance_lock() {
+                return Ok(file);
+            }
+            let waited = started.elapsed();
+            if waited >= budget {
+                return Err(waited);
+            }
+            // Never sleep past the budget — a caller that asked for 60s must
+            // not be held for 60.5s.
+            let remaining = budget - waited;
+            tokio::time::sleep(LOCK_POLL_INTERVAL.min(remaining)).await;
+        }
+    }
+
+    /// Path of the cross-process maintenance status record.
+    fn maintenance_status_path(&self) -> PathBuf {
+        self.db_path.join(MAINTENANCE_STATUS_FILE)
+    }
+
+    /// Last completed maintenance for this store, as recorded on disk by
+    /// whichever process last swept it.
+    ///
+    /// This is the operator-facing signal: "time since last successful
+    /// maintenance" is alertable, and unlike a caller's exit status it does not
+    /// go green when the sweep was skipped. Best-effort — a missing or
+    /// unreadable file reads as "never".
+    pub fn maintenance_status(&self) -> MaintenanceStatus {
+        std::fs::read_to_string(self.maintenance_status_path())
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    /// Stamp a completed sweep into the status record.
+    ///
+    /// Only ever called while HOLDING the maintenance lock, which is what makes
+    /// the read-modify-write safe across processes without a second lock.
+    /// Best-effort: failing to record maintenance must not fail maintenance.
+    fn record_maintenance(&self, compacted: bool, pruned: bool) {
+        let mut status = self.maintenance_status();
+        let now = now_unix();
+        if compacted {
+            status.last_compact_unix = Some(now);
+        }
+        if pruned {
+            status.last_prune_unix = Some(now);
+        }
+        if let Ok(json) = serde_json::to_string(&status) {
+            let _ = std::fs::write(self.maintenance_status_path(), json);
+        }
+    }
+
     /// Compact fragmented data files.
     ///
     /// LanceDB creates a new fragment for every add/delete. With per-file upserts
@@ -709,14 +873,15 @@ impl VectorStore {
         .collect()
     }
 
-    pub async fn compact(&self) -> Result<()> {
+    pub async fn compact(&self, wait: LockWait) -> Result<MaintenanceOutcome> {
         let tables = self.maintenance_tables();
         if tables.is_empty() {
-            return Ok(());
+            return Ok(MaintenanceOutcome::NoTables);
         }
 
-        let Some(_lock) = self.try_maintenance_lock() else {
-            return Ok(());
+        let _lock = match self.acquire_maintenance_lock(wait).await {
+            Ok(lock) => lock,
+            Err(waited) => return Ok(MaintenanceOutcome::SkippedLockHeld { waited }),
         };
 
         // One table's failure must not skip the rest — they are independent
@@ -735,20 +900,24 @@ impl VectorStore {
                 first_err.get_or_insert(e);
             }
         }
-        first_err.map_or(Ok(()), Err)
+        // Stamped while still holding the lock, and only for a sweep that
+        // actually ran — a skip must never look like maintenance.
+        self.record_maintenance(true, false);
+        first_err.map_or(Ok(MaintenanceOutcome::Ran), Err)
     }
 
     /// Remove old dataset versions to reclaim disk space.
     /// Removes versions older than 1 hour by default.
     /// Gated on the maintenance lock exactly like [`Self::compact`].
-    pub async fn prune(&self) -> Result<()> {
+    pub async fn prune(&self, wait: LockWait) -> Result<MaintenanceOutcome> {
         let tables = self.maintenance_tables();
         if tables.is_empty() {
-            return Ok(());
+            return Ok(MaintenanceOutcome::NoTables);
         }
 
-        let Some(_lock) = self.try_maintenance_lock() else {
-            return Ok(());
+        let _lock = match self.acquire_maintenance_lock(wait).await {
+            Ok(lock) => lock,
+            Err(waited) => return Ok(MaintenanceOutcome::SkippedLockHeld { waited }),
         };
 
         let mut first_err = None;
@@ -766,9 +935,8 @@ impl VectorStore {
                 first_err.get_or_insert(e);
             }
         }
-        first_err.map_or(Ok(()), Err)?;
-
-        Ok(())
+        self.record_maintenance(false, true);
+        first_err.map_or(Ok(MaintenanceOutcome::Ran), Err)
     }
 
     /// Read-path compaction throttle: attempt a compaction at most once per
@@ -777,8 +945,28 @@ impl VectorStore {
     /// a fragmented table ran inline in EVERY request while other
     /// participants interrupted it. Between attempts, a slightly
     /// stale scan beats an unavailable server.
+    /// The read path is also throttled ACROSS processes, because the in-process
+    /// throttle below cannot see the contender that actually mattered.
+    ///
+    /// `bobbin status` is a fresh process on every invocation, so its
+    /// `last_compact_secs` is always the "never" sentinel and it always fell
+    /// through to a lock attempt. The incremental service runs `bobbin status`
+    /// on every cycle, so the store-wide maintenance lock was being taken by
+    /// short-lived readers on a schedule — and the nightly, the only job that
+    /// prunes, skipped in silence when it lost the race. Measured: a supervised
+    /// reindex that lost the lock reclaimed nothing (dependency versions went
+    /// UP, 280,899 -> 280,971); the identical command with the contender
+    /// stopped took dependencies 3.2G -> 117M.
+    ///
+    /// Reading the shared record first means a status call that another
+    /// participant already compacted for does not touch the lock at all.
     async fn compact_if_stale(&self) {
-        const READ_PATH_COMPACT_INTERVAL_SECS: u64 = 300;
+        let now_wall = now_unix();
+        if let Some(last_wall) = self.maintenance_status().last_compact_unix {
+            if now_wall.saturating_sub(last_wall) < READ_PATH_COMPACT_INTERVAL_SECS {
+                return;
+            }
+        }
         // Clamped to >= 1 so a recorded value is never the "never" sentinel 0.
         let now = self.opened_at.elapsed().as_secs().max(1);
         let last = self.last_compact_secs.load(Ordering::Relaxed);
@@ -789,7 +977,9 @@ impl VectorStore {
         // elsewhere): either way, hammering the lock on every request is the
         // behavior this throttle exists to stop.
         self.last_compact_secs.store(now, Ordering::Relaxed);
-        self.compact().await.ok();
+        // NoWait is load-bearing: the read path is opportunistic and must yield
+        // to scheduled maintenance, never queue in front of it.
+        self.compact(LockWait::NoWait).await.ok();
     }
 
     /// Search for similar vectors using approximate nearest neighbor search.
@@ -3290,9 +3480,12 @@ mod tests {
         );
 
         // And the sweep itself must succeed over multiple tables.
-        store.prune().await.expect("prune should sweep every table");
         store
-            .compact()
+            .prune(LockWait::NoWait)
+            .await
+            .expect("prune should sweep every table");
+        store
+            .compact(LockWait::NoWait)
             .await
             .expect("compact should sweep every table");
 
@@ -3391,8 +3584,24 @@ mod tests {
             "the lock must be exclusive across handles"
         );
         // compact() under contention: Ok (skipped), not an error, not a hang.
-        other.compact().await.expect("contended compact skips");
-        other.prune().await.expect("contended prune skips");
+        // And the outcome must SAY it skipped — an Ok that is indistinguishable
+        // from a real sweep is the defect itself.
+        let outcome = other
+            .compact(LockWait::NoWait)
+            .await
+            .expect("contended compact skips");
+        assert!(
+            outcome.skipped_lock_held(),
+            "contended compact must report the skip, got {outcome:?}"
+        );
+        let outcome = other
+            .prune(LockWait::NoWait)
+            .await
+            .expect("contended prune skips");
+        assert!(
+            outcome.skipped_lock_held(),
+            "contended prune must report the skip, got {outcome:?}"
+        );
 
         drop(held);
         assert!(
@@ -3400,7 +3609,138 @@ mod tests {
             "releasing the lock frees the next participant"
         );
         // And with the lock free, a real compaction runs clean.
-        other.compact().await.expect("uncontended compact runs");
+        assert!(
+            other
+                .compact(LockWait::NoWait)
+                .await
+                .expect("uncontended compact runs")
+                .ran(),
+            "an uncontended compact must report that it ran"
+        );
+    }
+
+    #[tokio::test]
+    async fn scheduled_maintenance_waits_for_the_lock_instead_of_skipping() {
+        // The nightly is the ONLY job that prunes, and it used to
+        // skip — silently, returning Ok — whenever any other participant held
+        // the maintenance lock. A routine `bobbin status` was enough. The
+        // scheduled path must WAIT and then actually run.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+        store
+            .insert(
+                &[sample_chunk("chunk1", "main")],
+                &[sample_embedding()],
+                &no_contexts(1),
+                "default",
+                "abc123",
+                "1234567890",
+            )
+            .await
+            .unwrap();
+
+        let other = VectorStore::open(&path).await.unwrap();
+        let held = store.try_maintenance_lock().expect("take the lock");
+
+        // Release it shortly, as a read-path compaction would.
+        let releaser = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            drop(held);
+        });
+
+        let outcome = other
+            .prune(LockWait::UpTo(std::time::Duration::from_secs(10)))
+            .await
+            .expect("waiting prune succeeds");
+        releaser.await.unwrap();
+        assert!(
+            outcome.ran(),
+            "scheduled prune must WAIT out a contender and run, got {outcome:?}"
+        );
+
+        // A wait that expires still reports the skip rather than pretending.
+        let held = store.try_maintenance_lock().expect("retake the lock");
+        let outcome = other
+            .compact(LockWait::UpTo(std::time::Duration::from_millis(200)))
+            .await
+            .expect("expired wait is not an error");
+        assert!(
+            outcome.skipped_lock_held(),
+            "an expired wait must report the skip, got {outcome:?}"
+        );
+        drop(held);
+    }
+
+    #[tokio::test]
+    async fn maintenance_status_is_shared_across_processes_and_throttles_the_read_path() {
+        // The read-path throttle was per-PROCESS, which is no throttle at all
+        // for `bobbin status`: every invocation is a fresh process whose
+        // in-memory "last compacted" is never, so every one took the
+        // store-wide lock. The incremental service runs it on a schedule —
+        // that is what starved the nightly.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+
+        let mut store = VectorStore::open(&path).await.unwrap();
+        store
+            .insert(
+                &[sample_chunk("chunk1", "main")],
+                &[sample_embedding()],
+                &no_contexts(1),
+                "default",
+                "abc123",
+                "1234567890",
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            store.maintenance_status(),
+            MaintenanceStatus::default(),
+            "a never-swept store reports no maintenance"
+        );
+
+        store
+            .compact(LockWait::NoWait)
+            .await
+            .expect("compact runs")
+            .ran()
+            .then_some(())
+            .expect("compact ran");
+
+        let status = store.maintenance_status();
+        assert!(
+            status.last_compact_unix.is_some(),
+            "a completed sweep is recorded on disk"
+        );
+        assert!(
+            status.last_prune_unix.is_none(),
+            "compact must not claim a prune it did not do"
+        );
+
+        // A DIFFERENT handle — standing in for the next `bobbin status`
+        // process — sees the record and must not take the lock at all.
+        let fresh = VectorStore::open(&path).await.unwrap();
+        assert_eq!(
+            fresh.maintenance_status(),
+            status,
+            "the record is visible to a fresh process"
+        );
+        let guard = store
+            .try_maintenance_lock()
+            .expect("hold the lock so any attempt would be a visible skip");
+        fresh.compact_if_stale().await;
+        drop(guard);
+        // If compact_if_stale had attempted, it would have recorded an attempt
+        // in its in-process throttle; the cross-process gate short-circuits
+        // before that.
+        assert_eq!(
+            fresh.last_compact_secs.load(Ordering::Relaxed),
+            0,
+            "a recently-maintained store must not be re-attempted by the read path"
+        );
     }
 
     #[tokio::test]
@@ -3940,7 +4280,7 @@ mod tests {
 
         // Compaction can invalidate the FTS index; search must still succeed
         // (self-heal rebuild) rather than 500.
-        store.compact().await.unwrap();
+        store.compact(LockWait::NoWait).await.unwrap();
         let r2 = store.search_fts("authenticate", 10, None).await.unwrap();
         assert_eq!(r2.len(), 1, "FTS should still work after compaction");
 

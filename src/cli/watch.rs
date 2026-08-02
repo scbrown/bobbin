@@ -11,7 +11,7 @@ use super::index::build_context_windows;
 use super::OutputConfig;
 use crate::config::Config;
 use crate::index::{embedder, Embedder, Parser};
-use crate::storage::{MetadataStore, VectorStore};
+use crate::storage::{LockWait, MetadataStore, VectorStore};
 
 #[derive(Args)]
 pub struct WatchArgs {
@@ -335,15 +335,44 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
                         // not sit downstream of the operation that can OOM, or a
                         // failing compaction permanently starves it and disk
                         // growth becomes self-perpetuating.
-                        if let Err(e) = vector_store.prune().await {
-                            if !output.quiet {
-                                eprintln!("  {} Prune error: {}", "!".yellow(), e);
+                        //
+                        // A SHORT wait, not the reindex's long one: watch is a
+                        // periodic top-up, so deferring one cycle costs little,
+                        // but skipping instantly on contention is what made
+                        // maintenance invisible best-effort. Long
+                        // enough to outlast a read-path compaction, short enough
+                        // never to sit in front of the nightly.
+                        const WATCH_LOCK_WAIT: std::time::Duration =
+                            std::time::Duration::from_secs(60);
+                        let lock_wait = LockWait::UpTo(WATCH_LOCK_WAIT);
+
+                        let mut starved = false;
+                        match vector_store.prune(lock_wait).await {
+                            Ok(o) => starved |= o.skipped_lock_held(),
+                            Err(e) => {
+                                if !output.quiet {
+                                    eprintln!("  {} Prune error: {}", "!".yellow(), e);
+                                }
                             }
                         }
-                        if let Err(e) = vector_store.compact().await {
-                            if !output.quiet {
-                                eprintln!("  {} Compact error: {}", "!".yellow(), e);
+                        match vector_store.compact(lock_wait).await {
+                            Ok(o) => starved |= o.skipped_lock_held(),
+                            Err(e) => {
+                                if !output.quiet {
+                                    eprintln!("  {} Compact error: {}", "!".yellow(), e);
+                                }
                             }
+                        }
+                        // Say so. The success line below prints either way, and
+                        // "Compacted lance dataset" after a skip is the exact
+                        // lie this bug was made of.
+                        if starved && !output.quiet {
+                            eprintln!(
+                                "  {} Maintenance skipped: another process held the \
+                                 store lock for {}s — nothing reclaimed this cycle",
+                                "!".yellow(),
+                                WATCH_LOCK_WAIT.as_secs()
+                            );
                         }
                         // Compaction/prune can invalidate the FTS index, which
                         // otherwise surfaces as a 500 on the next keyword/hybrid
@@ -354,7 +383,7 @@ pub async fn run(args: WatchArgs, output: OutputConfig) -> Result<()> {
                                 eprintln!("  {} FTS reindex error: {}", "!".yellow(), e);
                             }
                         }
-                        if !output.quiet {
+                        if !output.quiet && !starved {
                             println!(
                                 "  {} Compacted lance dataset ({} files since last)",
                                 "~".cyan(),
