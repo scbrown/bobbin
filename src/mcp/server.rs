@@ -69,15 +69,123 @@ impl BobbinMcpServer {
         FeedbackStore::open(&db_path).context("Failed to open feedback store")
     }
 
-    /// Open the Quipu knowledge graph store
+    /// Resolve the path of the LOCAL Quipu store these tools read.
+    ///
+    /// This is bobbin's OWN embedded graph, not any Quipu server on the network.
+    /// It is returned to callers alongside every knowledge result (aegis-rwozs):
+    /// a caller that cannot tell WHICH graph replied cannot tell a miss from an
+    /// absence, and this deployment has two Quipu stores with disjoint contents.
     #[cfg(feature = "knowledge")]
-    fn open_quipu_store(&self) -> Result<quipu::Store> {
+    fn quipu_store_path(&self) -> std::path::PathBuf {
         let quipu_config = quipu::QuipuConfig::load(&self.repo_root);
-        let db_path = if quipu_config.store_path.is_relative() {
+        if quipu_config.store_path.is_relative() {
             self.repo_root.join(&quipu_config.store_path)
         } else {
             quipu_config.store_path.clone()
+        }
+    }
+
+    /// URL of the REMOTE Quipu instance holding the organisation ontology, if one
+    /// is configured. Deliberately env-only and unset by default: the hostname is
+    /// deployment-specific and must not be baked into this repo.
+    #[cfg(feature = "knowledge")]
+    fn quipu_remote_url(&self) -> Option<String> {
+        std::env::var("BOBBIN_QUIPU_REMOTE")
+            .ok()
+            .map(|s| s.trim().trim_end_matches('/').to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    /// POST a JSON body to a path on the remote Quipu and return the parsed reply.
+    #[cfg(feature = "knowledge")]
+    async fn quipu_remote_post(
+        base: &str,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .context("building HTTP client for remote quipu")?;
+        let resp = client
+            .post(format!("{base}{path}"))
+            .json(&body)
+            .send()
+            .await
+            .with_context(|| format!("POST {path} to remote quipu"))?;
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("remote quipu {path} returned HTTP {status}: {}",
+                text.chars().take(300).collect::<String>());
+        }
+        serde_json::from_str(&text)
+            .with_context(|| format!("parsing remote quipu {path} response"))
+    }
+
+    /// Describe which store(s) a knowledge answer came from.
+    ///
+    /// A caller that cannot tell WHICH graph replied cannot tell a miss from an
+    /// absence, and this deployment has two Quipu graphs with disjoint contents
+    /// (aegis-rwozs). Every knowledge response carries this.
+    #[cfg(feature = "knowledge")]
+    fn knowledge_store_info(&self) -> serde_json::Value {
+        serde_json::json!({
+            "local_code_graph": {
+                "path": self.quipu_store_path().to_string_lossy(),
+                "contains": "bobbin's OWN graph: code entities and file-coupling \
+derived from git history (IRIs under https://bobbin.dev/)",
+            },
+            "ontology": match self.quipu_remote_url() {
+                Some(url) => serde_json::json!({
+                    "configured": true,
+                    "url": url,
+                    "contains": "the organisation ontology served by a remote Quipu",
+                }),
+                None => serde_json::json!({
+                    "configured": false,
+                    "note": "No remote Quipu configured (set BOBBIN_QUIPU_REMOTE). \
+Ontology facts are NOT being consulted — an empty ontology section here means \
+NOT ASKED, not 'not present'.",
+                }),
+            },
+        })
+    }
+
+    /// Run a SPARQL SELECT against the remote ontology, as a reportable section.
+    ///
+    /// A transport failure is reported LOUDLY as an `error` rather than collapsing
+    /// into an empty result set — the whole defect this fixes was an empty answer
+    /// that was indistinguishable from a real absence.
+    #[cfg(feature = "knowledge")]
+    async fn ontology_sparql_section(&self, body: serde_json::Value) -> serde_json::Value {
+        let Some(base) = self.quipu_remote_url() else {
+            return serde_json::json!({
+                "consulted": false,
+                "reason": "no remote Quipu configured (BOBBIN_QUIPU_REMOTE unset)",
+            });
         };
+        match Self::quipu_remote_post(&base, "/query", body).await {
+            Ok(v) => {
+                let mut out = v;
+                if let Some(o) = out.as_object_mut() {
+                    o.insert("consulted".into(), serde_json::json!(true));
+                }
+                out
+            }
+            Err(e) => serde_json::json!({
+                "consulted": true,
+                "error": format!("{e:#}"),
+                "warning": "The ontology could NOT be reached. This is a TRANSPORT \
+FAILURE, not an empty result — do not read it as 'the fact is absent'.",
+            }),
+        }
+    }
+
+    /// Open the Quipu knowledge graph store
+    #[cfg(feature = "knowledge")]
+    fn open_quipu_store(&self) -> Result<quipu::Store> {
+        let db_path = self.quipu_store_path();
         // Ensure parent directory exists.
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)
@@ -2508,7 +2616,13 @@ impl BobbinMcpServer {
     // ── Quipu knowledge graph tools ───────────────────────────────
 
     /// Query the knowledge graph for entities relevant to a topic
-    #[tool(description = "Query the Quipu knowledge graph for entities and facts relevant to a topic. Uses text search with link expansion to find related entities, their types, labels, and relationships. Best for: 'what services run on node-4?', 'show me the traefik configuration', 'entities related to DNS'. Returns entities with their facts, labels, and types.")]
+    #[tool(description = "Find entities and facts relevant to a topic across BOTH knowledge graphs this deployment has. \
+Returns two clearly separated sections. 'ontology': the organisation knowledge graph on a remote Quipu (semantic search, then each \
+matching entity's facts fetched individually) — this is where infrastructure, ownership and operational facts live. \
+'local_code_graph': bobbin's own embedded graph of code entities and file-coupling from git history (IRIs under https://bobbin.dev/). \
+ALWAYS read the 'store' field: if ontology.consulted is false the ontology was NOT ASKED (no remote configured), and if it carries \
+an 'error' that is a TRANSPORT FAILURE — neither is evidence a fact is absent. Best for: 'who owns X?', 'what runs on Y?', \
+'which files change together with Z?'")]
     async fn knowledge_context(
         &self,
         Parameters(req): Parameters<KnowledgeContextRequest>,
@@ -2524,8 +2638,73 @@ impl BobbinMcpServer {
                 "expand_links": req.expand_links.unwrap_or(true),
             });
 
-            let result = quipu::tool_context(&store, &input)
+            let local = quipu::tool_context(&store, &input)
                 .map_err(|e| McpError::internal_error(format!("Knowledge graph query failed: {e}"), None))?;
+
+            // The ontology leg is TWO calls on purpose (aegis-rwozs, measured):
+            // /context is a LABEL/text match and returns 0 entities for a natural-language
+            // question, while /search (semantic) finds them. So: semantic search for the
+            // entities, then fetch each one's facts.
+            //
+            // Every hit is fetched INDIVIDUALLY rather than relying on owl:sameAs to pull a
+            // twin's facts in: sameAs is INERT on the deployed quipu (aegis-yro9m, dearing),
+            // so an entity with a sameAs twin silently yields less than it appears to. Reading
+            // each returned entity directly is what makes the answer whole.
+            let ontology = match self.quipu_remote_url() {
+                None => serde_json::json!({
+                    "consulted": false,
+                    "reason": "no remote Quipu configured (BOBBIN_QUIPU_REMOTE unset)",
+                }),
+                Some(base) => {
+                    let max = req.max_entities.unwrap_or(20).min(25);
+                    match Self::quipu_remote_post(
+                        &base, "/search", serde_json::json!({"query": req.query}),
+                    ).await {
+                        Err(e) => serde_json::json!({
+                            "consulted": true,
+                            "error": format!("{e:#}"),
+                            "warning": "The ontology could NOT be reached. TRANSPORT FAILURE, \
+not an empty result — do not read it as 'the fact is absent'.",
+                        }),
+                        Ok(hits) => {
+                            let mut entities = Vec::new();
+                            let empty = Vec::new();
+                            let results = hits.get("results")
+                                .and_then(|r| r.as_array()).unwrap_or(&empty);
+                            for hit in results.iter().take(max) {
+                                let Some(iri) = hit.get("entity").and_then(|v| v.as_str())
+                                else { continue };
+                                let facts = Self::quipu_remote_post(
+                                    &base, "/query",
+                                    serde_json::json!({"query": format!(
+                                        "SELECT ?p ?o WHERE {{ <{iri}> ?p ?o }}")}),
+                                ).await.ok();
+                                entities.push(serde_json::json!({
+                                    "iri": iri,
+                                    "score": hit.get("score"),
+                                    "facts": facts.as_ref()
+                                        .and_then(|f| f.get("rows")).cloned()
+                                        .unwrap_or(serde_json::Value::Null),
+                                    "fact_count": facts.as_ref()
+                                        .and_then(|f| f.get("count")).cloned()
+                                        .unwrap_or(serde_json::Value::Null),
+                                }));
+                            }
+                            serde_json::json!({
+                                "consulted": true,
+                                "count": entities.len(),
+                                "entities": entities,
+                            })
+                        }
+                    }
+                }
+            };
+
+            let result = serde_json::json!({
+                "ontology": ontology,
+                "local_code_graph": local,
+                "store": self.knowledge_store_info(),
+            });
 
             Ok(CallToolResult::success(vec![Content::text(
                 serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string()),
@@ -2542,7 +2721,13 @@ impl BobbinMcpServer {
     }
 
     /// Run a SPARQL query against the knowledge graph
-    #[tool(description = "Execute a SPARQL SELECT query against the Quipu knowledge graph. Supports temporal queries with valid_at (what was true then?) and tx (as-of transaction). Best for precise structured queries when you know the entity IRIs or predicates. Example: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10'")]
+    #[tool(description = "Execute a SPARQL SELECT against BOTH knowledge graphs and return each result separately. \
+'ontology': the organisation knowledge graph on a remote Quipu (infrastructure, ownership, operational facts). \
+'local_code_graph': bobbin's own embedded graph (code entities and file-coupling from git history, IRIs under https://bobbin.dev/). \
+The SAME query runs against both, so an IRI that exists in only one returns rows in only that section. \
+ALWAYS read the 'store' field: ontology.consulted=false means NOT ASKED (no remote configured) and an 'error' means TRANSPORT \
+FAILURE — an empty section is NEVER by itself evidence the fact does not exist. Supports valid_at and tx for temporal queries. \
+Example: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10'")]
     async fn knowledge_query(
         &self,
         Parameters(req): Parameters<KnowledgeQueryRequest>,
@@ -2558,8 +2743,15 @@ impl BobbinMcpServer {
                 "tx": req.tx,
             });
 
-            let result = quipu::tool_query(&store, &input)
+            let local = quipu::tool_query(&store, &input)
                 .map_err(|e| McpError::internal_error(format!("SPARQL query failed: {e}"), None))?;
+            let ontology = self.ontology_sparql_section(input.clone()).await;
+
+            let result = serde_json::json!({
+                "ontology": ontology,
+                "local_code_graph": local,
+                "store": self.knowledge_store_info(),
+            });
 
             Ok(CallToolResult::success(vec![Content::text(
                 serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string()),
