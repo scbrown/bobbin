@@ -1108,7 +1108,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bobbin"
+name = "bobbin-ai"
 version = "0.6.5"
 dependencies = [
  "anyhow",
