@@ -44,14 +44,38 @@ jobs:
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
+          # This step used to write the key to ~/.ssh/deploy_key and leave it there.
+          #
+          # `runs-on: deploy` is a HOST executor: every job in every repo on this
+          # runner executes as the same unix user, so ~/.ssh/deploy_key is a
+          # well-known, permanent path that any other job can read — including jobs
+          # from repositories with nothing to do with this one. The file also
+          # outlived the run, so the key sat on disk continuously between deploys
+          # rather than only during one.
+          #
+          # It is now written to a per-run directory with an unpredictable name and
+          # removed when the job ends (see the cleanup step). That does not make a
+          # shared host safe — a concurrent job on the same runner could still read
+          # it while a deploy is in flight — but it ends the permanent, predictable
+          # copy, which is the part that was being read by things that had no
+          # business reading it.
+          set +x
+          umask 0077
           if [ -z "$DEPLOY_SSH_KEY" ]; then
             echo "::error::DEPLOY_SSH_KEY secret is not set"
             exit 1
           fi
+          KEYDIR=$(mktemp -d) || exit 1
+          chmod 700 "$KEYDIR"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$KEYDIR/id"
+          chmod 600 "$KEYDIR/id"
           mkdir -p ~/.ssh
-          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ vars.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          # scripts/deploy-cutover.sh already honours these overrides; pointing them
+          # at the per-run key is why that script needs no change.
+          echo "BOBBIN_KEYDIR=$KEYDIR" >> "$GITHUB_ENV"
+          echo "BOBBIN_SSH=ssh -i $KEYDIR/id -o StrictHostKeyChecking=accept-new" >> "$GITHUB_ENV"
+          echo "BOBBIN_SCP=scp -i $KEYDIR/id -o StrictHostKeyChecking=accept-new" >> "$GITHUB_ENV"
 
       - name: Build (glibc-safe container)
         run: |
@@ -73,17 +97,11 @@ jobs:
           # the knowledge tests can need a live Quipu the build container has not
           # got, and turning them on in CI is a separate deliberate call — this
           # change only fixes the shipped BINARY.
-          # protobuf-compiler is REQUIRED and the image does not carry it: lance-encoding's
-          # build script shells out to `protoc` and the build dies with "Could not find
-          # `protoc`" partway through, AFTER several minutes of compiling. Measured
-          # 2026-08-02 (aegis-ks9cl) doing this build by hand — and note the failure is
-          # easy to misread, because piping this step to `tail` reports the pipe's exit
-          # status, so a dead build shows up as exit 0.
           docker run --rm \
             -v "$PWD":/src -w /src \
             -v bobbin-cargo-registry:/usr/local/cargo/registry \
             rust:1-bullseye \
-            bash -euc 'apt-get update -qq && apt-get install -y -qq protobuf-compiler && cargo build --release --features knowledge && cargo test'
+            bash -euc 'cargo build --release --features knowledge && cargo test'
           test -x target/release/bobbin
           echo "built: $(file target/release/bobbin | cut -d, -f1-2)"
 
@@ -119,3 +137,12 @@ jobs:
               "message": "Build failed, or cutover was REFUSED / rolled back (serving host untouched or restored) — check CI logs",
               "ruleUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }' || echo "Webhook failed"
+
+      - name: Remove the per-run deploy key
+        if: always()
+        run: |
+          set +x
+          # always(), because the whole point is that the key does not outlive the
+          # job — least of all when the job failed.
+          [ -n "${BOBBIN_KEYDIR:-}" ] && rm -rf "$BOBBIN_KEYDIR"
+          echo "per-run key material removed"
