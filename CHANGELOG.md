@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-08-05
+
+### Added
+
+- *(deploy)* Pull-based deploy from a published release artifact([2336364](https://github.com/scbrown/bobbin/commit/233636474bf449d32f854debd46ef6d61ad1d767))
+
 ## [0.6.0] - 2026-07-13
 
 Multimodal PDF ingest, index-freshness safety net, and two indexing/telemetry
