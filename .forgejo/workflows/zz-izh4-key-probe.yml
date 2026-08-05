@@ -1,0 +1,66 @@
+name: zz-izh4 key probe
+
+# TEMPORARY, SINGLE-PURPOSE, DELETE IMMEDIATELY AFTER ONE RUN.
+#
+# A security audit is completing a copy-inventory of one credential and needs to know
+# whether this repo's DEPLOY_SSH_KEY is the same key material as one found elsewhere.
+# Only a FINGERPRINT can answer that, and a fingerprint is derived from the public half.
+#
+# THIS REPOSITORY IS PUBLIC, so this job is written on the assumption that its log is
+# public too:
+#
+#   * It prints ONLY the key size and the SHA256 fingerprint. The comment field is
+#     stripped, because key comments routinely carry internal user@host strings and
+#     those do not belong in a public log.
+#   * It does not embed the fingerprint it is being compared against, so the log does
+#     not reveal which key is the sensitive one. The comparison is done off-box.
+#   * `set +x` is explicit. Base64-wrapped secrets DEFEAT CI secret masking — masking
+#     matches the RAW registered value, so a decoded form is not masked — which makes
+#     xtrace, or any print of decoded bytes, a route to writing a private key into the
+#     log in cleartext. The decode goes to a file under umask 0077 and is deleted.
+#
+# No private key material is printed under any path through this job.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: Fingerprint DEPLOY_SSH_KEY
+    runs-on: deploy
+    steps:
+      - name: Fingerprint only
+        env:
+          K: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set +x
+          set +e
+          umask 0077
+          TMP=$(mktemp -d) || exit 1
+          chmod 700 "$TMP"
+          trap 'rm -rf "$TMP"' EXIT
+
+          if [ -z "$K" ]; then
+            echo "DEPLOY_SSH_KEY is not set in this repo"
+            exit 0
+          fi
+
+          printf '%s\n' "$K" > "$TMP/k"
+          # awk strips the comment field: print size + fingerprint only.
+          FP=$(ssh-keygen -lf "$TMP/k" 2>/dev/null | awk '{print $1, $2}')
+          WRAP=""
+          if [ -z "$FP" ]; then
+            base64 -d < "$TMP/k" > "$TMP/d" 2>/dev/null
+            if [ -s "$TMP/d" ]; then
+              FP=$(ssh-keygen -lf "$TMP/d" 2>/dev/null | awk '{print $1, $2}')
+              [ -n "$FP" ] && WRAP=" (base64-wrapped)"
+            fi
+          fi
+          rm -f "$TMP/k" "$TMP/d"
+
+          if [ -n "$FP" ]; then
+            echo "DEPLOY_SSH_KEY fingerprint: ${FP}${WRAP}"
+          else
+            echo "DEPLOY_SSH_KEY is set but is not readable as an ssh key, raw or base64-decoded."
+            echo "Treat as UNRESOLVED — this is not a clean result."
+          fi
