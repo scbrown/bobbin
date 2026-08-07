@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-08-07
+
+Bootstrap the repository-owned release baseline. Release-plz can now package
+the pinned Quipu dependency and derives Bobbin's version from `v*` tags instead
+of the unrelated crate on crates.io.
+
+### Added
+
+- *(deploy)* pull-based deploy from a published release artifact
+
+### Fixed
+
+- *(release)* derive versions from repository tags
+- *(release)* make the pinned Quipu dependency packageable
+
 ## [0.6.6] - 2026-08-04
 
 Release: the ks9cl P0 finally has a name
