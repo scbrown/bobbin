@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-08-07
+
+### Fixed
+
+- *(release)* Document the packageable git baseline([c4cd3d6](https://github.com/scbrown/bobbin/commit/c4cd3d6eda4e953d5340a24b393f21b38c85b94c))
+- *(release)* Install protoc before package verification([f5adf8e](https://github.com/scbrown/bobbin/commit/f5adf8ece5d27d79c3330deead5b09aa1f927058))
+
 ## [0.6.7] - 2026-08-07
 
 Bootstrap the repository-owned release baseline. Release-plz can now package
