@@ -132,7 +132,7 @@ schemars = "1.0"
 # `default-features = false` keeps quipu's `onnx` + `shacl` off — verified via
 # `cargo tree -i ort`: only bobbin pulls ort/tokenizers, quipu does not, so quipu's
 # embedder (and its pad-token bug) is not compiled in.
-quipu = { git = "https://github.com/scbrown/quipu", rev = "7f984b4e", default-features = false, optional = true }
+quipu = { version = "=0.2.0", git = "https://github.com/scbrown/quipu", rev = "7f984b4e", default-features = false, optional = true }
 
 # HTTP Server
 axum = "0.8"
