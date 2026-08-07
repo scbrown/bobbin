@@ -1,4 +1,14 @@
 [workspace]
+# Bobbin is released from this repository's `v*` tags and is never published to
+# crates.io.  Without `git_only`, release-plz downloads the unrelated public
+# crate named `bobbin` (currently far behind this project) as its version
+# baseline.  That makes real feat/fix commits produce CHANGELOG-only branches
+# with no Cargo.toml bump.  Use our own tags as the authoritative baseline.
+#
+# This is supported by the release-plz version pinned by the workflow and is
+# compatible with `publish = false`; publishing and git-only mode must not both
+# be enabled.
+git_only = true
 changelog_config = "cliff.toml"
 publish = false
 git_release_enable = true
