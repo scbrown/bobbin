@@ -7,7 +7,8 @@
 #
 # This is supported by the release-plz version pinned by the workflow and is
 # compatible with `publish = false`; publishing and git-only mode must not both
-# be enabled.
+# be enabled. Tag v0.6.7 is the first packageable git-only baseline; older tags
+# predate the version requirement on the pinned Quipu dependency.
 git_only = true
 changelog_config = "cliff.toml"
 publish = false
