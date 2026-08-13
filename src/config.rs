@@ -38,6 +38,13 @@ pub struct ServerConfig {
     /// Use "127.0.0.1" to restrict to localhost.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bind_address: Option<String>,
+    /// Allowed browser origin for the MCP HTTP transport
+    /// (`bobbin serve --mcp-http`). Unset: no CORS headers are sent and
+    /// browser pages cannot call `/mcp` (unchanged default). Set to an
+    /// origin like "https://creel.example" to allow that page, or "*" to
+    /// allow any origin (fine for localhost development).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp_cors_origin: Option<String>,
     /// Filesystem prefix for indexed repos on the server.
     /// Used to normalize absolute paths in search results back to
     /// repo-relative paths (e.g., "/var/lib/bobbin/repos/").
@@ -1490,6 +1497,23 @@ url = "http://search.example"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.server.url.as_deref(), Some("http://search.example"));
+    }
+
+    #[test]
+    fn test_server_config_mcp_cors_origin() {
+        // Unset by default — the MCP HTTP transport sends no CORS headers.
+        let config = Config::default();
+        assert!(config.server.mcp_cors_origin.is_none());
+
+        let toml_str = r#"
+[server]
+mcp_cors_origin = "https://creel.example"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(
+            config.server.mcp_cors_origin.as_deref(),
+            Some("https://creel.example")
+        );
     }
 
     #[test]

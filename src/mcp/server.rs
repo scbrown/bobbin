@@ -3183,16 +3183,26 @@ pub async fn run_http_server(repo_root: PathBuf, port: u16) -> Result<()> {
             },
         );
 
-    let router = axum::Router::new().nest_service("/mcp", service);
     let config_path = crate::config::Config::config_path(&repo_root);
-    let bind_host = if config_path.exists() {
+    let server_config = if config_path.exists() {
         crate::config::Config::load(&config_path)
             .ok()
-            .and_then(|c| c.server.bind_address)
-            .unwrap_or_else(|| "0.0.0.0".to_string())
+            .map(|c| c.server)
+            .unwrap_or_default()
     } else {
-        "0.0.0.0".to_string()
+        crate::config::ServerConfig::default()
     };
+    let bind_host = server_config
+        .bind_address
+        .unwrap_or_else(|| "0.0.0.0".to_string());
+
+    let mut router = axum::Router::new().nest_service("/mcp", service);
+    // Browser pages (e.g. the creel harness) can only call /mcp when a CORS
+    // policy is configured; without `server.mcp_cors_origin` the transport
+    // stays non-browser-callable, matching the pre-existing behavior.
+    if let Some(origin) = server_config.mcp_cors_origin {
+        router = router.layer(mcp_cors_layer(&origin)?);
+    }
     let addr = format!("{}:{}", bind_host, port);
     eprintln!("Bobbin MCP server listening on http://{}/mcp", addr);
 
@@ -3205,4 +3215,39 @@ pub async fn run_http_server(repo_root: PathBuf, port: u16) -> Result<()> {
         .await?;
 
     Ok(())
+}
+
+/// Build the CORS layer for the MCP HTTP transport from
+/// `server.mcp_cors_origin`: "*" allows any origin, anything else must parse
+/// as a single exact origin. Methods and headers are unrestricted either way —
+/// origin is the only axis the config controls.
+fn mcp_cors_layer(origin: &str) -> Result<tower_http::cors::CorsLayer> {
+    use tower_http::cors::{Any, CorsLayer};
+    let layer = CorsLayer::new().allow_methods(Any).allow_headers(Any);
+    if origin == "*" {
+        Ok(layer.allow_origin(Any))
+    } else {
+        let value: axum::http::HeaderValue = origin
+            .parse()
+            .map_err(|_| anyhow::anyhow!("invalid server.mcp_cors_origin: {origin:?}"))?;
+        Ok(layer.allow_origin(value))
+    }
+}
+
+#[cfg(test)]
+mod cors_tests {
+    use super::mcp_cors_layer;
+
+    #[test]
+    fn wildcard_and_exact_origins_build() {
+        assert!(mcp_cors_layer("*").is_ok());
+        assert!(mcp_cors_layer("https://creel.example").is_ok());
+        assert!(mcp_cors_layer("http://localhost:8420").is_ok());
+    }
+
+    #[test]
+    fn invalid_origin_is_rejected() {
+        let err = mcp_cors_layer("bad\norigin").unwrap_err().to_string();
+        assert!(err.contains("mcp_cors_origin"), "unexpected error: {err}");
+    }
 }
