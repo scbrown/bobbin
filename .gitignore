@@ -40,3 +40,10 @@ book/_build/
 
 # Committed runtime state — an operator-path leak (aegis-mqnl). Never track.
 /state.json
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
