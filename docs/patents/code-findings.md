@@ -1,10 +1,11 @@
 # Code findings from the patent-specification adversarial review
 
-**Status:** pending import into beads. The shared beads database is at schema
-v26 while the current `bd` binary expects v65; writes are blocked until a
-designated machine migrates (`bd migrate --force && bd dolt push`). Import
-these as bug beads once the schema is reconciled. Found by adversarial
-doc-vs-code review (Claude agent session, 2026-08-14).
+**Status:** filed as beads on 2026-08-14 after this container migrated the
+beads schema (v26 → v65) as the designated migrator: `bobbin-lpp` (P1),
+`bobbin-au4` (P2), `bobbin-aa0` (P2), `bobbin-10d` (P3), `bobbin-zhx` (P3).
+Beads are shared via the committed `.beads/issues.jsonl` export (no dolt
+remote sync). This file remains as the review provenance record. Found by
+adversarial doc-vs-code review (Claude agent session, 2026-08-14).
 
 ## 1. Stale grid-count comment on `run_full_sweep` (P3, docs)
 
