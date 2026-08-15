@@ -141,6 +141,7 @@ Release: the paa8 repo-scoped index state + m2ob compaction lock/retry release
 ### Documentation
 
 - *(plans)* mark PPR plan as dark — knowledge feature enabled by no build path([37d70c5](https://github.com/scbrown/bobbin/commit/37d70c5382f8abf98e61e88f4a806fc7f2229300))
+
 ## [0.6.0] - 2026-07-13
 
 Multimodal PDF ingest, index-freshness safety net, and two indexing/telemetry
