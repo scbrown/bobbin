@@ -3164,10 +3164,9 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             }
             } // end if let Some(comp_ms)
 
-            // Deduplicate and sort by coupling score
-            complementary_files.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-            complementary_files.dedup_by(|a, b| a.0 == b.0);
-            complementary_files.truncate(5);
+            // Deduplicate by path, then sort and truncate — see the helper for why
+            // the previous dedup_by silently kept duplicates (bobbin-au4).
+            let complementary_files = dedupe_complementary(complementary_files, 5);
 
             if !complementary_files.is_empty() {
                 // Format complementary suggestion as context
@@ -5590,9 +5589,102 @@ async fn run_uninstall_git_hook(_args: UninstallGitHookArgs, output: OutputConfi
     Ok(())
 }
 
+/// Keep the strongest coupling score per path, best first, capped at `limit`.
+///
+/// bobbin-au4: this was `sort_by(score desc)` followed by
+/// `dedup_by(|a, b| a.0 == b.0)`. `dedup_by` only removes **consecutive**
+/// equal entries, and the sort is by score rather than by path, so two entries
+/// for the same file were adjacent only by coincidence. A file coupled to
+/// several already-seen files therefore survived as multiple entries and could
+/// consume several of the `limit` slots, crowding out distinct suggestions —
+/// exactly what the truncation is meant to allocate fairly.
+///
+/// Ties are broken by path so the output is deterministic. Without that the
+/// order would depend on `HashMap` iteration, which varies run to run and would
+/// make the injected context unstable for identical inputs.
+fn dedupe_complementary(files: Vec<(String, f32)>, limit: usize) -> Vec<(String, f32)> {
+    let mut best_by_path: HashMap<String, f32> = HashMap::new();
+    for (path, score) in files {
+        best_by_path
+            .entry(path)
+            .and_modify(|best| {
+                if score > *best {
+                    *best = score;
+                }
+            })
+            .or_insert(score);
+    }
+
+    let mut deduped: Vec<(String, f32)> = best_by_path.into_iter().collect();
+    deduped.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    deduped.truncate(limit);
+    deduped
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- bobbin-au4: non-adjacent duplicates ate the truncation slots ---
+
+    fn comp(pairs: &[(&str, f32)]) -> Vec<(String, f32)> {
+        pairs.iter().map(|(p, s)| (p.to_string(), *s)).collect()
+    }
+
+    #[test]
+    fn test_dedupe_complementary_collapses_non_adjacent_duplicates() {
+        // Sorted by score these interleave, so the old dedup_by saw no two
+        // equal entries adjacent and removed nothing.
+        let input = comp(&[("a.rs", 0.9), ("b.rs", 0.8), ("a.rs", 0.7), ("c.rs", 0.6)]);
+        let out = dedupe_complementary(input, 5);
+
+        assert_eq!(out.len(), 3, "a.rs must appear once: {out:?}");
+        assert_eq!(out[0], ("a.rs".to_string(), 0.9));
+    }
+
+    #[test]
+    fn test_dedupe_complementary_keeps_the_max_score_for_a_path() {
+        let out = dedupe_complementary(comp(&[("a.rs", 0.2), ("a.rs", 0.9), ("a.rs", 0.5)]), 5);
+        assert_eq!(out, vec![("a.rs".to_string(), 0.9)]);
+    }
+
+    #[test]
+    fn test_dedupe_complementary_does_not_let_duplicates_consume_slots() {
+        // The regression, stated as the effect that matters: five slots must
+        // hold five DISTINCT files. Pre-fix this returned a.rs four times and
+        // one other, so four real suggestions were lost.
+        let input = comp(&[
+            ("a.rs", 0.99), ("a.rs", 0.98), ("a.rs", 0.97), ("a.rs", 0.96),
+            ("b.rs", 0.50), ("c.rs", 0.40), ("d.rs", 0.30), ("e.rs", 0.20),
+        ]);
+        let out = dedupe_complementary(input, 5);
+
+        assert_eq!(out.len(), 5);
+        let paths: Vec<&str> = out.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(paths, vec!["a.rs", "b.rs", "c.rs", "d.rs", "e.rs"]);
+    }
+
+    #[test]
+    fn test_dedupe_complementary_is_deterministic_on_ties() {
+        // HashMap iteration order varies run to run; equal scores must not make
+        // the injected context differ between identical invocations.
+        let input = comp(&[("z.rs", 0.5), ("a.rs", 0.5), ("m.rs", 0.5)]);
+        let first = dedupe_complementary(input.clone(), 5);
+        for _ in 0..20 {
+            assert_eq!(first, dedupe_complementary(input.clone(), 5));
+        }
+        assert_eq!(first[0].0, "a.rs", "ties break by path");
+    }
+
+    #[test]
+    fn test_dedupe_complementary_handles_empty_and_limit_zero() {
+        assert!(dedupe_complementary(vec![], 5).is_empty());
+        assert!(dedupe_complementary(comp(&[("a.rs", 0.9)]), 0).is_empty());
+    }
     use crate::search::context::*;
     use crate::types::{ChunkType, MatchType, classify_file};
 

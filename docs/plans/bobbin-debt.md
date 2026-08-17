@@ -90,6 +90,28 @@ under the 400-line *warning* threshold it had already crossed before this
 session, so the gate ends the pass one warning better than it started: 10
 errors and 6 warnings, from 10 and 7.
 
+### bobbin-au4 — complementary expansion kept non-adjacent duplicates
+
+`dedup_by` removes only **consecutive** equal entries, and the sort above it was
+by score rather than by path, so two entries for the same file were adjacent
+only by coincidence. A file coupled to several already-seen files survived as
+several entries and could consume most of the 5 slots — crowding out the
+distinct suggestions the truncation exists to allocate.
+
+Extracted to `dedupe_complementary` (max score per path, sorted, truncated) so
+it is testable at all; the old form was buried mid-function. Ties break by path,
+because `HashMap` iteration order varies run to run and would otherwise make the
+injected context differ between identical invocations.
+
+Five tests, the load-bearing one being that five slots hold five *distinct*
+files — pre-fix that case returned one file four times and lost four real
+suggestions. 928 passed, 0 failed.
+
+I had previously deferred this as polecat work on the grounds that it changes
+what gets injected. That reasoning was inconsistent: `lpp` changes ranking and I
+fixed it. The real distinction is `zhx`, which changes session *identity* and so
+needs a migration decision — au4 has no such concern and is simply a bug.
+
 ### bobbin-10d — stale grid-count comment (`src/cli/calibrate.rs`)
 
 Verified against the code rather than accepted from the bead, and the bead was
@@ -172,17 +194,10 @@ back to accumulates exactly this kind of shadow state.
 
 ## 5. Open and unassessed
 
-`bobbin-aa0`, `bobbin-au4`, `bobbin-di7`, `bobbin-bbe`.
+`bobbin-aa0`, `bobbin-di7`, `bobbin-bbe`.
 
 Read but not actioned:
 
-- **`bobbin-au4`** (P2) — `hook.rs:3158-3159` sorts complementary candidates by
-  coupling score then `dedup_by(|a,b| a.0 == b.0)`, which only removes
-  *consecutive* equal-path entries. A file reached via several seen files with
-  different scores survives as duplicates and eats the 5 truncated slots. The
-  bead's remedy (dedupe by path keeping max score, before sorting) is right and
-  small. Left for a polecat because it changes what gets injected, and unlike
-  `lpp` there is no sibling implementation proving the intended semantics.
 - **`bobbin-aa0`** (P2) — failure and post-tool-use injections carry no
   injection ID and never touch the `SessionLedger`, so they cannot be rated via
   feedback and can re-inject chunks the prompt path already delivered. This is
