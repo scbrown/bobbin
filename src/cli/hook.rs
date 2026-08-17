@@ -1080,11 +1080,13 @@ async fn inject_context_remote(
         None
     };
     let doc_demotion_override = if (intent_adj.doc_demotion_factor - 1.0).abs() > f32::EPSILON {
-        // doc_demotion is a score multiplier (1.0=no demotion, 0.0=full demotion).
-        // Factor modifies the demotion EFFECT: factor<1.0 = less demotion (docs more visible),
-        // factor>1.0 = more demotion. Invert, scale effect, invert back.
-        let effect = (1.0 - search_cfg.doc_demotion) * intent_adj.doc_demotion_factor;
-        Some((1.0 - effect).clamp(0.0, 1.0))
+        // Effect-space, via the shared helper. See apply_doc_demotion_factor for
+        // why multiplying doc_demotion directly moves it the wrong way (bobbin-lpp).
+        Some(crate::search::intent::apply_doc_demotion_factor(
+            search_cfg.doc_demotion,
+            intent_adj.doc_demotion_factor,
+            0.0,
+        ))
     } else {
         None
     };
@@ -2870,7 +2872,15 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         semantic_weight: (base_sw * adj.semantic_weight_factor).clamp(0.0, 1.0),
         content_mode,
         search_limit: cal_sl.unwrap_or(12), // Tightened from 20 for precision (matches remote mode)
-        doc_demotion: (base_dd * adj.doc_demotion_factor).clamp(0.01, 1.0),
+        // bobbin-lpp: this raw-multiplied, which INVERTED the intent — BugFix's
+        // 1.5 factor raised the multiplier and so weakened demotion, the
+        // opposite of what src/search/intent.rs asserts it means. Same helper
+        // as the remote path now, so the two cannot drift apart again.
+        doc_demotion: crate::search::intent::apply_doc_demotion_factor(
+            base_dd,
+            adj.doc_demotion_factor,
+            0.01,
+        ),
         recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
         recency_weight: (base_rw * adj.recency_weight_factor).clamp(0.0, 1.0),
         rrf_k: cal_rrf.unwrap_or(config.search.rrf_k),

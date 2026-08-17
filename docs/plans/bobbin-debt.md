@@ -1,6 +1,6 @@
 # Bobbin tech debt — measured
 
-> **Status (2026-08-17):** first pass. Every figure here was measured on
+> **Status (2026-08-17):** second pass. Every figure here was measured on
 > `claude/neural-amplifier-progress-sg3ojv` at the date shown, not carried over
 > from a bead. Where a bead and a measurement disagree, the measurement is
 > recorded with the command that produced it so the next reader can re-run it
@@ -47,6 +47,48 @@ re-prioritising.
 ranger charter reserves for polecats. The correction is the deliverable.
 
 ## 2. Fixed this pass
+
+### bobbin-lpp — intent doc-demotion inverted on the local path
+
+P1, confirmed exactly as filed and fixed this pass.
+
+`doc_demotion` is a score **multiplier** — 1.0 leaves doc scores alone, 0.0
+suppresses them — so *lower* means *stronger* demotion. The remote hook path
+knew this and worked in effect space; the local path raw-multiplied:
+
+```text
+base 0.5, BugFix factor 1.5
+  remote:  effect = (1-0.5)*1.5 = 0.75 -> 1-0.75 = 0.25   MORE demotion
+  local:            0.5  * 1.5         =        0.75      LESS demotion
+```
+
+`src/search/intent.rs`'s own tests assert the contract the local path was
+breaking — `assert!(adj.doc_demotion_factor > 1.0); // More demotion = less
+docs`. So every intent was inverted on the local path: BugFix and Operational
+surfaced *more* docs, Architecture surfaced *fewer*, exactly backwards.
+
+**Fixed as a shared function, not a corrected line.** Both paths now call
+`search::intent::apply_doc_demotion_factor`, because the defect was two copies
+of one calculation disagreeing — patching the local copy would have left the
+next author free to write a third. The `floor` differs by caller (local keeps
+0.01 so a doc score is never multiplied to exactly zero; remote allows 0.0) and
+is a parameter rather than a second implementation.
+
+Seven tests, including `test_every_shipped_intent_moves_demotion_the_direction_its_comment_claims`,
+which walks the whole intent table and asserts the arithmetic delivers what each
+entry's comment says. That is the check that would have caught this at the
+source. Full suite green: 923 passed, 0 failed; clippy warning count unchanged
+at 207.
+
+**One self-inflicted problem, caught and undone.** The new tests pushed
+`src/search/intent.rs` from 428 to 530 lines, over the 500 error limit — an
+eleventh failure on the very gate §1 describes as trained-to-be-ignored. Adding
+an allowlist entry would have been the easy exit and exactly the wrong one. The
+test module moved to `src/search/intent_tests.rs`, which
+`scripts/check-file-size.sh` exempts by design. `intent.rs` is now 305 lines,
+under the 400-line *warning* threshold it had already crossed before this
+session, so the gate ends the pass one warning better than it started: 10
+errors and 6 warnings, from 10 and 7.
 
 ### bobbin-10d — stale grid-count comment (`src/cli/calibrate.rs`)
 
@@ -130,8 +172,24 @@ back to accumulates exactly this kind of shadow state.
 
 ## 5. Open and unassessed
 
-`bobbin-lpp` (P1, intent doc-demotion factor has opposite semantics local vs
-remote), `bobbin-aa0`, `bobbin-au4`, `bobbin-di7`, `bobbin-bbe`. `lpp` is the
-one to look at first — a P1 with two code paths disagreeing about the direction
-of a ranking factor is a correctness bug in the ranker, and neither path is
-obviously the intended one from the bead text alone.
+`bobbin-aa0`, `bobbin-au4`, `bobbin-di7`, `bobbin-bbe`.
+
+Read but not actioned:
+
+- **`bobbin-au4`** (P2) — `hook.rs:3158-3159` sorts complementary candidates by
+  coupling score then `dedup_by(|a,b| a.0 == b.0)`, which only removes
+  *consecutive* equal-path entries. A file reached via several seen files with
+  different scores survives as duplicates and eats the 5 truncated slots. The
+  bead's remedy (dedupe by path keeping max score, before sorting) is right and
+  small. Left for a polecat because it changes what gets injected, and unlike
+  `lpp` there is no sibling implementation proving the intended semantics.
+- **`bobbin-aa0`** (P2) — failure and post-tool-use injections carry no
+  injection ID and never touch the `SessionLedger`, so they cannot be rated via
+  feedback and can re-inject chunks the prompt path already delivered. This is
+  a real gap and genuinely large: it touches every injecting event class.
+- **`bobbin-bbe`** (P3) — duplicate work-item advisory at bead creation. Same
+  shape as camayoc-b6h, which was implemented this session with a deterministic
+  matcher; bobbin already embeds the beads corpus (`src/index/beads.rs`), so the
+  scorer here is *not* blocked the way camayoc's was.
+- **`bobbin-di7`** (P2, "Quipu Integration") — title only, no actionable
+  description. Needs specification before it can be dispatched at all.
