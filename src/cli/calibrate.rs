@@ -1250,9 +1250,27 @@ async fn run_bridge_sweep(
 
 /// Full sweep: core grid × recency params, then per coupling_depth.
 ///
-/// Grid: 5 sw × 3 dd × 1 k × 4 hl × 4 rw = 240 configs
-/// Per coupling depth: 240 × 4 depths = 960 configs
-/// Total probes: 960 × 20 commits = 19,200 (with default samples)
+/// Grid, at default args (bobbin-10d — the previous comment stopped at the
+/// first five dimensions and reported 240 configs / 19,200 probes, missing the
+/// budget, search-limit and bridge dimensions this actually sweeps):
+///
+///   5 sw × 3 dd × 1 k × 4 hl × 4 rw × 3 budgets × 4 search limits × 8 bridge
+///     = 23,040 configs
+///
+/// The bridge term is 8, not 12: `Off` and `Inject` ignore the boost factor and
+/// contribute one point each, while `Boost` and `BoostInject` sweep all three
+/// (1 + 1 + 3 + 3). See `build_grid_with_recency`.
+///
+///   × 4 coupling depths      =    92,160 configs
+///   × 20 commits (default)   = 1,843,200 probes
+///
+/// `--budget` or `--search-limit` pin their dimension to one value, dividing
+/// the total by 3 or 4 respectively.
+///
+/// These figures are a reader's aid and not the authority: the sweep prints the
+/// real counts from `grid.len()` before it starts, and
+/// `test_full_sweep_grid_geometry` pins the arithmetic above so this comment
+/// cannot drift again without a test failing.
 ///
 /// Coupling depth sweep re-indexes coupling data per depth value,
 /// so each depth iteration is a separate probe run.
@@ -1899,5 +1917,82 @@ mod tests {
         let snap = capture_snapshot_from_index(500);
         assert_eq!(snap.chunk_count, 500);
         assert_eq!(snap.primary_language, "unknown");
+    }
+
+    /// bobbin-10d: the doc comment on `run_full_sweep` claimed 240 configs and
+    /// 19,200 probes for a grid that is actually 23,040 and 1.84M — off by 96x,
+    /// because it stopped counting at the first five dimensions. A comment is
+    /// the wrong place to keep arithmetic nobody re-derives, so this pins it.
+    ///
+    /// If a dimension is added, this test fails and BOTH it and the comment
+    /// must be updated. That is the point: the failure is the reminder.
+    #[test]
+    fn test_full_sweep_grid_geometry() {
+        let half_lives = [7.0f32, 14.0, 30.0, 90.0];
+        let recency_weights = [0.0f32, 0.15, 0.30, 0.50];
+        let budgets = [150usize, 300, 500];
+        let search_limits = [10usize, 20, 30, 40];
+        let bridge_modes = [
+            BridgeMode::Off,
+            BridgeMode::Inject,
+            BridgeMode::Boost,
+            BridgeMode::BoostInject,
+        ];
+        let bridge_boost_factors = [0.15f32, 0.3, 0.5];
+
+        let grid = build_grid_with_recency(
+            &half_lives,
+            &recency_weights,
+            &budgets,
+            &search_limits,
+            &bridge_modes,
+            &bridge_boost_factors,
+        );
+
+        // 5 sw × 3 dd × 1 k × 4 hl × 4 rw × 3 budgets × 4 limits × 8 bridge
+        assert_eq!(grid.len(), 23_040, "default full-sweep grid size");
+
+        // The bridge term is 8 rather than 4 × 3 = 12: Off and Inject ignore
+        // the boost factor. Asserted separately because it is the part of the
+        // arithmetic that is easy to get wrong by inspection.
+        let off_or_inject = grid
+            .iter()
+            .filter(|p| matches!(p.bridge_mode, BridgeMode::Off | BridgeMode::Inject))
+            .count();
+        assert_eq!(off_or_inject, 23_040 / 8 * 2, "Off and Inject contribute one point each");
+
+        // What the sweep then multiplies by, spelled out so the doc comment's
+        // headline figures are covered and not just the grid.
+        let coupling_depths = 4;
+        let default_commits = 20;
+        assert_eq!(grid.len() * coupling_depths, 92_160);
+        assert_eq!(grid.len() * coupling_depths * default_commits, 1_843_200);
+    }
+
+    /// bobbin-10d: pinning a dimension via CLI args divides the total, and the
+    /// comment says so. Cheap to state, and it is the path `--budget 300
+    /// --search-limit 20` actually takes on every incremental run.
+    #[test]
+    fn test_pinned_dimensions_shrink_the_grid() {
+        let half_lives = [7.0f32, 14.0, 30.0, 90.0];
+        let recency_weights = [0.0f32, 0.15, 0.30, 0.50];
+        let bridge_modes = [
+            BridgeMode::Off,
+            BridgeMode::Inject,
+            BridgeMode::Boost,
+            BridgeMode::BoostInject,
+        ];
+        let bridge_boost_factors = [0.15f32, 0.3, 0.5];
+
+        let pinned = build_grid_with_recency(
+            &half_lives,
+            &recency_weights,
+            &[300],
+            &[20],
+            &bridge_modes,
+            &bridge_boost_factors,
+        );
+
+        assert_eq!(pinned.len(), 23_040 / 3 / 4);
     }
 }
