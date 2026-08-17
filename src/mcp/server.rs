@@ -543,7 +543,7 @@ impl BobbinMcpServer {
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let mut vector_store = self.open_vector_store().await
+        let vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let stats = vector_store.get_stats(None).await
@@ -667,7 +667,7 @@ impl BobbinMcpServer {
             None
         };
 
-        let mut vector_store = self.open_vector_store().await
+        let vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let stats = vector_store.get_stats(None).await
@@ -2492,7 +2492,7 @@ impl BobbinMcpServer {
 
         let archive_languages: Vec<String> = config.archive.sources.iter().map(|s| s.name.clone()).collect();
 
-        let mut vector_store = self.open_vector_store().await
+        let vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let model_dir = Config::model_cache_dir()
@@ -2605,7 +2605,7 @@ impl BobbinMcpServer {
         // Use FTS to find recent records by scanning archive chunks
         let archive_languages: Vec<String> = config.archive.sources.iter().map(|s| s.name.clone()).collect();
 
-        let mut vector_store = self.open_vector_store().await
+        let vector_store = self.open_vector_store().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         // Build filter: archive language + date path prefix

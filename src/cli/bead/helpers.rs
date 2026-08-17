@@ -2,18 +2,11 @@
 //!
 //! Split out of the former `src/cli/bead.rs` (bobbin-aoz).
 
-use anyhow::{anyhow, Context, Result};
-use clap::{Args, Subcommand};
-use colored::Colorize;
-use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
 
-use crate::config::Config;
 use crate::index::Parser;
-use crate::storage::sqlite::{
-    BeadLineageRecord, MetadataStore, NewBeadLineage, NewBugCausality, PriorTouch, TouchedSymbol,
-};
+use crate::storage::sqlite::TouchedSymbol;
 
 /// Fetch a bead as JSON via `bd show <id> --json`. bd may emit a single object
 /// or a one-element array; this normalizes to the first object. Best-effort:

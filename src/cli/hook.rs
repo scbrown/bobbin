@@ -2061,7 +2061,7 @@ fn format_context_for_injection(
     injection_id: Option<&str>,
     format_mode: &str,
 ) -> String {
-    use crate::types::FileCategory;
+    
     use std::fmt::Write;
 
     let budget = bundle.budget.max_lines;
@@ -3271,7 +3271,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         .flat_map(|f| f.chunks.iter())
         .filter(|c| c.score >= threshold)
         .count();
-    let previously_injected = if reducing_enabled { ledger.len() } else { 0 };
+    let _previously_injected = if reducing_enabled { ledger.len() } else { 0 };
 
     if reducing_enabled && ledger.len() > 0 {
         // Filter out chunks already in the ledger

@@ -2,12 +2,10 @@
 //!
 //! Split out of the former `src/cli/ontology.rs` (bobbin-aoz).
 
-use anyhow::{bail, Result};
-use clap::{Args, Subcommand};
-use std::path::PathBuf;
+use anyhow::Result;
 
 use crate::cli::OutputConfig;
-use crate::tags::{OntologyConfig, TagsConfig};
+use crate::tags::TagsConfig;
 
 use super::InferArgs;
 

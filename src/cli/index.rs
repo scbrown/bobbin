@@ -824,8 +824,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     // Analyze and store import dependencies
     let t_deps = Instant::now();
-    let mut dep_count: usize = 0;
-    let mut resolved_count: usize = 0;
+    let dep_count: usize = 0;
+    let resolved_count: usize = 0;
     if config.dependencies.enabled && !all_imports.is_empty() {
         if output.verbose && !output.quiet && !output.json {
             println!("  Resolving {} import edges...", all_imports.len());

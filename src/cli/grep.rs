@@ -119,7 +119,7 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
 
     // Open vector store
     let lance_path = Config::lance_path(&repo_root);
-    let mut vector_store = VectorStore::open(&lance_path)
+    let vector_store = VectorStore::open(&lance_path)
         .await
         .context("Failed to open vector store")?;
 

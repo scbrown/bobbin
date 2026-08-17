@@ -9,7 +9,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::search::{HybridSearch, SemanticSearch};
-use crate::types::{ChunkType, SearchResult};
+use crate::types::SearchResult;
 
 use super::{bad_request, internal_error, open_vector_store, AppState, ErrorBody};
 

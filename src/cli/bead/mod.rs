@@ -2,14 +2,11 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Args, Subcommand};
 use colored::Colorize;
 use serde::Serialize;
-use std::path::Path;
-use std::process::Command;
 
 use crate::cli::OutputConfig;
 use crate::config::Config;
-use crate::index::Parser;
 use crate::storage::sqlite::{
-    BeadLineageRecord, MetadataStore, NewBeadLineage, NewBugCausality, PriorTouch, TouchedSymbol,
+    BeadLineageRecord, MetadataStore, NewBeadLineage, TouchedSymbol,
 };
 
 #[derive(Args)]

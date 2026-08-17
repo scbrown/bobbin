@@ -6,17 +6,9 @@
 //! Archive and beads search handlers.
 #![allow(private_interfaces)]
 
-use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
-use axum::Json;
-use serde::{Deserialize, Serialize};
 
-use crate::search::{HybridSearch, SemanticSearch};
-use crate::types::{ChunkType, SearchResult};
 
-use super::super::{bad_request, internal_error, open_vector_store, AppState, ErrorBody};
 /// Extract a date string from an archive path like "{source}:YYYY/MM/DD/..."
 ///
 /// Handles any source prefix (hla:, pensieve:, archive:, etc.)

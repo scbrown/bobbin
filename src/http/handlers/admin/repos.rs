@@ -1,3 +1,7 @@
+//! Repository, group and primer admin endpoints.
+//!
+//! Split out of the former `admin.rs` (bobbin-aoz).
+
 //! Admin handlers: status, healthz, metrics, prime, suggest, repos, groups, files.
 #![allow(private_interfaces)]
 
@@ -5,169 +9,19 @@ use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use super::{
+use super::super::{
     bad_request, detect_language, internal_error, open_vector_store, AppState, ErrorBody,
 };
-
-// ---------------------------------------------------------------------------
-// /healthz
-// ---------------------------------------------------------------------------
-
-pub(super) async fn healthz() -> Json<serde_json::Value> {
-    Json(serde_json::json!({"status": "ok"}))
-}
-
-// ---------------------------------------------------------------------------
-// /status
-// ---------------------------------------------------------------------------
-
-#[derive(Serialize)]
-pub(super) struct StatusResponse {
-    status: String,
-    index: crate::types::IndexStats,
-    sources: crate::config::SourcesConfig,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    repo_path_prefix: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    quipu_endpoint: Option<String>,
-}
-
-pub(super) async fn status(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<StatusResponse>, (StatusCode, Json<ErrorBody>)> {
-    let store = open_vector_store(&state).await.map_err(internal_error)?;
-
-    let stats = store
-        .get_stats(None)
-        .await
-        .map_err(|e| internal_error(e.into()))?;
-
-    Ok(Json(StatusResponse {
-        status: "ok".to_string(),
-        index: stats,
-        sources: state.resolved_sources.clone(),
-        repo_path_prefix: state.config.server.repo_path_prefix.clone(),
-        quipu_endpoint: state.config.quipu_endpoint.clone(),
-    }))
-}
-
-// ---------------------------------------------------------------------------
-// /version — the deployed-commit probe
-// ---------------------------------------------------------------------------
-//
-// Emits the build's git sha + dirty flag + feature set so a deploy is VERIFIABLE:
-// the CD driver can assert the running service reports the sha it just built,
-// instead of trusting a bare 200. Mirrors quipu's /version JSON shape
-// ({version, git_sha, git_dirty, features}) so the CD manifest can treat both the
-// same way. `knowledge` is surfaced because a featureless build silently disables
-// the knowledge MCP tools — this lets a probe catch that at runtime too.
-
-#[derive(Serialize)]
-pub(super) struct VersionFeatures {
-    knowledge: bool,
-}
-
-#[derive(Serialize)]
-pub(super) struct VersionResponse {
-    version: &'static str,
-    git_sha: &'static str,
-    git_dirty: bool,
-    features: VersionFeatures,
-}
-
-pub(super) async fn version() -> Json<VersionResponse> {
-    Json(VersionResponse {
-        version: env!("CARGO_PKG_VERSION"),
-        git_sha: env!("BOBBIN_GIT_SHA"),
-        git_dirty: env!("BOBBIN_GIT_DIRTY") == "true",
-        features: VersionFeatures {
-            knowledge: cfg!(feature = "knowledge"),
-        },
-    })
-}
-
-// ---------------------------------------------------------------------------
-// /metrics
-// ---------------------------------------------------------------------------
-
-pub(super) async fn metrics(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-    let store = match open_vector_store(&state).await {
-        Ok(s) => s,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
-                "# Failed to open vector store\nbobbin_up 0\n".to_string(),
-            );
-        }
-    };
-
-    let stats = store.get_stats(None).await.ok();
-
-    let mut out = String::new();
-    out.push_str("# HELP bobbin_up Whether bobbin is running.\n");
-    out.push_str("# TYPE bobbin_up gauge\n");
-    out.push_str("bobbin_up 1\n");
-
-    if let Some(s) = stats {
-        out.push_str("# HELP bobbin_index_files_total Total indexed files.\n");
-        out.push_str("# TYPE bobbin_index_files_total gauge\n");
-        out.push_str(&format!("bobbin_index_files_total {}\n", s.total_files));
-        out.push_str("# HELP bobbin_index_chunks_total Total indexed chunks.\n");
-        out.push_str("# TYPE bobbin_index_chunks_total gauge\n");
-        out.push_str(&format!("bobbin_index_chunks_total {}\n", s.total_chunks));
-        out.push_str("# HELP bobbin_index_embeddings_total Total embeddings.\n");
-        out.push_str("# TYPE bobbin_index_embeddings_total gauge\n");
-        out.push_str(&format!(
-            "bobbin_index_embeddings_total {}\n",
-            s.total_embeddings
-        ));
-    }
-
-    // Maintenance freshness. This is the alertable signal for a starved sweep: the
-    // nightly can skip its whole prune/compact step (lock held by a contender)
-    // and still exit 0, so unit success proves nothing about the store being
-    // maintained. Age of the last COMPLETED sweep does.
-    //
-    // Read from the shared on-disk record, so it reports maintenance done by
-    // ANY participant — the reindex CLI, watch, or this server — not just this
-    // process. Absent series = never swept; alert on absence too.
-    let status = store.maintenance_status();
-    out.push_str(
-        "# HELP bobbin_maintenance_last_success_timestamp_seconds \
-         Unix time of the last completed prune/compact sweep of the vector store.\n",
-    );
-    out.push_str("# TYPE bobbin_maintenance_last_success_timestamp_seconds gauge\n");
-    for (op, ts) in [
-        ("prune", status.last_prune_unix),
-        ("compact", status.last_compact_unix),
-    ] {
-        if let Some(ts) = ts {
-            out.push_str(&format!(
-                "bobbin_maintenance_last_success_timestamp_seconds{{op=\"{op}\"}} {ts}\n"
-            ));
-        }
-    }
-
-    (
-        StatusCode::OK,
-        [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
-        out,
-    )
-}
 
 // ---------------------------------------------------------------------------
 // /repos
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
-pub(super) struct ReposParams {
+pub(crate) struct ReposParams {
     /// Filter by named repo group
     group: Option<String>,
     /// Role for access filtering
@@ -175,20 +29,20 @@ pub(super) struct ReposParams {
 }
 
 #[derive(Serialize)]
-pub(super) struct ReposListResponse {
+pub(crate) struct ReposListResponse {
     count: usize,
     repos: Vec<RepoSummary>,
 }
 
 #[derive(Serialize)]
-pub(super) struct RepoSummary {
+pub(crate) struct RepoSummary {
     name: String,
     file_count: u64,
     chunk_count: u64,
     languages: Vec<crate::types::LanguageStats>,
 }
 
-pub(super) async fn list_repos(
+pub(crate) async fn list_repos(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ReposParams>,
 ) -> Result<Json<ReposListResponse>, (StatusCode, Json<ErrorBody>)> {
@@ -214,7 +68,7 @@ pub(super) async fn list_repos(
     }
 
     // Apply role-based access filtering
-    let access = super::resolve_filter(&state, params.role.as_deref());
+    let access = super::super::resolve_filter(&state, params.role.as_deref());
     summaries.retain(|r| access.is_allowed(&r.name));
 
     // Apply group filtering
@@ -240,18 +94,18 @@ pub(super) async fn list_repos(
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
-pub(super) struct GroupsResponse {
+pub(crate) struct GroupsResponse {
     count: usize,
     groups: Vec<GroupItem>,
 }
 
 #[derive(Serialize)]
-pub(super) struct GroupItem {
+pub(crate) struct GroupItem {
     name: String,
     repos: Vec<String>,
 }
 
-pub(super) async fn list_groups(
+pub(crate) async fn list_groups(
     State(state): State<Arc<AppState>>,
 ) -> Json<GroupsResponse> {
     let groups: Vec<GroupItem> = state
@@ -275,31 +129,31 @@ pub(super) async fn list_groups(
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
-pub(super) struct RepoFilesParams {
+pub(crate) struct RepoFilesParams {
     /// Role for access filtering
     role: Option<String>,
 }
 
 #[derive(Serialize)]
-pub(super) struct RepoFilesResponse {
+pub(crate) struct RepoFilesResponse {
     repo: String,
     count: usize,
     files: Vec<RepoFileItem>,
 }
 
 #[derive(Serialize)]
-pub(super) struct RepoFileItem {
+pub(crate) struct RepoFileItem {
     path: String,
     language: String,
 }
 
-pub(super) async fn list_repo_files(
+pub(crate) async fn list_repo_files(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Query(params): Query<RepoFilesParams>,
 ) -> Result<Json<RepoFilesResponse>, (StatusCode, Json<ErrorBody>)> {
     // Check role-based access for this repo
-    let access = super::resolve_filter(&state, params.role.as_deref());
+    let access = super::super::resolve_filter(&state, params.role.as_deref());
     if !access.is_allowed(&name) {
         return Err(bad_request(format!("Repo not accessible: {}", name)));
     }
@@ -334,7 +188,7 @@ pub(super) async fn list_repo_files(
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
-pub(super) struct PrimeParams {
+pub(crate) struct PrimeParams {
     /// Specific section to show
     section: Option<String>,
     /// Show brief overview only
@@ -342,7 +196,7 @@ pub(super) struct PrimeParams {
 }
 
 #[derive(Serialize)]
-pub(super) struct PrimeResponse {
+pub(crate) struct PrimeResponse {
     primer: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     section: Option<String>,
@@ -352,7 +206,7 @@ pub(super) struct PrimeResponse {
 }
 
 #[derive(Serialize)]
-pub(super) struct PrimeStats {
+pub(crate) struct PrimeStats {
     total_files: u64,
     total_chunks: u64,
     total_embeddings: u64,
@@ -362,17 +216,17 @@ pub(super) struct PrimeStats {
 }
 
 #[derive(Serialize)]
-pub(super) struct PrimeLanguageStats {
+pub(crate) struct PrimeLanguageStats {
     language: String,
     file_count: u64,
     chunk_count: u64,
 }
 
-pub(super) async fn prime(
+pub(crate) async fn prime(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PrimeParams>,
 ) -> Result<Json<PrimeResponse>, (StatusCode, Json<ErrorBody>)> {
-    const PRIMER: &str = include_str!("../../../docs/primer.md");
+    const PRIMER: &str = include_str!("../../../../docs/primer.md");
 
     let primer_text = if let Some(ref section) = params.section {
         extract_primer_section(PRIMER, section)
@@ -419,7 +273,7 @@ pub(super) async fn prime(
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
-pub(super) struct SuggestParams {
+pub(crate) struct SuggestParams {
     /// Filter field to suggest values for: repo, lang, type, group, tag
     field: String,
     /// Optional prefix to filter suggestions
@@ -434,7 +288,7 @@ pub(super) struct SuggestParams {
 }
 
 #[derive(Serialize)]
-pub(super) struct SuggestResponse {
+pub(crate) struct SuggestResponse {
     field: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     query: Option<String>,
@@ -442,7 +296,7 @@ pub(super) struct SuggestResponse {
     values: Vec<String>,
 }
 
-pub(super) async fn suggest(
+pub(crate) async fn suggest(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SuggestParams>,
 ) -> Result<Json<SuggestResponse>, (StatusCode, Json<ErrorBody>)> {
@@ -456,7 +310,7 @@ pub(super) async fn suggest(
                 .get_all_repos()
                 .await
                 .map_err(|e| internal_error(e.into()))?;
-            let access = super::resolve_filter(&state, params.role.as_deref());
+            let access = super::super::resolve_filter(&state, params.role.as_deref());
             repos.into_iter().filter(|r| access.is_allowed(r)).collect()
         }
         "lang" | "language" => {

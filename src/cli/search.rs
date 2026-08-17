@@ -125,7 +125,7 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
     let db_path = Config::db_path(&repo_root);
     let model_dir = Config::model_cache_dir()?;
 
-    let mut vector_store = VectorStore::open(&lance_path)
+    let vector_store = VectorStore::open(&lance_path)
         .await
         .context("Failed to open vector store")?;
 

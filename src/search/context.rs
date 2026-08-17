@@ -6,7 +6,7 @@ use crate::index::Embedder;
 use crate::index::git::GitAnalyzer;
 use crate::search::hybrid::apply_recency_boost;
 use crate::storage::{MetadataStore, VectorStore};
-use crate::types::{Chunk, ChunkType, FileCategory, MatchType, classify_file, classify_file_with_rules};
+use crate::types::{Chunk, ChunkType, FileCategory, MatchType, classify_file_with_rules};
 
 /// How bridging (doc→source, commit→source) affects search results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

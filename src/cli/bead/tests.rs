@@ -5,6 +5,8 @@
 //! design, and the alternative — an allowlist entry — is the exit that
 //! makes the ratchet meaningless.
 
+use crate::storage::sqlite::PriorTouch;
+
 use super::autolink::*;
 use super::causality::*;
 use super::*;

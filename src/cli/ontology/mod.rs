@@ -1,9 +1,9 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 
 use crate::cli::OutputConfig;
-use crate::tags::{OntologyConfig, TagsConfig};
+use crate::tags::TagsConfig;
 
 mod infer;
 mod query;

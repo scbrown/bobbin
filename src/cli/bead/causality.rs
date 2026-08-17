@@ -7,16 +7,13 @@ use anyhow::{anyhow, Context, Result};
 
 use super::helpers::*;
 use crate::cli::OutputConfig;
-use clap::{Args, Subcommand};
 use colored::Colorize;
 use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
 
-use crate::config::Config;
-use crate::index::Parser;
 use crate::storage::sqlite::{
-    BeadLineageRecord, MetadataStore, NewBeadLineage, NewBugCausality, PriorTouch, TouchedSymbol,
+    MetadataStore, NewBugCausality, PriorTouch,
 };
 
 #[derive(Debug, Clone, PartialEq)]
