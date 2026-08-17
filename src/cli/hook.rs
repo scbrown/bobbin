@@ -2459,6 +2459,140 @@ fn chunk_key(file_path: &str, start_line: u32, end_line: u32) -> String {
     format!("{}:{}:{}", file_path, start_line, end_line)
 }
 
+/// One injecting turn on a non-prompt event class (bobbin-aa0).
+///
+/// Prompt submission had all of this and the other injecting paths had none of
+/// it: the failure handler and the post-tool-use handler generated no injection
+/// identifier, stored no injection record — so nothing they delivered could be
+/// rated through feedback — and never touched the `SessionLedger`, so they
+/// could re-deliver chunks the prompt path had already sent and the delta
+/// filtering could not see it.
+///
+/// This exists as one type rather than as three copies of the same six lines
+/// because three copies is how the paths diverged in the first place. It owns
+/// the whole turn: which chunks are still fresh, which were claimed, and the
+/// single identifier they are all recorded under.
+///
+/// A turn with no session id degrades to in-memory dedup within the turn. That
+/// is deliberate — the caller should not have to branch on whether Claude Code
+/// supplied a session id, and de-duplicating a single turn against itself is
+/// still worth doing.
+struct InjectionTurn {
+    ledger: SessionLedger,
+    injection_id: String,
+    /// Keys claimed this turn, in claim order.
+    claimed: Vec<String>,
+    /// Claimed set, for within-turn dedup before `record` folds them in.
+    claimed_set: HashSet<String>,
+    /// False when session reducing is off: nothing is filtered, but the turn
+    /// still carries an identifier and still stores a record.
+    filtering: bool,
+}
+
+impl InjectionTurn {
+    /// Open a turn. `query` seeds the injection identifier, exactly as on the
+    /// prompt path, so identifiers are the same shape across every event class.
+    fn open(repo_root: &Path, cc_session_id: &str, reducing_enabled: bool, query: &str) -> Self {
+        let filtering = reducing_enabled && !cc_session_id.is_empty();
+        let ledger = if filtering {
+            SessionLedger::load(repo_root, cc_session_id)
+        } else {
+            SessionLedger {
+                entries: HashSet::new(),
+                turn: 0,
+                path: None,
+            }
+        };
+        Self {
+            ledger,
+            injection_id: generate_context_injection_id(query),
+            claimed: Vec::new(),
+            claimed_set: HashSet::new(),
+            filtering,
+        }
+    }
+
+    fn injection_id(&self) -> &str {
+        &self.injection_id
+    }
+
+    /// Claim a chunk for this turn. Returns false if it has already been
+    /// delivered — in an earlier turn by any path, or earlier in this one — in
+    /// which case the caller must not inject it.
+    ///
+    /// Within-turn dedup applies even when `filtering` is off, because emitting
+    /// the same chunk twice in one response is never wanted.
+    fn claim(&mut self, file_path: &str, start_line: u32, end_line: u32) -> bool {
+        let key = chunk_key(file_path, start_line, end_line);
+        if self.claimed_set.contains(&key) {
+            return false;
+        }
+        if self.filtering && self.ledger.contains(&key) {
+            return false;
+        }
+        self.claimed_set.insert(key.clone());
+        self.claimed.push(key);
+        true
+    }
+
+    /// Claim a whole file, for paths that suggest files rather than inject
+    /// chunk bodies (the post-tool-use related-files listing).
+    ///
+    /// Uses the `path:0:0` marker convention that complementary expansion
+    /// already writes to this ledger, so a file suggested here and a file
+    /// suggested there collide as they should. Note the deliberate asymmetry:
+    /// a marker does **not** suppress a later chunk-level injection of the same
+    /// file, because naming a file and showing its contents are different
+    /// deliveries and the second is still worth making.
+    fn claim_file(&mut self, file_path: &str) -> bool {
+        self.claim(file_path, 0, 0)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.claimed.is_empty()
+    }
+
+    fn len(&self) -> usize {
+        self.claimed.len()
+    }
+
+    /// Distinct file paths among the claimed chunks, for the injection record.
+    ///
+    /// Parses back out of the composite key rather than tracking paths
+    /// alongside, so there is one representation of "what was claimed" and it
+    /// cannot drift. Splits on the last two colons, matching
+    /// `SessionLedger::injected_files` — paths may themselves contain colons.
+    fn claimed_files(&self) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut files = Vec::new();
+        for key in &self.claimed {
+            if let Some(last) = key.rfind(':') {
+                if let Some(second) = key[..last].rfind(':') {
+                    let path = &key[..second];
+                    if seen.insert(path.to_string()) {
+                        files.push(path.to_string());
+                    }
+                }
+            }
+        }
+        files
+    }
+
+    /// Write the claimed chunks to the ledger under this turn's identifier.
+    ///
+    /// Call this only after the response has actually been emitted. Recording
+    /// before output would suppress those chunks on the next turn even if this
+    /// one bailed out, which is worse than not recording at all.
+    fn commit(&mut self) {
+        if self.claimed.is_empty() {
+            return;
+        }
+        let keys = std::mem::take(&mut self.claimed);
+        self.ledger.record(&keys, &self.injection_id);
+        self.claimed = keys;
+    }
+}
+
 /// Tracks recent prompts within a session to build conversation-aware queries.
 ///
 /// Stored as JSONL at `.bobbin/session/<cc_session_id>/prompts.jsonl`.
@@ -3955,6 +4089,22 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     let mut coupled_count: usize = 0;
     let mut search_file_count: usize = 0;
 
+    // bobbin-aa0: this handler suggested files with no injection identifier and
+    // no ledger contact, so it re-suggested files the prompt path had already
+    // delivered and nothing it produced could be rated.
+    let dispatch_query = match &mode {
+        DispatchMode::EditRelated { file_path } => file_path.clone(),
+        DispatchMode::SearchQuery { query, .. } => query.clone(),
+        DispatchMode::RefsOnly { file_path } => file_path.clone(),
+        DispatchMode::ReactionsOnly => input.tool_name.clone(),
+    };
+    let mut turn = InjectionTurn::open(
+        &repo_root,
+        &input.session_id,
+        config.hooks.reducing_enabled,
+        &dispatch_query,
+    );
+
     if !is_refs_only && !is_reactions_only {
         let model_dir = Config::model_cache_dir()?;
 
@@ -4079,6 +4229,13 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             })
             .collect();
 
+        // bobbin-aa0: drop files already delivered this session before the
+        // headers below decide whether there is anything to say.
+        let search_files: Vec<_> = search_files
+            .into_iter()
+            .filter(|f| turn.claim_file(&f.path))
+            .collect();
+
         coupled_count = coupled.len();
         search_file_count = search_files.len();
 
@@ -4089,10 +4246,14 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             let _ = writeln!(context, "You just edited this file. Consider reviewing these related files:\n");
             lines_used += 3;
 
-            if !coupled.is_empty() {
+            let fresh_coupled: Vec<_> = coupled
+                .iter()
+                .filter(|(coupled_file, _)| turn.claim_file(coupled_file))
+                .collect();
+            if !fresh_coupled.is_empty() {
                 let _ = writeln!(context, "**Co-changing files** (from git history):");
                 lines_used += 1;
-                for (coupled_file, score) in &coupled {
+                for (coupled_file, score) in &fresh_coupled {
                     if lines_used >= budget {
                         break;
                     }
@@ -4371,6 +4532,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                     "callees_count": 0,
                     "reactions_fired": 0,
                     "skipped": true,
+                    "injection_id": turn.injection_id(),
                 }),
             ),
         );
@@ -4381,10 +4543,19 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     let response = HookResponse {
         hook_specific_output: HookSpecificOutput {
             hook_event_name: "PostToolUse".to_string(),
-            additional_context: context,
+            additional_context: context.clone(),
         },
     };
     println!("{}", serde_json::to_string(&response)?);
+
+    // 11a. Record and commit (bobbin-aa0), after the response is on stdout.
+    record_non_prompt_injection(
+        &repo_root,
+        &mut turn,
+        &input.session_id,
+        &dispatch_query,
+        &context,
+    );
 
     // 12. Emit metric
     let dispatch_label = match &mode {
@@ -4407,6 +4578,8 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 "search_files": search_file_count,
                 "refs_count": refs_count,
                 "callees_count": callees_count,
+                "injection_id": turn.injection_id(),
+                "ledger_chunks": turn.len(),
                 "reactions_fired": reactions_fired,
                 "reactions_rules": rules_fired,
                 "reactions_deduped": rules_deduped,
@@ -4540,6 +4713,17 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         }
     }
 
+    // 5a. Open the injection turn (bobbin-aa0). Both branches below claim
+    //     chunks through it, so neither re-delivers something the prompt path
+    //     already sent, and both are recorded under one identifier that
+    //     feedback can rate.
+    let mut turn = InjectionTurn::open(
+        &repo_root,
+        &input.session_id,
+        config.hooks.reducing_enabled,
+        error_excerpt,
+    );
+
     // 6. Try error-context injection: parse file paths from build/test errors
     //    and inject those files directly (faster + more precise than semantic search).
     let parsed = crate::errors::parse_error_output(&input.error, command);
@@ -4597,6 +4781,11 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
                     break;
                 }
 
+                // bobbin-aa0: skip anything already delivered this session.
+                if !turn.claim(&chunk.file_path, chunk.start_line, chunk.end_line) {
+                    continue;
+                }
+
                 let line_info = if let Some(line) = error_ref.line {
                     format!(" (error at line {})", line)
                 } else {
@@ -4639,7 +4828,13 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
                         if let Ok(cc) = coupled_chunks {
                             if let Some(first) = cc.first() {
                                 let chunk_lines = first.content.lines().count();
-                                if lines_used + chunk_lines + 3 <= budget {
+                                if lines_used + chunk_lines + 3 <= budget
+                                    && turn.claim(
+                                        &first.file_path,
+                                        first.start_line,
+                                        first.end_line,
+                                    )
+                                {
                                     direct_injection_output.push_str(&format!(
                                         "### {} (coupled: {:.0}% co-change rate)\n```{}\n{}\n```\n\n",
                                         first.file_path,
@@ -4702,16 +4897,37 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         };
 
         let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
-        let bundle = assembler.assemble(&query, None).await?;
+        let mut bundle = assembler.assemble(&query, None).await?;
 
         if bundle.files.is_empty() || bundle.summary.top_semantic_score < 0.3 {
             return Ok(());
         }
 
-        let context_text = format_context_for_injection(&bundle, config.hooks.threshold, false, None, &config.hooks.format_mode);
+        // bobbin-aa0: filter against the session ledger before formatting. This
+        // path passed None for the injection id and never consulted the ledger,
+        // so it could re-send chunks the prompt path had already delivered and
+        // nothing it injected could be rated.
+        for file in &mut bundle.files {
+            file.chunks
+                .retain(|c| turn.claim(&file.path, c.start_line, c.end_line));
+        }
+        bundle.files.retain(|f| !f.chunks.is_empty());
+
+        if bundle.files.is_empty() {
+            eprintln!("bobbin: skipped (all error-context chunks previously injected)");
+            return Ok(());
+        }
+
+        let context_text = format_context_for_injection(
+            &bundle,
+            config.hooks.threshold,
+            false,
+            Some(turn.injection_id()),
+            &config.hooks.format_mode,
+        );
         let header = format!(
             "Bobbin found {} relevant chunks for this error (via semantic search):\n\n",
-            bundle.summary.total_chunks,
+            turn.len(),
         );
         (format!("{}{}", header, context_text), "semantic")
     };
@@ -4720,10 +4936,22 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
     let response = HookResponse {
         hook_specific_output: HookSpecificOutput {
             hook_event_name: "PostToolUseFailure".to_string(),
-            additional_context: output_text,
+            additional_context: output_text.clone(),
         },
     };
     println!("{}", serde_json::to_string(&response)?);
+
+    // 8a. Record the injection so feedback can rate it, and commit the claimed
+    //     chunks to the session ledger (bobbin-aa0). Both happen only after the
+    //     response is actually on stdout — recording chunks this turn never
+    //     emitted would suppress them on the next turn for nothing.
+    record_non_prompt_injection(
+        &repo_root,
+        &mut turn,
+        &input.session_id,
+        error_excerpt,
+        &output_text,
+    );
 
     // 9. Emit metric
     crate::metrics::emit(
@@ -4741,11 +4969,53 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
                 "is_build_error": parsed.is_build_error,
                 "direct_files": direct_files_found,
                 "direct_chunks": direct_chunks_found,
+                "injection_id": turn.injection_id(),
+                "ledger_chunks": turn.len(),
             }),
         ),
     );
 
     Ok(())
+}
+
+/// Store an injection record and commit the turn's chunks to the ledger.
+///
+/// Shared by the failure and post-tool-use handlers (bobbin-aa0). Both are
+/// best-effort: a feedback store that will not open must never turn a
+/// successful injection into a failed hook, because the hook's output has
+/// already been written to stdout by the time this runs.
+fn record_non_prompt_injection(
+    repo_root: &Path,
+    turn: &mut InjectionTurn,
+    cc_session_id: &str,
+    query: &str,
+    output_text: &str,
+) {
+    if turn.is_empty() {
+        return;
+    }
+
+    let feedback_db_path = Config::feedback_db_path(repo_root);
+    if let Ok(fb_store) = crate::storage::feedback::FeedbackStore::open(&feedback_db_path) {
+        let files: Vec<String> = turn.claimed_files();
+        let session_id = if cc_session_id.is_empty() {
+            None
+        } else {
+            Some(cc_session_id)
+        };
+        let _ = fb_store.store_injection_with_output(
+            turn.injection_id(),
+            session_id,
+            None,
+            query,
+            &files,
+            turn.len(),
+            output_text.lines().count(),
+            Some(output_text),
+        );
+    }
+
+    turn.commit();
 }
 
 /// Remote-server implementation of PostToolUseFailure.
@@ -8184,3 +8454,7 @@ mod tests {
 #[cfg(test)]
 #[path = "hook_session_id_tests.rs"]
 mod hook_session_id_tests;
+
+#[cfg(test)]
+#[path = "hook_injection_turn_tests.rs"]
+mod hook_injection_turn_tests;
