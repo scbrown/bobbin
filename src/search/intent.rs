@@ -303,3 +303,7 @@ pub fn intent_adjustments(intent: QueryIntent) -> IntentAdjustments {
 #[cfg(test)]
 #[path = "intent_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "eval_prompt_intent_tests.rs"]
+mod eval_prompt_intent_tests;

@@ -10,41 +10,55 @@
 This is the tracked-debt half; `bobbin-roadmap.md` (strategic direction) is
 still absent.
 
-## 1. The file-size ratchet is red, and much worse than filed
+## 1. The file-size ratchet is red — and `bobbin-aoz` had it right
 
-**bobbin-aoz says 10 files over the 500-line limit. There are 42.**
+> **Correction (2026-08-17).** An earlier revision of this section claimed the
+> bead understated the problem by 4× — "bobbin-aoz says 10 files over the
+> 500-line limit. There are 42." **That correction was wrong and the bead was
+> right.** The retraction is left in place rather than deleted because the
+> incorrect figure was carried into `bobbin-aoz` as a scope-correction note and
+> would otherwise have re-scoped the bead by an order of magnitude in the wrong
+> direction.
+
+The 42 came from a raw `find` that ignored both of the gate's own exemptions.
+`scripts/check-file-size.sh` skips `*tests.rs` / `*_test.rs`, and skips the 34
+entries in `scripts/large-file-allowlist.txt`. Running the gate rather than
+re-deriving it:
 
 ```console
-$ find src -name '*.rs' -exec wc -l {} + | awk '$1>500 && $2!="total"' | wc -l
-42
+$ scripts/check-file-size.sh --all
+ERROR: src/cli/bead.rs has 1179 lines (limit: 500)
+ERROR: src/cli/mod.rs has 516 lines (limit: 500)
+ERROR: src/cli/ontology.rs has 663 lines (limit: 500)
+ERROR: src/http/handlers/admin.rs has 575 lines (limit: 500)
+ERROR: src/http/handlers/analysis.rs has 502 lines (limit: 500)
+ERROR: src/http/handlers/archive.rs has 846 lines (limit: 500)
+ERROR: src/http/handlers/webhook.rs has 516 lines (limit: 500)
+ERROR: src/index/beads.rs has 518 lines (limit: 500)
+ERROR: src/index/cross_repo.rs has 620 lines (limit: 500)
+ERROR: src/storage/sqlite/mod.rs has 542 lines (limit: 500)
+
+File size check: 10 error(s), 6 warning(s)
 ```
 
-The ten the bead names are real, but they are not the large ones — it lists
-`src/cli/bead.rs` at 1,179 lines as the worst case. The actual top of the list:
+**Ten errors. Exactly what the bead filed**, `src/cli/bead.rs` at 1,179 lines
+as the worst case, exactly as the bead named it. The big files the earlier
+revision listed — `hook.rs` at 8,050, `lance.rs` at 5,038 — are all
+*allowlisted*, deliberately, as grandfathered entries.
 
-| Lines | File |
-|------:|------|
-| 8,050 | `src/cli/hook.rs` |
-| 5,038 | `src/storage/lance.rs` |
-| 3,208 | `src/mcp/server.rs` |
-| 2,608 | `src/search/context.rs` |
-| 2,513 | `src/index/parser.rs` |
-| 2,168 | `src/cli/bundle.rs` |
-| 2,166 | `src/reactions.rs` |
-| 2,013 | `src/cli/index.rs` |
+The lesson is the one the section was originally trying to make, turned around:
+**measure the gate by running the gate.** A re-derivation that drops the
+exemptions is not a stricter measurement, it is a different one.
 
-`src/cli/hook.rs` alone is sixteen times the limit and nearly seven times the
-largest file the bead mentions.
+**The bead's remedy is therefore correctly scoped as filed** — split the ten or
+allowlist them with rationale — and needs no re-scoping before dispatch. What
+it does need is a decision on the allowlist itself, which is the real debt here:
+34 grandfathered entries including an 8,050-line file means the gate protects
+new code and has no mechanism for retiring old. A ratchet with no retirement
+path is a ratchet that only ever loosens.
 
-**Why the understatement matters more than the number.** The bead's remedy is
-"split the ten files or move them deliberately to the allowlist with rationale".
-Against 42 files headed by an 8,050-line one, that is not the same piece of
-work, and anyone scoping from the bead would size it wrong by an order of
-magnitude. The bead needs re-scoping before it is dispatched, not just
-re-prioritising.
-
-**Not actioned here.** Splitting these is exactly the "large code change" the
-ranger charter reserves for polecats. The correction is the deliverable.
+**Not actioned here.** Splitting these is the "large code change" the ranger
+charter reserves for polecats.
 
 ## 2. Fixed this pass
 
@@ -136,7 +150,41 @@ or derive it from the constants" — a test is the third option, and the better
 one, because deriving it would have put the same uncheckable arithmetic in a
 different place.
 
-## 3. Specified, not executed
+## 3. Specified, then executed
+
+> **Update (2026-08-17):** `bobbin-zhx` is **fixed**, and the migration concern
+> that held it back was mistaken. The original analysis is kept below because
+> its *fix* was correct in every detail; only its risk assessment was wrong.
+>
+> **The claim was:** "it changes session identity, so anything keyed on a
+> session id — the session ledger's progressive-reduction state in particular —
+> sees a discontinuity on upgrade."
+>
+> **The `SessionLedger` is not keyed on this fingerprint.** It is keyed on
+> Claude Code's own session id (`SessionLedger::load(&repo_root, &input.session_id)`,
+> stored under `.bobbin/session/<cc_session_id>/`). `compute_session_id`'s
+> output is `dedup_session_id`, and its only consumer is the binary-dedup
+> fallback that runs *when reducing is disabled*:
+>
+> ```rust
+> } else if dedup_enabled && !reducing_enabled {
+>     let s = load_hook_state(&repo_root);
+>     if s.last_session_id == dedup_session_id && !dedup_session_id.is_empty() {
+> ```
+>
+> So the real upgrade impact is: a user who has turned `reducing_enabled` off
+> gets **one** non-skip on the first prompt after upgrading, because the stored
+> fingerprint predates the formula change. Then it self-heals. `reducing_enabled`
+> defaults to `true`, so the default configuration never reaches this path at
+> all. That is not a migration, and it needed no ledger test.
+>
+> Applied with seven tests in `src/cli/hook_session_id_tests.rs`, including the
+> two that pin the subtle half — that reordering scores without changing the
+> selected set must not move the fingerprint, and that ties break by key rather
+> than by bundle iteration order. The tests live in their own file because
+> `hook.rs` is the largest file in the tree; growing it by another hundred lines
+> of tests is the drift the allowlist exists to bound. Suite: 939 passed, 0
+> failed.
 
 ### bobbin-zhx — topic fingerprint truncates alphabetically
 

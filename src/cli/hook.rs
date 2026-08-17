@@ -2269,25 +2269,55 @@ fn save_hook_state(repo_root: &Path, state: &HookState) {
 
 /// Compute a session ID from the context bundle's chunks.
 ///
-/// Takes the chunk composite keys (file:start:end), filters by threshold,
-/// sorts alphabetically, takes top 10, concatenates with `|`, and returns
-/// the first 16 hex chars of the SHA-256 hash.
+/// Takes the chunk composite keys (`file:start:end`), filters by threshold,
+/// keeps the **ten highest-scoring**, then sorts those alphabetically,
+/// concatenates with `|`, and returns the first 16 hex chars of the SHA-256
+/// hash.
+///
+/// The two sorts are both load-bearing and their order is the whole point
+/// (bobbin-zhx). This previously sorted alphabetically and *then* truncated,
+/// so which chunks entered the fingerprint was decided by path lexicography —
+/// a chunk under `src/a…` displaced a far more relevant one under `src/z…`,
+/// and `c.score` was in scope and discarded. Selection must be by score; the
+/// final re-sort must happen **after** the truncate, so the hash depends only
+/// on the *set* of chunks selected and not on their score order. Sorting by
+/// score and hashing in that order would churn the fingerprint every time two
+/// chunks' scores swapped without the selected set changing.
+///
+/// Ties break by key. `sort_by` is stable, so without that the tie-break would
+/// fall through to bundle iteration order and make the fingerprint depend on
+/// assembly-pipeline ordering rather than on content.
 fn compute_session_id(bundle: &crate::search::context::ContextBundle, threshold: f32) -> String {
     use sha2::{Digest, Sha256};
+    use std::cmp::Ordering;
 
-    let mut keys: Vec<String> = bundle
+    let mut scored: Vec<(f32, String)> = bundle
         .files
         .iter()
         .flat_map(|f| {
             f.chunks
                 .iter()
                 .filter(|c| c.score >= threshold)
-                .map(move |c| format!("{}:{}:{}", f.path, c.start_line, c.end_line))
+                .map(move |c| {
+                    (
+                        c.score,
+                        format!("{}:{}:{}", f.path, c.start_line, c.end_line),
+                    )
+                })
         })
         .collect();
 
-    keys.sort();
-    keys.truncate(10);
+    // f32 has no total order, hence partial_cmp with a fallback rather than
+    // sort_by_key. Descending by score, then ascending by key for determinism.
+    scored.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.1.cmp(&b.1))
+    });
+    scored.truncate(10);
+
+    let mut keys: Vec<String> = scored.into_iter().map(|(_, key)| key).collect();
+    keys.sort(); // AFTER the truncate — hash over the set, not the score order
 
     let joined = keys.join("|");
     let hash = Sha256::digest(joined.as_bytes());
@@ -8150,3 +8180,7 @@ mod tests {
         assert_eq!(history2.entries[2].prompt, "fourth prompt");
     }
 }
+
+#[cfg(test)]
+#[path = "hook_session_id_tests.rs"]
+mod hook_session_id_tests;
