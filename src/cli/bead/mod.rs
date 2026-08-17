@@ -52,6 +52,34 @@ enum BeadCommand {
         commit: String,
     },
 
+    /// Report work items already recorded that look like near-duplicates of a
+    /// proposed one. Advisory: prints candidates and exits 0 regardless, so it
+    /// can be wired into a creation hook without ever blocking a write.
+    ///
+    /// Every verdict carries its score, threshold, model and a corpus
+    /// watermark, so the suggestion can be checked rather than taken on trust.
+    Similar {
+        /// Title of the proposed work item.
+        title: String,
+
+        /// Description of the proposed work item, scored alongside the title.
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Minimum similarity score to report.
+        #[arg(long, default_value = "0.55")]
+        threshold: f32,
+
+        /// Maximum candidates to report.
+        #[arg(long, default_value = "5")]
+        limit: usize,
+
+        /// Also consider closed items (default: open only, since a closed
+        /// duplicate is history rather than a collision).
+        #[arg(long)]
+        all_statuses: bool,
+    },
+
     /// Reconstruct bug causality: for each bug bead, infer which prior commit
     /// most likely introduced the bug it fixed (per file) and populate the
     /// `bug_causality` table. Idempotent — safe to run periodically. (bo-s1kb)
@@ -124,6 +152,28 @@ impl From<BeadLineageRecord> for HistoryEntry {
 }
 
 pub async fn run(args: BeadArgs, output: OutputConfig) -> Result<()> {
+    // Dispatched before the metadata store is opened: `similar` reads only the
+    // vector index, and opening a store it does not use would make it fail in
+    // repositories where the rest of `bobbin bead` legitimately cannot run.
+    if let BeadCommand::Similar {
+        title,
+        description,
+        threshold,
+        limit,
+        all_statuses,
+    } = &args.command
+    {
+        return run_similar(
+            title,
+            description.as_deref(),
+            *threshold,
+            *limit,
+            !all_statuses,
+            &output,
+        )
+        .await;
+    }
+
     let repo_root = super::find_bobbin_root()
         .ok_or_else(|| anyhow!("Not inside a bobbin repository (run `bobbin init` first)"))?;
     let store = MetadataStore::open(&Config::db_path(&repo_root))
@@ -210,6 +260,8 @@ pub async fn run(args: BeadArgs, output: OutputConfig) -> Result<()> {
             run_auto_link(&repo_root, &store, &commit, &output)?;
         }
 
+        // Handled above, before the store is opened.
+        BeadCommand::Similar { .. } => unreachable!("dispatched before store open"),
         BeadCommand::ReconstructCausality { bug, limit } => {
             run_reconstruct_causality(&repo_root, &store, bug.as_deref(), limit, &output)?;
         }
@@ -265,11 +317,13 @@ pub async fn run(args: BeadArgs, output: OutputConfig) -> Result<()> {
 mod autolink;
 mod causality;
 mod helpers;
+mod similar;
 
 use causality::commit_numstat;
 use helpers::*;
 
 use autolink::run_auto_link;
+use similar::run_similar;
 use causality::run_reconstruct_causality;
 
 #[cfg(test)]
