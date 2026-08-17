@@ -1,11 +1,30 @@
 # 🪢 Quipu Integration Plan
 
-> **Implementation status (2026-07-23, harding):** 🟡 **Partial — all phases in source, DARK in every artifact.**
-> Verified by mechanism: Phase 1 crate dep (`knowledge = ["dep:quipu"]`, `Cargo.toml:145`), Phase 3 MCP
-> surface (`src/mcp/*` quipu tool refs), Phase 4 unified search (`src/search/context.rs` + `src/http/handlers/search.rs`,
-> ~60 knowledge refs), Phase 5 coupling export (`src/knowledge/coupling.rs`) all exist. But the entire
-> integration sits behind the `knowledge` feature that **no build path enables**, so it is absent from every
-> shipped binary and uncompiled by CI. Same single gate as the PPR re-ranker — un-darking scoped in **GH #56**.
+> **Implementation status (2026-08-17, Claude):** 🟡 **Partial — no longer dark. Two phases genuinely incomplete.**
+> Re-measured per phase against the source; supersedes the 2026-07-23 banner below, whose central claim is
+> now stale.
+>
+> | Phase | State | Evidence |
+> |---|---|---|
+> | 1. Crate dependency | ✅ Built | `Cargo.toml:135`, pinned `=0.2.0` at rev `7f984b4e`; `knowledge = ["dep:quipu"]` at `:145` |
+> | 2. Shared embedding pipeline | ❌ **Not built** | `EmbeddingProvider` has **zero occurrences** anywhere in `src/`. The trait-in-quipu / impl-in-bobbin design below was never implemented. |
+> | 3. MCP tool surface | 🟡 **Half** | `knowledge_context` (`src/mcp/server.rs:2678`) and `knowledge_query` (`:2790`) exist. `knowledge_knot` and `knowledge_validate` — both in the Phase 3 table below — have **zero occurrences**. Read is wired; write and validate are not. |
+> | 4. Unified search | ✅ Built | 61 `knowledge` references in `src/search/context.rs`, plus `src/http/handlers/search.rs` |
+> | 5. Knowledge-aware assembly / coupling export | ✅ Built | `src/knowledge/coupling.rs` (190 lines) |
+>
+> **The darkness is resolved.** The previous banner's load-bearing claim — "sits behind the `knowledge`
+> feature that **no build path enables**" — no longer holds:
+>
+> - `.github/workflows/ci.yml` runs `cargo check`, `cargo test` and `cargo clippy` **both** with
+>   `--features knowledge` and without (lines 38, 44, 50 vs 40, 46, 52), so the integration is compiled
+>   and tested on every run, and the default build's `cfg(not(knowledge))` arms are covered too.
+> - `.github/workflows/release.yml:128` builds release binaries **with** `--features knowledge`, annotated
+>   there as REQUIRED rather than optional.
+>
+> Verified locally: `cargo check --features knowledge` compiles clean.
+>
+> So GH #56's un-darking gate is closed, and what remains of this epic is **Phase 2 in full and Phase 3's
+> write half** — not the whole integration. See `bobbin-di7` for the specification that follows from this.
 
 > **Graph-export substrate (2026-07-23, billy — additive to harding's block above):**
 > Phase 4's "query a **selected subset** of graphs" (and later federation) rests on
