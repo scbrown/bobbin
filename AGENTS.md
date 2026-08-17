@@ -18,6 +18,38 @@ Read these before every session:
 3. `crew/strider/charter.md` — who you are, what you do, what you value
 4. `crew/strider/escalation.md` — how and when to escalate
 
+## Beads: this repo is JSONL-only, no Dolt
+
+**Do not run `bd init` here, and do not create a Dolt database.**
+
+`.beads/issues.jsonl` **is** this repo's tracker — not an export of one. There
+is no Dolt database and `bd` 1.2.1 states that "Dolt is the default and only
+supported storage backend", so `bd` commands cannot read or write this tracker.
+`bd init` would create a second identity alongside the `project_id` already in
+`.beads/metadata.json` rather than adopting it.
+
+Use the script:
+
+```bash
+scripts/beads-jsonl.py list [--status open]
+scripts/beads-jsonl.py close <id> --reason "..."
+scripts/beads-jsonl.py note  <id> --text   "..."
+```
+
+It refuses any write that loses information — a record disappearing, a closed
+issue reopening, notes or comments shrinking — because the file has no schema
+enforcement and one bad write is a silent data loss committed as a normal diff.
+`note` appends and never replaces.
+
+Commit these changes normally, with `chore(beads): … (jsonl export)` in the
+subject, matching the convention already in this repo's history.
+
+**On the managed block below.** It describes a Dolt-backed architecture and
+calls hand-editing the JSONL an anti-pattern. That warning is correct *when a
+Dolt store exists*, because then the JSONL is derived and the next export
+reverts the edit. Here there is no store to derive from and nothing to revert
+it. Where that block and this section disagree, this section governs.
+
 ## You Are a Gas Town Crew Member
 
 You run as crew `strider` in the `bobbin` rig on node-5 (192.0.2.0). Gas Town
