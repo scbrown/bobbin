@@ -20,7 +20,7 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, S
 
 use super::tools::*;
 #[allow(unused_imports)]
-use super::tools::{KnowledgeContextRequest, KnowledgeQueryRequest};
+use super::tools::{KnowledgeContextRequest, KnowledgeKnotRequest, KnowledgeQueryRequest};
 use crate::config::Config;
 use crate::index::Embedder;
 use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig, FileRelevance};
@@ -243,8 +243,43 @@ FAILURE, not an empty result — do not read it as 'the fact is absent'.",
             std::fs::create_dir_all(parent)
                 .context("Failed to create quipu store directory")?;
         }
-        quipu::Store::open(db_path.to_string_lossy().as_ref())
-            .map_err(|e| anyhow::anyhow!("Failed to open quipu store: {e}"))
+        let mut store = quipu::Store::open(db_path.to_string_lossy().as_ref())
+            .map_err(|e| anyhow::anyhow!("Failed to open quipu store: {e}"))?;
+        self.attach_shared_embedder(&mut store);
+        Ok(store)
+    }
+
+    /// Hand quipu bobbin's ONNX embedder (bobbin-di7 Phase 2).
+    ///
+    /// Best-effort by design: a store with no provider still stores facts, it
+    /// just does not vectorise them, and failing the whole write because the
+    /// model is missing would be worse than degrading. But the degradation is
+    /// **logged**, because a graph that is silently unsearchable semantically
+    /// looks exactly like one where nothing matched.
+    ///
+    /// Sharing one embedder is not just an efficiency: two ONNX sessions would
+    /// mean two vector spaces, and cosine similarity across different models is
+    /// a number rather than a measurement.
+    #[cfg(feature = "knowledge")]
+    fn attach_shared_embedder(&self, store: &mut quipu::Store) {
+        let config = Config::load(&Config::config_path(&self.repo_root)).unwrap_or_default();
+        let model_dir = match Config::model_cache_dir() {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("knowledge graph will not auto-embed (no model cache dir): {e:#}");
+                return;
+            }
+        };
+        match Embedder::from_config(&config.embedding, &model_dir) {
+            Ok(embedder) => {
+                crate::knowledge::embedding::attach_embedder(store, std::sync::Arc::new(embedder));
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "knowledge graph will not auto-embed (embedder unavailable): {e:#}"
+                );
+            }
+        }
     }
 
     /// Open the vector store
@@ -2667,6 +2702,23 @@ impl BobbinMcpServer {
 
     // ── Quipu knowledge graph tools ───────────────────────────────
 
+    /// Whether quipu's write-time SHACL validation is compiled into this build.
+    ///
+    /// It is not, and it cannot currently be made so (bobbin-di7). quipu gates
+    /// `tool_knot`'s validation behind its own `shacl` feature, which bobbin
+    /// disables via `default-features = false`; turning it back on pulls
+    /// `rudof_lib -> shapes_converter`, which requires `chrono ^0.4.42`, while
+    /// `lancedb -> arrow-array 53.4.1` requires `chrono >=0.4.34, <0.4.40`.
+    /// Irreconcilable without moving off arrow 53, and it cannot even be
+    /// expressed as an opt-in cargo feature because a `quipu/shacl` edge in a
+    /// feature definition makes the resolver pull that tree regardless.
+    ///
+    /// So this is a constant rather than a `cfg!`, and it is reported on every
+    /// write. **A gate compiled out is indistinguishable from a gate that
+    /// passed unless something says so.** Flip this in the same change that
+    /// enables the feature; do not flip it on its own.
+    const KNOWLEDGE_SHACL_ENABLED: bool = false;
+
     /// Query the knowledge graph for entities relevant to a topic
     #[tool(description = "Find entities and facts relevant to a topic across BOTH knowledge graphs this deployment has. \
 Returns two clearly separated sections. 'ontology': the organisation knowledge graph on a remote Quipu (semantic search, then each \
@@ -2767,6 +2819,71 @@ not an empty result — do not read it as 'the fact is absent'.",
 
             Ok(CallToolResult::success(vec![Content::text(
                 serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string()),
+            )]))
+        }
+        #[cfg(not(feature = "knowledge"))]
+        {
+            let _ = req;
+            Err(McpError::internal_error(
+                "Knowledge graph tools require the 'knowledge' feature. Rebuild with: cargo build --features knowledge".to_string(),
+                None,
+            ))
+        }
+    }
+
+    /// Write facts into the local knowledge graph.
+    #[tool(description = "Write facts into bobbin's LOCAL embedded knowledge graph as RDF Turtle. \
+ALWAYS READ THE 'shacl_validated' FIELD IN THE RESULT. When true, the write was checked against the configured \
+SHACL shapes before being committed and a violating write would have been refused. When FALSE, validation was \
+NOT COMPILED IN and the facts were stored UNCHECKED — a success does not mean they are conformant, only that they \
+were accepted. Do not treat an unvalidated success as evidence of well-formedness. \
+This writes only to the local graph — it never writes to the remote ontology Quipu, which is read-only from here. \
+Pass 'actor' and 'source' whenever you have them: a fact whose origin is unrecorded cannot be assessed later.")]
+    async fn knowledge_knot(
+        &self,
+        Parameters(req): Parameters<KnowledgeKnotRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        #[cfg(feature = "knowledge")]
+        {
+            let mut store = self.open_quipu_store().map_err(|e| {
+                McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None)
+            })?;
+
+            let mut input = serde_json::json!({ "turtle": req.turtle });
+            // Only set the optional keys when present. quipu's knot body is
+            // free-form JSON with no unknown-field rejection, so a null here
+            // would be indistinguishable from a value it chose to ignore.
+            if let Some(actor) = &req.actor {
+                input["actor"] = serde_json::json!(actor);
+            }
+            if let Some(source) = &req.source {
+                input["source"] = serde_json::json!(source);
+            }
+            if let Some(shapes) = &req.shapes {
+                input["shapes"] = serde_json::json!(shapes);
+            }
+
+            let result = quipu::tool_knot(&mut store, &input).map_err(|e| {
+                // A SHACL refusal arrives here as an error. Surfacing it as a
+                // tool error rather than a success-with-a-field is deliberate:
+                // a refused write that returns success is the failure mode
+                // this whole subsystem exists to prevent.
+                McpError::internal_error(format!("Knowledge write refused: {e}"), None)
+            })?;
+
+            // The honesty field. quipu's write-time SHACL check is
+            // `#[cfg(feature = "shacl")]` on ITS side, so when bobbin builds
+            // quipu without that feature the validation silently does not run
+            // and a write returns success either way. Reporting it means an
+            // unvalidated write is legible as one instead of being
+            // indistinguishable from a validated one.
+            let payload = serde_json::json!({
+                "written": result,
+                "shacl_validated": Self::KNOWLEDGE_SHACL_ENABLED,
+                "store": self.knowledge_store_info(),
+            });
+            Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string()),
             )]))
         }
         #[cfg(not(feature = "knowledge"))]

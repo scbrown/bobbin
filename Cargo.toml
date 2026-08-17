@@ -129,9 +129,28 @@ schemars = "1.0"
 # first run — the API drift above was invisible only because the feature was never
 # compiled.
 #
-# `default-features = false` keeps quipu's `onnx` + `shacl` off — verified via
+# `default-features = false` keeps quipu's `onnx` off — verified via
 # `cargo tree -i ort`: only bobbin pulls ort/tokenizers, quipu does not, so quipu's
 # embedder (and its pad-token bug) is not compiled in.
+#
+# IT ALSO KEEPS `shacl` OFF, WHICH IS NOT TIDINESS — IT IS A MISSING GATE
+# (bobbin-di7). `shacl` is one of quipu's DEFAULT features, so turning defaults
+# off turned write-time validation off with it: `tool_knot`'s validation is
+# `#[cfg(feature = "shacl")]` (quipu `src/mcp/mod.rs:452`), so knowledge writes
+# are accepted UNVALIDATED. A gate compiled out is indistinguishable from a gate
+# that passed, which is why `knowledge_knot` reports `shacl_validated` on every
+# write rather than leaving the caller to assume.
+#
+# It cannot simply be switched on today. Measured:
+#
+#   quipu/shacl -> rudof_lib -> shapes_converter  requires chrono ^0.4.42
+#   lancedb     -> arrow-array 53.4.1             requires chrono >=0.4.34, <0.4.40
+#
+# Irreconcilable without moving off arrow 53. Note this cannot even be declared
+# as an opt-in cargo feature: a `quipu/shacl` edge in a feature definition makes
+# the resolver pull that tree into Cargo.lock whether or not the feature is
+# enabled, so the whole crate stops resolving. Hence the constant in
+# `src/mcp/server.rs` rather than a feature flag — see KNOWLEDGE_SHACL_ENABLED.
 quipu = { version = "=0.2.0", git = "https://github.com/scbrown/quipu", rev = "7f984b4e", default-features = false, optional = true }
 
 # HTTP Server

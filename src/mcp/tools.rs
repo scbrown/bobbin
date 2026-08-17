@@ -1056,6 +1056,26 @@ pub struct KnowledgeContextRequest {
     pub expand_links: Option<bool>,
 }
 
+/// Request to write facts into the local knowledge graph (bobbin-di7 Phase 3).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct KnowledgeKnotRequest {
+    /// Facts to assert, as Turtle.
+    #[schemars(description = "Facts to write, as RDF Turtle. Validated against the configured SHACL shapes before anything is committed.")]
+    pub turtle: String,
+
+    /// Who is asserting these facts.
+    #[schemars(description = "Actor recorded as the author of this write (provenance). Omit only if the caller genuinely has no identity to record.")]
+    pub actor: Option<String>,
+
+    /// Where the facts came from.
+    #[schemars(description = "Source of the facts (e.g. a file path, a tool name). Recorded alongside the write.")]
+    pub source: Option<String>,
+
+    /// SHACL shapes to validate against, overriding the store's configured set.
+    #[schemars(description = "Optional SHACL shapes (Turtle) to validate this write against instead of the store's configured shapes")]
+    pub shapes: Option<String>,
+}
+
 /// Request for SPARQL query against the knowledge graph
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct KnowledgeQueryRequest {

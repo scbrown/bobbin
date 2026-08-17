@@ -7,8 +7,8 @@
 > | Phase | State | Evidence |
 > |---|---|---|
 > | 1. Crate dependency | ✅ Built | `Cargo.toml:135`, pinned `=0.2.0` at rev `7f984b4e`; `knowledge = ["dep:quipu"]` at `:145` |
-> | 2. Shared embedding pipeline | ❌ **Not built** | `EmbeddingProvider` has **zero occurrences** anywhere in `src/`. The trait-in-quipu / impl-in-bobbin design below was never implemented. |
-> | 3. MCP tool surface | 🟡 **Half** | `knowledge_context` (`src/mcp/server.rs:2678`) and `knowledge_query` (`:2790`) exist. `knowledge_knot` and `knowledge_validate` — both in the Phase 3 table below — have **zero occurrences**. Read is wired; write and validate are not. |
+> | 2. Shared embedding pipeline | ✅ **Built** (2026-08-17) | `src/knowledge/embedding.rs` implements `quipu::embedding::EmbeddingProvider` over bobbin's `Embedder`; `open_quipu_store` attaches it on every open. The trait and `Store::set_embedding_provider` already existed upstream — an earlier note here claimed they needed writing, which was wrong and came from grepping bobbin rather than quipu. |
+> | 3. MCP tool surface | 🟡 **Three of four** (2026-08-17) | `knowledge_context`, `knowledge_query` and now `knowledge_knot` exist. `knowledge_validate` is **blocked upstream** and deliberately not shipped — see the SHACL note below. |
 > | 4. Unified search | ✅ Built | 61 `knowledge` references in `src/search/context.rs`, plus `src/http/handlers/search.rs` |
 > | 5. Knowledge-aware assembly / coupling export | ✅ Built | `src/knowledge/coupling.rs` (190 lines) |
 >
@@ -23,8 +23,24 @@
 >
 > Verified locally: `cargo check --features knowledge` compiles clean.
 >
-> So GH #56's un-darking gate is closed, and what remains of this epic is **Phase 2 in full and Phase 3's
-> write half** — not the whole integration. See `bobbin-di7` for the specification that follows from this.
+> So GH #56's un-darking gate is closed. Phase 2 and Phase 3's write half landed on 2026-08-17.
+>
+> **What remains is one upstream blocker, and it is more serious than a missing tool.**
+> bobbin depends on quipu with `default-features = false`, and `shacl` is one of quipu's *default*
+> features — so write-time SHACL validation was never compiled in. `tool_knot`'s validation is
+> `#[cfg(feature = "shacl")]` (quipu `src/mcp/mod.rs:452`), which means **knowledge writes are accepted
+> unvalidated**. It cannot simply be switched on:
+>
+> ```text
+> quipu/shacl -> rudof_lib -> shapes_converter   requires chrono ^0.4.42
+> lancedb     -> arrow-array 53.4.1              requires chrono >=0.4.34, <0.4.40
+> ```
+>
+> Irreconcilable without moving off arrow 53, and it cannot even be declared as an opt-in cargo feature,
+> because a `quipu/shacl` edge in a feature definition makes the resolver pull that tree whether or not
+> the feature is enabled. So `knowledge_knot` reports `shacl_validated: false` on every write rather than
+> letting a caller assume, and `knowledge_validate` is not shipped at all — a validator that cannot
+> validate would be worse than its absence.
 
 > **Graph-export substrate (2026-07-23, billy — additive to harding's block above):**
 > Phase 4's "query a **selected subset** of graphs" (and later federation) rests on
