@@ -1038,6 +1038,30 @@ async fn inject_context_remote(
         search_query
     };
 
+    // 3f-bis. The WORK ITEM, folded into the query when the harness published
+    // one. Retrieval here is otherwise per-prompt and stateless, which is why
+    // agents rediscover the same context every session
+    // (yupana/docs/work-scoped-governance.md §3). Keyed on the item it becomes
+    // cumulative: the second session on an item starts where the first
+    // finished.
+    //
+    // APPENDED, never substituted. The prompt is what the agent asked for and
+    // stays the dominant signal; the item is a bias, and one that must not be
+    // able to drown a question that has moved on from it. An UNKNOWN plate
+    // leaves the query byte-identical to today's — see `crate::plate`, which
+    // abstains rather than guessing, because a wrong item would skew every
+    // retrieval in the session while looking exactly like it was working.
+    let work_item = crate::plate::current();
+    let item_scoped_query;
+    let search_query = match work_item.as_deref() {
+        Some(item) => {
+            item_scoped_query = format!("{search_query} {item}");
+            eprintln!("bobbin: scoping retrieval to work item {item}");
+            item_scoped_query.as_str()
+        }
+        None => search_query,
+    };
+
     // 3g. Query intent classification: adjust gate threshold for operational queries
     let intent = crate::search::intent::classify_intent(search_query);
     let intent_adj = crate::search::intent::intent_adjustments(intent);
