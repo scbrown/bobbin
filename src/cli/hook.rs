@@ -1410,6 +1410,12 @@ async fn inject_context_remote(
             // Max chunks cap: prevent context flooding when many files pass the gate.
             // Keep files in order (highest relevance first), drop trailing files once
             // total chunk count exceeds the cap.
+            // What the cap held back, carried rather than only printed. The
+            // eprintln below stays — it is useful to an operator — but a hook's
+            // stderr is not injected, so until this counter existed the MODEL
+            // saw a context block that looked complete and had no way to learn
+            // it was not.
+            let mut omitted_files = 0usize;
             {
                 let max_chunks: usize = 12; // Cap at 12 chunks per injection
                 let mut running = 0usize;
@@ -1423,6 +1429,7 @@ async fn inject_context_remote(
                 }
                 if keep < resp_files.len() {
                     let dropped = resp_files.len() - keep;
+                    omitted_files = dropped;
                     eprintln!("bobbin: chunks cap dropped {} trailing files ({} chunks > {})", dropped, running, max_chunks);
                     resp_files.truncate(keep);
                 }
@@ -1437,6 +1444,7 @@ async fn inject_context_remote(
                 summary: crate::http::client::ContextSummaryOutput {
                     total_files: 0, // set below
                     total_chunks,
+                    omitted_files,
                     ..resp_summary
                 },
             };
@@ -1573,36 +1581,39 @@ fn format_context_response_inner(
         "xml" => {
             let _ = writeln!(
                 out,
-                "<bobbin-context files=\"{}\" direct=\"{}\" coupled=\"{}\" bridged=\"{}\" chunks=\"{}\" budget=\"{}\" injection_id=\"{}\">",
+                "<bobbin-context files=\"{}\" direct=\"{}\" coupled=\"{}\" bridged=\"{}\" chunks=\"{}\" budget=\"{}\" omitted=\"{}\" injection_id=\"{}\">",
                 resp.summary.total_files,
                 resp.summary.direct_hits,
                 resp.summary.coupled_additions,
                 resp.summary.bridged_additions,
                 resp.summary.total_chunks,
                 budget,
+                resp.summary.omitted_files,
                 injection_id,
             );
         }
         "minimal" => {
             let _ = writeln!(
                 out,
-                "# Bobbin context ({} files, {}/{} lines) [injection_id: {}]",
+                "# Bobbin context ({} files, {}/{} lines, {} omitted) [injection_id: {}]",
                 resp.summary.total_files,
                 resp.summary.total_chunks,
                 budget,
+                resp.summary.omitted_files,
                 injection_id,
             );
         }
         _ => {
             let _ = writeln!(
                 out,
-                "Bobbin found {} relevant files ({} direct, {} coupled, {} bridged, {}/{} budget lines) [injection_id: {}]:",
+                "Bobbin found {} relevant files ({} direct, {} coupled, {} bridged, {}/{} budget lines, {} held back) [injection_id: {}]:",
                 resp.summary.total_files,
                 resp.summary.direct_hits,
                 resp.summary.coupled_additions,
                 resp.summary.bridged_additions,
                 resp.summary.total_chunks,
                 budget,
+                resp.summary.omitted_files,
                 injection_id,
             );
         }
@@ -1689,6 +1700,9 @@ fn format_context_response_inner(
     let doc_files: Vec<_> = resp.files.iter().filter(|f| is_doc(&f.path)).collect();
 
     let mut line_count = out.lines().count();
+    // Files the line budget cut off, so the marker below can name a number
+    // rather than the output simply ending.
+    let mut cut_by_budget = 0usize;
 
     if !source_files.is_empty() {
         match format_mode {
@@ -1699,7 +1713,8 @@ fn format_context_response_inner(
                 line_count += 2;
             }
         }
-        format_remote_file_chunks(&mut out, &source_files, budget, &mut line_count, format_mode);
+        cut_by_budget +=
+            format_remote_file_chunks(&mut out, &source_files, budget, &mut line_count, format_mode);
     }
 
     if show_docs && !doc_files.is_empty() {
@@ -1711,7 +1726,21 @@ fn format_context_response_inner(
                 line_count += 2;
             }
         }
-        format_remote_file_chunks(&mut out, &doc_files, budget, &mut line_count, format_mode);
+        cut_by_budget +=
+            format_remote_file_chunks(&mut out, &doc_files, budget, &mut line_count, format_mode);
+    }
+
+    // The budget cut is reported HERE rather than in the header, because the
+    // header is written before any chunk is rendered and cannot know. A marker
+    // at the point of the cut is also the more honest placement: it says where
+    // the output stopped being complete.
+    if cut_by_budget > 0 {
+        let _ = write!(
+            out,
+            "\n[bobbin: line budget of {budget} reached — {cut_by_budget} more file(s) matched \
+             but are not shown. This context is INCOMPLETE; ask for the rest by \
+             injection_id if you need it.]\n"
+        );
     }
 
     if format_mode == "xml" {
@@ -1826,16 +1855,23 @@ async fn inject_context_remote_search_fallback(
 }
 
 /// Format chunks from remote context response files into output string.
+///
+/// Returns the number of files it did NOT render because the line budget ran
+/// out. The budget stop used to be a bare `return`: the output simply ended,
+/// and an agent reading it could not distinguish "that was everything" from
+/// "we ran out of room". Reporting the cut is the whole difference between a
+/// budget and a silent loss.
+#[must_use]
 fn format_remote_file_chunks(
     out: &mut String,
     files: &[&crate::http::client::ContextFileOutput],
     budget: usize,
     line_count: &mut usize,
     format_mode: &str,
-) {
+) -> usize {
     use std::fmt::Write;
 
-    for file in files {
+    for (idx, file) in files.iter().enumerate() {
         // Build display path with repo prefix when available and not already present
         let display_path = match &file.repo {
             Some(repo) if !file.path.starts_with("repos/") && !file.path.starts_with("/") && !file.path.starts_with("beads:") => {
@@ -1874,12 +1910,16 @@ fn format_remote_file_chunks(
 
             let chunk_line_count = chunk_section.lines().count();
             if *line_count + chunk_line_count > budget {
-                return;
+                // Everything from this file onward is unrendered, including the
+                // rest of this one — counted as a whole file because a partly
+                // shown file is still a file the agent has not fully seen.
+                return files.len() - idx;
             }
             *line_count += chunk_line_count;
             let _ = write!(out, "{}", chunk_section);
         }
     }
+    0
 }
 
 /// Format a single chunk according to the injection format mode.
@@ -2061,7 +2101,7 @@ fn format_context_for_injection(
     injection_id: Option<&str>,
     format_mode: &str,
 ) -> String {
-    
+
     use std::fmt::Write;
 
     let budget = bundle.budget.max_lines;
@@ -8449,6 +8489,66 @@ mod tests {
         assert_eq!(history2.entries[0].prompt, "second prompt"); // first was trimmed
         assert_eq!(history2.entries[2].prompt, "fourth prompt");
     }
+
+    // --- The budget must say when it cut, not just stop -------------------
+
+    fn chunk_of(lines: usize) -> crate::http::client::ContextChunkOutput {
+        crate::http::client::ContextChunkOutput {
+            name: Some("f".into()),
+            chunk_type: "function".into(),
+            start_line: 1,
+            end_line: lines as u32,
+            score: 0.9,
+            match_type: None,
+            content: Some("x\n".repeat(lines)),
+        }
+    }
+
+    fn file_of(path: &str, lines: usize) -> crate::http::client::ContextFileOutput {
+        crate::http::client::ContextFileOutput {
+            path: path.into(),
+            language: "rust".into(),
+            relevance: "direct".into(),
+            score: 0.9,
+            coupled_to: vec![],
+            chunks: vec![chunk_of(lines)],
+            repo: None,
+        }
+    }
+
+    /// RED. When the line budget runs out mid-render, the formatter must report
+    /// how many files it never showed.
+    ///
+    /// The stop used to be a bare `return`: the output simply ended, and a
+    /// reader could not tell "that was everything" from "we ran out of room".
+    /// A budget that loses work silently is not a budget.
+    #[test]
+    fn a_budget_cut_reports_the_files_it_never_rendered() {
+        let files = vec![file_of("a.rs", 40), file_of("b.rs", 40), file_of("c.rs", 40)];
+        let refs: Vec<&crate::http::client::ContextFileOutput> = files.iter().collect();
+        let mut out = String::new();
+        let mut line_count = 0usize;
+        let cut = format_remote_file_chunks(&mut out, &refs, 45, &mut line_count, "xml");
+        assert!(
+            cut > 0,
+            "the budget bit and the formatter must say so; rendered {line_count} lines"
+        );
+    }
+
+    /// GREEN, and the control the test above needs. A render that fits reports
+    /// zero — without this the same assertion would pass against a formatter
+    /// that always claimed a cut.
+    #[test]
+    fn a_render_that_fits_reports_no_cut() {
+        let files = vec![file_of("a.rs", 3)];
+        let refs: Vec<&crate::http::client::ContextFileOutput> = files.iter().collect();
+        let mut out = String::new();
+        let mut line_count = 0usize;
+        let cut = format_remote_file_chunks(&mut out, &refs, 10_000, &mut line_count, "xml");
+        assert_eq!(cut, 0, "everything fit; nothing was held back");
+        assert!(!out.is_empty(), "and it actually rendered something");
+    }
+
 }
 
 #[cfg(test)]

@@ -164,6 +164,19 @@ pub struct ContextSummaryOutput {
     /// Recommended gate boost for detected intent.
     #[serde(default)]
     pub gate_boost: Option<f32>,
+    /// Files the injection HELD BACK — dropped by the chunks cap or cut off by
+    /// the line budget before they could be rendered.
+    ///
+    /// Both caps existed already; neither told the model. The chunks cap wrote
+    /// its count to stderr, which a hook's stdout-only injection channel never
+    /// carries, and the budget stop emitted no marker at all. So an agent read
+    /// a context block that looked complete and had no way to learn otherwise —
+    /// the retrieval-side version of a gate believed to be passing.
+    ///
+    /// Zero means nothing was held back, and that is a claim worth being able
+    /// to make: an omitted field would read as "complete" only by luck.
+    #[serde(default)]
+    pub omitted_files: usize,
 }
 
 /// Response from the /read endpoint
