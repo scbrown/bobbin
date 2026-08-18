@@ -50,9 +50,7 @@ impl ComplexityAnalyzer {
     pub fn new() -> Result<Self> {
         Ok(Self {
             rust_parser: create_parser(tree_sitter_rust::LANGUAGE.into())?,
-            typescript_parser: create_parser(
-                tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            )?,
+            typescript_parser: create_parser(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())?,
             python_parser: create_parser(tree_sitter_python::LANGUAGE.into())?,
             go_parser: create_parser(tree_sitter_go::LANGUAGE.into())?,
             java_parser: create_parser(tree_sitter_java::LANGUAGE.into())?,
@@ -213,60 +211,69 @@ fn is_branch_point(node: &Node, language: &str) -> bool {
     let kind = node.kind();
 
     match language {
-        "rust" => matches!(
-            kind,
-            "if_expression"
-                | "match_expression"
-                | "for_expression"
-                | "while_expression"
-                | "loop_expression"
-        ) || is_rust_logical_op(node),
-        "typescript" | "tsx" | "javascript" => matches!(
-            kind,
-            "if_statement"
-                | "switch_case"
-                | "for_statement"
-                | "while_statement"
-                | "do_statement"
-                | "ternary_expression"
-                | "for_in_statement"
-        ) || is_ts_logical_op(node),
-        "python" => matches!(
-            kind,
-            "if_statement"
-                | "for_statement"
-                | "while_statement"
-                | "elif_clause"
-        ) || is_python_logical_op(node),
-        "go" => matches!(
-            kind,
-            "if_statement"
-                | "for_statement"
-                | "select_statement"
-                | "case_clause"
-                | "default_case"
-        ) || is_go_logical_op(node),
-        "java" => matches!(
-            kind,
-            "if_statement"
-                | "for_statement"
-                | "enhanced_for_statement"
-                | "while_statement"
-                | "do_statement"
-                | "switch_expression"
-                | "catch_clause"
-                | "ternary_expression"
-        ) || is_java_logical_op(node),
-        "cpp" => matches!(
-            kind,
-            "if_statement"
-                | "for_statement"
-                | "while_statement"
-                | "do_statement"
-                | "case_statement"
-                | "catch_clause"
-                | "conditional_expression"
-        ) || is_cpp_logical_op(node),
+        "rust" => {
+            matches!(
+                kind,
+                "if_expression"
+                    | "match_expression"
+                    | "for_expression"
+                    | "while_expression"
+                    | "loop_expression"
+            ) || is_rust_logical_op(node)
+        }
+        "typescript" | "tsx" | "javascript" => {
+            matches!(
+                kind,
+                "if_statement"
+                    | "switch_case"
+                    | "for_statement"
+                    | "while_statement"
+                    | "do_statement"
+                    | "ternary_expression"
+                    | "for_in_statement"
+            ) || is_ts_logical_op(node)
+        }
+        "python" => {
+            matches!(
+                kind,
+                "if_statement" | "for_statement" | "while_statement" | "elif_clause"
+            ) || is_python_logical_op(node)
+        }
+        "go" => {
+            matches!(
+                kind,
+                "if_statement"
+                    | "for_statement"
+                    | "select_statement"
+                    | "case_clause"
+                    | "default_case"
+            ) || is_go_logical_op(node)
+        }
+        "java" => {
+            matches!(
+                kind,
+                "if_statement"
+                    | "for_statement"
+                    | "enhanced_for_statement"
+                    | "while_statement"
+                    | "do_statement"
+                    | "switch_expression"
+                    | "catch_clause"
+                    | "ternary_expression"
+            ) || is_java_logical_op(node)
+        }
+        "cpp" => {
+            matches!(
+                kind,
+                "if_statement"
+                    | "for_statement"
+                    | "while_statement"
+                    | "do_statement"
+                    | "case_statement"
+                    | "catch_clause"
+                    | "conditional_expression"
+            ) || is_cpp_logical_op(node)
+        }
         _ => false,
     }
 }
@@ -444,10 +451,9 @@ fn node_to_chunk_type(node: &Node, language: &str) -> Option<ChunkType> {
 /// Extract name from a semantic node (mirrors parser.rs logic)
 fn extract_name(node: &Node, content: &str, language: &str) -> Option<String> {
     match language {
-        "rust" | "typescript" | "tsx" | "javascript" | "python" | "java" => {
-            node.child_by_field_name("name")
-                .map(|n| content[n.byte_range()].to_string())
-        }
+        "rust" | "typescript" | "tsx" | "javascript" | "python" | "java" => node
+            .child_by_field_name("name")
+            .map(|n| content[n.byte_range()].to_string()),
         "go" => {
             if node.kind() == "type_declaration" {
                 let mut cursor = node.walk();
@@ -692,9 +698,7 @@ fn complex(x: i32) -> i32 {
             raise ValueError("Cannot divide by zero")
         return a / b
 "#;
-        let file = analyzer
-            .analyze_file("calc.py", content, "python")
-            .unwrap();
+        let file = analyzer.analyze_file("calc.py", content, "python").unwrap();
 
         assert_eq!(file.path, "calc.py");
         // class + 2 functions = 3 chunks

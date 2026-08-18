@@ -37,7 +37,12 @@ pub fn recency_factor(indexed_at: Option<i64>, half_life_days: f32) -> f32 {
 ///
 /// At weight=0.0 recency has no effect. At weight=0.3 (default), the maximum
 /// penalty for very old items is 30% of the original score.
-pub fn apply_recency_boost(score: f32, indexed_at: Option<i64>, half_life_days: f32, weight: f32) -> f32 {
+pub fn apply_recency_boost(
+    score: f32,
+    indexed_at: Option<i64>,
+    half_life_days: f32,
+    weight: f32,
+) -> f32 {
     if weight <= 0.0 || half_life_days <= 0.0 {
         return score;
     }
@@ -57,11 +62,7 @@ pub struct HybridSearch {
 
 impl HybridSearch {
     /// Create a new hybrid search engine
-    pub fn new(
-        embedder: Embedder,
-        vector_store: VectorStore,
-        semantic_weight: f32,
-    ) -> Self {
+    pub fn new(embedder: Embedder, vector_store: VectorStore, semantic_weight: f32) -> Self {
         Self {
             embedder,
             vector_store,
@@ -90,19 +91,36 @@ impl HybridSearch {
     /// The raw query is used for semantic search (embeddings handle natural language well).
     /// A preprocessed version (stopwords removed, prefixes stripped) is used for keyword
     /// search (BM25), improving relevance for conversational prompts.
-    pub async fn search(&mut self, query: &str, limit: usize, repo: Option<&str>) -> Result<Vec<SearchResult>> {
+    pub async fn search(
+        &mut self,
+        query: &str,
+        limit: usize,
+        repo: Option<&str>,
+    ) -> Result<Vec<SearchResult>> {
         self.search_filtered(query, limit, repo, None).await
     }
 
     /// Perform hybrid search with an additional SQL filter clause.
-    pub async fn search_filtered(&mut self, query: &str, limit: usize, repo: Option<&str>, filter: Option<&str>) -> Result<Vec<SearchResult>> {
+    pub async fn search_filtered(
+        &mut self,
+        query: &str,
+        limit: usize,
+        repo: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<Vec<SearchResult>> {
         let fetch_limit = limit * 2;
 
         let query_embedding = self.embedder.embed(query).await?;
-        let semantic_results = self.vector_store.search_filtered(&query_embedding, fetch_limit, repo, filter).await?;
+        let semantic_results = self
+            .vector_store
+            .search_filtered(&query_embedding, fetch_limit, repo, filter)
+            .await?;
 
         let keyword_query = super::preprocess::preprocess_for_keywords(query);
-        let keyword_results = self.vector_store.search_fts_filtered(&keyword_query, fetch_limit, repo, filter).await?;
+        let keyword_results = self
+            .vector_store
+            .search_fts_filtered(&keyword_query, fetch_limit, repo, filter)
+            .await?;
 
         Self::combine_with_recency(
             semantic_results,
@@ -122,7 +140,15 @@ impl HybridSearch {
         semantic_weight: f32,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        Self::combine_with_recency(semantic_results, keyword_results, semantic_weight, limit, 0.0, 0.0, 60.0)
+        Self::combine_with_recency(
+            semantic_results,
+            keyword_results,
+            semantic_weight,
+            limit,
+            0.0,
+            0.0,
+            60.0,
+        )
     }
 
     /// Combine semantic and keyword results using RRF with optional recency boosting
@@ -210,7 +236,11 @@ mod tests {
             .as_secs() as i64;
         // Just indexed: should be ~1.0
         let factor = recency_factor(Some(now), 30.0);
-        assert!(factor > 0.99, "Recent factor should be ~1.0, got {}", factor);
+        assert!(
+            factor > 0.99,
+            "Recent factor should be ~1.0, got {}",
+            factor
+        );
     }
 
     #[test]
@@ -222,7 +252,11 @@ mod tests {
         // 30 days ago with 30-day half-life: should be ~0.5
         let thirty_days_ago = now - 30 * 86400;
         let factor = recency_factor(Some(thirty_days_ago), 30.0);
-        assert!((factor - 0.5).abs() < 0.01, "Factor at half-life should be ~0.5, got {}", factor);
+        assert!(
+            (factor - 0.5).abs() < 0.01,
+            "Factor at half-life should be ~0.5, got {}",
+            factor
+        );
     }
 
     #[test]
@@ -240,7 +274,11 @@ mod tests {
             .as_secs() as i64;
         // Recent item should keep ~full score
         let boosted = apply_recency_boost(1.0, Some(now), 30.0, 0.3);
-        assert!(boosted > 0.99, "Recent item should keep full score, got {}", boosted);
+        assert!(
+            boosted > 0.99,
+            "Recent item should keep full score, got {}",
+            boosted
+        );
     }
 
     #[test]
@@ -252,7 +290,15 @@ mod tests {
         // 90 days old (3 half-lives): decay = 0.125, boost = 1.0 - 0.3 + 0.3*0.125 = 0.7375
         let old = now - 90 * 86400;
         let boosted = apply_recency_boost(1.0, Some(old), 30.0, 0.3);
-        assert!(boosted < 0.75, "Old item should lose some score, got {}", boosted);
-        assert!(boosted > 0.70, "Old item shouldn't lose too much, got {}", boosted);
+        assert!(
+            boosted < 0.75,
+            "Old item should lose some score, got {}",
+            boosted
+        );
+        assert!(
+            boosted > 0.70,
+            "Old item shouldn't lose too much, got {}",
+            boosted
+        );
     }
 }

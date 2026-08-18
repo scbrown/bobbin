@@ -8,9 +8,7 @@ use colored::Colorize;
 use std::path::Path;
 use std::process::Command;
 
-use crate::storage::sqlite::{
-    MetadataStore, NewBeadLineage,
-};
+use crate::storage::sqlite::{MetadataStore, NewBeadLineage};
 
 use super::causality::commit_numstat;
 use super::helpers::*;
@@ -216,8 +214,7 @@ pub(super) fn find_bead_id(text: &str) -> Option<String> {
     while i < n {
         // A prefix must begin at a boundary (start, or after a non-alphanumeric,
         // non-dash char) so we don't match mid-token (e.g. the `o-foo` in `bo-foo`).
-        let at_boundary =
-            i == 0 || (!chars[i - 1].is_ascii_alphanumeric() && chars[i - 1] != '-');
+        let at_boundary = i == 0 || (!chars[i - 1].is_ascii_alphanumeric() && chars[i - 1] != '-');
         if at_boundary && chars[i].is_ascii_lowercase() {
             let mut j = i;
             while j < n && chars[j].is_ascii_lowercase() {

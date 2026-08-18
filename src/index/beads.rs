@@ -54,11 +54,9 @@ fn bead_excluded(labels: &[String], exclude_labels: &[String]) -> bool {
     if exclude_labels.is_empty() {
         return false;
     }
-    labels.iter().any(|l| {
-        exclude_labels
-            .iter()
-            .any(|x| x.eq_ignore_ascii_case(l))
-    })
+    labels
+        .iter()
+        .any(|l| exclude_labels.iter().any(|x| x.eq_ignore_ascii_case(l)))
 }
 
 /// Assemble the embeddable text for a bead from its fields, comments, and labels.
@@ -121,7 +119,8 @@ pub async fn fetch_beads(config: &BeadsConfig) -> Result<Vec<Chunk>> {
     let mut all_chunks = Vec::new();
 
     for db_name in &config.databases {
-        let chunks = fetch_from_database(config, db_name).await
+        let chunks = fetch_from_database(config, db_name)
+            .await
             .with_context(|| format!("Failed to fetch beads from {}", db_name))?;
         all_chunks.extend(chunks);
     }
@@ -139,8 +138,12 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
         config.user, config.host, config.port, db_name
     );
     let pool = mysql_async::Pool::new(url.as_str());
-    let mut conn = pool.get_conn().await
-        .with_context(|| format!("Failed to connect to Dolt at {}:{}", config.host, config.port))?;
+    let mut conn = pool.get_conn().await.with_context(|| {
+        format!(
+            "Failed to connect to Dolt at {}:{}",
+            config.host, config.port
+        )
+    })?;
 
     // Build WHERE clause
     let mut conditions = Vec::new();
@@ -178,7 +181,14 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
         .query_map(
             &issues_query,
             |(id, title, description, status, priority, assignee, notes, metadata): (
-                String, String, String, String, i32, Option<String>, String, Option<String>,
+                String,
+                String,
+                String,
+                String,
+                i32,
+                Option<String>,
+                String,
+                Option<String>,
             )| {
                 BeadRow {
                     id,
@@ -202,7 +212,10 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
             vec![]
         } else {
             // Build IN clause
-            let placeholders: Vec<String> = issue_ids.iter().map(|id| format!("'{}'", id.replace('\'', "''"))).collect();
+            let placeholders: Vec<String> = issue_ids
+                .iter()
+                .map(|id| format!("'{}'", id.replace('\'', "''")))
+                .collect();
             let comments_query = format!(
                 "SELECT issue_id, author, text FROM comments WHERE issue_id IN ({}) ORDER BY created_at ASC",
                 placeholders.join(", ")
@@ -328,7 +341,10 @@ pub async fn fetch_bead_metadata(
         let mut conn = match pool.get_conn().await {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("Warning: failed to connect to Dolt for live enrichment: {}", e);
+                eprintln!(
+                    "Warning: failed to connect to Dolt for live enrichment: {}",
+                    e
+                );
                 continue;
             }
         };
@@ -344,20 +360,23 @@ pub async fn fetch_bead_metadata(
             in_clause
         );
 
-        let rows: Vec<(String, String, String, i32, Option<String>, String, String, String)> = conn
-            .query(&query)
-            .await
-            .unwrap_or_default();
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            i32,
+            Option<String>,
+            String,
+            String,
+            String,
+        )> = conn.query(&query).await.unwrap_or_default();
 
         // Fetch labels for these beads
         let labels_query = format!(
             "SELECT issue_id, label FROM labels WHERE issue_id IN ({})",
             in_clause
         );
-        let label_rows: Vec<(String, String)> = conn
-            .query(&labels_query)
-            .await
-            .unwrap_or_default();
+        let label_rows: Vec<(String, String)> = conn.query(&labels_query).await.unwrap_or_default();
 
         let mut labels_by_id: HashMap<String, Vec<String>> = HashMap::new();
         for (issue_id, label) in label_rows {
@@ -376,7 +395,11 @@ pub async fn fetch_bead_metadata(
                     issue_type,
                     owner,
                     labels,
-                    created_at: if created_at.is_empty() { None } else { Some(created_at) },
+                    created_at: if created_at.is_empty() {
+                        None
+                    } else {
+                        Some(created_at)
+                    },
                 },
             );
         }

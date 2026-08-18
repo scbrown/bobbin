@@ -7,12 +7,12 @@ use super::context::CliContentMode;
 use super::OutputConfig;
 use crate::access::RepoFilter;
 use crate::config::Config;
-use crate::index::{Embedder, GitAnalyzer};
+use crate::index::git::DiffFile;
 use crate::index::git::DiffSpec;
+use crate::index::{Embedder, GitAnalyzer};
 use crate::search::context::{
     BridgeMode, ContentMode, ContextAssembler, ContextBundle, ContextConfig, FileRelevance,
 };
-use crate::index::git::DiffFile;
 use crate::search::review::map_diff_to_chunks;
 use crate::storage::{MetadataStore, VectorStore};
 use std::collections::HashMap;
@@ -88,8 +88,7 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
         return Ok(());
     }
 
-    let metadata_store =
-        MetadataStore::open(&db_path).context("Failed to open metadata store")?;
+    let metadata_store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
 
     let embedder = Embedder::from_config(&config.embedding, &model_dir)
         .context("Failed to load embedding model")?;
@@ -113,7 +112,9 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
 
     if diff_files.is_empty() {
         if output.json {
-            println!(r#"{{"error": "no_changes", "message": "No changes found for the specified diff."}}"#);
+            println!(
+                r#"{{"error": "no_changes", "message": "No changes found for the specified diff."}}"#
+            );
         } else if !output.quiet {
             println!("{} No changes found.", "!".yellow());
         }
@@ -155,18 +156,19 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
         tags_config: None,
         role: None,
         file_type_rules: vec![],
-            repo_affinity: None,
-            repo_affinity_boost: config.hooks.repo_affinity_boost,
-            max_bridged_files: 3,
-            max_bridged_chunks_per_file: 2,
-            repo_path_prefix: config.server.repo_path_prefix.clone(),
-            ..ContextConfig::default()
+        repo_affinity: None,
+        repo_affinity_boost: config.hooks.repo_affinity_boost,
+        max_bridged_files: 3,
+        max_bridged_chunks_per_file: 2,
+        repo_path_prefix: config.server.repo_path_prefix.clone(),
+        ..ContextConfig::default()
     };
 
     // Build description of the diff for the query field
     let diff_description = describe_diff(&diff_spec, &args.branch);
 
-    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let mut assembler =
+        ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
     let mut bundle = assembler
         .assemble_from_seeds(&diff_description, seeds, args.repo.as_deref())
         .await
@@ -174,7 +176,9 @@ pub async fn run(args: ReviewArgs, output: OutputConfig) -> Result<()> {
 
     // Apply role-based access filtering
     let access_filter = RepoFilter::from_config(&config.access, &output.role);
-    bundle.files.retain(|f| access_filter.is_allowed(RepoFilter::repo_from_path(&f.path)));
+    bundle
+        .files
+        .retain(|f| access_filter.is_allowed(RepoFilter::repo_from_path(&f.path)));
 
     if output.json {
         print_json_output(&bundle, &diff_files)?;
@@ -189,10 +193,7 @@ fn describe_diff(spec: &DiffSpec, branch: &Option<String>) -> String {
     match spec {
         DiffSpec::Unstaged => "unstaged changes".to_string(),
         DiffSpec::Staged => "staged changes".to_string(),
-        DiffSpec::Branch(_) => format!(
-            "branch: {}",
-            branch.as_deref().unwrap_or("unknown")
-        ),
+        DiffSpec::Branch(_) => format!("branch: {}", branch.as_deref().unwrap_or("unknown")),
         DiffSpec::Range(range) => format!("range: {}", range),
     }
 }
@@ -232,10 +233,8 @@ fn print_json_output(bundle: &ContextBundle, diff_files: &[DiffFile]) -> Result<
 
 fn print_human_output(bundle: &ContextBundle, diff_files: &[DiffFile], description: &str) {
     // Build a lookup of changed files
-    let changed: HashMap<&str, &DiffFile> = diff_files
-        .iter()
-        .map(|f| (f.path.as_str(), f))
-        .collect();
+    let changed: HashMap<&str, &DiffFile> =
+        diff_files.iter().map(|f| (f.path.as_str(), f)).collect();
 
     if bundle.files.is_empty() {
         println!(
@@ -272,16 +271,10 @@ fn print_human_output(bundle: &ContextBundle, diff_files: &[DiffFile], descripti
             match file.relevance {
                 FileRelevance::Direct => format!("direct, score: {:.4}", file.score),
                 FileRelevance::Coupled => {
-                    format!(
-                        "coupled via git, score: {:.2}",
-                        file.score
-                    )
+                    format!("coupled via git, score: {:.2}", file.score)
                 }
                 FileRelevance::Bridged => {
-                    format!(
-                        "bridged via doc provenance, score: {:.2}",
-                        file.score
-                    )
+                    format!("bridged via doc provenance, score: {:.2}", file.score)
                 }
                 FileRelevance::Pinned => {
                     format!("pinned, score: {:.4}", file.score)
@@ -292,11 +285,7 @@ fn print_human_output(bundle: &ContextBundle, diff_files: &[DiffFile], descripti
             }
         };
 
-        println!(
-            "--- {} [{}] ---",
-            file.path.blue(),
-            annotation.dimmed()
-        );
+        println!("--- {} [{}] ---", file.path.blue(), annotation.dimmed());
 
         for chunk in &file.chunks {
             let name_display = chunk
@@ -338,10 +327,7 @@ mod tests {
 
     #[test]
     fn test_describe_diff_staged() {
-        assert_eq!(
-            describe_diff(&DiffSpec::Staged, &None),
-            "staged changes"
-        );
+        assert_eq!(describe_diff(&DiffSpec::Staged, &None), "staged changes");
     }
 
     #[test]

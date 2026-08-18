@@ -6,9 +6,6 @@
 //! Archive and beads search handlers.
 #![allow(private_interfaces)]
 
-
-
-
 /// Extract a date string from an archive path like "{source}:YYYY/MM/DD/..."
 ///
 /// Handles any source prefix (hla:, pensieve:, archive:, etc.)
@@ -17,11 +14,7 @@ pub(super) fn extract_date_from_archive_path(path: &str) -> Option<String> {
     let after_prefix = path.split_once(':').map(|(_, rest)| rest)?;
     // Path format: YYYY/MM/DD/filename.md
     let parts: Vec<&str> = after_prefix.splitn(4, '/').collect();
-    if parts.len() >= 3
-        && parts[0].len() == 4
-        && parts[1].len() == 2
-        && parts[2].len() == 2
-    {
+    if parts.len() >= 3 && parts[0].len() == 4 && parts[1].len() == 2 && parts[2].len() == 2 {
         Some(format!("{}-{}-{}", parts[0], parts[1], parts[2]))
     } else {
         None
@@ -44,10 +37,7 @@ pub(super) fn archive_source_paths(config: &crate::config::ArchiveConfig) -> Vec
 }
 
 /// Find a record file by ID (searches for filename containing the ID)
-pub(super) fn find_record_by_id(
-    root: &std::path::Path,
-    id: &str,
-) -> Option<(String, String)> {
+pub(super) fn find_record_by_id(root: &std::path::Path, id: &str) -> Option<(String, String)> {
     find_record_recursive(root, root, id)
 }
 
@@ -63,7 +53,10 @@ pub(super) fn find_record_recursive(
             if let Some(found) = find_record_recursive(root, &path, id) {
                 return Some(found);
             }
-        } else if path.file_stem().is_some_and(|s| s.to_string_lossy().contains(id)) {
+        } else if path
+            .file_stem()
+            .is_some_and(|s| s.to_string_lossy().contains(id))
+        {
             let content = std::fs::read_to_string(&path).ok()?;
             let rel = path.strip_prefix(root).ok()?;
             return Some((content, rel.to_string_lossy().to_string()));

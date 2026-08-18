@@ -6,8 +6,10 @@ use colored::Colorize;
 use serde::Serialize;
 use std::path::PathBuf;
 
+use super::calibrate::{
+    self, capture_snapshot_from_index, CalibrationGuard, CalibrationResult, DefaultCalibrationGuard,
+};
 use super::OutputConfig;
-use super::calibrate::{self, CalibrationResult, DefaultCalibrationGuard, CalibrationGuard, capture_snapshot_from_index};
 use crate::config::Config;
 use crate::index::git::GitAnalyzer;
 use crate::storage::VectorStore;
@@ -210,7 +212,12 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
             if f.stale {
                 let behind = f
                     .last_indexed
-                    .map(|ts| format!(" (HEAD is {} newer)", format_duration(f.head_commit_time - ts)))
+                    .map(|ts| {
+                        format!(
+                            " (HEAD is {} newer)",
+                            format_duration(f.head_commit_time - ts)
+                        )
+                    })
                     .unwrap_or_else(|| " (never indexed)".to_string());
                 println!(
                     "  Freshness:    {}{}",
@@ -258,10 +265,7 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
             println!("\n{}", "Git".bold());
             let age_str = format_age_days(gs.repo_age_days);
             println!("  Repo age:     {}", age_str);
-            println!(
-                "  Commit rate:  {:.1} commits/week",
-                gs.recent_commit_rate
-            );
+            println!("  Commit rate:  {:.1} commits/week", gs.recent_commit_rate);
         }
 
         // --- Detailed language breakdown ---
@@ -311,7 +315,10 @@ fn build_calibration_status(
     let stale = guard.should_recalibrate(&snapshot, Some(cal));
 
     let bc = &cal.best_config;
-    let mut summary = format!("sw={:.2} dd={:.2} k={:.0}", bc.semantic_weight, bc.doc_demotion, bc.rrf_k);
+    let mut summary = format!(
+        "sw={:.2} dd={:.2} k={:.0}",
+        bc.semantic_weight, bc.doc_demotion, bc.rrf_k
+    );
     if let Some(hl) = bc.recency_half_life_days {
         summary.push_str(&format!(" hl={:.0}", hl));
     }
@@ -346,10 +353,7 @@ fn build_calibration_status(
 
 fn print_calibration_status(cal: &Option<CalibrationResult>, current_chunks: u64) {
     let Some(cal) = cal else {
-        println!(
-            "  Status:       {}",
-            "not calibrated".yellow()
-        );
+        println!("  Status:       {}", "not calibrated".yellow());
         println!("  Run `bobbin calibrate` to find optimal search parameters.");
         return;
     };
@@ -360,7 +364,10 @@ fn print_calibration_status(cal: &Option<CalibrationResult>, current_chunks: u64
         .unwrap_or_else(|_| "unknown".to_string());
 
     let bc = &cal.best_config;
-    let mut config_str = format!("sw={:.2} dd={:.2} k={:.0}", bc.semantic_weight, bc.doc_demotion, bc.rrf_k);
+    let mut config_str = format!(
+        "sw={:.2} dd={:.2} k={:.0}",
+        bc.semantic_weight, bc.doc_demotion, bc.rrf_k
+    );
     if let Some(hl) = bc.recency_half_life_days {
         config_str.push_str(&format!(" hl={:.0}", hl));
     }
@@ -383,16 +390,8 @@ fn print_calibration_status(cal: &Option<CalibrationResult>, current_chunks: u64
 
     let f1 = cal.top_results.first().map(|r| r.f1).unwrap_or(0.0);
 
-    println!(
-        "  Status:       {} ({})",
-        "calibrated".green(),
-        cal_date
-    );
-    println!(
-        "  Config:       {} (F1={:.3})",
-        config_str.cyan(),
-        f1
-    );
+    println!("  Status:       {} ({})", "calibrated".green(), cal_date);
+    println!("  Config:       {} (F1={:.3})", config_str.cyan(), f1);
 
     // Staleness check
     let prev_chunks = cal.snapshot.chunk_count;
@@ -435,7 +434,10 @@ fn build_git_status(git: &GitAnalyzer) -> GitStatus {
         .ok()
         .map(|commits| {
             let thirty_days_ago = Utc::now().timestamp() - (30 * 86400);
-            let count = commits.iter().filter(|c| c.timestamp > thirty_days_ago).count();
+            let count = commits
+                .iter()
+                .filter(|c| c.timestamp > thirty_days_ago)
+                .count();
             count as f32 / 4.3
         })
         .unwrap_or(0.0);
@@ -538,11 +540,7 @@ async fn run_remote(args: StatusArgs, output: OutputConfig, server_url: &str) ->
         };
         println!("{}", serde_json::to_string_pretty(&json_output)?);
     } else if !output.quiet {
-        println!(
-            "{} Bobbin status via {}",
-            "✓".green(),
-            server_url
-        );
+        println!("{} Bobbin status via {}", "✓".green(), server_url);
         println!();
         println!("  Status:       {}", resp.status.green());
         println!(

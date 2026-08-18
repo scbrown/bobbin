@@ -72,7 +72,9 @@ impl<'a> RefAnalyzer<'a> {
         symbol_type: Option<&str>,
         repo: Option<&str>,
     ) -> Result<Option<SymbolDefinition>> {
-        let defs = self.find_definitions(symbol_name, symbol_type, repo).await?;
+        let defs = self
+            .find_definitions(symbol_name, symbol_type, repo)
+            .await?;
         Ok(defs.into_iter().next())
     }
 
@@ -101,12 +103,7 @@ impl<'a> RefAnalyzer<'a> {
                 }
             }
 
-            let signature = chunk
-                .content
-                .lines()
-                .next()
-                .unwrap_or("")
-                .to_string();
+            let signature = chunk.content.lines().next().unwrap_or("").to_string();
 
             let name = chunk.name.unwrap_or_default();
             definitions.push(SymbolDefinition {
@@ -160,9 +157,7 @@ impl<'a> RefAnalyzer<'a> {
 
             // Skip definition chunks
             let is_def = def_keys.iter().any(|(path, start, end)| {
-                chunk.file_path == *path
-                    && chunk.start_line == *start
-                    && chunk.end_line == *end
+                chunk.file_path == *path && chunk.start_line == *start && chunk.end_line == *end
             });
             if is_def {
                 continue;
@@ -187,20 +182,13 @@ impl<'a> RefAnalyzer<'a> {
 
         usages.truncate(limit);
 
-        Ok(SymbolRefs {
-            definition,
-            usages,
-        })
+        Ok(SymbolRefs { definition, usages })
     }
 
     /// List all symbols defined in a file.
     ///
     /// Returns all named chunks (functions, structs, traits, etc.) in the file.
-    pub async fn list_symbols(
-        &self,
-        file_path: &str,
-        repo: Option<&str>,
-    ) -> Result<FileSymbols> {
+    pub async fn list_symbols(&self, file_path: &str, repo: Option<&str>) -> Result<FileSymbols> {
         let chunks = self
             .vector_store
             .get_chunks_for_file(file_path, repo)
@@ -210,12 +198,7 @@ impl<'a> RefAnalyzer<'a> {
             .into_iter()
             .filter_map(|chunk| {
                 let name = chunk.name?;
-                let signature = chunk
-                    .content
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .to_string();
+                let signature = chunk.content.lines().next().unwrap_or("").to_string();
                 Some(SymbolDefinition {
                     name,
                     chunk_type: chunk.chunk_type,
@@ -272,12 +255,7 @@ impl<'a> RefAnalyzer<'a> {
                 .await?;
 
             let definition = chunks.into_iter().next().map(|chunk| {
-                let signature = chunk
-                    .content
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .to_string();
+                let signature = chunk.content.lines().next().unwrap_or("").to_string();
                 let name = chunk.name.unwrap_or_default();
                 SymbolDefinition {
                     name,
@@ -309,36 +287,144 @@ impl<'a> RefAnalyzer<'a> {
 fn extract_call_candidates(content: &str, self_name: Option<&str>) -> Vec<String> {
     // Match function calls: identifier( or .method(
     // Also match :: path calls like Foo::bar(
-    let call_re = Regex::new(r"(?:^|[^a-zA-Z0-9_])([a-zA-Z_][a-zA-Z0-9_]*)(?:::[a-zA-Z_][a-zA-Z0-9_]*)*\s*\(")
-        .expect("valid regex");
-    let method_re = Regex::new(r"\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(")
-        .expect("valid regex");
+    let call_re = Regex::new(
+        r"(?:^|[^a-zA-Z0-9_])([a-zA-Z_][a-zA-Z0-9_]*)(?:::[a-zA-Z_][a-zA-Z0-9_]*)*\s*\(",
+    )
+    .expect("valid regex");
+    let method_re = Regex::new(r"\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(").expect("valid regex");
 
     // Language keywords and common false positives to skip
     let skip: HashSet<&str> = [
         // Rust
-        "if", "else", "match", "while", "for", "loop", "return", "fn", "pub", "let",
-        "mut", "const", "static", "struct", "enum", "impl", "trait", "use", "mod",
-        "where", "type", "as", "in", "ref", "move", "async", "await", "unsafe",
-        "Some", "None", "Ok", "Err", "Box", "Vec", "String", "println", "eprintln",
-        "format", "write", "writeln", "panic", "unreachable", "todo", "unimplemented",
-        "assert", "assert_eq", "assert_ne", "debug_assert", "cfg",
+        "if",
+        "else",
+        "match",
+        "while",
+        "for",
+        "loop",
+        "return",
+        "fn",
+        "pub",
+        "let",
+        "mut",
+        "const",
+        "static",
+        "struct",
+        "enum",
+        "impl",
+        "trait",
+        "use",
+        "mod",
+        "where",
+        "type",
+        "as",
+        "in",
+        "ref",
+        "move",
+        "async",
+        "await",
+        "unsafe",
+        "Some",
+        "None",
+        "Ok",
+        "Err",
+        "Box",
+        "Vec",
+        "String",
+        "println",
+        "eprintln",
+        "format",
+        "write",
+        "writeln",
+        "panic",
+        "unreachable",
+        "todo",
+        "unimplemented",
+        "assert",
+        "assert_eq",
+        "assert_ne",
+        "debug_assert",
+        "cfg",
         // Python
-        "def", "class", "import", "from", "print", "range", "len", "str", "int",
-        "float", "bool", "list", "dict", "set", "tuple", "isinstance", "hasattr",
-        "getattr", "setattr", "super", "self", "cls", "lambda", "yield",
+        "def",
+        "class",
+        "import",
+        "from",
+        "print",
+        "range",
+        "len",
+        "str",
+        "int",
+        "float",
+        "bool",
+        "list",
+        "dict",
+        "set",
+        "tuple",
+        "isinstance",
+        "hasattr",
+        "getattr",
+        "setattr",
+        "super",
+        "self",
+        "cls",
+        "lambda",
+        "yield",
         // Go
-        "func", "var", "package", "make", "append", "cap", "copy", "delete",
-        "new", "close", "complex", "real", "imag", "recover", "defer", "go",
+        "func",
+        "var",
+        "package",
+        "make",
+        "append",
+        "cap",
+        "copy",
+        "delete",
+        "new",
+        "close",
+        "complex",
+        "real",
+        "imag",
+        "recover",
+        "defer",
+        "go",
         // JS/TS
-        "function", "var", "const", "require", "export", "typeof", "instanceof",
-        "console", "log", "warn", "error", "throw", "catch", "try", "finally",
+        "function",
+        "var",
+        "const",
+        "require",
+        "export",
+        "typeof",
+        "instanceof",
+        "console",
+        "log",
+        "warn",
+        "error",
+        "throw",
+        "catch",
+        "try",
+        "finally",
         // Common test patterns
-        "describe", "it", "test", "expect", "beforeEach", "afterEach",
+        "describe",
+        "it",
+        "test",
+        "expect",
+        "beforeEach",
+        "afterEach",
         // Type constructors / common generics
-        "HashMap", "BTreeMap", "HashSet", "Arc", "Rc", "Mutex", "RwLock",
-        "Option", "Result", "PhantomData",
-    ].iter().copied().collect();
+        "HashMap",
+        "BTreeMap",
+        "HashSet",
+        "Arc",
+        "Rc",
+        "Mutex",
+        "RwLock",
+        "Option",
+        "Result",
+        "PhantomData",
+    ]
+    .iter()
+    .copied()
+    .collect();
 
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
@@ -463,7 +549,14 @@ mod tests {
         let embeddings: Vec<Vec<f32>> = chunks.iter().map(|_| sample_embedding()).collect();
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(chunks.len()), "test-repo", "abc123", "1234567890")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(chunks.len()),
+                "test-repo",
+                "abc123",
+                "1234567890",
+            )
             .await
             .unwrap();
 
@@ -541,14 +634,15 @@ mod tests {
         let (_tmp, mut store) = setup_test_store().await;
         let analyzer = RefAnalyzer::new(&mut store);
 
-        let file_symbols = analyzer
-            .list_symbols("src/config.rs", None)
-            .await
-            .unwrap();
+        let file_symbols = analyzer.list_symbols("src/config.rs", None).await.unwrap();
 
         assert_eq!(file_symbols.path, "src/config.rs");
         // Should have parse_config and Config, but NOT the unnamed chunk
-        let names: Vec<&str> = file_symbols.symbols.iter().map(|s| s.name.as_str()).collect();
+        let names: Vec<&str> = file_symbols
+            .symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
         assert!(names.contains(&"parse_config"));
         assert!(names.contains(&"Config"));
         assert_eq!(
@@ -577,10 +671,7 @@ mod tests {
         let (_tmp, mut store) = setup_test_store().await;
         let analyzer = RefAnalyzer::new(&mut store);
 
-        let file_symbols = analyzer
-            .list_symbols("src/config.rs", None)
-            .await
-            .unwrap();
+        let file_symbols = analyzer.list_symbols("src/config.rs", None).await.unwrap();
 
         // get_chunks_for_file sorts by start_line, so Config (line 1) before parse_config (line 10)
         assert_eq!(file_symbols.symbols[0].name, "Config");
@@ -666,7 +757,11 @@ mod tests {
 
         // parse_config should be found as a callee (it's in the index)
         let callee_names: Vec<&str> = callees.iter().map(|c| c.name.as_str()).collect();
-        assert!(callee_names.contains(&"parse_config"), "should find parse_config as a callee, got: {:?}", callee_names);
+        assert!(
+            callee_names.contains(&"parse_config"),
+            "should find parse_config as a callee, got: {:?}",
+            callee_names
+        );
 
         // The callee should have a resolved definition
         let pc = callees.iter().find(|c| c.name == "parse_config").unwrap();
@@ -687,6 +782,9 @@ mod tests {
             .unwrap();
 
         // nonexistent_fn should NOT appear (not in index)
-        assert!(callees.is_empty(), "unresolved symbols should be filtered out");
+        assert!(
+            callees.is_empty(),
+            "unresolved symbols should be filtered out"
+        );
     }
 }

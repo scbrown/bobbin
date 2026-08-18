@@ -9,7 +9,8 @@ use super::*;
 
 #[test]
 fn test_status_is_parsed_from_the_line_the_indexer_writes() {
-    let content = "Fix the thing\n\nSome description\n\nStatus: open | Priority: P2 | Assignee: unassigned";
+    let content =
+        "Fix the thing\n\nSome description\n\nStatus: open | Priority: P2 | Assignee: unassigned";
     assert_eq!(Some("open".to_string()), parse_status(content));
 }
 

@@ -105,9 +105,7 @@ pub(crate) struct GroupItem {
     repos: Vec<String>,
 }
 
-pub(crate) async fn list_groups(
-    State(state): State<Arc<AppState>>,
-) -> Json<GroupsResponse> {
+pub(crate) async fn list_groups(State(state): State<Arc<AppState>>) -> Json<GroupsResponse> {
     let groups: Vec<GroupItem> = state
         .config
         .groups
@@ -320,19 +318,28 @@ pub(crate) async fn suggest(
                 .await
                 .map_err(|e| internal_error(e.into()))?
         }
-        "type" => {
-            vec![
-                "function", "method", "class", "struct", "enum", "interface",
-                "module", "impl", "trait", "doc", "section", "table",
-                "code_block", "commit", "issue", "other",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect()
-        }
-        "group" => {
-            state.config.groups.iter().map(|g| g.name.clone()).collect()
-        }
+        "type" => vec![
+            "function",
+            "method",
+            "class",
+            "struct",
+            "enum",
+            "interface",
+            "module",
+            "impl",
+            "trait",
+            "doc",
+            "section",
+            "table",
+            "code_block",
+            "commit",
+            "issue",
+            "other",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
+        "group" => state.config.groups.iter().map(|g| g.name.clone()).collect(),
         "tag" => {
             let store = open_vector_store(&state).await.map_err(internal_error)?;
             let counts = store

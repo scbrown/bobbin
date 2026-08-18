@@ -47,7 +47,9 @@ fn find_ort_dylib() -> Option<std::path::PathBuf> {
     let ext_check: fn(&std::path::Path) -> bool = if cfg!(target_os = "macos") {
         |p| {
             let name = p.file_name().unwrap_or_default().to_string_lossy();
-            name.starts_with("libonnxruntime") && name.contains(".dylib") && !name.contains("providers")
+            name.starts_with("libonnxruntime")
+                && name.contains(".dylib")
+                && !name.contains("providers")
         }
     } else {
         |p| {
@@ -100,7 +102,10 @@ fn find_ort_dylib() -> Option<std::path::PathBuf> {
     None
 }
 
-fn search_dir(dir: &std::path::Path, check: fn(&std::path::Path) -> bool) -> Option<std::path::PathBuf> {
+fn search_dir(
+    dir: &std::path::Path,
+    check: fn(&std::path::Path) -> bool,
+) -> Option<std::path::PathBuf> {
     let entries = std::fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {
         let path = entry.path();

@@ -330,13 +330,26 @@ pub fn classify_file(path: &str) -> FileCategory {
 
     // Documentation: known doc filenames and extensions
     let doc_names = [
-        "changelog", "changelog.md", "changelog.rst", "changelog.txt",
-        "changes", "changes.md", "changes.rst",
-        "breaking_changes.md", "breaking_changes.rst",
-        "history.md", "history.rst",
-        "readme", "readme.md", "readme.rst", "readme.txt",
-        "contributing.md", "contributing.rst",
-        "license", "license.md", "license.txt",
+        "changelog",
+        "changelog.md",
+        "changelog.rst",
+        "changelog.txt",
+        "changes",
+        "changes.md",
+        "changes.rst",
+        "breaking_changes.md",
+        "breaking_changes.rst",
+        "history.md",
+        "history.rst",
+        "readme",
+        "readme.md",
+        "readme.rst",
+        "readme.txt",
+        "contributing.md",
+        "contributing.rst",
+        "license",
+        "license.md",
+        "license.txt",
         "code_of_conduct.md",
     ];
     if doc_names.contains(&filename) {
@@ -364,7 +377,15 @@ pub fn classify_file(path: &str) -> FileCategory {
     }
 
     // Test: test directories and naming patterns
-    let test_dirs = ["test", "tests", "spec", "specs", "__tests__", "test_fixtures", "testdata"];
+    let test_dirs = [
+        "test",
+        "tests",
+        "spec",
+        "specs",
+        "__tests__",
+        "test_fixtures",
+        "testdata",
+    ];
     for part in &parts[..parts.len().saturating_sub(1)] {
         if test_dirs.contains(part) {
             return FileCategory::Test;
@@ -383,28 +404,52 @@ pub fn classify_file(path: &str) -> FileCategory {
         return FileCategory::Test;
     }
     // Snapshot directories
-    if parts.iter().any(|p| *p == "__snapshots__" || *p == "snapshots") {
+    if parts
+        .iter()
+        .any(|p| *p == "__snapshots__" || *p == "snapshots")
+    {
         return FileCategory::Test;
     }
 
     // Config: known config files and extensions
     let config_names = [
-        "cargo.toml", "cargo.lock",
-        "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-        "makefile", "justfile",
-        ".gitignore", ".gitattributes", ".editorconfig",
-        "pyproject.toml", "setup.py", "setup.cfg",
-        "tsconfig.json", "babel.config.js", "webpack.config.js",
-        "dockerfile", "docker-compose.yml", "docker-compose.yaml",
-        ".eslintrc.js", ".eslintrc.json", ".prettierrc",
-        "renovate.json", "dependabot.yml",
-        "rustfmt.toml", "clippy.toml", ".clippy.toml",
+        "cargo.toml",
+        "cargo.lock",
+        "package.json",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "makefile",
+        "justfile",
+        ".gitignore",
+        ".gitattributes",
+        ".editorconfig",
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "tsconfig.json",
+        "babel.config.js",
+        "webpack.config.js",
+        "dockerfile",
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        ".eslintrc.js",
+        ".eslintrc.json",
+        ".prettierrc",
+        "renovate.json",
+        "dependabot.yml",
+        "rustfmt.toml",
+        "clippy.toml",
+        ".clippy.toml",
     ];
     if config_names.contains(&filename) {
         return FileCategory::Config;
     }
     // Config: config directories
-    if parts.iter().any(|p| *p == ".github" || *p == ".circleci" || *p == ".vscode") {
+    if parts
+        .iter()
+        .any(|p| *p == ".github" || *p == ".circleci" || *p == ".vscode")
+    {
         return FileCategory::Config;
     }
     // Config: YAML/TOML at root level (1 part = just filename)
@@ -423,9 +468,9 @@ pub fn classify_file(path: &str) -> FileCategory {
 /// Check if a filename has a code extension (used to avoid classifying source in doc dirs)
 fn has_code_extension(filename: &str) -> bool {
     let code_extensions = [
-        ".rs", ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".java", ".c", ".cpp", ".h",
-        ".hpp", ".cs", ".rb", ".swift", ".kt", ".scala", ".zig", ".hs", ".ml", ".ex",
-        ".exs", ".sh", ".bash", ".zsh", ".fish", ".lua", ".r", ".jl", ".pl", ".php",
+        ".rs", ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".java", ".c", ".cpp", ".h", ".hpp",
+        ".cs", ".rb", ".swift", ".kt", ".scala", ".zig", ".hs", ".ml", ".ex", ".exs", ".sh",
+        ".bash", ".zsh", ".fish", ".lua", ".r", ".jl", ".pl", ".php",
     ];
     code_extensions.iter().any(|ext| filename.ends_with(ext))
 }
@@ -457,9 +502,15 @@ mod tests {
     fn test_classify_source_files() {
         assert_eq!(classify_file("src/main.rs"), FileCategory::Source);
         assert_eq!(classify_file("src/cli/hook.rs"), FileCategory::Source);
-        assert_eq!(classify_file("crates/ruff_linter/src/rules/mod.rs"), FileCategory::Source);
+        assert_eq!(
+            classify_file("crates/ruff_linter/src/rules/mod.rs"),
+            FileCategory::Source
+        );
         assert_eq!(classify_file("lib/parser.py"), FileCategory::Source);
-        assert_eq!(classify_file("app/components/Button.tsx"), FileCategory::Source);
+        assert_eq!(
+            classify_file("app/components/Button.tsx"),
+            FileCategory::Source
+        );
         assert_eq!(classify_file("server.go"), FileCategory::Source);
     }
 
@@ -468,21 +519,39 @@ mod tests {
         assert_eq!(classify_file("CHANGELOG.md"), FileCategory::Documentation);
         assert_eq!(classify_file("CHANGELOG"), FileCategory::Documentation);
         assert_eq!(classify_file("CHANGES.md"), FileCategory::Documentation);
-        assert_eq!(classify_file("BREAKING_CHANGES.md"), FileCategory::Documentation);
+        assert_eq!(
+            classify_file("BREAKING_CHANGES.md"),
+            FileCategory::Documentation
+        );
         assert_eq!(classify_file("README.md"), FileCategory::Documentation);
         assert_eq!(classify_file("README"), FileCategory::Documentation);
-        assert_eq!(classify_file("CONTRIBUTING.md"), FileCategory::Documentation);
+        assert_eq!(
+            classify_file("CONTRIBUTING.md"),
+            FileCategory::Documentation
+        );
         assert_eq!(classify_file("LICENSE"), FileCategory::Documentation);
         assert_eq!(classify_file("LICENSE.md"), FileCategory::Documentation);
-        assert_eq!(classify_file("CODE_OF_CONDUCT.md"), FileCategory::Documentation);
+        assert_eq!(
+            classify_file("CODE_OF_CONDUCT.md"),
+            FileCategory::Documentation
+        );
     }
 
     #[test]
     fn test_classify_documentation_by_directory() {
         assert_eq!(classify_file("docs/guide.md"), FileCategory::Documentation);
-        assert_eq!(classify_file("doc/architecture.rst"), FileCategory::Documentation);
-        assert_eq!(classify_file("changelogs/0.14.x.md"), FileCategory::Documentation);
-        assert_eq!(classify_file("documentation/api.md"), FileCategory::Documentation);
+        assert_eq!(
+            classify_file("doc/architecture.rst"),
+            FileCategory::Documentation
+        );
+        assert_eq!(
+            classify_file("changelogs/0.14.x.md"),
+            FileCategory::Documentation
+        );
+        assert_eq!(
+            classify_file("documentation/api.md"),
+            FileCategory::Documentation
+        );
     }
 
     #[test]
@@ -504,8 +573,14 @@ mod tests {
     fn test_classify_test_files() {
         assert_eq!(classify_file("tests/test_parser.py"), FileCategory::Test);
         assert_eq!(classify_file("test/helper_test.go"), FileCategory::Test);
-        assert_eq!(classify_file("spec/models/user_spec.rb"), FileCategory::Test);
-        assert_eq!(classify_file("src/__tests__/button.test.tsx"), FileCategory::Test);
+        assert_eq!(
+            classify_file("spec/models/user_spec.rb"),
+            FileCategory::Test
+        );
+        assert_eq!(
+            classify_file("src/__tests__/button.test.tsx"),
+            FileCategory::Test
+        );
     }
 
     #[test]
@@ -519,8 +594,14 @@ mod tests {
 
     #[test]
     fn test_classify_snapshot_directories() {
-        assert_eq!(classify_file("__snapshots__/button.snap"), FileCategory::Test);
-        assert_eq!(classify_file("src/__snapshots__/app.snap"), FileCategory::Test);
+        assert_eq!(
+            classify_file("__snapshots__/button.snap"),
+            FileCategory::Test
+        );
+        assert_eq!(
+            classify_file("src/__snapshots__/app.snap"),
+            FileCategory::Test
+        );
         assert_eq!(classify_file("snapshots/output.snap"), FileCategory::Test);
     }
 
@@ -538,7 +619,10 @@ mod tests {
 
     #[test]
     fn test_classify_config_directories() {
-        assert_eq!(classify_file(".github/workflows/ci.yml"), FileCategory::Config);
+        assert_eq!(
+            classify_file(".github/workflows/ci.yml"),
+            FileCategory::Config
+        );
         assert_eq!(classify_file(".circleci/config.yml"), FileCategory::Config);
         assert_eq!(classify_file(".vscode/settings.json"), FileCategory::Config);
     }
@@ -553,7 +637,10 @@ mod tests {
     fn test_classify_nested_yaml_as_source() {
         // YAML deep in the tree is likely source/data, not project config
         assert_eq!(classify_file("src/data/schema.yaml"), FileCategory::Source);
-        assert_eq!(classify_file("crates/config/fixtures/test.yml"), FileCategory::Source);
+        assert_eq!(
+            classify_file("crates/config/fixtures/test.yml"),
+            FileCategory::Source
+        );
     }
 
     #[test]
@@ -570,20 +657,35 @@ mod tests {
         assert_eq!(format!("{}", FileCategory::Test), "test");
         assert_eq!(format!("{}", FileCategory::Documentation), "documentation");
         assert_eq!(format!("{}", FileCategory::Config), "config");
-        assert_eq!(format!("{}", FileCategory::Custom("generated".into())), "generated");
+        assert_eq!(
+            format!("{}", FileCategory::Custom("generated".into())),
+            "generated"
+        );
     }
 
     #[test]
     fn test_from_name() {
         assert_eq!(FileCategory::from_name("source"), FileCategory::Source);
         assert_eq!(FileCategory::from_name("test"), FileCategory::Test);
-        assert_eq!(FileCategory::from_name("documentation"), FileCategory::Documentation);
+        assert_eq!(
+            FileCategory::from_name("documentation"),
+            FileCategory::Documentation
+        );
         assert_eq!(FileCategory::from_name("doc"), FileCategory::Documentation);
         assert_eq!(FileCategory::from_name("docs"), FileCategory::Documentation);
         assert_eq!(FileCategory::from_name("config"), FileCategory::Config);
-        assert_eq!(FileCategory::from_name("configuration"), FileCategory::Config);
-        assert_eq!(FileCategory::from_name("generated"), FileCategory::Custom("generated".into()));
-        assert_eq!(FileCategory::from_name("vendor"), FileCategory::Custom("vendor".into()));
+        assert_eq!(
+            FileCategory::from_name("configuration"),
+            FileCategory::Config
+        );
+        assert_eq!(
+            FileCategory::from_name("generated"),
+            FileCategory::Custom("generated".into())
+        );
+        assert_eq!(
+            FileCategory::from_name("vendor"),
+            FileCategory::Custom("vendor".into())
+        );
     }
 
     #[test]
@@ -634,9 +736,18 @@ mod tests {
 
     #[test]
     fn test_classify_with_empty_rules_uses_builtin() {
-        assert_eq!(classify_file_with_rules("src/main.rs", &[]), FileCategory::Source);
-        assert_eq!(classify_file_with_rules("README.md", &[]), FileCategory::Documentation);
-        assert_eq!(classify_file_with_rules("Cargo.toml", &[]), FileCategory::Config);
+        assert_eq!(
+            classify_file_with_rules("src/main.rs", &[]),
+            FileCategory::Source
+        );
+        assert_eq!(
+            classify_file_with_rules("README.md", &[]),
+            FileCategory::Documentation
+        );
+        assert_eq!(
+            classify_file_with_rules("Cargo.toml", &[]),
+            FileCategory::Config
+        );
     }
 
     #[test]

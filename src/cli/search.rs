@@ -156,16 +156,24 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
     let repo_filter = args.repo.as_deref();
 
     // Resolve group filter to SQL clause
-    let group_sql = args.group.as_deref().map(|name| {
-        config.group_filter(name).ok_or_else(|| {
-            let available: Vec<&str> = config.groups.iter().map(|g| g.name.as_str()).collect();
-            if available.is_empty() {
-                anyhow::anyhow!("Unknown group '{}'. No groups configured.", name)
-            } else {
-                anyhow::anyhow!("Unknown group '{}'. Available: {}", name, available.join(", "))
-            }
+    let group_sql = args
+        .group
+        .as_deref()
+        .map(|name| {
+            config.group_filter(name).ok_or_else(|| {
+                let available: Vec<&str> = config.groups.iter().map(|g| g.name.as_str()).collect();
+                if available.is_empty() {
+                    anyhow::anyhow!("Unknown group '{}'. No groups configured.", name)
+                } else {
+                    anyhow::anyhow!(
+                        "Unknown group '{}'. Available: {}",
+                        name,
+                        available.join(", ")
+                    )
+                }
+            })
         })
-    }).transpose()?;
+        .transpose()?;
 
     // Build tag filters and combine with group filter
     let mut extra_filters: Vec<String> = Vec::new();
@@ -185,12 +193,15 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
     };
 
     let results = match args.mode {
-        SearchMode::Keyword => {
-            vector_store
-                .search_fts_filtered(&args.query, search_limit, repo_filter, combined_filter.as_deref())
-                .await
-                .context("Keyword search failed")?
-        }
+        SearchMode::Keyword => vector_store
+            .search_fts_filtered(
+                &args.query,
+                search_limit,
+                repo_filter,
+                combined_filter.as_deref(),
+            )
+            .await
+            .context("Keyword search failed")?,
         SearchMode::Semantic | SearchMode::Hybrid => {
             let current_model = config.embedding.model.as_str();
             let stored_model = metadata_store.get_meta("embedding_model")?;
@@ -212,26 +223,35 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
                 SearchMode::Semantic => {
                     let mut search = SemanticSearch::new(embedder, vector_store);
                     search
-                        .search_filtered(&args.query, search_limit, repo_filter, combined_filter.as_deref())
+                        .search_filtered(
+                            &args.query,
+                            search_limit,
+                            repo_filter,
+                            combined_filter.as_deref(),
+                        )
                         .await
                         .context("Semantic search failed")?
                 }
                 SearchMode::Hybrid => {
                     // Config cascade: calibration.json > config.toml
                     let calibration = super::calibrate::load_calibration(&repo_root);
-                    let sw = calibration.as_ref().map(|c| c.best_config.semantic_weight)
+                    let sw = calibration
+                        .as_ref()
+                        .map(|c| c.best_config.semantic_weight)
                         .unwrap_or(config.search.semantic_weight);
-                    let rrf = calibration.as_ref().map(|c| c.best_config.rrf_k)
+                    let rrf = calibration
+                        .as_ref()
+                        .map(|c| c.best_config.rrf_k)
                         .unwrap_or(config.search.rrf_k);
 
-                    let mut search = HybridSearch::new(
-                        embedder,
-                        vector_store,
-                        sw,
-                    )
-                    .with_rrf_k(rrf);
+                    let mut search = HybridSearch::new(embedder, vector_store, sw).with_rrf_k(rrf);
                     search
-                        .search_filtered(&args.query, search_limit, repo_filter, combined_filter.as_deref())
+                        .search_filtered(
+                            &args.query,
+                            search_limit,
+                            repo_filter,
+                            combined_filter.as_deref(),
+                        )
                         .await
                         .context("Hybrid search failed")?
                 }
@@ -242,9 +262,8 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
 
     // Apply role-based access filtering
     let access_filter = RepoFilter::from_config(&config.access, &output.role);
-    let results = access_filter.filter_vec(results, |r| {
-        RepoFilter::repo_from_path(&r.chunk.file_path)
-    });
+    let results =
+        access_filter.filter_vec(results, |r| RepoFilter::repo_from_path(&r.chunk.file_path));
 
     let filtered_results: Vec<SearchResult> = if let Some(ref chunk_type) = type_filter {
         results
@@ -257,7 +276,13 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
     };
 
     if output.json {
-        print_json_output(&args.query, args.mode, &args.r#type, args.limit, &filtered_results)?;
+        print_json_output(
+            &args.query,
+            args.mode,
+            &args.r#type,
+            args.limit,
+            &filtered_results,
+        )?;
     } else if !output.quiet {
         print_human_output(&args.query, args.mode, &filtered_results, output.verbose);
     }

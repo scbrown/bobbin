@@ -26,8 +26,12 @@ pub(super) fn cluster_coupling(
     use std::collections::{HashMap, HashSet, VecDeque};
     let mut adj: HashMap<String, Vec<String>> = HashMap::new();
     for e in edges {
-        adj.entry(e.file_a.clone()).or_default().push(e.file_b.clone());
-        adj.entry(e.file_b.clone()).or_default().push(e.file_a.clone());
+        adj.entry(e.file_a.clone())
+            .or_default()
+            .push(e.file_b.clone());
+        adj.entry(e.file_b.clone())
+            .or_default()
+            .push(e.file_a.clone());
     }
     let mut visited: HashSet<String> = HashSet::new();
     let mut clusters: Vec<Vec<String>> = Vec::new();
@@ -77,7 +81,11 @@ pub(super) fn concept_name_from_paths(files: &[String]) -> (String, Option<Strin
     }
     let mut common: Vec<&str> = dir_components[0].clone();
     for dc in &dir_components[1..] {
-        let n = common.iter().zip(dc.iter()).take_while(|(a, b)| a == b).count();
+        let n = common
+            .iter()
+            .zip(dc.iter())
+            .take_while(|(a, b)| a == b)
+            .count();
         common.truncate(n);
     }
     match common.len() {
@@ -133,7 +141,10 @@ pub(super) fn run_infer(
             .iter()
             .map(|c| serde_json::json!({"name": c.name, "parent": c.parent, "members": c.members}))
             .collect();
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({"concepts": items}))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({"concepts": items}))?
+        );
     } else if !output.quiet {
         if concepts.is_empty() {
             println!(

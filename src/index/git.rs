@@ -209,10 +209,7 @@ impl GitAnalyzer {
             .map(|((id_a, id_b), count)| {
                 let file_a = id_to_path[id_a as usize].clone();
                 let file_b = id_to_path[id_b as usize].clone();
-                let last_co_change = last_seen
-                    .get(&(id_a, id_b))
-                    .copied()
-                    .unwrap_or(0);
+                let last_co_change = last_seen.get(&(id_a, id_b)).copied().unwrap_or(0);
 
                 FileCoupling {
                     file_a,
@@ -232,7 +229,11 @@ impl GitAnalyzer {
             .collect();
 
         // Sort by score descending
-        couplings.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        couplings.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok(couplings)
     }
@@ -346,7 +347,10 @@ impl GitAnalyzer {
         if !output.status.success() {
             return None;
         }
-        String::from_utf8_lossy(&output.stdout).trim().parse::<i64>().ok()
+        String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse::<i64>()
+            .ok()
     }
 
     /// Get the last commit timestamp for every file in the repo in one pass.
@@ -424,13 +428,15 @@ impl GitAnalyzer {
 
     /// Get commit counts per file for the entire repo in one pass.
     /// Returns a map of file path -> number of commits touching that file.
-    pub fn get_file_churn(
-        &self,
-        since: Option<&str>,
-    ) -> Result<HashMap<String, u32>> {
+    pub fn get_file_churn(&self, since: Option<&str>) -> Result<HashMap<String, u32>> {
         let since_val = since.unwrap_or("1 year ago");
         let output = Command::new("git")
-            .args(["log", "--name-only", "--format=", &format!("--since={}", since_val)])
+            .args([
+                "log",
+                "--name-only",
+                "--format=",
+                &format!("--since={}", since_val),
+            ])
             .current_dir(&self.repo_root)
             .output()
             .context("Failed to get file churn from git log")?;
@@ -466,12 +472,10 @@ impl GitAnalyzer {
                     .trim()
                     .to_string();
                 if merge_base.is_empty() {
-                    anyhow::bail!(
-                        "Could not find merge base between HEAD and '{}'",
-                        branch
-                    );
+                    anyhow::bail!("Could not find merge base between HEAD and '{}'", branch);
                 }
-                return self.get_diff_files(&DiffSpec::Range(format!("{}..{}", merge_base, branch)));
+                return self
+                    .get_diff_files(&DiffSpec::Range(format!("{}..{}", merge_base, branch)));
             }
             DiffSpec::Range(range) => vec!["diff", "--name-status", range.as_str()],
         };
@@ -509,10 +513,7 @@ impl GitAnalyzer {
         // Step 3: Combine status info with line-level changes
         let mut results: Vec<DiffFile> = Vec::new();
         for (path, status) in &file_statuses {
-            let (added, removed) = line_changes
-                .get(path.as_str())
-                .cloned()
-                .unwrap_or_default();
+            let (added, removed) = line_changes.get(path.as_str()).cloned().unwrap_or_default();
 
             results.push(DiffFile {
                 path: path.clone(),
@@ -560,7 +561,13 @@ impl GitAnalyzer {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("git blame failed for {}:{}-{}: {}", file_path, start, end, stderr.trim());
+            anyhow::bail!(
+                "git blame failed for {}:{}-{}: {}",
+                file_path,
+                start,
+                end,
+                stderr.trim()
+            );
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -772,7 +779,11 @@ fn parse_trailers(raw: &str) -> Vec<(String, String)> {
             let colon = t.find(':')?;
             let key = t[..colon].trim().to_string();
             let value = t[colon + 1..].trim().to_string();
-            if key.is_empty() { None } else { Some((key, value)) }
+            if key.is_empty() {
+                None
+            } else {
+                Some((key, value))
+            }
         })
         .collect()
 }
@@ -1063,7 +1074,11 @@ pub(crate) fn calculate_coupling_score(
     // Recency score: slow decay based on days since last co-change.
     // At `recency_days` old the score is 0.5; at 0 days it is 1.0.
     // Guard against a non-positive knee collapsing the decay.
-    let knee = if recency_days > 0.0 { recency_days } else { 30.0 };
+    let knee = if recency_days > 0.0 {
+        recency_days
+    } else {
+        30.0
+    };
     let days_diff = ((now - last_co_change) as f32 / 86400.0).max(0.0);
     let recency_score = 1.0 / (1.0 + days_diff / knee);
 
@@ -1107,7 +1122,10 @@ mod tests {
             vec![(1, 3), (5, 7)]
         );
         // Single isolated lines each form their own range.
-        assert_eq!(group_consecutive(&[10, 20, 30]), vec![(10, 10), (20, 20), (30, 30)]);
+        assert_eq!(
+            group_consecutive(&[10, 20, 30]),
+            vec![(10, 10), (20, 20), (30, 30)]
+        );
         // One run.
         assert_eq!(group_consecutive(&[4, 5, 6]), vec![(4, 6)]);
         // Empty input → no ranges.
@@ -1167,7 +1185,8 @@ mod tests {
 
     #[test]
     fn test_parse_file_history() {
-        let log = "abc123|1704067200|Alice|Initial commit\ndef456|1704153600|Bob|Fix bug (bobbin-123)";
+        let log =
+            "abc123|1704067200|Alice|Initial commit\ndef456|1704153600|Bob|Fix bug (bobbin-123)";
         let entries = parse_file_history(log);
 
         assert_eq!(entries.len(), 2);
@@ -1235,7 +1254,10 @@ mod tests {
     #[test]
     fn test_parse_commit_log_no_files() {
         let sep = "\x1f";
-        let log = format!("ENTRY{s}abc123{s}1704067200{s}Alice{s}Empty commit", s = sep);
+        let log = format!(
+            "ENTRY{s}abc123{s}1704067200{s}Alice{s}Empty commit",
+            s = sep
+        );
         let entries = parse_commit_log(&log, sep);
 
         assert_eq!(entries.len(), 1);
@@ -1267,7 +1289,13 @@ mod tests {
         let raw = "Co-Authored-By: Claude <noreply@anthropic.com>\x1eBead-ID: bo-123";
         let trailers = parse_trailers(raw);
         assert_eq!(trailers.len(), 2);
-        assert_eq!(trailers[0], ("Co-Authored-By".to_string(), "Claude <noreply@anthropic.com>".to_string()));
+        assert_eq!(
+            trailers[0],
+            (
+                "Co-Authored-By".to_string(),
+                "Claude <noreply@anthropic.com>".to_string()
+            )
+        );
         assert_eq!(trailers[1], ("Bead-ID".to_string(), "bo-123".to_string()));
 
         // Empty input
@@ -1278,9 +1306,21 @@ mod tests {
     fn setup_test_repo() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path();
-        Command::new("git").args(["init"]).current_dir(path).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(path).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(path)
+            .output()
+            .unwrap();
         dir
     }
 
@@ -1291,17 +1331,41 @@ mod tests {
 
         // Create file and commit it 3 times
         std::fs::write(path.join("a.rs"), "v1").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "c1"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "c1"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         std::fs::write(path.join("a.rs"), "v2").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "c2"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "c2"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         std::fs::write(path.join("b.rs"), "v1").unwrap();
         std::fs::write(path.join("a.rs"), "v3").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "c3"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "c3"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         let analyzer = GitAnalyzer::new(path).unwrap();
         let churn = analyzer.get_file_churn(None).unwrap();
@@ -1317,8 +1381,16 @@ mod tests {
 
         // Create a commit
         std::fs::write(path.join("old.rs"), "v1").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "old commit"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "old commit"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         let analyzer = GitAnalyzer::new(path).unwrap();
 
@@ -1340,16 +1412,28 @@ mod tests {
         let dir = setup_test_repo();
         let path = dir.path();
         let run = |args: &[&str]| {
-            Command::new("git").args(args).current_dir(path).output().unwrap()
+            Command::new("git")
+                .args(args)
+                .current_dir(path)
+                .output()
+                .unwrap()
         };
 
         // c0: baseline file.
-        std::fs::write(path.join("auth.rs"), "fn ok() {}\nlet x = 1;\nfn end() {}\n").unwrap();
+        std::fs::write(
+            path.join("auth.rs"),
+            "fn ok() {}\nlet x = 1;\nfn end() {}\n",
+        )
+        .unwrap();
         run(&["add", "."]);
         run(&["commit", "-m", "baseline"]);
 
         // culprit: introduce the buggy middle line.
-        std::fs::write(path.join("auth.rs"), "fn ok() {}\nlet x = BUGGY;\nfn end() {}\n").unwrap();
+        std::fs::write(
+            path.join("auth.rs"),
+            "fn ok() {}\nlet x = BUGGY;\nfn end() {}\n",
+        )
+        .unwrap();
         run(&["add", "."]);
         run(&["commit", "-m", "introduce bug"]);
         let culprit_sha = String::from_utf8_lossy(&run(&["rev-parse", "HEAD"]).stdout)
@@ -1357,7 +1441,11 @@ mod tests {
             .to_string();
 
         // fix: change the buggy line (removes the culprit's version).
-        std::fs::write(path.join("auth.rs"), "fn ok() {}\nlet x = 2;\nfn end() {}\n").unwrap();
+        std::fs::write(
+            path.join("auth.rs"),
+            "fn ok() {}\nlet x = 2;\nfn end() {}\n",
+        )
+        .unwrap();
         run(&["add", "."]);
         run(&["commit", "-m", "fix bug"]);
         let fix_sha = String::from_utf8_lossy(&run(&["rev-parse", "HEAD"]).stdout)
@@ -1368,7 +1456,10 @@ mod tests {
         let entries = analyzer.blame_fix_culprits(&fix_sha, "auth.rs").unwrap();
 
         // The removed line was last touched by the culprit commit.
-        assert!(!entries.is_empty(), "expected blame to attribute removed lines");
+        assert!(
+            !entries.is_empty(),
+            "expected blame to attribute removed lines"
+        );
         assert!(
             entries.iter().all(|e| e.commit_hash == culprit_sha),
             "all blamed lines should point at the culprit, got {:?}",
@@ -1382,7 +1473,11 @@ mod tests {
         let dir = setup_test_repo();
         let path = dir.path();
         let run = |args: &[&str]| {
-            Command::new("git").args(args).current_dir(path).output().unwrap()
+            Command::new("git")
+                .args(args)
+                .current_dir(path)
+                .output()
+                .unwrap()
         };
 
         std::fs::write(path.join("a.rs"), "one\n").unwrap();
@@ -1407,10 +1502,16 @@ mod tests {
         let results = parse_name_status(output);
 
         assert_eq!(results.len(), 4);
-        assert_eq!(results[0], ("src/main.rs".to_string(), DiffStatus::Modified));
+        assert_eq!(
+            results[0],
+            ("src/main.rs".to_string(), DiffStatus::Modified)
+        );
         assert_eq!(results[1], ("src/new.rs".to_string(), DiffStatus::Added));
         assert_eq!(results[2], ("old.rs".to_string(), DiffStatus::Deleted));
-        assert_eq!(results[3], ("src/renamed.rs".to_string(), DiffStatus::Renamed));
+        assert_eq!(
+            results[3],
+            ("src/renamed.rs".to_string(), DiffStatus::Renamed)
+        );
     }
 
     #[test]
@@ -1540,8 +1641,16 @@ diff --git a/b.rs b/b.rs
 
         // Create initial file and commit
         std::fs::write(path.join("a.rs"), "line1\nline2\nline3\n").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         // Modify the file (unstaged)
         std::fs::write(path.join("a.rs"), "line1\nchanged\nline3\n").unwrap();
@@ -1562,12 +1671,24 @@ diff --git a/b.rs b/b.rs
 
         // Create initial file and commit
         std::fs::write(path.join("a.rs"), "line1\nline2\n").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         // Modify and stage
         std::fs::write(path.join("a.rs"), "line1\nline2\nline3\n").unwrap();
-        Command::new("git").args(["add", "a.rs"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "a.rs"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         let analyzer = GitAnalyzer::new(path).unwrap();
         let files = analyzer.get_diff_files(&DiffSpec::Staged).unwrap();
@@ -1584,12 +1705,24 @@ diff --git a/b.rs b/b.rs
 
         // Initial commit
         std::fs::write(path.join("existing.rs"), "content").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         // Add a new file and stage
         std::fs::write(path.join("new.rs"), "new content\n").unwrap();
-        Command::new("git").args(["add", "new.rs"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "new.rs"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         let analyzer = GitAnalyzer::new(path).unwrap();
         let files = analyzer.get_diff_files(&DiffSpec::Staged).unwrap();
@@ -1607,12 +1740,24 @@ diff --git a/b.rs b/b.rs
 
         // Create and commit a file
         std::fs::write(path.join("to_delete.rs"), "line1\nline2\n").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         // Delete and stage
         std::fs::remove_file(path.join("to_delete.rs")).unwrap();
-        Command::new("git").args(["add", "to_delete.rs"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "to_delete.rs"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         let analyzer = GitAnalyzer::new(path).unwrap();
         let files = analyzer.get_diff_files(&DiffSpec::Staged).unwrap();
@@ -1629,21 +1774,47 @@ diff --git a/b.rs b/b.rs
 
         // Initial commit
         std::fs::write(path.join("a.rs"), "v1").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "c1"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "c1"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         // Second commit
         std::fs::write(path.join("a.rs"), "v2").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "c2"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "c2"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         // Third commit with new file
         std::fs::write(path.join("b.rs"), "new").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "c3"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "c3"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         let analyzer = GitAnalyzer::new(path).unwrap();
-        let files = analyzer.get_diff_files(&DiffSpec::Range("HEAD~2..HEAD".to_string())).unwrap();
+        let files = analyzer
+            .get_diff_files(&DiffSpec::Range("HEAD~2..HEAD".to_string()))
+            .unwrap();
 
         // Should see changes from the last 2 commits
         assert!(files.len() >= 1);
@@ -1658,8 +1829,16 @@ diff --git a/b.rs b/b.rs
 
         // Commit a file
         std::fs::write(path.join("a.rs"), "content").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         // No changes — unstaged diff should be empty
         let analyzer = GitAnalyzer::new(path).unwrap();
@@ -1675,8 +1854,16 @@ diff --git a/b.rs b/b.rs
         // Initial commit with two files
         std::fs::write(path.join("a.rs"), "a-v1\n").unwrap();
         std::fs::write(path.join("b.rs"), "b-v1\n").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "init"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         // Modify both files (unstaged)
         std::fs::write(path.join("a.rs"), "a-v2\n").unwrap();
@@ -1699,7 +1886,11 @@ diff --git a/b.rs b/b.rs
         let path = dir.path();
 
         // Make an initial empty commit so HEAD exists
-        Command::new("git").args(["commit", "--allow-empty", "-m", "init"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "init"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         let analyzer = GitAnalyzer::new(path).unwrap();
         let churn = analyzer.get_file_churn(None).unwrap();
@@ -1738,11 +1929,20 @@ filename src/main.rs
 ";
         let entries = parse_blame_porcelain(porcelain);
         assert_eq!(entries.len(), 3);
-        assert_eq!(entries[0].commit_hash, "abc1234567890123456789012345678901234567");
+        assert_eq!(
+            entries[0].commit_hash,
+            "abc1234567890123456789012345678901234567"
+        );
         assert_eq!(entries[0].line_number, 1);
-        assert_eq!(entries[1].commit_hash, "abc1234567890123456789012345678901234567");
+        assert_eq!(
+            entries[1].commit_hash,
+            "abc1234567890123456789012345678901234567"
+        );
         assert_eq!(entries[1].line_number, 2);
-        assert_eq!(entries[2].commit_hash, "def9876543210987654321098765432109876543");
+        assert_eq!(
+            entries[2].commit_hash,
+            "def9876543210987654321098765432109876543"
+        );
         assert_eq!(entries[2].line_number, 3);
     }
 
@@ -1759,13 +1959,33 @@ filename src/main.rs
 
         // Create a file with multiple lines
         std::fs::write(path.join("src.rs"), "line1\nline2\nline3\nline4\nline5\n").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         // Modify lines 2-3 in a second commit
-        std::fs::write(path.join("src.rs"), "line1\nmodified2\nmodified3\nline4\nline5\n").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
-        Command::new("git").args(["commit", "-m", "modify lines"]).current_dir(path).output().unwrap();
+        std::fs::write(
+            path.join("src.rs"),
+            "line1\nmodified2\nmodified3\nline4\nline5\n",
+        )
+        .unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "modify lines"])
+            .current_dir(path)
+            .output()
+            .unwrap();
 
         let analyzer = GitAnalyzer::new(path).unwrap();
         let entries = analyzer.blame_lines("src.rs", 1, 5).unwrap();
@@ -1791,7 +2011,7 @@ filename src/main.rs
         assert!(ids.contains(&"bo-abc123".to_string()));
         assert!(ids.contains(&"aegis-h8x".to_string()));
         assert!(ids.contains(&"bo-def".to_string())); // `b:` stripped
-        // Non-bead trailers ignored.
+                                                      // Non-bead trailers ignored.
         assert!(!ids.iter().any(|i| i.contains("Someone")));
         assert_eq!(ids.len(), 3);
     }

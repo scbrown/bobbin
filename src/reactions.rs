@@ -141,13 +141,21 @@ pub struct CompiledRule {
 impl CompiledRule {
     /// Compile a ReactionRule into match-ready form.
     pub fn compile(rule: ReactionRule) -> Result<Self> {
-        let tool_pattern = Pattern::new(&rule.tool)
-            .with_context(|| format!("Invalid tool glob pattern '{}' in rule '{}'", rule.tool, rule.name))?;
+        let tool_pattern = Pattern::new(&rule.tool).with_context(|| {
+            format!(
+                "Invalid tool glob pattern '{}' in rule '{}'",
+                rule.tool, rule.name
+            )
+        })?;
 
         let mut match_regexes = Vec::new();
         for (param, pattern) in &rule.match_conditions {
-            let regex = Regex::new(pattern)
-                .with_context(|| format!("Invalid regex '{}' for param '{}' in rule '{}'", pattern, param, rule.name))?;
+            let regex = Regex::new(pattern).with_context(|| {
+                format!(
+                    "Invalid regex '{}' for param '{}' in rule '{}'",
+                    pattern, param, rule.name
+                )
+            })?;
             match_regexes.push((param.clone(), regex));
         }
 
@@ -206,7 +214,10 @@ impl ToolEvent {
 }
 
 /// Match a tool event against compiled rules. Returns all matching rules.
-pub fn match_rules<'a>(event: &ToolEvent, rules: &'a [CompiledRule]) -> Vec<(&'a CompiledRule, MatchResult)> {
+pub fn match_rules<'a>(
+    event: &ToolEvent,
+    rules: &'a [CompiledRule],
+) -> Vec<(&'a CompiledRule, MatchResult)> {
     let mut matches = Vec::new();
 
     for compiled in rules {
@@ -223,7 +234,10 @@ pub fn match_rules<'a>(event: &ToolEvent, rules: &'a [CompiledRule]) -> Vec<(&'a
             let value = event.arg(param).unwrap_or("");
             if let Some(caps) = regex.captures(value) {
                 // Store the full match
-                captures.insert(param.clone(), caps.get(0).map_or("", |m| m.as_str()).to_string());
+                captures.insert(
+                    param.clone(),
+                    caps.get(0).map_or("", |m| m.as_str()).to_string(),
+                );
                 // Store named captures
                 for name in regex.capture_names().flatten() {
                     if let Some(m) = caps.name(name) {
@@ -256,7 +270,11 @@ pub fn match_rules<'a>(event: &ToolEvent, rules: &'a [CompiledRule]) -> Vec<(&'a
 
 /// Render a template string, substituting `{args.X}`, `{file_stem}`,
 /// and `{matched.X}` placeholders.
-pub fn render_template(template: &str, event: &ToolEvent, captures: &HashMap<String, String>) -> String {
+pub fn render_template(
+    template: &str,
+    event: &ToolEvent,
+    captures: &HashMap<String, String>,
+) -> String {
     let mut result = template.to_string();
 
     // Replace {args.X} with tool input parameters
@@ -366,7 +384,10 @@ impl DedupTracker {
     /// Load dedup state for a session. Creates the file if needed.
     pub fn load(repo_root: &Path, session_id: &str) -> Self {
         if session_id.is_empty() {
-            return Self { fired: std::collections::HashSet::new(), path: None };
+            return Self {
+                fired: std::collections::HashSet::new(),
+                path: None,
+            };
         }
         let dir = repo_root.join(".bobbin").join("session").join(session_id);
         let path = dir.join("reactions.jsonl");
@@ -382,7 +403,10 @@ impl DedupTracker {
             }
         }
 
-        Self { fired, path: Some(path) }
+        Self {
+            fired,
+            path: Some(path),
+        }
     }
 
     /// Check if a rule+args combination has already fired.
@@ -511,9 +535,7 @@ pub fn evaluate_reactions(
             if let Some(store) = metadata_store {
                 let file_path = event.arg("file_path").unwrap_or("");
                 match query_coupling(store, file_path, compiled.rule.coupling_threshold, 10) {
-                    Ok(result) if !result.coupled_files.is_empty() => {
-                        Some(result.coupled_files)
-                    }
+                    Ok(result) if !result.coupled_files.is_empty() => Some(result.coupled_files),
                     _ => {
                         // No coupled files or error — skip this reaction entirely
                         rules_deduped += 1;
@@ -530,15 +552,15 @@ pub fn evaluate_reactions(
         };
 
         // Format the reaction output (includes injection_id)
-        let (reaction_text, injection_id) = format_reaction(
-            &compiled.rule,
-            &guidance,
-            coupled_files.as_deref(),
-        );
+        let (reaction_text, injection_id) =
+            format_reaction(&compiled.rule, &guidance, coupled_files.as_deref());
 
         // Count lines and enforce per-reaction budget
         let reaction_lines: Vec<&str> = reaction_text.lines().collect();
-        let max_lines = compiled.rule.max_context_lines.min(global_budget - lines_used);
+        let max_lines = compiled
+            .rule
+            .max_context_lines
+            .min(global_budget - lines_used);
         let lines_to_add = reaction_lines.len().min(max_lines);
 
         if !output.is_empty() {
@@ -643,7 +665,8 @@ pub fn builtin_rules() -> Vec<ReactionRule> {
                 "You just modified container {args.container} via batch_probe.\n",
                 "Ensure this change is reflected in goldblum IaC (Terraform/Ansible)\n",
                 "so it persists across reprovisioning.",
-            ).into(),
+            )
+            .into(),
             search_query: "terraform container {args.container}".into(),
             search_group: "goldblum".into(),
             search_tags: vec!["auto:config".into()],
@@ -659,7 +682,8 @@ pub fn builtin_rules() -> Vec<ReactionRule> {
             guidance: concat!(
                 "Service {args.service} restarted on {args.container}.\n",
                 "Check for known issues or recent changes that could affect this service.",
-            ).into(),
+            )
+            .into(),
             search_query: "{args.service} {args.container} configuration".into(),
             search_group: String::new(),
             search_tags: vec!["auto:config".into()],
@@ -680,7 +704,8 @@ pub fn builtin_rules() -> Vec<ReactionRule> {
                 "You installed package {matched.package} directly.\n",
                 "If this container is managed by Ansible/Terraform, add the package\n",
                 "to the relevant IaC declaration so it persists across reprovisioning.",
-            ).into(),
+            )
+            .into(),
             search_query: "ansible package {matched.package}".into(),
             search_group: "goldblum".into(),
             search_tags: vec![],
@@ -700,7 +725,8 @@ pub fn builtin_rules() -> Vec<ReactionRule> {
             guidance: concat!(
                 "Terraform file modified. Run `terraform plan` to verify\n",
                 "the change before applying. Check for dependent resources.",
-            ).into(),
+            )
+            .into(),
             search_query: "terraform {file_stem} resource".into(),
             search_group: String::new(),
             search_tags: vec![],
@@ -716,7 +742,8 @@ pub fn builtin_rules() -> Vec<ReactionRule> {
             guidance: concat!(
                 "This file has historically changed alongside other files.\n",
                 "Review these coupled files for necessary updates.",
-            ).into(),
+            )
+            .into(),
             search_query: String::new(),
             search_group: String::new(),
             search_tags: vec![],
@@ -732,11 +759,8 @@ impl ReactionConfig {
     /// Merge built-in rules with user-defined rules.
     /// User rules with the same name as a built-in override the built-in.
     pub fn with_builtins(mut self) -> Self {
-        let user_names: std::collections::HashSet<String> = self
-            .reactions
-            .iter()
-            .map(|r| r.name.clone())
-            .collect();
+        let user_names: std::collections::HashSet<String> =
+            self.reactions.iter().map(|r| r.name.clone()).collect();
 
         let mut builtins: Vec<ReactionRule> = builtin_rules()
             .into_iter()
@@ -780,7 +804,10 @@ pub fn format_reaction(
 ) -> (String, String) {
     let injection_id = generate_injection_id(&rule.name);
     let mut out = String::new();
-    out.push_str(&format!("=== Reaction: {} [injection_id: {}] ===\n\n", rule.name, injection_id));
+    out.push_str(&format!(
+        "=== Reaction: {} [injection_id: {}] ===\n\n",
+        rule.name, injection_id
+    ));
     out.push_str(guidance.trim());
     out.push('\n');
 
@@ -788,7 +815,10 @@ pub fn format_reaction(
         if files.is_empty() {
             // No coupled files found
         } else {
-            out.push_str(&format!("\n--- Coupled files ({} results) ---\n\n", files.len()));
+            out.push_str(&format!(
+                "\n--- Coupled files ({} results) ---\n\n",
+                files.len()
+            ));
             for f in files {
                 out.push_str(&format!(
                     "  {} (coupling: {:.2}, co-changes: {})\n",
@@ -855,7 +885,10 @@ command = "apt install .*"
         let config = ReactionConfig::parse(toml).unwrap();
         assert_eq!(config.reactions.len(), 1);
         let rule = &config.reactions[0];
-        assert_eq!(rule.match_conditions.get("command").unwrap(), "apt install .*");
+        assert_eq!(
+            rule.match_conditions.get("command").unwrap(),
+            "apt install .*"
+        );
     }
 
     #[test]
@@ -890,7 +923,10 @@ search_tags = ["auto:config", "user:ops"]
 "#;
         let config = ReactionConfig::parse(toml).unwrap();
         assert_eq!(config.reactions.len(), 2);
-        assert_eq!(config.reactions[1].search_tags, vec!["auto:config", "user:ops"]);
+        assert_eq!(
+            config.reactions[1].search_tags,
+            vec!["auto:config", "user:ops"]
+        );
     }
 
     #[test]
@@ -954,7 +990,9 @@ tool = "Edit"
         };
         let compiled = CompiledRule::compile(rule).unwrap();
         assert!(compiled.tool_pattern.matches("mcp__homelab__batch_probe"));
-        assert!(compiled.tool_pattern.matches("mcp__homelab__service_restart"));
+        assert!(compiled
+            .tool_pattern
+            .matches("mcp__homelab__service_restart"));
         assert!(!compiled.tool_pattern.matches("Edit"));
     }
 
@@ -1130,7 +1168,10 @@ tool = "Edit"
         };
         let matches = match_rules(&event, &rules);
         assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].1.captures.get("matched.package").unwrap(), "nginx");
+        assert_eq!(
+            matches[0].1.captures.get("matched.package").unwrap(),
+            "nginx"
+        );
     }
 
     // -- Template rendering tests --
@@ -1302,7 +1343,8 @@ tool = "Edit"
                 co_changes: 5,
             },
         ];
-        let (output, injection_id) = format_reaction(&rule, "These files change together.", Some(&files));
+        let (output, injection_id) =
+            format_reaction(&rule, "These files change together.", Some(&files));
         assert!(output.contains("=== Reaction: coupled-files"));
         assert!(output.contains(&injection_id));
         assert!(output.contains("These files change together."));
@@ -1408,10 +1450,18 @@ guidance = "Review coupled files for {file_stem}"
         assert_eq!(matches1.len(), 1);
         assert_eq!(matches1[0].1.rule_name, "iac-drift-check");
 
-        let guidance = render_template(&matches1[0].0.rule.guidance, &event1, &matches1[0].1.captures);
+        let guidance = render_template(
+            &matches1[0].0.rule.guidance,
+            &event1,
+            &matches1[0].1.captures,
+        );
         assert!(guidance.contains("container monitoring"));
 
-        let query = render_template(&matches1[0].0.rule.search_query, &event1, &matches1[0].1.captures);
+        let query = render_template(
+            &matches1[0].0.rule.search_query,
+            &event1,
+            &matches1[0].1.captures,
+        );
         assert_eq!(query, "terraform container monitoring");
 
         // Test 2: apt install event
@@ -1423,7 +1473,11 @@ guidance = "Review coupled files for {file_stem}"
         assert_eq!(matches2.len(), 1);
         assert_eq!(matches2[0].1.rule_name, "apt-iac");
 
-        let guidance2 = render_template(&matches2[0].0.rule.guidance, &event2, &matches2[0].1.captures);
+        let guidance2 = render_template(
+            &matches2[0].0.rule.guidance,
+            &event2,
+            &matches2[0].1.captures,
+        );
         assert_eq!(guidance2, "Package nginx installed. Add to IaC.");
 
         // Test 3: Edit event (should match coupled-files rule)
@@ -1435,7 +1489,11 @@ guidance = "Review coupled files for {file_stem}"
         assert_eq!(matches3.len(), 1);
         assert_eq!(matches3[0].1.rule_name, "coupled-files");
 
-        let guidance3 = render_template(&matches3[0].0.rule.guidance, &event3, &matches3[0].1.captures);
+        let guidance3 = render_template(
+            &matches3[0].0.rule.guidance,
+            &event3,
+            &matches3[0].1.captures,
+        );
         assert_eq!(guidance3, "Review coupled files for handler");
 
         // Test 4: unrelated tool — no matches
@@ -1560,7 +1618,11 @@ guidance = "Review coupled files for {file_stem}"
     #[test]
     fn test_dedup_tracker_persistence() {
         let tmp = tempfile::tempdir().unwrap();
-        let session_dir = tmp.path().join(".bobbin").join("session").join("test-session");
+        let session_dir = tmp
+            .path()
+            .join(".bobbin")
+            .join("session")
+            .join("test-session");
         std::fs::create_dir_all(&session_dir).unwrap();
 
         // Create tracker, record a key
@@ -1608,7 +1670,9 @@ guidance = "Review coupled files for {file_stem}"
         let result = evaluate_reactions(&event, &rules, &mut dedup, None, 100, "default");
         assert_eq!(result.reactions_fired, 1);
         assert_eq!(result.rules_fired, vec!["r1"]);
-        assert!(result.output.contains("=== Reaction: r1 [injection_id: inj-react-"));
+        assert!(result
+            .output
+            .contains("=== Reaction: r1 [injection_id: inj-react-"));
         assert!(result.output.contains("Guidance for r1"));
         assert_eq!(result.injection_ids.len(), 1);
         assert!(result.injection_ids[0].starts_with("inj-react-"));
@@ -1825,8 +1889,14 @@ guidance = "Review coupled files for {file_stem}"
         let names: Vec<&str> = matches.iter().map(|(_, m)| m.rule_name.as_str()).collect();
         assert!(names.contains(&"package-iac-declaration"));
         // Check captures
-        let apt_match = matches.iter().find(|(_, m)| m.rule_name == "package-iac-declaration").unwrap();
-        assert_eq!(apt_match.1.captures.get("matched.package").unwrap(), "nginx");
+        let apt_match = matches
+            .iter()
+            .find(|(_, m)| m.rule_name == "package-iac-declaration")
+            .unwrap();
+        assert_eq!(
+            apt_match.1.captures.get("matched.package").unwrap(),
+            "nginx"
+        );
     }
 
     #[test]
@@ -1907,7 +1977,7 @@ guidance = "Review coupled files for {file_stem}"
         let config = ReactionConfig {
             reactions: vec![ReactionRule {
                 name: "coupled-files".into(), // Same as builtin
-                tool: "Write".into(), // Different tool (overrides builtin's "Edit")
+                tool: "Write".into(),         // Different tool (overrides builtin's "Edit")
                 match_conditions: HashMap::new(),
                 guidance: "User override".into(),
                 search_query: String::new(),
@@ -1921,12 +1991,20 @@ guidance = "Review coupled files for {file_stem}"
         };
         let merged = config.with_builtins();
         // Find the "coupled-files" rule — should be the user's version
-        let cf = merged.reactions.iter().find(|r| r.name == "coupled-files").unwrap();
+        let cf = merged
+            .reactions
+            .iter()
+            .find(|r| r.name == "coupled-files")
+            .unwrap();
         assert_eq!(cf.tool, "Write"); // User's tool, not builtin's "Edit"
         assert_eq!(cf.guidance, "User override");
         // Should only appear once
         assert_eq!(
-            merged.reactions.iter().filter(|r| r.name == "coupled-files").count(),
+            merged
+                .reactions
+                .iter()
+                .filter(|r| r.name == "coupled-files")
+                .count(),
             1
         );
     }
@@ -1972,7 +2050,11 @@ guidance = "Review coupled files for {file_stem}"
         }
         // IDs should appear in the output
         for id in &result.injection_ids {
-            assert!(result.output.contains(id), "Output should contain injection_id {}", id);
+            assert!(
+                result.output.contains(id),
+                "Output should contain injection_id {}",
+                id
+            );
         }
     }
 
@@ -2035,22 +2117,20 @@ guidance = "Review coupled files for {file_stem}"
 
     #[test]
     fn test_evaluate_reactions_role_filtering() {
-        let rules = vec![
-            CompiledRule::compile(ReactionRule {
-                name: "ops-only".into(),
-                tool: "Edit".into(),
-                match_conditions: HashMap::new(),
-                guidance: "Ops guidance".into(),
-                search_query: String::new(),
-                search_group: String::new(),
-                search_tags: vec![],
-                max_context_lines: 50,
-                use_coupling: false,
-                coupling_threshold: 0.3,
-                roles: vec!["aegis/crew/*".into()],
-            })
-            .unwrap(),
-        ];
+        let rules = vec![CompiledRule::compile(ReactionRule {
+            name: "ops-only".into(),
+            tool: "Edit".into(),
+            match_conditions: HashMap::new(),
+            guidance: "Ops guidance".into(),
+            search_query: String::new(),
+            search_group: String::new(),
+            search_tags: vec![],
+            max_context_lines: 50,
+            use_coupling: false,
+            coupling_threshold: 0.3,
+            roles: vec!["aegis/crew/*".into()],
+        })
+        .unwrap()];
         let event = ToolEvent {
             tool_name: "Edit".into(),
             tool_input: json!({"file_path": "/tmp/test.rs"}),
@@ -2061,7 +2141,8 @@ guidance = "Review coupled files for {file_stem}"
             fired: std::collections::HashSet::new(),
             path: None,
         };
-        let result = evaluate_reactions(&event, &rules, &mut dedup, None, 100, "aegis/crew/malcolm");
+        let result =
+            evaluate_reactions(&event, &rules, &mut dedup, None, 100, "aegis/crew/malcolm");
         assert_eq!(result.reactions_fired, 1);
 
         // Non-matching role does not fire
@@ -2069,28 +2150,33 @@ guidance = "Review coupled files for {file_stem}"
             fired: std::collections::HashSet::new(),
             path: None,
         };
-        let result2 = evaluate_reactions(&event, &rules, &mut dedup2, None, 100, "goldblum/crew/planner");
+        let result2 = evaluate_reactions(
+            &event,
+            &rules,
+            &mut dedup2,
+            None,
+            100,
+            "goldblum/crew/planner",
+        );
         assert_eq!(result2.reactions_fired, 0);
     }
 
     #[test]
     fn test_evaluate_reactions_empty_roles_matches_all() {
-        let rules = vec![
-            CompiledRule::compile(ReactionRule {
-                name: "r1".into(),
-                tool: "Edit".into(),
-                match_conditions: HashMap::new(),
-                guidance: "All agents".into(),
-                search_query: String::new(),
-                search_group: String::new(),
-                search_tags: vec![],
-                max_context_lines: 50,
-                use_coupling: false,
-                coupling_threshold: 0.3,
-                roles: vec![],
-            })
-            .unwrap(),
-        ];
+        let rules = vec![CompiledRule::compile(ReactionRule {
+            name: "r1".into(),
+            tool: "Edit".into(),
+            match_conditions: HashMap::new(),
+            guidance: "All agents".into(),
+            search_query: String::new(),
+            search_group: String::new(),
+            search_tags: vec![],
+            max_context_lines: 50,
+            use_coupling: false,
+            coupling_threshold: 0.3,
+            roles: vec![],
+        })
+        .unwrap()];
         let event = ToolEvent {
             tool_name: "Edit".into(),
             tool_input: json!({"file_path": "/tmp/test.rs"}),

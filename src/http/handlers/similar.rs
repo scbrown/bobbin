@@ -189,10 +189,14 @@ pub(super) async fn similar(
 
     // Apply role-based access filtering to response
     let response = SimilarResponse {
-        results: response.results.into_iter()
+        results: response
+            .results
+            .into_iter()
             .filter(|r| access.is_path_allowed(&r.file_path))
             .collect(),
-        clusters: response.clusters.into_iter()
+        clusters: response
+            .clusters
+            .into_iter()
             .filter(|c| access.is_path_allowed(&c.representative.file_path))
             .map(|mut c| {
                 c.members.retain(|m| access.is_path_allowed(&m.file_path));
@@ -204,7 +208,11 @@ pub(super) async fn similar(
         ..response
     };
     let response = SimilarResponse {
-        count: if response.clusters.is_empty() { response.results.len() } else { response.clusters.len() },
+        count: if response.clusters.is_empty() {
+            response.results.len()
+        } else {
+            response.clusters.len()
+        },
         ..response
     };
 

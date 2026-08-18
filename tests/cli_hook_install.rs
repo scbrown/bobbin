@@ -52,8 +52,17 @@ fn hook_install_idempotent() {
     let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
 
     // Should have exactly 1 entry per event, not 2
-    assert_eq!(settings["hooks"]["UserPromptSubmit"].as_array().unwrap().len(), 1);
-    assert_eq!(settings["hooks"]["SessionStart"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        settings["hooks"]["UserPromptSubmit"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        settings["hooks"]["SessionStart"].as_array().unwrap().len(),
+        1
+    );
 }
 
 #[test]
@@ -292,7 +301,10 @@ fn hook_install_json_output() {
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(json["status"].as_str().unwrap(), "installed");
-    assert!(json["path"].as_str().unwrap().contains(".claude/settings.json"));
+    assert!(json["path"]
+        .as_str()
+        .unwrap()
+        .contains(".claude/settings.json"));
 }
 
 // --- bobbin hook uninstall ---
@@ -399,7 +411,11 @@ fn install_git_hook_creates_post_commit() {
         .success()
         .stdout(predicate::str::contains("post-commit hook installed"));
 
-    let hook_path = project.path().join(".git").join("hooks").join("post-commit");
+    let hook_path = project
+        .path()
+        .join(".git")
+        .join("hooks")
+        .join("post-commit");
     assert!(hook_path.exists());
 
     let content = std::fs::read_to_string(&hook_path).unwrap();
@@ -429,7 +445,11 @@ fn install_git_hook_idempotent() {
     }
 
     let content = std::fs::read_to_string(
-        project.path().join(".git").join("hooks").join("post-commit"),
+        project
+            .path()
+            .join(".git")
+            .join("hooks")
+            .join("post-commit"),
     )
     .unwrap();
 
@@ -459,8 +479,14 @@ fn install_git_hook_appends_to_existing() {
         .success();
 
     let content = std::fs::read_to_string(hooks_dir.join("post-commit")).unwrap();
-    assert!(content.contains("echo 'existing hook'"), "Original hook preserved");
-    assert!(content.contains("bobbin index --quiet"), "Bobbin hook added");
+    assert!(
+        content.contains("echo 'existing hook'"),
+        "Original hook preserved"
+    );
+    assert!(
+        content.contains("bobbin index --quiet"),
+        "Bobbin hook added"
+    );
 }
 
 // --- bobbin hook uninstall-git-hook ---
@@ -485,8 +511,15 @@ fn uninstall_git_hook_removes_section() {
         .stdout(predicate::str::contains("hook removed"));
 
     // Hook file should be removed (was only bobbin)
-    let hook_path = project.path().join(".git").join("hooks").join("post-commit");
-    assert!(!hook_path.exists(), "Hook file should be removed when empty");
+    let hook_path = project
+        .path()
+        .join(".git")
+        .join("hooks")
+        .join("post-commit");
+    assert!(
+        !hook_path.exists(),
+        "Hook file should be removed when empty"
+    );
 }
 
 #[test]
@@ -517,7 +550,10 @@ fn uninstall_git_hook_preserves_other_sections() {
         .success();
 
     let content = std::fs::read_to_string(hooks_dir.join("post-commit")).unwrap();
-    assert!(content.contains("echo 'existing hook'"), "Original hook preserved");
+    assert!(
+        content.contains("echo 'existing hook'"),
+        "Original hook preserved"
+    );
     assert!(!content.contains("bobbin"), "Bobbin section removed");
 }
 

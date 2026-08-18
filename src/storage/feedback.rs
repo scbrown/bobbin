@@ -205,8 +205,14 @@ impl FeedbackStore {
 
         // Schema migrations: add columns if missing
         let migrations: &[(&str, &str)] = &[
-            ("formatted_output", "ALTER TABLE injections ADD COLUMN formatted_output TEXT DEFAULT '';"),
-            ("bundle_name", "ALTER TABLE injections ADD COLUMN bundle_name TEXT;"),
+            (
+                "formatted_output",
+                "ALTER TABLE injections ADD COLUMN formatted_output TEXT DEFAULT '';",
+            ),
+            (
+                "bundle_name",
+                "ALTER TABLE injections ADD COLUMN bundle_name TEXT;",
+            ),
             ("bead_id", "ALTER TABLE injections ADD COLUMN bead_id TEXT;"),
         ];
         for (col, ddl) in migrations {
@@ -223,7 +229,7 @@ impl FeedbackStore {
         // Index for bundle/bead grouping queries
         self.conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_injections_bundle ON injections(bundle_name);
-             CREATE INDEX IF NOT EXISTS idx_injections_bead ON injections(bead_id);"
+             CREATE INDEX IF NOT EXISTS idx_injections_bead ON injections(bead_id);",
         )?;
 
         Ok(())
@@ -240,7 +246,16 @@ impl FeedbackStore {
         total_chunks: usize,
         budget_lines: usize,
     ) -> Result<()> {
-        self.store_injection_with_output(injection_id, session_id, agent, query, files, total_chunks, budget_lines, None)
+        self.store_injection_with_output(
+            injection_id,
+            session_id,
+            agent,
+            query,
+            files,
+            total_chunks,
+            budget_lines,
+            None,
+        )
     }
 
     /// Store an injection record with the formatted output text agents see.
@@ -351,7 +366,8 @@ impl FeedbackStore {
         ));
         params.push(Box::new(limit as i64));
 
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
             Ok(FeedbackRecord {
@@ -373,13 +389,13 @@ impl FeedbackStore {
 
     /// Get aggregated feedback statistics.
     pub fn stats(&self) -> Result<FeedbackStats> {
-        let total_injections: u64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM injections", [], |row| row.get(0))?;
+        let total_injections: u64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM injections", [], |row| row.get(0))?;
 
-        let total_feedback: u64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM feedback", [], |row| row.get(0))?;
+        let total_feedback: u64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM feedback", [], |row| row.get(0))?;
 
         let useful: u64 = self.conn.query_row(
             "SELECT COUNT(*) FROM feedback WHERE rating = 'useful'",
@@ -398,16 +414,18 @@ impl FeedbackStore {
         )?;
 
         // Lineage stats
-        let lineage_records: u64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM lineage",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
-        let actioned: u64 = self.conn.query_row(
-            "SELECT COUNT(DISTINCT feedback_id) FROM lineage_feedback",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let lineage_records: u64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM lineage", [], |row| row.get(0))
+            .unwrap_or(0);
+        let actioned: u64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(DISTINCT feedback_id) FROM lineage_feedback",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
         let unactioned = total_feedback.saturating_sub(actioned);
 
         Ok(FeedbackStats {
@@ -490,11 +508,14 @@ impl FeedbackStore {
         // constraint, leading to lineage records with no linked feedback.
         let mut missing = Vec::new();
         for &fid in &input.feedback_ids {
-            let exists: bool = self.conn.query_row(
-                "SELECT COUNT(*) > 0 FROM feedback WHERE id = ?1",
-                rusqlite::params![fid],
-                |row| row.get(0),
-            ).unwrap_or(false);
+            let exists: bool = self
+                .conn
+                .query_row(
+                    "SELECT COUNT(*) > 0 FROM feedback WHERE id = ?1",
+                    rusqlite::params![fid],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
             if !exists {
                 missing.push(fid);
             }
@@ -534,7 +555,9 @@ impl FeedbackStore {
         let mut where_added = false;
 
         if let Some(fid) = query.feedback_id {
-            sql.push_str(" JOIN lineage_feedback lf ON l.id = lf.lineage_id WHERE lf.feedback_id = ?1");
+            sql.push_str(
+                " JOIN lineage_feedback lf ON l.id = lf.lineage_id WHERE lf.feedback_id = ?1",
+            );
             params.push(Box::new(fid));
             where_added = true;
         }
@@ -657,9 +680,7 @@ impl FeedbackStore {
              ORDER BY i.timestamp DESC
              LIMIT 10",
         )?;
-        let rows = stmt.query_map(rusqlite::params![session_id], |row| {
-            row.get::<_, String>(0)
-        })?;
+        let rows = stmt.query_map(rusqlite::params![session_id], |row| row.get::<_, String>(0))?;
         let mut ids = Vec::new();
         for row in rows {
             ids.push(row?);
@@ -773,7 +794,9 @@ impl FeedbackStore {
         if !has_table {
             return Ok(map);
         }
-        let mut stmt = self.conn.prepare("SELECT file_path, tag FROM feedback_tags")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT file_path, tag FROM feedback_tags")?;
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
@@ -882,10 +905,12 @@ mod tests {
             reason: "reaction context was helpful".to_string(),
         };
         store.store_feedback(&input).unwrap();
-        let records = store.list_feedback(&FeedbackQuery {
-            injection_id: Some("inj-react-abc123".to_string()),
-            ..Default::default()
-        }).unwrap();
+        let records = store
+            .list_feedback(&FeedbackQuery {
+                injection_id: Some("inj-react-abc123".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].injection_id, "inj-react-abc123");
     }
@@ -928,7 +953,15 @@ mod tests {
         let (store, _f) = temp_store();
         let files = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
         store
-            .store_injection("inj-detail", Some("sess-1"), Some("aegis/crew/ian"), "how does auth work?", &files, 5, 300)
+            .store_injection(
+                "inj-detail",
+                Some("sess-1"),
+                Some("aegis/crew/ian"),
+                "how does auth work?",
+                &files,
+                5,
+                300,
+            )
             .unwrap();
         store
             .store_feedback(&FeedbackInput {
@@ -1101,11 +1134,19 @@ mod tests {
         });
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("9999"), "Error should mention the missing ID: {}", err_msg);
+        assert!(
+            err_msg.contains("9999"),
+            "Error should mention the missing ID: {}",
+            err_msg
+        );
 
         // Verify no lineage record was created (transaction-like behavior)
         let records = store.list_lineage(&LineageQuery::default()).unwrap();
-        assert_eq!(records.len(), 0, "No lineage should be created when feedback IDs are invalid");
+        assert_eq!(
+            records.len(),
+            0,
+            "No lineage should be created when feedback IDs are invalid"
+        );
     }
 
     #[test]
@@ -1276,18 +1317,94 @@ mod tests {
         let files = vec!["src/main.rs".to_string()];
 
         // Create injections with bundle_name metadata
-        store.store_injection_full("inj-b1", None, None, "auth query", &files, 3, 100, None, Some("auth"), None).unwrap();
-        store.store_injection_full("inj-b2", None, None, "auth login", &files, 2, 100, None, Some("auth"), None).unwrap();
-        store.store_injection_full("inj-b3", None, None, "search query", &files, 4, 200, None, Some("search"), None).unwrap();
-        store.store_injection_full("inj-b4", None, None, "no bundle", &files, 1, 50, None, None, None).unwrap();
+        store
+            .store_injection_full(
+                "inj-b1",
+                None,
+                None,
+                "auth query",
+                &files,
+                3,
+                100,
+                None,
+                Some("auth"),
+                None,
+            )
+            .unwrap();
+        store
+            .store_injection_full(
+                "inj-b2",
+                None,
+                None,
+                "auth login",
+                &files,
+                2,
+                100,
+                None,
+                Some("auth"),
+                None,
+            )
+            .unwrap();
+        store
+            .store_injection_full(
+                "inj-b3",
+                None,
+                None,
+                "search query",
+                &files,
+                4,
+                200,
+                None,
+                Some("search"),
+                None,
+            )
+            .unwrap();
+        store
+            .store_injection_full(
+                "inj-b4",
+                None,
+                None,
+                "no bundle",
+                &files,
+                1,
+                50,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
 
         // Add feedback
-        store.store_feedback(&FeedbackInput { injection_id: "inj-b1".into(), agent: "test".into(), rating: "useful".into(), reason: String::new() }).unwrap();
-        store.store_feedback(&FeedbackInput { injection_id: "inj-b2".into(), agent: "test".into(), rating: "noise".into(), reason: String::new() }).unwrap();
-        store.store_feedback(&FeedbackInput { injection_id: "inj-b3".into(), agent: "test".into(), rating: "useful".into(), reason: String::new() }).unwrap();
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-b1".into(),
+                agent: "test".into(),
+                rating: "useful".into(),
+                reason: String::new(),
+            })
+            .unwrap();
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-b2".into(),
+                agent: "test".into(),
+                rating: "noise".into(),
+                reason: String::new(),
+            })
+            .unwrap();
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-b3".into(),
+                agent: "test".into(),
+                rating: "useful".into(),
+                reason: String::new(),
+            })
+            .unwrap();
 
         let by_bundle = store.stats_by_bundle().unwrap();
-        assert!(by_bundle.len() >= 2, "should have at least auth and search groups");
+        assert!(
+            by_bundle.len() >= 2,
+            "should have at least auth and search groups"
+        );
 
         let auth = by_bundle.iter().find(|e| e.key == "auth").unwrap();
         assert_eq!(auth.injections, 2);
@@ -1305,12 +1422,65 @@ mod tests {
         let (store, _f) = temp_store();
         let files = vec!["src/main.rs".to_string()];
 
-        store.store_injection_full("inj-d1", None, None, "q1", &files, 1, 100, None, None, Some("aegis-abc")).unwrap();
-        store.store_injection_full("inj-d2", None, None, "q2", &files, 1, 100, None, None, Some("aegis-abc")).unwrap();
-        store.store_injection_full("inj-d3", None, None, "q3", &files, 1, 100, None, None, Some("aegis-xyz")).unwrap();
+        store
+            .store_injection_full(
+                "inj-d1",
+                None,
+                None,
+                "q1",
+                &files,
+                1,
+                100,
+                None,
+                None,
+                Some("aegis-abc"),
+            )
+            .unwrap();
+        store
+            .store_injection_full(
+                "inj-d2",
+                None,
+                None,
+                "q2",
+                &files,
+                1,
+                100,
+                None,
+                None,
+                Some("aegis-abc"),
+            )
+            .unwrap();
+        store
+            .store_injection_full(
+                "inj-d3",
+                None,
+                None,
+                "q3",
+                &files,
+                1,
+                100,
+                None,
+                None,
+                Some("aegis-xyz"),
+            )
+            .unwrap();
 
-        store.store_feedback(&FeedbackInput { injection_id: "inj-d1".into(), agent: "test".into(), rating: "useful".into(), reason: String::new() }).unwrap();
-        store.store_feedback(&FeedbackInput { injection_id: "inj-d3".into(), agent: "test".into(), rating: "harmful".into(), reason: String::new() }).unwrap();
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-d1".into(),
+                agent: "test".into(),
+                rating: "useful".into(),
+                reason: String::new(),
+            })
+            .unwrap();
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-d3".into(),
+                agent: "test".into(),
+                rating: "harmful".into(),
+                reason: String::new(),
+            })
+            .unwrap();
 
         let by_bead = store.stats_by_bead().unwrap();
         let abc = by_bead.iter().find(|e| e.key == "aegis-abc").unwrap();

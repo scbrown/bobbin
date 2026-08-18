@@ -26,7 +26,10 @@ pub(crate) fn auto_resolve_ort_dylib(prefer_gpu: bool) {
                 return; // Any existing lib is fine for CPU mode.
             }
             let existing_dir = Path::new(&existing).parent().unwrap_or(Path::new(""));
-            if existing_dir.join("libonnxruntime_providers_cuda.so").exists() {
+            if existing_dir
+                .join("libonnxruntime_providers_cuda.so")
+                .exists()
+            {
                 return; // GPU-capable, all good.
             }
             // Existing path is CPU-only but GPU requested — try to find GPU build below.
@@ -67,7 +70,10 @@ pub(crate) fn auto_resolve_ort_dylib(prefer_gpu: bool) {
         let dir = Path::new(cpu_path).parent().unwrap();
         set_ort_env(cpu_path, dir);
         if prefer_gpu {
-            eprintln!("warning: GPU requested but no CUDA ONNX Runtime found, using CPU at {}", cpu_path);
+            eprintln!(
+                "warning: GPU requested but no CUDA ONNX Runtime found, using CPU at {}",
+                cpu_path
+            );
         } else {
             eprintln!("auto-detected ONNX Runtime at {}", cpu_path);
         }
@@ -157,10 +163,7 @@ impl ModelConfig {
 
     /// Check if a model name refers to a built-in model
     pub fn is_builtin(name: &str) -> bool {
-        matches!(
-            name,
-            "all-MiniLM-L6-v2" | "bge-small-en-v1.5" | "gte-small"
-        )
+        matches!(name, "all-MiniLM-L6-v2" | "bge-small-en-v1.5" | "gte-small")
     }
 }
 
@@ -397,7 +400,14 @@ impl OnnxEmbedder {
             );
         }
 
-        Self::load_from_files(&model_path, &tokenizer_path, config.dim, config.max_seq, &config.name, use_gpu)
+        Self::load_from_files(
+            &model_path,
+            &tokenizer_path,
+            config.dim,
+            config.max_seq,
+            &config.name,
+            use_gpu,
+        )
     }
 
     /// Load a custom ONNX model from specified paths
@@ -412,10 +422,7 @@ impl OnnxEmbedder {
             anyhow::bail!("Custom ONNX model not found at: {}", model_path.display());
         }
         if !tokenizer_path.exists() {
-            anyhow::bail!(
-                "Tokenizer not found at: {}",
-                tokenizer_path.display()
-            );
+            anyhow::bail!("Tokenizer not found at: {}", tokenizer_path.display());
         }
 
         let name = model_path
@@ -449,19 +456,18 @@ impl OnnxEmbedder {
         // The `load-dynamic` ort feature reads ORT_DYLIB_PATH at first use.
         auto_resolve_ort_dylib(use_gpu);
 
-        let mut builder = Session::builder()
-            .map_err(|e| {
-                let hint = if std::env::var("ORT_DYLIB_PATH").is_err() {
-                    "\n\nHint: ONNX Runtime library not found. Install it:\n  \
+        let mut builder = Session::builder().map_err(|e| {
+            let hint = if std::env::var("ORT_DYLIB_PATH").is_err() {
+                "\n\nHint: ONNX Runtime library not found. Install it:\n  \
                      apt install libonnxruntime-dev   # Debian/Ubuntu\n  \
                      brew install onnxruntime          # macOS\n  \
                      pip install onnxruntime           # Python (sets up shared lib)\n\n\
                      Or set ORT_DYLIB_PATH=/path/to/libonnxruntime.so"
-                } else {
-                    ""
-                };
-                anyhow::anyhow!("Failed to create ONNX session builder: {}{}", e, hint)
-            })?;
+            } else {
+                ""
+            };
+            anyhow::anyhow!("Failed to create ONNX session builder: {}{}", e, hint)
+        })?;
 
         // Register CUDA execution provider if GPU requested.
         // with_execution_providers silently falls back to CPU if CUDA is unavailable.
@@ -558,7 +564,10 @@ impl OnnxEmbedder {
         timing.tokenize_ms = t_tok.elapsed().as_millis();
 
         let t_inf = Instant::now();
-        let mut session = self.session.lock().map_err(|e| anyhow::anyhow!("Session lock poisoned: {}", e))?;
+        let mut session = self
+            .session
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Session lock poisoned: {}", e))?;
         let outputs = session
             .run(ort::inputs![
                 "input_ids" => input_ids_tensor,

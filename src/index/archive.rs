@@ -48,8 +48,8 @@ fn collect_records(
     source: &ArchiveSource,
     chunks: &mut Vec<Chunk>,
 ) -> Result<()> {
-    let entries = std::fs::read_dir(dir)
-        .with_context(|| format!("archive: read dir: {}", dir.display()))?;
+    let entries =
+        std::fs::read_dir(dir).with_context(|| format!("archive: read dir: {}", dir.display()))?;
 
     for entry in entries {
         let entry = entry?;
@@ -203,11 +203,7 @@ fn parse_meta_fields(fm: &str) -> ArchiveMeta {
             }
 
             // Skip "null" values
-            let store_val = if val == "null" {
-                String::new()
-            } else {
-                val
-            };
+            let store_val = if val == "null" { String::new() } else { val };
 
             last_key = key.clone();
             meta.fields.push((key, store_val));
@@ -416,10 +412,7 @@ The semantic_weight of 0.7 gives the best results for code search.
 
     #[test]
     fn test_timestamp_to_date_path() {
-        assert_eq!(
-            timestamp_to_date_path("2026-02-27T01:00:00Z"),
-            "2026/02/27"
-        );
+        assert_eq!(timestamp_to_date_path("2026-02-27T01:00:00Z"), "2026/02/27");
         assert_eq!(timestamp_to_date_path("2026-12-01"), "2026/12/01");
         assert_eq!(timestamp_to_date_path("bad"), "unknown");
         assert_eq!(timestamp_to_date_path(""), "unknown");

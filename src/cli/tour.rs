@@ -245,18 +245,10 @@ pub async fn run(args: TourArgs, output: OutputConfig) -> Result<()> {
             println!("{}", "Available tour steps:".bold());
             println!();
             for (i, step) in steps.iter().enumerate() {
-                println!(
-                    "  {}. {} ({})",
-                    i + 1,
-                    step.title.cyan(),
-                    step.id.dimmed()
-                );
+                println!("  {}. {} ({})", i + 1, step.title.cyan(), step.id.dimmed());
             }
             println!();
-            println!(
-                "Run a specific step: {}",
-                "bobbin tour <feature>".green()
-            );
+            println!("Run a specific step: {}", "bobbin tour <feature>".green());
         }
         return Ok(());
     }
@@ -299,7 +291,9 @@ pub async fn run(args: TourArgs, output: OutputConfig) -> Result<()> {
         );
         println!(
             "{}",
-            "            Welcome to the Bobbin Tour!                 ".cyan().bold()
+            "            Welcome to the Bobbin Tour!                 "
+                .cyan()
+                .bold()
         );
         println!(
             "{}",
@@ -310,10 +304,7 @@ pub async fn run(args: TourArgs, output: OutputConfig) -> Result<()> {
             "========================================================".cyan()
         );
         println!();
-        println!(
-            "  Repository: {}",
-            repo_root.display().to_string().green()
-        );
+        println!("  Repository: {}", repo_root.display().to_string().green());
         println!("  Steps:      {}", total.to_string().cyan());
         if let Some(ref feature) = args.feature {
             println!("  Feature:    {}", feature.cyan());
@@ -342,7 +333,10 @@ pub async fn run(args: TourArgs, output: OutputConfig) -> Result<()> {
 
         if !output.quiet {
             // Step header
-            println!("{}", "------------------------------------------------------------".dimmed());
+            println!(
+                "{}",
+                "------------------------------------------------------------".dimmed()
+            );
             println!(
                 "  {} Step {}/{}: {}",
                 ">".green(),
@@ -350,7 +344,10 @@ pub async fn run(args: TourArgs, output: OutputConfig) -> Result<()> {
                 total,
                 step.title.cyan().bold(),
             );
-            println!("{}", "------------------------------------------------------------".dimmed());
+            println!(
+                "{}",
+                "------------------------------------------------------------".dimmed()
+            );
             println!();
 
             // Introduction
@@ -410,10 +407,7 @@ pub async fn run(args: TourArgs, output: OutputConfig) -> Result<()> {
 
         // Interactive pause (skip for last step and non-interactive mode)
         if !args.non_interactive && !output.quiet && step_num < total {
-            print!(
-                "  {} ",
-                "Press Enter to continue (q to quit)...".dimmed()
-            );
+            print!("  {} ", "Press Enter to continue (q to quit)...".dimmed());
             io::stdout().flush()?;
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
@@ -430,13 +424,12 @@ pub async fn run(args: TourArgs, output: OutputConfig) -> Result<()> {
     }
 
     if !output.quiet {
-        println!("{}", "------------------------------------------------------------".dimmed());
-        println!();
         println!(
-            "  {} {}",
-            "Done!".green().bold(),
-            "Tour complete.".bold()
+            "{}",
+            "------------------------------------------------------------".dimmed()
         );
+        println!();
+        println!("  {} {}", "Done!".green().bold(), "Tour complete.".bold());
         println!();
         println!("  {}", "Next steps:".bold());
         println!(
@@ -451,10 +444,7 @@ pub async fn run(args: TourArgs, output: OutputConfig) -> Result<()> {
             "    {}  Set up Claude Code integration",
             "bobbin hook install".cyan()
         );
-        println!(
-            "    {}  See all commands",
-            "bobbin --help".cyan()
-        );
+        println!("    {}  See all commands", "bobbin --help".cyan());
         println!();
     }
 
@@ -472,11 +462,7 @@ mod tests {
         let original_len = ids.len();
         ids.sort();
         ids.dedup();
-        assert_eq!(
-            ids.len(),
-            original_len,
-            "Tour step IDs must be unique"
-        );
+        assert_eq!(ids.len(), original_len, "Tour step IDs must be unique");
     }
 
     #[test]

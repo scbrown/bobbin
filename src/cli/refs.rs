@@ -163,10 +163,23 @@ pub async fn run(args: RefsArgs, output: OutputConfig) -> Result<()> {
             run_find(&mut vector_store, find_args, args.repo.as_deref(), &output).await
         }
         RefsCommand::Symbols(sym_args) => {
-            run_symbols(&mut vector_store, sym_args, &repo_root, args.repo.as_deref(), &output).await
+            run_symbols(
+                &mut vector_store,
+                sym_args,
+                &repo_root,
+                args.repo.as_deref(),
+                &output,
+            )
+            .await
         }
         RefsCommand::Callees(callees_args) => {
-            run_callees(&mut vector_store, callees_args, args.repo.as_deref(), &output).await
+            run_callees(
+                &mut vector_store,
+                callees_args,
+                args.repo.as_deref(),
+                &output,
+            )
+            .await
         }
     }
 }
@@ -293,16 +306,9 @@ async fn run_symbols(
         println!("{}", serde_json::to_string_pretty(&json_output)?);
     } else if !output.quiet {
         if file_symbols.symbols.is_empty() {
-            println!(
-                "{} No symbols found in: {}",
-                "!".yellow(),
-                rel_path.cyan()
-            );
+            println!("{} No symbols found in: {}", "!".yellow(), rel_path.cyan());
         } else {
-            println!(
-                "Symbols in {}:",
-                rel_path.cyan()
-            );
+            println!("Symbols in {}:", rel_path.cyan());
             for symbol in &file_symbols.symbols {
                 println!(
                     "  {} {} (lines {}-{})",
@@ -319,7 +325,11 @@ async fn run_symbols(
                 "\n{} {} symbol{}",
                 "✓".green(),
                 file_symbols.symbols.len(),
-                if file_symbols.symbols.len() == 1 { "" } else { "s" }
+                if file_symbols.symbols.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                }
             );
         }
     }
@@ -344,11 +354,7 @@ async fn run_callees(
                     args.symbol
                 );
             } else if !output.quiet {
-                println!(
-                    "{} Symbol not found: {}",
-                    "!".yellow(),
-                    args.symbol.cyan()
-                );
+                println!("{} Symbol not found: {}", "!".yellow(), args.symbol.cyan());
             }
             return Ok(());
         }
@@ -398,7 +404,12 @@ async fn run_callees(
                         println!("    {}", def.signature.dimmed());
                     }
                 } else {
-                    println!("  {} {} {}", "?".yellow(), callee.name, "(unresolved)".dimmed());
+                    println!(
+                        "  {} {} {}",
+                        "?".yellow(),
+                        callee.name,
+                        "(unresolved)".dimmed()
+                    );
                 }
             }
             println!(

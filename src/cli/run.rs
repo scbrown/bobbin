@@ -104,7 +104,13 @@ pub fn resolve(args: RunArgs, output: &OutputConfig) -> Result<RunResult> {
     }
 
     if let Some(name) = &args.save {
-        save_command(&repo_root, name, args.description.as_deref(), &args.extra_args, output)?;
+        save_command(
+            &repo_root,
+            name,
+            args.description.as_deref(),
+            &args.extra_args,
+            output,
+        )?;
         return Ok(RunResult::Done);
     }
 
@@ -188,7 +194,10 @@ fn show_command(repo_root: &std::path::Path, name: &str, output: &OutputConfig) 
     let commands = commands::load_commands(repo_root)?;
 
     let Some(def) = commands.get(name) else {
-        bail!("Command '{}' not found. Run `bobbin run --list` to see available commands.", name);
+        bail!(
+            "Command '{}' not found. Run `bobbin run --list` to see available commands.",
+            name
+        );
     };
 
     if output.json {
@@ -417,10 +426,7 @@ pub fn init_defaults(repo_root: &std::path::Path, output: &OutputConfig) -> Resu
                 println!("    {}", expand_command(def).dimmed());
                 println!();
             }
-            println!(
-                "{}",
-                "Run any command: bobbin <name> <query>".dimmed()
-            );
+            println!("{}", "Run any command: bobbin <name> <query>".dimmed());
         } else {
             println!(
                 "{} All default commands already exist ({} total)",
@@ -493,9 +499,29 @@ fn expand_command(def: &CommandDef) -> String {
 /// Validate that a command name is a known bobbin subcommand.
 fn validate_subcommand(name: &str) -> Result<()> {
     const VALID_COMMANDS: &[&str] = &[
-        "init", "index", "search", "context", "deps", "grep", "refs", "related", "history",
-        "log", "hotspots", "impact", "review", "similar", "status", "serve", "benchmark",
-        "watch", "completions", "hook", "tour", "prime", "feedback",
+        "init",
+        "index",
+        "search",
+        "context",
+        "deps",
+        "grep",
+        "refs",
+        "related",
+        "history",
+        "log",
+        "hotspots",
+        "impact",
+        "review",
+        "similar",
+        "status",
+        "serve",
+        "benchmark",
+        "watch",
+        "completions",
+        "hook",
+        "tour",
+        "prime",
+        "feedback",
     ];
 
     if VALID_COMMANDS.contains(&name) {
@@ -596,8 +622,20 @@ mod tests {
         };
 
         // Save a command
-        let extra = vec!["search".into(), "--type".into(), "function".into(), "test".into()];
-        save_command(tmp.path(), "find-tests", Some("Find tests"), &extra, &output).unwrap();
+        let extra = vec![
+            "search".into(),
+            "--type".into(),
+            "function".into(),
+            "test".into(),
+        ];
+        save_command(
+            tmp.path(),
+            "find-tests",
+            Some("Find tests"),
+            &extra,
+            &output,
+        )
+        .unwrap();
 
         // Verify it was saved
         let commands = commands::load_commands(tmp.path()).unwrap();

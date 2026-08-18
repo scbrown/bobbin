@@ -11,8 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::analysis::backend::{IndexBackend, StructuralBackend};
 
 use super::{
-    bad_request, internal_error, open_metadata_store, open_vector_store,
-    AppState, ErrorBody,
+    bad_request, internal_error, open_metadata_store, open_vector_store, AppState, ErrorBody,
 };
 
 mod hotspots;
@@ -115,7 +114,11 @@ pub(super) async fn related(
         co_changes: c.co_changes,
         repo: Some(c.repo),
     }));
-    related.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    related.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     related.truncate(limit);
 
     Ok(Json(RelatedResponse {
@@ -261,7 +264,9 @@ pub(super) async fn list_symbols(
 
     // Check role-based access for the file's repo
     let access = super::resolve_filter(&state, params.role.as_deref());
-    let repo_name = params.repo.as_deref()
+    let repo_name = params
+        .repo
+        .as_deref()
         .unwrap_or_else(|| RepoFilter::repo_from_path(&params.file));
     if !access.is_allowed(repo_name) {
         return Err(bad_request(format!("Repo not accessible: {}", repo_name)));

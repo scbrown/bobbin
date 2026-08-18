@@ -123,7 +123,11 @@ pub async fn run(args: RelatedArgs, output: OutputConfig) -> Result<()> {
         co_changes: c.co_changes,
         repo: Some(c.repo),
     }));
-    related.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    related.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     related.truncate(args.limit);
 
     if output.json {

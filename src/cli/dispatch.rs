@@ -63,7 +63,9 @@ pub(super) async fn dispatch_command(command: Commands, output: OutputConfig) ->
 /// 2. Check HTTP commands on the server (`/cmd/<name>`)
 /// 3. Error with helpful message
 pub(super) async fn dispatch_external(args: &[String], output: &OutputConfig) -> Result<()> {
-    let name = args.first().ok_or_else(|| anyhow::anyhow!("No command specified"))?;
+    let name = args
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("No command specified"))?;
 
     // Parse remaining args as key=value params for HTTP commands
     let kv_params: Vec<(&str, String)> = args[1..]
@@ -110,8 +112,7 @@ pub(super) async fn dispatch_external(args: &[String], output: &OutputConfig) ->
                 }
             }
 
-            let resolved = Cli::try_parse_from(&full_args)
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            let resolved = Cli::try_parse_from(&full_args).map_err(|e| anyhow::anyhow!("{}", e))?;
             let resolved_output = OutputConfig {
                 json: resolved.json,
                 quiet: resolved.quiet,

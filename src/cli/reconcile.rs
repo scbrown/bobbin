@@ -324,8 +324,20 @@ mod tests {
         // Two lineage rows for the same change bead (a `link` + a `commit`) must
         // collapse into one event with unioned files/commits and summed lines.
         let rows = vec![
-            lineage("bo-a", "sha1", &["src/a.rs"], Some("search"), "2026-06-10T00:00:00Z"),
-            lineage("bo-a", "sha2", &["src/b.rs", "src/a.rs"], Some("search,rag"), "2026-06-10T01:00:00Z"),
+            lineage(
+                "bo-a",
+                "sha1",
+                &["src/a.rs"],
+                Some("search"),
+                "2026-06-10T00:00:00Z",
+            ),
+            lineage(
+                "bo-a",
+                "sha2",
+                &["src/b.rs", "src/a.rs"],
+                Some("search,rag"),
+                "2026-06-10T01:00:00Z",
+            ),
         ];
         let events = build_change_events(&rows, &[], &earliest_by_bead(&rows));
         assert_eq!(events.len(), 1);
@@ -344,7 +356,13 @@ mod tests {
         // Change bo-c lands; 5 days later a bug bo-bug is blamed on it.
         let rows = vec![
             lineage("bo-c", "shaC", &["src/x.rs"], None, "2026-06-01T00:00:00Z"),
-            lineage("bo-bug", "shaB", &["src/x.rs"], None, "2026-06-06T00:00:00Z"),
+            lineage(
+                "bo-bug",
+                "shaB",
+                &["src/x.rs"],
+                None,
+                "2026-06-06T00:00:00Z",
+            ),
         ];
         let cz = vec![causality("bo-bug", "bo-c", "src/x.rs")];
         let events = build_change_events(&rows, &cz, &earliest_by_bead(&rows));
@@ -353,7 +371,10 @@ mod tests {
         assert_eq!(c.bug_ids, vec!["bo-bug"]);
         assert!((c.ttf_days.unwrap() - 5.0).abs() < 1e-9);
         // The bug bead itself is also a change event, with no bug blamed on it.
-        let b = events.iter().find(|e| e.change_bead_id == "bo-bug").unwrap();
+        let b = events
+            .iter()
+            .find(|e| e.change_bead_id == "bo-bug")
+            .unwrap();
         assert!(!b.introduced_bug);
     }
 

@@ -117,8 +117,9 @@ pub async fn run(args: ConnectArgs, output: OutputConfig) -> Result<()> {
         config.server.url = Some(url.clone());
         // Ensure parent directory exists
         if let Some(parent) = global_path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create config directory: {}", parent.display()))?;
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create config directory: {}", parent.display())
+            })?;
         }
         config.save(&global_path)?;
         global_path
@@ -171,10 +172,7 @@ pub async fn run(args: ConnectArgs, output: OutputConfig) -> Result<()> {
         };
         println!("{}", serde_json::to_string_pretty(&json_output)?);
     } else if !output.quiet {
-        println!(
-            "{} Connected to bobbin server",
-            "✓".green(),
-        );
+        println!("{} Connected to bobbin server", "✓".green(),);
         println!("  Server:  {}", url.cyan());
         println!("  Config:  {}", config_path.display().to_string().dimmed());
         if hooks_installed {
@@ -184,16 +182,10 @@ pub async fn run(args: ConnectArgs, output: OutputConfig) -> Result<()> {
         }
 
         if !install_hooks {
-            println!(
-                "\n  To install hooks: {}",
-                "bobbin hook install".cyan()
-            );
+            println!("\n  To install hooks: {}", "bobbin hook install".cyan());
         }
 
-        println!(
-            "\n  Test it: {}",
-            "bobbin search \"hello world\"".cyan()
-        );
+        println!("\n  Test it: {}", "bobbin search \"hello world\"".cyan());
     }
 
     Ok(())

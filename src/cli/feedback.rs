@@ -480,7 +480,14 @@ async fn run_lineage_remote(
             agent,
         } => {
             let resp = client
-                .lineage_store(&feedback_ids, &action_type, bead.as_deref(), commit.as_deref(), &description, agent.as_deref())
+                .lineage_store(
+                    &feedback_ids,
+                    &action_type,
+                    bead.as_deref(),
+                    commit.as_deref(),
+                    &description,
+                    agent.as_deref(),
+                )
                 .await?;
             if output.json {
                 println!("{}", serde_json::to_string(&resp)?);

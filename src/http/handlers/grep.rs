@@ -10,8 +10,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    bad_request, internal_error, open_vector_store, parse_chunk_type, truncate, AppState,
-    ErrorBody,
+    bad_request, internal_error, open_vector_store, parse_chunk_type, truncate, AppState, ErrorBody,
 };
 
 // ---------------------------------------------------------------------------
@@ -139,10 +138,15 @@ pub(super) async fn grep(
         limit
     };
 
-    let group_sql = super::resolve_group_filter(&state, params.group.as_deref())
-        .map_err(|e| bad_request(e))?;
+    let group_sql =
+        super::resolve_group_filter(&state, params.group.as_deref()).map_err(|e| bad_request(e))?;
     let results = vector_store
-        .search_fts_filtered(&fts_query, search_limit, params.repo.as_deref(), group_sql.as_deref())
+        .search_fts_filtered(
+            &fts_query,
+            search_limit,
+            params.repo.as_deref(),
+            group_sql.as_deref(),
+        )
         .await
         .map_err(|e| internal_error(e.into()))?;
 

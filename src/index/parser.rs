@@ -359,7 +359,11 @@ impl Parser {
                     let lang_tag = match kind {
                         pulldown_cmark::CodeBlockKind::Fenced(info) => {
                             let s = info.split_whitespace().next().unwrap_or("");
-                            if s.is_empty() { None } else { Some(s.to_string()) }
+                            if s.is_empty() {
+                                None
+                            } else {
+                                Some(s.to_string())
+                            }
                         }
                         pulldown_cmark::CodeBlockKind::Indented => None,
                     };
@@ -413,7 +417,9 @@ impl Parser {
                 let pre = &body[..sections[0].body_offset];
                 if !pre.trim().is_empty() {
                     let start_line = (line_offset + 1) as u32;
-                    let end_line = (line_offset + byte_offset_to_line_in(body, sections[0].body_offset)) as u32;
+                    let end_line = (line_offset
+                        + byte_offset_to_line_in(body, sections[0].body_offset))
+                        as u32;
                     chunks.push(Chunk {
                         id: generate_chunk_id(path, start_line, end_line),
                         file_path: file_path.clone(),
@@ -459,18 +465,21 @@ impl Parser {
         // 5. Emit standalone table and code_block chunks
         for block in &standalone_blocks {
             let block_content = &body[block.body_offset_start..block.body_offset_end];
-            let start_line = (line_offset + byte_offset_to_line_in(body, block.body_offset_start)) as u32;
-            let end_line = (line_offset + byte_offset_to_line_in(body, block.body_offset_end)) as u32;
+            let start_line =
+                (line_offset + byte_offset_to_line_in(body, block.body_offset_start)) as u32;
+            let end_line =
+                (line_offset + byte_offset_to_line_in(body, block.body_offset_end)) as u32;
 
             let name = match block.chunk_type {
                 ChunkType::Table => {
                     // Try to use preceding section heading
-                    let parent_section = sections.iter().rev().find(|s| s.body_offset <= block.body_offset_start);
+                    let parent_section = sections
+                        .iter()
+                        .rev()
+                        .find(|s| s.body_offset <= block.body_offset_start);
                     parent_section.map(|s| format!("{} (table)", s.name))
                 }
-                ChunkType::CodeBlock => {
-                    block.name.as_ref().map(|lang| format!("code: {}", lang))
-                }
+                ChunkType::CodeBlock => block.name.as_ref().map(|lang| format!("code: {}", lang)),
                 _ => None,
             };
 
@@ -585,10 +594,9 @@ impl Parser {
     /// Extract the name of a semantic unit
     fn extract_name(&self, node: &Node, content: &str, language: &str) -> Option<String> {
         match language {
-            "rust" | "typescript" | "tsx" | "python" | "java" => {
-                node.child_by_field_name("name")
-                    .map(|n| content[n.byte_range()].to_string())
-            }
+            "rust" | "typescript" | "tsx" | "python" | "java" => node
+                .child_by_field_name("name")
+                .map(|n| content[n.byte_range()].to_string()),
             "go" => {
                 // Go functions use "name", methods use "name" too
                 // type_declaration has a nested type_spec with name
@@ -643,13 +651,11 @@ impl Parser {
         }
 
         // Extract record ID from frontmatter for the chunk name
-        let record_name = fm
-            .as_deref()
-            .and_then(|fm| {
-                fm.lines()
-                    .find(|l| l.trim().starts_with("id:"))
-                    .map(|l| l.trim().trim_start_matches("id:").trim().to_string())
-            });
+        let record_name = fm.as_deref().and_then(|fm| {
+            fm.lines()
+                .find(|l| l.trim().starts_with("id:"))
+                .map(|l| l.trim().trim_start_matches("id:").trim().to_string())
+        });
 
         let lines: Vec<&str> = body.lines().collect();
 
@@ -897,7 +903,12 @@ fn collect_imports(
     }
 }
 
-fn collect_rust_imports(node: &Node, content: &str, file_path: &str, imports: &mut Vec<ImportEdge>) {
+fn collect_rust_imports(
+    node: &Node,
+    content: &str,
+    file_path: &str,
+    imports: &mut Vec<ImportEdge>,
+) {
     // Rust: use_declaration nodes (e.g., `use std::path::Path;`, `use crate::types::Chunk;`)
     // Also: extern_crate_item, mod_item with path
     if node.kind() == "use_declaration" {
@@ -929,7 +940,13 @@ fn collect_rust_imports(node: &Node, content: &str, file_path: &str, imports: &m
     }
 }
 
-fn collect_ts_imports(node: &Node, content: &str, file_path: &str, language: &str, imports: &mut Vec<ImportEdge>) {
+fn collect_ts_imports(
+    node: &Node,
+    content: &str,
+    file_path: &str,
+    language: &str,
+    imports: &mut Vec<ImportEdge>,
+) {
     // TypeScript/JavaScript: import_statement nodes
     // e.g., `import { Foo } from './bar'`, `import * as x from 'lib'`
     // Also: require() calls, dynamic import()
@@ -965,7 +982,12 @@ fn collect_ts_imports(node: &Node, content: &str, file_path: &str, language: &st
     }
 }
 
-fn collect_python_imports(node: &Node, content: &str, file_path: &str, imports: &mut Vec<ImportEdge>) {
+fn collect_python_imports(
+    node: &Node,
+    content: &str,
+    file_path: &str,
+    imports: &mut Vec<ImportEdge>,
+) {
     // Python: import_statement, import_from_statement
     // e.g., `import os`, `from pathlib import Path`, `from . import utils`
     if node.kind() == "import_statement" {
@@ -1030,7 +1052,12 @@ fn collect_go_imports(node: &Node, content: &str, file_path: &str, imports: &mut
     }
 }
 
-fn collect_java_imports(node: &Node, content: &str, file_path: &str, imports: &mut Vec<ImportEdge>) {
+fn collect_java_imports(
+    node: &Node,
+    content: &str,
+    file_path: &str,
+    imports: &mut Vec<ImportEdge>,
+) {
     // Java: import_declaration
     // e.g., `import java.util.List;`, `import static org.junit.Assert.*;`
     if node.kind() == "import_declaration" {
@@ -1084,12 +1111,7 @@ fn collect_cpp_imports(node: &Node, content: &str, file_path: &str, imports: &mu
 }
 
 /// Walk a tree-sitter AST and collect raw import statements with statement text, path, and dep_type
-fn collect_raw_imports(
-    node: &Node,
-    content: &str,
-    language: &str,
-    imports: &mut Vec<RawImport>,
-) {
+fn collect_raw_imports(node: &Node, content: &str, language: &str, imports: &mut Vec<RawImport>) {
     match language {
         "rust" => collect_raw_rust_imports(node, content, imports),
         "typescript" | "tsx" => collect_raw_ts_imports(node, content, imports),
@@ -1335,9 +1357,15 @@ fn collect_chunk_edges(
         "python" => {
             collect_python_chunk_edges(node, content, file_path, chunks, chunk_by_name, edges)
         }
-        "typescript" | "tsx" | "java" => {
-            collect_class_extends_edges(node, content, file_path, language, chunks, chunk_by_name, edges)
-        }
+        "typescript" | "tsx" | "java" => collect_class_extends_edges(
+            node,
+            content,
+            file_path,
+            language,
+            chunks,
+            chunk_by_name,
+            edges,
+        ),
         _ => {}
     }
 
@@ -1372,11 +1400,7 @@ fn collect_rust_chunk_edges(
     let Some(source_chunk) = find_chunk_at_line(chunks, impl_line) else {
         return;
     };
-    let source_name = source_chunk
-        .name
-        .as_deref()
-        .unwrap_or("<impl>")
-        .to_string();
+    let source_name = source_chunk.name.as_deref().unwrap_or("<impl>").to_string();
 
     // Look for `impl Trait for Type` pattern by checking child nodes.
     // In tree-sitter-rust, impl_item has:
@@ -1521,7 +1545,6 @@ fn collect_class_extends_edges(
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1683,8 +1706,9 @@ func (p Point) Distance() float64 {
         assert!(chunks
             .iter()
             .any(|c| c.chunk_type == ChunkType::Struct && c.name == Some("Point".to_string())));
-        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Method
-            && c.name == Some("Distance".to_string())));
+        assert!(chunks
+            .iter()
+            .any(|c| c.chunk_type == ChunkType::Method && c.name == Some("Distance".to_string())));
     }
 
     #[test]
@@ -1710,7 +1734,13 @@ public class Greeter {
             .iter()
             .any(|c| c.chunk_type == ChunkType::Class && c.name == Some("Greeter".to_string())));
         // Constructor and method
-        assert!(chunks.iter().filter(|c| c.chunk_type == ChunkType::Method).count() >= 2);
+        assert!(
+            chunks
+                .iter()
+                .filter(|c| c.chunk_type == ChunkType::Method)
+                .count()
+                >= 2
+        );
         assert!(chunks.iter().all(|c| c.language == "java"));
     }
 
@@ -1725,8 +1755,9 @@ public interface Runnable {
         let path = PathBuf::from("Runnable.java");
         let chunks = parser.parse_file(&path, content).unwrap();
 
-        assert!(chunks.iter().any(|c| c.chunk_type == ChunkType::Interface
-            && c.name == Some("Runnable".to_string())));
+        assert!(chunks.iter().any(
+            |c| c.chunk_type == ChunkType::Interface && c.name == Some("Runnable".to_string())
+        ));
     }
 
     #[test]
@@ -1853,7 +1884,10 @@ struct Vec3 {
             detect_language(Path::new("templates/nftables.conf.j2")),
             Some("jinja".to_string())
         );
-        assert_eq!(detect_language(Path::new("main.tf")), Some("terraform".to_string()));
+        assert_eq!(
+            detect_language(Path::new("main.tf")),
+            Some("terraform".to_string())
+        );
         assert_eq!(
             detect_language(Path::new("scripts/deploy.sh")),
             Some("shell".to_string())
@@ -1919,7 +1953,10 @@ Content 2.
         let chunks = parser.parse_file(&path, content).unwrap();
 
         // Section chunks for each heading
-        let sections: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Section).collect();
+        let sections: Vec<_> = chunks
+            .iter()
+            .filter(|c| c.chunk_type == ChunkType::Section)
+            .collect();
         assert_eq!(sections.len(), 4);
 
         assert_eq!(sections[0].name, Some("Title".to_string()));
@@ -1942,8 +1979,14 @@ Content.
         let path = PathBuf::from("README.md");
         let chunks = parser.parse_file(&path, content).unwrap();
 
-        let doc_chunks: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Doc).collect();
-        let section_chunks: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Section).collect();
+        let doc_chunks: Vec<_> = chunks
+            .iter()
+            .filter(|c| c.chunk_type == ChunkType::Doc)
+            .collect();
+        let section_chunks: Vec<_> = chunks
+            .iter()
+            .filter(|c| c.chunk_type == ChunkType::Section)
+            .collect();
 
         assert_eq!(doc_chunks.len(), 1);
         assert_eq!(doc_chunks[0].name, Some("Preamble".to_string()));
@@ -1969,13 +2012,19 @@ Welcome to the document.
         let chunks = parser.parse_file(&path, content).unwrap();
 
         // Should have frontmatter chunk
-        let fm: Vec<_> = chunks.iter().filter(|c| c.name == Some("Frontmatter".to_string())).collect();
+        let fm: Vec<_> = chunks
+            .iter()
+            .filter(|c| c.name == Some("Frontmatter".to_string()))
+            .collect();
         assert_eq!(fm.len(), 1);
         assert_eq!(fm[0].chunk_type, ChunkType::Doc);
         assert!(fm[0].content.contains("title: Test Document"));
 
         // And a section for the heading
-        let sections: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Section).collect();
+        let sections: Vec<_> = chunks
+            .iter()
+            .filter(|c| c.chunk_type == ChunkType::Section)
+            .collect();
         assert_eq!(sections.len(), 1);
         assert_eq!(sections[0].name, Some("Introduction".to_string()));
     }
@@ -2002,7 +2051,10 @@ Then configure:
         let path = PathBuf::from("guide.md");
         let chunks = parser.parse_file(&path, content).unwrap();
 
-        let code_blocks: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::CodeBlock).collect();
+        let code_blocks: Vec<_> = chunks
+            .iter()
+            .filter(|c| c.chunk_type == ChunkType::CodeBlock)
+            .collect();
         assert_eq!(code_blocks.len(), 2);
         assert_eq!(code_blocks[0].name, Some("code: bash".to_string()));
         assert_eq!(code_blocks[1].name, Some("code: json".to_string()));
@@ -2025,9 +2077,15 @@ fn main() {}
         let imports = parser.extract_imports(&path, content);
 
         assert_eq!(imports.len(), 3);
-        assert!(imports.iter().any(|i| i.import_specifier == "std::path::Path"));
-        assert!(imports.iter().any(|i| i.import_specifier == "crate::types::Chunk"));
-        assert!(imports.iter().any(|i| i.import_specifier == "anyhow::Result"));
+        assert!(imports
+            .iter()
+            .any(|i| i.import_specifier == "std::path::Path"));
+        assert!(imports
+            .iter()
+            .any(|i| i.import_specifier == "crate::types::Chunk"));
+        assert!(imports
+            .iter()
+            .any(|i| i.import_specifier == "anyhow::Result"));
         assert!(imports.iter().all(|i| i.language == "rust"));
     }
 
@@ -2110,7 +2168,9 @@ public class Main {
         let imports = parser.extract_imports(&path, content);
 
         assert_eq!(imports.len(), 2);
-        assert!(imports.iter().any(|i| i.import_specifier == "java.util.List"));
+        assert!(imports
+            .iter()
+            .any(|i| i.import_specifier == "java.util.List"));
         assert!(imports.iter().any(|i| i.import_specifier == "java.io.File"));
     }
 
@@ -2159,11 +2219,17 @@ fn main() {}
 
         assert_eq!(imports.len(), 3);
 
-        let i = imports.iter().find(|i| i.path == "std::path::Path").unwrap();
+        let i = imports
+            .iter()
+            .find(|i| i.path == "std::path::Path")
+            .unwrap();
         assert_eq!(i.statement, "use std::path::Path;");
         assert_eq!(i.dep_type, "use");
 
-        let i = imports.iter().find(|i| i.path == "crate::types::Chunk").unwrap();
+        let i = imports
+            .iter()
+            .find(|i| i.path == "crate::types::Chunk")
+            .unwrap();
         assert_eq!(i.statement, "use crate::types::Chunk;");
         assert_eq!(i.dep_type, "use");
 
@@ -2212,8 +2278,12 @@ function hello() {}
         let imports = parser.extract_raw_imports(&path, content);
 
         assert_eq!(imports.len(), 2);
-        assert!(imports.iter().any(|i| i.path == "fs" && i.dep_type == "require"));
-        assert!(imports.iter().any(|i| i.path == "path" && i.dep_type == "require"));
+        assert!(imports
+            .iter()
+            .any(|i| i.path == "fs" && i.dep_type == "require"));
+        assert!(imports
+            .iter()
+            .any(|i| i.path == "path" && i.dep_type == "require"));
     }
 
     #[test]
@@ -2257,8 +2327,12 @@ func main() {}
         let imports = parser.extract_raw_imports(&path, content);
 
         assert_eq!(imports.len(), 2);
-        assert!(imports.iter().any(|i| i.path == "fmt" && i.dep_type == "import"));
-        assert!(imports.iter().any(|i| i.path == "os" && i.dep_type == "import"));
+        assert!(imports
+            .iter()
+            .any(|i| i.path == "fmt" && i.dep_type == "import"));
+        assert!(imports
+            .iter()
+            .any(|i| i.path == "os" && i.dep_type == "import"));
     }
 
     #[test]
@@ -2350,7 +2424,10 @@ More content here.
         let path = PathBuf::from("api.md");
         let chunks = parser.parse_file(&path, content).unwrap();
 
-        let tables: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Table).collect();
+        let tables: Vec<_> = chunks
+            .iter()
+            .filter(|c| c.chunk_type == ChunkType::Table)
+            .collect();
         assert_eq!(tables.len(), 1);
         assert!(tables[0].content.contains("Method"));
         assert!(tables[0].name.as_ref().unwrap().contains("table"));
@@ -2379,8 +2456,14 @@ impl Greeter for Person {
         let edges = parser.extract_chunk_edges(&path, content, &chunks);
 
         // Should find: impl → Greeter (Implements), impl → Person (ImplFor)
-        let implements: Vec<_> = edges.iter().filter(|e| e.edge_type == ChunkEdgeType::Implements).collect();
-        let impl_for: Vec<_> = edges.iter().filter(|e| e.edge_type == ChunkEdgeType::ImplFor).collect();
+        let implements: Vec<_> = edges
+            .iter()
+            .filter(|e| e.edge_type == ChunkEdgeType::Implements)
+            .collect();
+        let impl_for: Vec<_> = edges
+            .iter()
+            .filter(|e| e.edge_type == ChunkEdgeType::ImplFor)
+            .collect();
 
         assert_eq!(implements.len(), 1, "expected 1 implements edge");
         assert_eq!(implements[0].target_name, "Greeter");
@@ -2408,8 +2491,14 @@ impl Counter {
         let edges = parser.extract_chunk_edges(&path, content, &chunks);
 
         // Should find: impl → Counter (ImplFor), no Implements
-        let implements: Vec<_> = edges.iter().filter(|e| e.edge_type == ChunkEdgeType::Implements).collect();
-        let impl_for: Vec<_> = edges.iter().filter(|e| e.edge_type == ChunkEdgeType::ImplFor).collect();
+        let implements: Vec<_> = edges
+            .iter()
+            .filter(|e| e.edge_type == ChunkEdgeType::Implements)
+            .collect();
+        let impl_for: Vec<_> = edges
+            .iter()
+            .filter(|e| e.edge_type == ChunkEdgeType::ImplFor)
+            .collect();
 
         assert!(implements.is_empty(), "no trait = no implements edge");
         assert_eq!(impl_for.len(), 1);
@@ -2432,7 +2521,10 @@ class Dog(Animal):
         let chunks = parser.parse_file(&path, content).unwrap();
         let edges = parser.extract_chunk_edges(&path, content, &chunks);
 
-        let extends: Vec<_> = edges.iter().filter(|e| e.edge_type == ChunkEdgeType::Extends).collect();
+        let extends: Vec<_> = edges
+            .iter()
+            .filter(|e| e.edge_type == ChunkEdgeType::Extends)
+            .collect();
         assert_eq!(extends.len(), 1, "expected 1 extends edge");
         assert_eq!(extends[0].source_name, "Dog");
         assert_eq!(extends[0].target_name, "Animal");
@@ -2475,7 +2567,10 @@ fn standalone_function() {
     fn test_chunk_by_lines_configurable_size_overlap() {
         // 10-line chunks, 2-line overlap, no token clamp.
         let parser = Parser::new().unwrap().with_chunking(10, 2, 0);
-        let content = (1..=25).map(|i| format!("line{i}")).collect::<Vec<_>>().join("\n");
+        let content = (1..=25)
+            .map(|i| format!("line{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let path = PathBuf::from("data.unknownext");
         let chunks = parser.chunk_by_lines(&path, &content);
 
@@ -2494,11 +2589,17 @@ fn standalone_function() {
         let parser = Parser::new().unwrap().with_chunking(50, 1, cap);
         // 12 lines, 8 chars each (~2 tokens/line). The full 50-line window would
         // be ~30+ tokens — must be split.
-        let content = (0..12).map(|_| "yyyyyyyy".to_string()).collect::<Vec<_>>().join("\n");
+        let content = (0..12)
+            .map(|_| "yyyyyyyy".to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
         let path = PathBuf::from("dense.unknownext");
         let chunks = parser.chunk_by_lines(&path, &content);
 
-        assert!(chunks.len() > 1, "clamp should split the window into multiple chunks");
+        assert!(
+            chunks.len() > 1,
+            "clamp should split the window into multiple chunks"
+        );
         for c in &chunks {
             assert!(
                 estimate_tokens(&c.content) <= cap,

@@ -157,12 +157,9 @@ pub async fn run(args: LogArgs, output: OutputConfig) -> Result<()> {
                         .context("Semantic search failed")?
                 }
                 LogSearchMode::Hybrid => {
-                    let mut search = HybridSearch::new(
-                        embedder,
-                        vector_store,
-                        config.search.semantic_weight,
-                    )
-                    .with_rrf_k(config.search.rrf_k);
+                    let mut search =
+                        HybridSearch::new(embedder, vector_store, config.search.semantic_weight)
+                            .with_rrf_k(config.search.rrf_k);
                     search
                         .search(query_str, search_limit, None)
                         .await
@@ -191,7 +188,10 @@ pub async fn run(args: LogArgs, output: OutputConfig) -> Result<()> {
         })
         .filter(|r| {
             if let Some(ref file_filter) = args.file {
-                r.chunk.content.to_lowercase().contains(&file_filter.to_lowercase())
+                r.chunk
+                    .content
+                    .to_lowercase()
+                    .contains(&file_filter.to_lowercase())
             } else {
                 true
             }
@@ -200,10 +200,7 @@ pub async fn run(args: LogArgs, output: OutputConfig) -> Result<()> {
         .collect();
 
     // Parse commit content into structured entries
-    let entries: Vec<LogEntry> = filtered
-        .iter()
-        .map(parse_commit_result)
-        .collect();
+    let entries: Vec<LogEntry> = filtered.iter().map(parse_commit_result).collect();
 
     if output.json {
         let json_output = LogOutput {
@@ -252,12 +249,7 @@ pub async fn run(args: LogArgs, output: OutputConfig) -> Result<()> {
                 .unwrap_or("unknown")
                 .green()
                 .to_string();
-            let date_display = entry
-                .date
-                .as_deref()
-                .unwrap_or("")
-                .dimmed()
-                .to_string();
+            let date_display = entry.date.as_deref().unwrap_or("").dimmed().to_string();
 
             println!(
                 "{}. {} {}",

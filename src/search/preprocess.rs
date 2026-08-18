@@ -8,24 +8,18 @@
 /// accidentally removing meaningful technical terms.
 const STOPWORDS: &[&str] = &[
     // Articles and determiners
-    "a", "an", "the", "this", "that", "these", "those",
-    // Pronouns
-    "i", "me", "my", "we", "our", "you", "your", "it", "its",
-    // Prepositions
-    "in", "on", "at", "to", "for", "of", "with", "from", "by", "as",
-    // Conjunctions
-    "and", "or", "but", "so", "if", "when", "while",
-    // Common verbs (non-technical)
-    "is", "are", "was", "were", "be", "been", "being",
-    "do", "does", "did", "have", "has", "had",
+    "a", "an", "the", "this", "that", "these", "those", // Pronouns
+    "i", "me", "my", "we", "our", "you", "your", "it", "its", // Prepositions
+    "in", "on", "at", "to", "for", "of", "with", "from", "by", "as", // Conjunctions
+    "and", "or", "but", "so", "if", "when", "while", // Common verbs (non-technical)
+    "is", "are", "was", "were", "be", "been", "being", "do", "does", "did", "have", "has", "had",
     "can", "could", "would", "should", "will", "shall", "may", "might",
     // Conversational fillers
-    "please", "help", "need", "want", "like", "just", "also",
-    "about", "some", "any", "all", "each", "every",
-    "here", "there", "where", "what", "which", "who", "how", "why",
+    "please", "help", "need", "want", "like", "just", "also", "about", "some", "any", "all", "each",
+    "every", "here", "there", "where", "what", "which", "who", "how", "why",
     // Agent/chat context
-    "check", "look", "see", "show", "tell", "explain", "make", "let",
-    "know", "think", "try", "use", "using", "used",
+    "check", "look", "see", "show", "tell", "explain", "make", "let", "know", "think", "try", "use",
+    "using", "used",
 ];
 
 /// Common conversational prefixes that add no search value.
@@ -188,7 +182,8 @@ mod tests {
 
     #[test]
     fn test_mixed_query() {
-        let result = preprocess_for_keywords("I need to fix the HybridSearch scoring in search/hybrid.rs");
+        let result =
+            preprocess_for_keywords("I need to fix the HybridSearch scoring in search/hybrid.rs");
         assert!(result.contains("HybridSearch"));
         assert!(result.contains("scoring"));
         assert!(result.contains("search/hybrid.rs"));

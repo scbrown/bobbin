@@ -32,23 +32,52 @@ pub fn is_build_test_command(command: &str) -> bool {
     let cmd = command.trim();
     let patterns = [
         // Rust
-        "cargo build", "cargo test", "cargo check", "cargo clippy", "cargo run",
+        "cargo build",
+        "cargo test",
+        "cargo check",
+        "cargo clippy",
+        "cargo run",
         // Go
-        "go build", "go test", "go vet", "go run",
+        "go build",
+        "go test",
+        "go vet",
+        "go run",
         // Python
-        "pytest", "python -m pytest", "python3 -m pytest", "python -m unittest",
+        "pytest",
+        "python -m pytest",
+        "python3 -m pytest",
+        "python -m unittest",
         "python3 -m unittest",
         // Node/TypeScript
-        "npm test", "npm run test", "npm run build", "npx tsc", "tsc ",
-        "yarn test", "yarn build", "pnpm test", "pnpm build",
-        "node ", "deno test", "bun test",
+        "npm test",
+        "npm run test",
+        "npm run build",
+        "npx tsc",
+        "tsc ",
+        "yarn test",
+        "yarn build",
+        "pnpm test",
+        "pnpm build",
+        "node ",
+        "deno test",
+        "bun test",
         // C/C++
-        "make", "cmake", "gcc ", "g++ ", "clang ", "clang++ ",
+        "make",
+        "cmake",
+        "gcc ",
+        "g++ ",
+        "clang ",
+        "clang++ ",
         // General
-        "mvn ", "gradle ", "dotnet build", "dotnet test",
+        "mvn ",
+        "gradle ",
+        "dotnet build",
+        "dotnet test",
         "golangci-lint",
     ];
-    patterns.iter().any(|p| cmd.starts_with(p) || cmd.contains(&format!(" && {}", p)))
+    patterns
+        .iter()
+        .any(|p| cmd.starts_with(p) || cmd.contains(&format!(" && {}", p)))
 }
 
 /// Parse error output to extract file references.
@@ -65,7 +94,11 @@ pub fn parse_error_output(error: &str, command: &str) -> ParsedErrors {
         parse_go_errors(error)
     } else if command.contains("pytest") || command.contains("python") {
         parse_python_errors(error)
-    } else if command.contains("tsc") || command.contains("node") || command.contains("deno") || command.contains("bun") {
+    } else if command.contains("tsc")
+        || command.contains("node")
+        || command.contains("deno")
+        || command.contains("bun")
+    {
         parse_typescript_errors(error)
     } else {
         // Generic fallback: try all parsers
@@ -109,7 +142,9 @@ fn parse_rust_errors(error: &str) -> Vec<ErrorRef> {
     }
 
     // Extract symbol names from "cannot find value/type/function `name`"
-    let sym_re = Regex::new(r"cannot find (?:value|type|function|trait|module|struct|macro) `(\w+)`").unwrap();
+    let sym_re =
+        Regex::new(r"cannot find (?:value|type|function|trait|module|struct|macro) `(\w+)`")
+            .unwrap();
     for cap in sym_re.captures_iter(error) {
         // Attach symbol to the most recent file ref
         if let Some(last) = refs.last_mut() {
@@ -221,7 +256,8 @@ fn parse_typescript_errors(error: &str) -> Vec<ErrorRef> {
     }
 
     // Node stack trace: at ... (file:line:col) or at ... file:line:col
-    let stack_re = Regex::new(r"at\s+\S+\s+\(?([^\s():]+\.(?:ts|tsx|js|jsx)):(\d+):\d+\)?").unwrap();
+    let stack_re =
+        Regex::new(r"at\s+\S+\s+\(?([^\s():]+\.(?:ts|tsx|js|jsx)):(\d+):\d+\)?").unwrap();
     for cap in stack_re.captures_iter(error) {
         let path = &cap[1];
         if path.contains("node_modules") || path.contains("internal/") {

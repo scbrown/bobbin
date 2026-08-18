@@ -16,8 +16,8 @@ use super::{bad_request, internal_error, open_vector_store, AppState, ErrorBody}
 mod beads;
 mod helpers;
 
-use helpers::*;
 pub(super) use beads::*;
+use helpers::*;
 
 // ---------------------------------------------------------------------------
 // /archive/search
@@ -137,9 +137,7 @@ pub(super) async fn archive_search(
     // file_path prefix (new format: language='archive', path='hla:...')
     if let Some(ref source) = params.source {
         let prefix = format!("{}:", source);
-        filtered.retain(|r| {
-            &r.chunk.language == source || r.chunk.file_path.starts_with(&prefix)
-        });
+        filtered.retain(|r| &r.chunk.language == source || r.chunk.file_path.starts_with(&prefix));
     }
 
     // Apply date filters on file_path ({source}:YYYY/MM/DD/...)
@@ -179,7 +177,9 @@ pub(super) async fn archive_search(
             // Truncate at a char boundary (avoids UTF-8 panic on multi-byte chars)
             let end = if key.len() > 200 {
                 let mut i = 200;
-                while i > 0 && !key.is_char_boundary(i) { i -= 1; }
+                while i > 0 && !key.is_char_boundary(i) {
+                    i -= 1;
+                }
                 i
             } else {
                 key.len()
@@ -198,8 +198,7 @@ pub(super) async fn archive_search(
             id: r.chunk.name.clone().unwrap_or_default(),
             content: r.chunk.content.clone(),
             source: r.chunk.language.clone(),
-            timestamp: extract_date_from_archive_path(&r.chunk.file_path)
-                .unwrap_or_default(),
+            timestamp: extract_date_from_archive_path(&r.chunk.file_path).unwrap_or_default(),
             score: r.score,
             file_path: r.chunk.file_path.clone(),
         })
@@ -337,7 +336,9 @@ pub(super) async fn archive_recent(
             let end = if key.len() > 200 {
                 // Find the last char boundary at or before byte 200
                 let mut i = 200;
-                while i > 0 && !key.is_char_boundary(i) { i -= 1; }
+                while i > 0 && !key.is_char_boundary(i) {
+                    i -= 1;
+                }
                 i
             } else {
                 key.len()

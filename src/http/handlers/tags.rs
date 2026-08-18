@@ -366,9 +366,10 @@ pub(super) async fn ontology_show(
 ) -> Result<Json<OntologyTagDetail>, (StatusCode, Json<ErrorBody>)> {
     let cfg = &state.tags_config;
     let ont = &cfg.ontology;
-    let def = ont.tags.get(&tag).ok_or_else(|| {
-        bad_request(format!("Ontology tag '{}' not found", tag))
-    })?;
+    let def = ont
+        .tags
+        .get(&tag)
+        .ok_or_else(|| bad_request(format!("Ontology tag '{}' not found", tag)))?;
 
     Ok(Json(OntologyTagDetail {
         name: tag.clone(),

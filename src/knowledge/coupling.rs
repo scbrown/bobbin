@@ -40,8 +40,7 @@ pub fn push_coupling_to_quipu(
     };
 
     if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)
-            .context("Failed to create quipu store directory")?;
+        std::fs::create_dir_all(parent).context("Failed to create quipu store directory")?;
     }
 
     let mut store = quipu::Store::open(db_path.to_string_lossy().as_ref())
@@ -95,12 +94,7 @@ fn generate_coupling_turtle(couplings: &[FileCoupling], repo_name: &str) -> Stri
         writeln!(turtle, "<{coupling_iri}> a bobbin:FileCoupling ;").unwrap();
         writeln!(turtle, "    bobbin:source <{file_a_iri}> ;").unwrap();
         writeln!(turtle, "    bobbin:target <{file_b_iri}> ;").unwrap();
-        writeln!(
-            turtle,
-            "    bobbin:score \"{:.4}\"^^xsd:float ;",
-            c.score
-        )
-        .unwrap();
+        writeln!(turtle, "    bobbin:score \"{:.4}\"^^xsd:float ;", c.score).unwrap();
         writeln!(
             turtle,
             "    bobbin:co_changes \"{}\"^^xsd:integer .",
@@ -115,11 +109,7 @@ fn generate_coupling_turtle(couplings: &[FileCoupling], repo_name: &str) -> Stri
 
 /// Build the IRI for a code module entity.
 pub(crate) fn code_module_iri(repo: &str, path: &str) -> String {
-    format!(
-        "{BOBBIN_NS}code/{}/{}",
-        iri_encode(repo),
-        iri_encode(path)
-    )
+    format!("{BOBBIN_NS}code/{}/{}", iri_encode(repo), iri_encode(path))
 }
 
 /// Build a deterministic IRI for a coupling node (enables idempotent upsert).

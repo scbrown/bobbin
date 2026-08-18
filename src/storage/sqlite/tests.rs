@@ -637,11 +637,17 @@ fn test_delete_meta_resets_watermark_exactly() {
     let n = store.delete_meta("last_indexed_commit:repoA").unwrap();
     assert_eq!(n, 1, "delete_meta must report the row it removed");
     assert!(
-        store.get_meta("last_indexed_commit:repoA").unwrap().is_none(),
+        store
+            .get_meta("last_indexed_commit:repoA")
+            .unwrap()
+            .is_none(),
         "repoA watermark must be gone -> next index rebuilds from scratch",
     );
     assert_eq!(
-        store.get_meta("last_indexed_commit:repoB").unwrap().as_deref(),
+        store
+            .get_meta("last_indexed_commit:repoB")
+            .unwrap()
+            .as_deref(),
         Some("bbbb"),
         "a scoped watermark reset must spare other repos",
     );

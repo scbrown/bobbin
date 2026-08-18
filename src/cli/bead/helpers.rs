@@ -71,10 +71,7 @@ pub(super) fn resolve_feature_id(bead_id: &str) -> Option<String> {
                         Some(i) => i,
                         None => continue,
                     };
-                    let dep_type = dep
-                        .get("issue_type")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("");
+                    let dep_type = dep.get("issue_type").and_then(|t| t.as_str()).unwrap_or("");
                     if dep_type == "feature" {
                         return Some(dep_id.to_string());
                     }
@@ -91,7 +88,11 @@ pub(super) fn resolve_feature_id(bead_id: &str) -> Option<String> {
 /// Best-effort symbol extraction for a commit's changed files. For each file we
 /// parse its committed version (`git show <sha>:<path>`) and collect named
 /// chunks. Binary / unparseable / deleted files are skipped silently.
-pub(super) fn extract_touched_symbols(repo_root: &Path, sha: &str, files: &[String]) -> Vec<TouchedSymbol> {
+pub(super) fn extract_touched_symbols(
+    repo_root: &Path,
+    sha: &str,
+    files: &[String],
+) -> Vec<TouchedSymbol> {
     let mut parser = match Parser::new() {
         Ok(p) => p,
         Err(_) => return Vec::new(),

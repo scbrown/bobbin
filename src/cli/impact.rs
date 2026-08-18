@@ -112,7 +112,12 @@ pub async fn run(args: ImpactArgs, output: OutputConfig) -> Result<()> {
     let mut backend =
         IndexBackend::with_impact(&mut vector_store, &mut metadata_store, &mut embedder);
     let results = backend
-        .impact(&args.target, &impact_config, args.depth, args.repo.as_deref())
+        .impact(
+            &args.target,
+            &impact_config,
+            args.depth,
+            args.repo.as_deref(),
+        )
         .await?;
 
     // Apply role-based access filtering
@@ -151,10 +156,7 @@ pub async fn run(args: ImpactArgs, output: OutputConfig) -> Result<()> {
             return Ok(());
         }
 
-        println!(
-            "Impact analysis for {}:\n",
-            args.target.cyan(),
-        );
+        println!("Impact analysis for {}:\n", args.target.cyan(),);
 
         // Header
         println!(

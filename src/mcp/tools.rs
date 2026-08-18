@@ -8,11 +8,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchRequest {
     /// The search query (natural language description of what you're looking for)
-    #[schemars(description = "Natural language search query describing the code you're looking for")]
+    #[schemars(
+        description = "Natural language search query describing the code you're looking for"
+    )]
     pub query: String,
 
     /// Filter by chunk type (incl. commit, issue/bead, doc)
-    #[schemars(description = "Filter by chunk type: function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block, commit, issue (alias: bead), other")]
+    #[schemars(
+        description = "Filter by chunk type: function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block, commit, issue (alias: bead), other"
+    )]
     pub r#type: Option<String>,
 
     /// Maximum number of results (default: 10)
@@ -20,23 +24,33 @@ pub struct SearchRequest {
     pub limit: Option<usize>,
 
     /// Search mode: hybrid (default), semantic, or keyword
-    #[schemars(description = "Search mode: 'hybrid' (combines semantic+keyword, default), 'semantic' (vector similarity), or 'keyword' (full-text)")]
+    #[schemars(
+        description = "Search mode: 'hybrid' (combines semantic+keyword, default), 'semantic' (vector similarity), or 'keyword' (full-text)"
+    )]
     pub mode: Option<String>,
 
     /// Filter to a specific repository (searches all repos if omitted)
-    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    #[schemars(
+        description = "Filter results to a specific repository name. Omit to search across all indexed repos."
+    )]
     pub repo: Option<String>,
 
     /// Include only chunks with these tags (comma-separated)
-    #[schemars(description = "Include only chunks tagged with these tags (comma-separated, e.g. 'core,api')")]
+    #[schemars(
+        description = "Include only chunks tagged with these tags (comma-separated, e.g. 'core,api')"
+    )]
     pub tag: Option<String>,
 
     /// Exclude chunks with these tags (comma-separated)
-    #[schemars(description = "Exclude chunks tagged with these tags (comma-separated, e.g. 'test,generated')")]
+    #[schemars(
+        description = "Exclude chunks tagged with these tags (comma-separated, e.g. 'test,generated')"
+    )]
     pub exclude_tag: Option<String>,
 
     /// Scope search to a named context bundle
-    #[schemars(description = "Scope results to a named context bundle (e.g. 'context/pipeline', 'hook'). Omit to search all files.")]
+    #[schemars(
+        description = "Scope results to a named context bundle (e.g. 'context/pipeline', 'hook'). Omit to search all files."
+    )]
     pub bundle: Option<String>,
 }
 
@@ -72,7 +86,9 @@ pub struct SearchResultItem {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GrepRequest {
     /// Pattern to search for (FTS query or regex with regex=true)
-    #[schemars(description = "Pattern to search for. Supports full-text search queries, or regex if regex=true")]
+    #[schemars(
+        description = "Pattern to search for. Supports full-text search queries, or regex if regex=true"
+    )]
     pub pattern: String,
 
     /// Case insensitive search
@@ -84,7 +100,9 @@ pub struct GrepRequest {
     pub regex: Option<bool>,
 
     /// Filter by chunk type
-    #[schemars(description = "Filter by chunk type: function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block, commit, issue (alias: bead), other")]
+    #[schemars(
+        description = "Filter by chunk type: function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, code_block, commit, issue (alias: bead), other"
+    )]
     pub r#type: Option<String>,
 
     /// Maximum number of results (default: 10)
@@ -92,7 +110,9 @@ pub struct GrepRequest {
     pub limit: Option<usize>,
 
     /// Filter to a specific repository (searches all repos if omitted)
-    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    #[schemars(
+        description = "Filter results to a specific repository name. Omit to search across all indexed repos."
+    )]
     pub repo: Option<String>,
 }
 
@@ -137,39 +157,57 @@ pub struct ContextRequest {
     pub query: String,
 
     /// Maximum lines of content to include (default: 500)
-    #[schemars(description = "Maximum lines of code content to include in the context bundle (default: 500)")]
+    #[schemars(
+        description = "Maximum lines of code content to include in the context bundle (default: 500)"
+    )]
     pub budget: Option<usize>,
 
     /// Coupling expansion depth (default: 1, 0 = no coupling)
-    #[schemars(description = "Depth of temporal coupling expansion. 0 disables coupling, 1 expands one level (default: 1)")]
+    #[schemars(
+        description = "Depth of temporal coupling expansion. 0 disables coupling, 1 expands one level (default: 1)"
+    )]
     pub depth: Option<u32>,
 
     /// Max coupled files per seed file (default: 3)
-    #[schemars(description = "Maximum number of coupled files to include per seed file (default: 3)")]
+    #[schemars(
+        description = "Maximum number of coupled files to include per seed file (default: 3)"
+    )]
     pub max_coupled: Option<usize>,
 
     /// Max initial search results (default: 20)
-    #[schemars(description = "Maximum number of initial search results to use as seeds (default: 20)")]
+    #[schemars(
+        description = "Maximum number of initial search results to use as seeds (default: 20)"
+    )]
     pub limit: Option<usize>,
 
     /// Min coupling score threshold (default: 0.1)
-    #[schemars(description = "Minimum coupling score threshold for including related files (default: 0.1)")]
+    #[schemars(
+        description = "Minimum coupling score threshold for including related files (default: 0.1)"
+    )]
     pub coupling_threshold: Option<f32>,
 
     /// Filter to specific repository
-    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    #[schemars(
+        description = "Filter results to a specific repository name. Omit to search across all indexed repos."
+    )]
     pub repo: Option<String>,
 
     /// Include only chunks with these tags (comma-separated)
-    #[schemars(description = "Include only chunks tagged with these tags (comma-separated, e.g. 'core,api')")]
+    #[schemars(
+        description = "Include only chunks tagged with these tags (comma-separated, e.g. 'core,api')"
+    )]
     pub tag: Option<String>,
 
     /// Exclude chunks with these tags (comma-separated)
-    #[schemars(description = "Exclude chunks tagged with these tags (comma-separated, e.g. 'test,generated')")]
+    #[schemars(
+        description = "Exclude chunks tagged with these tags (comma-separated, e.g. 'test,generated')"
+    )]
     pub exclude_tag: Option<String>,
 
     /// Scope context to a named context bundle
-    #[schemars(description = "Scope results to a named context bundle (e.g. 'context/pipeline', 'hook'). Omit to search all files.")]
+    #[schemars(
+        description = "Scope results to a named context bundle (e.g. 'context/pipeline', 'hook'). Omit to search all files."
+    )]
     pub bundle: Option<String>,
 }
 
@@ -247,7 +285,9 @@ pub struct RelatedRequest {
     pub threshold: Option<f32>,
 
     /// Seed file's repo, to disambiguate cross-repo coupling in a shared store
-    #[schemars(description = "Repo the file belongs to (optional; disambiguates cross-repo coupling lookups in a multi-repo store)")]
+    #[schemars(
+        description = "Repo the file belongs to (optional; disambiguates cross-repo coupling lookups in a multi-repo store)"
+    )]
     pub repo: Option<String>,
 }
 
@@ -309,11 +349,15 @@ pub struct CoverageLinkOutput {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct FindRefsRequest {
     /// Symbol name to find references for
-    #[schemars(description = "Exact symbol name to find references for (e.g., 'parse_config', 'Config', 'handle_request')")]
+    #[schemars(
+        description = "Exact symbol name to find references for (e.g., 'parse_config', 'Config', 'handle_request')"
+    )]
     pub symbol: String,
 
     /// Filter by symbol type (function, struct, trait, etc.)
-    #[schemars(description = "Filter by symbol type: function, method, class, struct, enum, interface, module, impl, trait")]
+    #[schemars(
+        description = "Filter by symbol type: function, method, class, struct, enum, interface, module, impl, trait"
+    )]
     pub r#type: Option<String>,
 
     /// Maximum number of usage results (default: 20)
@@ -321,7 +365,9 @@ pub struct FindRefsRequest {
     pub limit: Option<usize>,
 
     /// Filter to a specific repository
-    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    #[schemars(
+        description = "Filter results to a specific repository name. Omit to search across all indexed repos."
+    )]
     pub repo: Option<String>,
 }
 
@@ -358,11 +404,15 @@ pub struct SymbolUsageOutput {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ListSymbolsRequest {
     /// File path (relative to repo root) to list symbols for
-    #[schemars(description = "File path (relative to repo root) to list symbols for (e.g., 'src/main.rs', 'lib/config.ts')")]
+    #[schemars(
+        description = "File path (relative to repo root) to list symbols for (e.g., 'src/main.rs', 'lib/config.ts')"
+    )]
     pub file: String,
 
     /// Filter to a specific repository
-    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    #[schemars(
+        description = "Filter results to a specific repository name. Omit to search across all indexed repos."
+    )]
     pub repo: Option<String>,
 }
 
@@ -400,7 +450,9 @@ pub struct ReadChunkRequest {
     pub end_line: u32,
 
     /// Number of context lines to include before and after
-    #[schemars(description = "Number of context lines to include before and after the chunk (default: 0)")]
+    #[schemars(
+        description = "Number of context lines to include before and after the chunk (default: 0)"
+    )]
     pub context: Option<u32>,
 }
 
@@ -420,7 +472,9 @@ pub struct ReadChunkResponse {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct HotspotsRequest {
     /// Time window for churn analysis (e.g. "6 months ago", "1 year ago")
-    #[schemars(description = "Time window for churn analysis (default: '1 year ago'). Examples: '6 months ago', '3 months ago', '2 years ago'")]
+    #[schemars(
+        description = "Time window for churn analysis (default: '1 year ago'). Examples: '6 months ago', '3 months ago', '2 years ago'"
+    )]
     pub since: Option<String>,
 
     /// Maximum number of hotspots to return (default: 20)
@@ -428,7 +482,9 @@ pub struct HotspotsRequest {
     pub limit: Option<usize>,
 
     /// Minimum hotspot score threshold (0.0-1.0, default: 0.0)
-    #[schemars(description = "Minimum hotspot score threshold (0.0-1.0, default: 0.0). Higher values filter to only the most critical hotspots.")]
+    #[schemars(
+        description = "Minimum hotspot score threshold (0.0-1.0, default: 0.0). Higher values filter to only the most critical hotspots."
+    )]
     pub threshold: Option<f32>,
 }
 
@@ -454,11 +510,15 @@ pub struct HotspotItem {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PrimeRequest {
     /// Show only a specific section (e.g. "architecture", "commands", "mcp tools")
-    #[schemars(description = "Optional section name to show. Available: 'what bobbin does', 'architecture', 'supported languages', 'key commands', 'mcp tools', 'quick start', 'configuration'. Omit to show the full primer.")]
+    #[schemars(
+        description = "Optional section name to show. Available: 'what bobbin does', 'architecture', 'supported languages', 'key commands', 'mcp tools', 'quick start', 'configuration'. Omit to show the full primer."
+    )]
     pub section: Option<String>,
 
     /// Show a brief (compact) overview only
-    #[schemars(description = "If true, show only the title and first section for a compact overview")]
+    #[schemars(
+        description = "If true, show only the title and first section for a compact overview"
+    )]
     pub brief: Option<bool>,
 }
 
@@ -496,15 +556,21 @@ pub struct PrimeLanguageStats {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImpactRequest {
     /// File path or file:function target to analyze
-    #[schemars(description = "File path or file:function target (e.g. 'src/auth.rs' or 'src/auth.rs:login_handler')")]
+    #[schemars(
+        description = "File path or file:function target (e.g. 'src/auth.rs' or 'src/auth.rs:login_handler')"
+    )]
     pub target: String,
 
     /// Transitive impact depth (1-3, default: 1)
-    #[schemars(description = "Transitive expansion depth (1 = direct only, 2-3 = expand through results with score decay). Default: 1")]
+    #[schemars(
+        description = "Transitive expansion depth (1 = direct only, 2-3 = expand through results with score decay). Default: 1"
+    )]
     pub depth: Option<u32>,
 
     /// Signal mode: combined, coupling, semantic, deps
-    #[schemars(description = "Which signals to use: 'combined' (default, uses all), 'coupling' (git co-change only), 'semantic' (vector similarity only), 'deps' (dependency graph, not yet available)")]
+    #[schemars(
+        description = "Which signals to use: 'combined' (default, uses all), 'coupling' (git co-change only), 'semantic' (vector similarity only), 'deps' (dependency graph, not yet available)"
+    )]
     pub mode: Option<String>,
 
     /// Maximum number of results (default: 15)
@@ -516,7 +582,9 @@ pub struct ImpactRequest {
     pub threshold: Option<f32>,
 
     /// Filter to a specific repository
-    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    #[schemars(
+        description = "Filter results to a specific repository name. Omit to search across all indexed repos."
+    )]
     pub repo: Option<String>,
 }
 
@@ -543,27 +611,39 @@ pub struct ImpactResultItem {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SimilarRequest {
     /// Target to find similar code for (file:name chunk ref or free text). Required unless scan is true.
-    #[schemars(description = "Target to find similar code for. Use 'file.rs:function_name' for a chunk reference, or free text like 'error handling with retry'. Required unless scan=true.")]
+    #[schemars(
+        description = "Target to find similar code for. Use 'file.rs:function_name' for a chunk reference, or free text like 'error handling with retry'. Required unless scan=true."
+    )]
     pub target: Option<String>,
 
     /// Scan entire codebase for near-duplicate clusters
-    #[schemars(description = "If true, scan entire codebase for near-duplicate clusters instead of searching for a specific target")]
+    #[schemars(
+        description = "If true, scan entire codebase for near-duplicate clusters instead of searching for a specific target"
+    )]
     pub scan: Option<bool>,
 
     /// Minimum cosine similarity threshold (default: 0.85)
-    #[schemars(description = "Minimum cosine similarity threshold (0.0-1.0, default: 0.85 for single target, 0.90 for scan)")]
+    #[schemars(
+        description = "Minimum cosine similarity threshold (0.0-1.0, default: 0.85 for single target, 0.90 for scan)"
+    )]
     pub threshold: Option<f32>,
 
     /// Maximum number of results or clusters (default: 10)
-    #[schemars(description = "Maximum number of results (single target) or clusters (scan mode) to return (default: 10)")]
+    #[schemars(
+        description = "Maximum number of results (single target) or clusters (scan mode) to return (default: 10)"
+    )]
     pub limit: Option<usize>,
 
     /// Filter to a specific repository
-    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    #[schemars(
+        description = "Filter results to a specific repository name. Omit to search across all indexed repos."
+    )]
     pub repo: Option<String>,
 
     /// In scan mode, compare chunks across different repos
-    #[schemars(description = "In scan mode, compare chunks across different repos (default: false)")]
+    #[schemars(
+        description = "In scan mode, compare chunks across different repos (default: false)"
+    )]
     pub cross_repo: Option<bool>,
 }
 
@@ -618,19 +698,27 @@ pub struct SimilarChunkRef {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReviewRequest {
     /// Diff specification: "unstaged", "staged", a branch name (prefixed with "branch:"), or a commit range like "HEAD~3..HEAD"
-    #[schemars(description = "What to diff. Use 'unstaged' for working tree changes, 'staged' for staged changes, 'branch:<name>' to compare a branch against main, or a commit range like 'HEAD~3..HEAD'.")]
+    #[schemars(
+        description = "What to diff. Use 'unstaged' for working tree changes, 'staged' for staged changes, 'branch:<name>' to compare a branch against main, or a commit range like 'HEAD~3..HEAD'."
+    )]
     pub diff: Option<String>,
 
     /// Maximum lines of context to include (default: 500)
-    #[schemars(description = "Maximum lines of code content to include in the review context (default: 500)")]
+    #[schemars(
+        description = "Maximum lines of code content to include in the review context (default: 500)"
+    )]
     pub budget: Option<usize>,
 
     /// Coupling expansion depth (default: 1, 0 = no coupling)
-    #[schemars(description = "Depth of temporal coupling expansion. 0 disables coupling, 1 expands one level (default: 1)")]
+    #[schemars(
+        description = "Depth of temporal coupling expansion. 0 disables coupling, 1 expands one level (default: 1)"
+    )]
     pub depth: Option<u32>,
 
     /// Filter coupled files to a specific repository
-    #[schemars(description = "Filter results to a specific repository name. Omit to search across all indexed repos.")]
+    #[schemars(
+        description = "Filter results to a specific repository name. Omit to search across all indexed repos."
+    )]
     pub repo: Option<String>,
 }
 
@@ -657,11 +745,15 @@ pub struct ReviewChangedFile {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchBeadsRequest {
     /// Natural language search query
-    #[schemars(description = "Natural language search query to find relevant beads/issues (e.g. 'cert expiry', 'disk pressure', 'auth bug')")]
+    #[schemars(
+        description = "Natural language search query to find relevant beads/issues (e.g. 'cert expiry', 'disk pressure', 'auth bug')"
+    )]
     pub query: String,
 
     /// Filter by priority (1-4)
-    #[schemars(description = "Filter by priority level (1=P1 critical, 2=P2 high, 3=P3 medium, 4=P4 low)")]
+    #[schemars(
+        description = "Filter by priority level (1=P1 critical, 2=P2 high, 3=P3 medium, 4=P4 low)"
+    )]
     pub priority: Option<i32>,
 
     /// Filter by status (open, in_progress, closed)
@@ -673,7 +765,9 @@ pub struct SearchBeadsRequest {
     pub assignee: Option<String>,
 
     /// Filter by rig name
-    #[schemars(description = "Filter by rig name (e.g. 'aegis', 'gastown'). Matches against the file_path prefix 'beads:<rig>:'.")]
+    #[schemars(
+        description = "Filter by rig name (e.g. 'aegis', 'gastown'). Matches against the file_path prefix 'beads:<rig>:'."
+    )]
     pub rig: Option<String>,
 
     /// Filter by issue type (bug, task, feature, epic, chore)
@@ -681,7 +775,9 @@ pub struct SearchBeadsRequest {
     pub issue_type: Option<String>,
 
     /// Filter by label (matches if any label contains the string)
-    #[schemars(description = "Filter by label (e.g. 'tech-debt', 'enhancement'). Matches if any label contains the filter string.")]
+    #[schemars(
+        description = "Filter by label (e.g. 'tech-debt', 'enhancement'). Matches if any label contains the filter string."
+    )]
     pub label: Option<String>,
 
     /// Maximum number of results (default: 10)
@@ -689,11 +785,15 @@ pub struct SearchBeadsRequest {
     pub limit: Option<usize>,
 
     /// Enrich results with live Dolt data (default: true)
-    #[schemars(description = "If true (default), enrich results with live status/priority/assignee from Dolt. Set to false for faster indexed-only results.")]
+    #[schemars(
+        description = "If true (default), enrich results with live status/priority/assignee from Dolt. Set to false for faster indexed-only results."
+    )]
     pub enrich: Option<bool>,
 
     /// Compact mode - omit snippet to reduce token usage (default: true)
-    #[schemars(description = "If true (default), omit the snippet field to reduce token overhead. Set to false to include a content snippet.")]
+    #[schemars(
+        description = "If true (default), omit the snippet field to reduce token overhead. Set to false to include a content snippet."
+    )]
     pub compact: Option<bool>,
 }
 
@@ -734,7 +834,9 @@ pub struct DependenciesRequest {
     pub file: String,
 
     /// Show reverse dependencies (files that import this file)
-    #[schemars(description = "If true, show reverse dependencies (files that import this file) instead of forward dependencies")]
+    #[schemars(
+        description = "If true, show reverse dependencies (files that import this file) instead of forward dependencies"
+    )]
     pub reverse: Option<bool>,
 
     /// Show both directions (imports and dependents)
@@ -815,7 +917,9 @@ pub struct StatusRequest {
     pub detailed: Option<bool>,
 
     /// Filter stats to a specific repository
-    #[schemars(description = "Filter statistics to a specific repository name. Omit to show stats for all repos.")]
+    #[schemars(
+        description = "Filter statistics to a specific repository name. Omit to show stats for all repos."
+    )]
     pub repo: Option<String>,
 }
 
@@ -855,15 +959,21 @@ pub struct StatusLanguageStats {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CommitSearchRequest {
     /// Natural language search query describing what the commit did (e.g. "added error handling", "refactored auth")
-    #[schemars(description = "Natural language query describing what commit(s) you're looking for. Examples: 'added authentication', 'fixed memory leak', 'refactored database layer'")]
+    #[schemars(
+        description = "Natural language query describing what commit(s) you're looking for. Examples: 'added authentication', 'fixed memory leak', 'refactored database layer'"
+    )]
     pub query: String,
 
     /// Filter by commit author name (substring match)
-    #[schemars(description = "Filter to commits by a specific author (case-insensitive substring match)")]
+    #[schemars(
+        description = "Filter to commits by a specific author (case-insensitive substring match)"
+    )]
     pub author: Option<String>,
 
     /// Filter to commits touching a specific file (substring match on file paths)
-    #[schemars(description = "Filter to commits that touched a specific file path (substring match)")]
+    #[schemars(
+        description = "Filter to commits that touched a specific file path (substring match)"
+    )]
     pub file: Option<String>,
 
     /// Maximum number of results (default: 10)
@@ -899,15 +1009,21 @@ pub struct CommitResultItem {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ArchiveSearchRequest {
     /// Natural language search query
-    #[schemars(description = "Natural language query to search archive records (e.g. 'deploy failures', 'cert renewal')")]
+    #[schemars(
+        description = "Natural language query to search archive records (e.g. 'deploy failures', 'cert renewal')"
+    )]
     pub query: String,
 
     /// Archive source filter (e.g. "hla" for chat logs, "pensieve" for agent memory)
-    #[schemars(description = "Filter by archive source: 'hla' (IRC/Telegram chat logs) or 'pensieve' (agent memory records). Omit to search all sources.")]
+    #[schemars(
+        description = "Filter by archive source: 'hla' (IRC/Telegram chat logs) or 'pensieve' (agent memory records). Omit to search all sources."
+    )]
     pub source: Option<String>,
 
     /// Filter by name/channel (e.g., channel name for HLA, agent name for Pensieve)
-    #[schemars(description = "Filter by name field value (e.g. 'telegram' for HLA channel, 'goldblum' for Pensieve agent)")]
+    #[schemars(
+        description = "Filter by name field value (e.g. 'telegram' for HLA channel, 'goldblum' for Pensieve agent)"
+    )]
     pub filter: Option<String>,
 
     /// Only include records after this date (YYYY-MM-DD)
@@ -931,11 +1047,15 @@ pub struct ArchiveSearchRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ArchiveRecentRequest {
     /// Only include records after this date (YYYY-MM-DD). Required.
-    #[schemars(description = "Only include records after this date (YYYY-MM-DD format). Required.")]
+    #[schemars(
+        description = "Only include records after this date (YYYY-MM-DD format). Required."
+    )]
     pub after: String,
 
     /// Archive source filter (e.g. "hla" for chat logs, "pensieve" for agent memory)
-    #[schemars(description = "Filter by archive source: 'hla' (IRC/Telegram chat logs) or 'pensieve' (agent memory records). Omit to list from all sources.")]
+    #[schemars(
+        description = "Filter by archive source: 'hla' (IRC/Telegram chat logs) or 'pensieve' (agent memory records). Omit to list from all sources."
+    )]
     pub source: Option<String>,
 
     /// Maximum number of results (default: 20)
@@ -949,11 +1069,15 @@ pub struct ArchiveRecentRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct FeedbackSubmitRequest {
     /// Injection ID from [injection_id: inj-xxx] in context output. Supports both standard (inj-xxx) and reaction (inj-react-xxx) IDs.
-    #[schemars(description = "Injection ID from [injection_id: inj-xxx] in context injection output")]
+    #[schemars(
+        description = "Injection ID from [injection_id: inj-xxx] in context injection output"
+    )]
     pub injection_id: String,
 
     /// Rating: useful, noise, or harmful
-    #[schemars(description = "Rating for the injection quality: 'useful' (helped with task), 'noise' (irrelevant), or 'harmful' (actively misleading)")]
+    #[schemars(
+        description = "Rating for the injection quality: 'useful' (helped with task), 'noise' (irrelevant), or 'harmful' (actively misleading)"
+    )]
     pub rating: String,
 
     /// Agent identity (auto-detected from GT_ROLE or BD_ACTOR env vars if empty)
@@ -994,15 +1118,21 @@ pub struct FeedbackStatsRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct FeedbackLineageStoreRequest {
     /// Feedback record IDs this action resolves (from feedback_list output)
-    #[schemars(description = "Feedback record IDs this action resolves. Get IDs from bobbin_feedback_list output.")]
+    #[schemars(
+        description = "Feedback record IDs this action resolves. Get IDs from bobbin_feedback_list output."
+    )]
     pub feedback_ids: Vec<i64>,
 
     /// Type of action taken: access_rule, tag_effect, config_change, code_fix, or exclusion_rule
-    #[schemars(description = "Type of action: 'code_fix' (bug fix or feature), 'config_change' (bobbin config tuning), 'tag_effect' (tag/annotation change), 'access_rule' (access control change), or 'exclusion_rule' (file exclusion)")]
+    #[schemars(
+        description = "Type of action: 'code_fix' (bug fix or feature), 'config_change' (bobbin config tuning), 'tag_effect' (tag/annotation change), 'access_rule' (access control change), or 'exclusion_rule' (file exclusion)"
+    )]
     pub action_type: String,
 
     /// Associated bead ID (e.g., "aegis-abc123")
-    #[schemars(description = "Bead ID this action is associated with (e.g. 'aegis-abc123'). Optional.")]
+    #[schemars(
+        description = "Bead ID this action is associated with (e.g. 'aegis-abc123'). Optional."
+    )]
     pub bead: Option<String>,
 
     /// Git commit hash
@@ -1010,7 +1140,9 @@ pub struct FeedbackLineageStoreRequest {
     pub commit_hash: Option<String>,
 
     /// Human-readable description of what was done
-    #[schemars(description = "What was done to address the feedback (e.g. 'Added exclusion rule for generated files')")]
+    #[schemars(
+        description = "What was done to address the feedback (e.g. 'Added exclusion rule for generated files')"
+    )]
     pub description: String,
 
     /// Agent identity (auto-detected from GT_ROLE or BD_ACTOR env vars if empty)
@@ -1044,7 +1176,9 @@ pub struct FeedbackLineageListRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct KnowledgeContextRequest {
     /// Natural language query describing what knowledge you need
-    #[schemars(description = "Natural language query describing the knowledge graph entities you're looking for")]
+    #[schemars(
+        description = "Natural language query describing the knowledge graph entities you're looking for"
+    )]
     pub query: String,
 
     /// Maximum number of entities to return (default: 20)
@@ -1052,7 +1186,9 @@ pub struct KnowledgeContextRequest {
     pub max_entities: Option<usize>,
 
     /// Whether to expand results by following links from direct hits (default: true)
-    #[schemars(description = "Expand results by following graph links from direct hits (default: true)")]
+    #[schemars(
+        description = "Expand results by following graph links from direct hits (default: true)"
+    )]
     pub expand_links: Option<bool>,
 }
 
@@ -1060,19 +1196,27 @@ pub struct KnowledgeContextRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct KnowledgeKnotRequest {
     /// Facts to assert, as Turtle.
-    #[schemars(description = "Facts to write, as RDF Turtle. Validated against the configured SHACL shapes before anything is committed.")]
+    #[schemars(
+        description = "Facts to write, as RDF Turtle. Validated against the configured SHACL shapes before anything is committed."
+    )]
     pub turtle: String,
 
     /// Who is asserting these facts.
-    #[schemars(description = "Actor recorded as the author of this write (provenance). Omit only if the caller genuinely has no identity to record.")]
+    #[schemars(
+        description = "Actor recorded as the author of this write (provenance). Omit only if the caller genuinely has no identity to record."
+    )]
     pub actor: Option<String>,
 
     /// Where the facts came from.
-    #[schemars(description = "Source of the facts (e.g. a file path, a tool name). Recorded alongside the write.")]
+    #[schemars(
+        description = "Source of the facts (e.g. a file path, a tool name). Recorded alongside the write."
+    )]
     pub source: Option<String>,
 
     /// SHACL shapes to validate against, overriding the store's configured set.
-    #[schemars(description = "Optional SHACL shapes (Turtle) to validate this write against instead of the store's configured shapes")]
+    #[schemars(
+        description = "Optional SHACL shapes (Turtle) to validate this write against instead of the store's configured shapes"
+    )]
     pub shapes: Option<String>,
 }
 
@@ -1084,7 +1228,9 @@ pub struct KnowledgeQueryRequest {
     pub query: String,
 
     /// Valid-at timestamp for temporal queries
-    #[schemars(description = "ISO-8601 timestamp for temporal query (what was true at this time?)")]
+    #[schemars(
+        description = "ISO-8601 timestamp for temporal query (what was true at this time?)"
+    )]
     pub valid_at: Option<String>,
 
     /// Transaction ID for as-of queries

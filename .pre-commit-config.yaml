@@ -12,3 +12,18 @@ repos:
     rev: v0.17.2
     hooks:
       - id: markdownlint-cli2
+
+  # GATE THE FORMATTER. Without this, `cargo fmt` was a trap rather than a
+  # courtesy: the tree was not fmt-clean, so running the formatter reformatted
+  # most of it and pushed two untouched files over the file-size limit — a
+  # contributor doing the tidy thing broke a gate in files they never opened.
+  # quipu and yupana both gate fmt; bobbin did not, which is why the drift
+  # accumulated silently. (bobbin-qd4)
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --check
+        language: system
+        types: [rust]
+        pass_filenames: false

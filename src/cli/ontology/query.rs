@@ -46,7 +46,16 @@ pub(super) fn run_show(config: &TagsConfig, args: &ShowArgs, output: &OutputConf
 
     let ancestors = config.tag_ancestors(&args.tag);
     if !ancestors.is_empty() {
-        println!("  Ancestry: {} → {}", ancestors.iter().rev().cloned().collect::<Vec<_>>().join(" → "), args.tag);
+        println!(
+            "  Ancestry: {} → {}",
+            ancestors
+                .iter()
+                .rev()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" → "),
+            args.tag
+        );
     }
 
     let children = ontology.children(&args.tag);
@@ -60,7 +69,10 @@ pub(super) fn run_show(config: &TagsConfig, args: &ShowArgs, output: &OutputConf
 
     // Show effect if defined
     if let Some(effect) = config.effects.get(&args.tag) {
-        println!("  Effect: boost={}, exclude={}, pin={}", effect.boost, effect.exclude, effect.pin);
+        println!(
+            "  Effect: boost={}, exclude={}, pin={}",
+            effect.boost, effect.exclude, effect.pin
+        );
     }
 
     // Show bundles that use this tag
@@ -77,7 +89,11 @@ pub(super) fn run_show(config: &TagsConfig, args: &ShowArgs, output: &OutputConf
     Ok(())
 }
 
-pub(super) fn run_expand(config: &TagsConfig, args: &ExpandArgs, output: &OutputConfig) -> Result<()> {
+pub(super) fn run_expand(
+    config: &TagsConfig,
+    args: &ExpandArgs,
+    output: &OutputConfig,
+) -> Result<()> {
     let ontology = &config.ontology;
 
     if ontology.is_empty() {
@@ -110,7 +126,11 @@ pub(super) fn run_expand(config: &TagsConfig, args: &ExpandArgs, output: &Output
     }
 
     println!();
-    println!("Total: {} tag(s) (1 root + {} descendants)", 1 + descendants.len(), descendants.len());
+    println!(
+        "Total: {} tag(s) (1 root + {} descendants)",
+        1 + descendants.len(),
+        descendants.len()
+    );
 
     Ok(())
 }
@@ -327,10 +347,8 @@ pub(super) fn build_tree_json(ontology: &OntologyConfig, root: Option<&str>) -> 
         let def = ontology.tags.get(tag);
         let mut children: Vec<String> = ontology.children(tag);
         children.sort();
-        let children_json: Vec<serde_json::Value> = children
-            .iter()
-            .map(|c| node_json(ontology, c))
-            .collect();
+        let children_json: Vec<serde_json::Value> =
+            children.iter().map(|c| node_json(ontology, c)).collect();
 
         serde_json::json!({
             "tag": tag,

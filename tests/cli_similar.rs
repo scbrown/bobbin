@@ -7,11 +7,19 @@ use predicates::prelude::*;
 
 #[test]
 fn similar_text_query_returns_results() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     // Use a low threshold since the test fixtures are small
     TestProject::bobbin_cmd()
-        .args(["similar", "calculator arithmetic", "--threshold", "0.5", "--path"])
+        .args([
+            "similar",
+            "calculator arithmetic",
+            "--threshold",
+            "0.5",
+            "--path",
+        ])
         .arg(project.path())
         .assert()
         .success();
@@ -19,10 +27,19 @@ fn similar_text_query_returns_results() {
 
 #[test]
 fn similar_json_output_structure() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let output = TestProject::bobbin_cmd()
-        .args(["--json", "similar", "add numbers", "--threshold", "0.5", "--path"])
+        .args([
+            "--json",
+            "similar",
+            "add numbers",
+            "--threshold",
+            "0.5",
+            "--path",
+        ])
         .arg(project.path())
         .assert()
         .success()
@@ -52,11 +69,20 @@ fn similar_json_output_structure() {
 
 #[test]
 fn similar_threshold_filters_results() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     // Very high threshold should return fewer or no results
     let output = TestProject::bobbin_cmd()
-        .args(["--json", "similar", "calculator", "--threshold", "0.99", "--path"])
+        .args([
+            "--json",
+            "similar",
+            "calculator",
+            "--threshold",
+            "0.99",
+            "--path",
+        ])
         .arg(project.path())
         .assert()
         .success()
@@ -75,10 +101,21 @@ fn similar_threshold_filters_results() {
 
 #[test]
 fn similar_limit_respected() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let output = TestProject::bobbin_cmd()
-        .args(["--json", "similar", "function", "--limit", "2", "--threshold", "0.5", "--path"])
+        .args([
+            "--json",
+            "similar",
+            "function",
+            "--limit",
+            "2",
+            "--threshold",
+            "0.5",
+            "--path",
+        ])
         .arg(project.path())
         .assert()
         .success()
@@ -94,7 +131,9 @@ fn similar_limit_respected() {
 
 #[test]
 fn similar_scan_mode_works() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     TestProject::bobbin_cmd()
         .args(["similar", "--scan", "--path"])
@@ -105,7 +144,9 @@ fn similar_scan_mode_works() {
 
 #[test]
 fn similar_scan_json_output_structure() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let output = TestProject::bobbin_cmd()
         .args(["--json", "similar", "--scan", "--path"])
@@ -140,7 +181,9 @@ fn similar_fails_without_init() {
 
 #[test]
 fn similar_no_target_and_no_scan_fails() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     TestProject::bobbin_cmd()
         .args(["similar", "--path"])

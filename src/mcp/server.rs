@@ -10,10 +10,10 @@ use regex::Regex;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    Annotated, CallToolResult, Content, GetPromptRequestParam, GetPromptResult,
-    Implementation, ListPromptsResult, ListResourcesResult, PaginatedRequestParam, Prompt,
-    PromptMessage, PromptMessageRole, ProtocolVersion, RawResource, ReadResourceRequestParam,
-    ReadResourceResult, ResourceContents, ServerCapabilities, ServerInfo,
+    Annotated, CallToolResult, Content, GetPromptRequestParam, GetPromptResult, Implementation,
+    ListPromptsResult, ListResourcesResult, PaginatedRequestParam, Prompt, PromptMessage,
+    PromptMessageRole, ProtocolVersion, RawResource, ReadResourceRequestParam, ReadResourceResult,
+    ResourceContents, ServerCapabilities, ServerInfo,
 };
 use rmcp::service::RequestContext;
 use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler};
@@ -21,17 +21,19 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, S
 use super::tools::*;
 #[allow(unused_imports)]
 use super::tools::{KnowledgeContextRequest, KnowledgeKnotRequest, KnowledgeQueryRequest};
-use crate::config::Config;
-use crate::index::Embedder;
-use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig, FileRelevance};
-use crate::search::{HybridSearch, SemanticSearch};
-use crate::storage::{FeedbackStore, MetadataStore, VectorStore};
 use crate::analysis::backend::{IndexBackend, StructuralBackend};
 use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::impact::{ImpactConfig, ImpactMode, ImpactSignal};
 use crate::analysis::similar::{SimilarTarget, SimilarityAnalyzer};
-use crate::tags::{build_tag_exclude_filter, build_tag_include_filter};
+use crate::config::Config;
+use crate::index::Embedder;
 use crate::index::GitAnalyzer;
+use crate::search::context::{
+    BridgeMode, ContentMode, ContextAssembler, ContextConfig, FileRelevance,
+};
+use crate::search::{HybridSearch, SemanticSearch};
+use crate::storage::{FeedbackStore, MetadataStore, VectorStore};
+use crate::tags::{build_tag_exclude_filter, build_tag_include_filter};
 use crate::types::{ChunkType, MatchType, SearchResult};
 
 /// MCP Server for Bobbin code search
@@ -126,11 +128,12 @@ impl BobbinMcpServer {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         if !status.is_success() {
-            anyhow::bail!("remote quipu {path} returned HTTP {status}: {}",
-                text.chars().take(300).collect::<String>());
+            anyhow::bail!(
+                "remote quipu {path} returned HTTP {status}: {}",
+                text.chars().take(300).collect::<String>()
+            );
         }
-        serde_json::from_str(&text)
-            .with_context(|| format!("parsing remote quipu {path} response"))
+        serde_json::from_str(&text).with_context(|| format!("parsing remote quipu {path} response"))
     }
 
     /// Trim a knowledge payload so it fits a caller's tool-output budget.
@@ -160,7 +163,10 @@ impl BobbinMcpServer {
                 let total = a.len();
                 if total > max_arr {
                     a.truncate(max_arr);
-                    a.push(Value::String(format!("… [+{} more omitted]", total - max_arr)));
+                    a.push(Value::String(format!(
+                        "… [+{} more omitted]",
+                        total - max_arr
+                    )));
                 }
                 for item in a.iter_mut() {
                     Self::trim_payload(item, max_str, max_arr);
@@ -186,7 +192,7 @@ impl BobbinMcpServer {
             "local_code_graph": {
                 "path": self.quipu_store_path().to_string_lossy(),
                 "contains": "bobbin's OWN graph: code entities and file-coupling \
-derived from git history (IRIs under https://bobbin.dev/)",
+        derived from git history (IRIs under https://bobbin.dev/)",
             },
             "ontology": match self.quipu_remote_url() {
                 Some(url) => serde_json::json!({
@@ -197,8 +203,8 @@ derived from git history (IRIs under https://bobbin.dev/)",
                 None => serde_json::json!({
                     "configured": false,
                     "note": "No ontology Quipu configured (set `quipu_endpoint` in \
-bobbin's config, or BOBBIN_QUIPU_REMOTE). Ontology facts are NOT being consulted — \
-an empty ontology section here means NOT ASKED, not 'not present'.",
+        bobbin's config, or BOBBIN_QUIPU_REMOTE). Ontology facts are NOT being consulted — \
+        an empty ontology section here means NOT ASKED, not 'not present'.",
                 }),
             },
         })
@@ -229,7 +235,7 @@ an empty ontology section here means NOT ASKED, not 'not present'.",
                 "consulted": true,
                 "error": format!("{e:#}"),
                 "warning": "The ontology could NOT be reached. This is a TRANSPORT \
-FAILURE, not an empty result — do not read it as 'the fact is absent'.",
+            FAILURE, not an empty result — do not read it as 'the fact is absent'.",
             }),
         }
     }
@@ -240,8 +246,7 @@ FAILURE, not an empty result — do not read it as 'the fact is absent'.",
         let db_path = self.quipu_store_path();
         // Ensure parent directory exists.
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)
-                .context("Failed to create quipu store directory")?;
+            std::fs::create_dir_all(parent).context("Failed to create quipu store directory")?;
         }
         let mut store = quipu::Store::open(db_path.to_string_lossy().as_ref())
             .map_err(|e| anyhow::anyhow!("Failed to open quipu store: {e}"))?;
@@ -275,9 +280,7 @@ FAILURE, not an empty result — do not read it as 'the fact is absent'.",
                 crate::knowledge::embedding::attach_embedder(store, std::sync::Arc::new(embedder));
             }
             Err(e) => {
-                tracing::warn!(
-                    "knowledge graph will not auto-embed (embedder unavailable): {e:#}"
-                );
+                tracing::warn!("knowledge graph will not auto-embed (embedder unavailable): {e:#}");
             }
         }
     }
@@ -326,13 +329,21 @@ FAILURE, not an empty result — do not read it as 'the fact is absent'.",
     fn build_tag_filter(tag: Option<&str>, exclude_tag: Option<&str>) -> Option<String> {
         let mut filters: Vec<String> = Vec::new();
         if let Some(tags) = tag {
-            let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+            let tag_list: Vec<String> = tags
+                .split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect();
             if !tag_list.is_empty() {
                 filters.push(build_tag_include_filter(&tag_list));
             }
         }
         if let Some(tags) = exclude_tag {
-            let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+            let tag_list: Vec<String> = tags
+                .split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect();
             if !tag_list.is_empty() {
                 filters.push(build_tag_exclude_filter(&tag_list));
             }
@@ -560,7 +571,9 @@ FAILURE, not an empty result — do not read it as 'the fact is absent'.",
 #[tool_router]
 impl BobbinMcpServer {
     /// Semantic search for code
-    #[tool(description = "Search for code using natural language. Finds functions, classes, and other code elements that match the semantic meaning of your query. Best for: 'functions that handle authentication', 'error handling code', 'database connection logic'.")]
+    #[tool(
+        description = "Search for code using natural language. Finds functions, classes, and other code elements that match the semantic meaning of your query. Best for: 'functions that handle authentication', 'error handling code', 'database connection logic'."
+    )]
     async fn search(
         &self,
         Parameters(req): Parameters<SearchRequest>,
@@ -569,7 +582,10 @@ impl BobbinMcpServer {
         let mode = req.mode.as_deref().unwrap_or("hybrid");
 
         let type_filter = if let Some(ref t) = req.r#type {
-            Some(Self::parse_chunk_type(t).map_err(|e| McpError::internal_error(e.to_string(), None))?)
+            Some(
+                Self::parse_chunk_type(t)
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?,
+            )
         } else {
             None
         };
@@ -578,10 +594,14 @@ impl BobbinMcpServer {
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let stats = vector_store.get_stats(None).await
+        let stats = vector_store
+            .get_stats(None)
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         if stats.total_chunks == 0 {
             return Ok(CallToolResult::success(vec![Content::text(
@@ -628,17 +648,24 @@ impl BobbinMcpServer {
                 if mode == "semantic" {
                     let mut search = SemanticSearch::new(embedder, vector_store);
                     search
-                        .search_filtered(&req.query, search_limit, repo_filter, tag_filter.as_deref())
+                        .search_filtered(
+                            &req.query,
+                            search_limit,
+                            repo_filter,
+                            tag_filter.as_deref(),
+                        )
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?
                 } else {
-                    let mut search = HybridSearch::new(
-                        embedder,
-                        vector_store,
-                        config.search.semantic_weight,
-                    );
+                    let mut search =
+                        HybridSearch::new(embedder, vector_store, config.search.semantic_weight);
                     search
-                        .search_filtered(&req.query, search_limit, repo_filter, tag_filter.as_deref())
+                        .search_filtered(
+                            &req.query,
+                            search_limit,
+                            repo_filter,
+                            tag_filter.as_deref(),
+                        )
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?
                 }
@@ -646,7 +673,10 @@ impl BobbinMcpServer {
 
             _ => {
                 return Err(McpError::invalid_params(
-                    format!("Invalid search mode: {}. Use 'hybrid', 'semantic', or 'keyword'", mode),
+                    format!(
+                        "Invalid search mode: {}. Use 'hybrid', 'semantic', or 'keyword'",
+                        mode
+                    ),
                     None,
                 ));
             }
@@ -676,14 +706,22 @@ impl BobbinMcpServer {
     }
 
     /// Keyword/regex search
-    #[tool(description = "Search for code using exact keywords or regex patterns. Best for: finding specific function names, variable references, or pattern matching. Use ignore_case=true for case-insensitive search, regex=true for regex patterns.")]
-    async fn grep(&self, Parameters(req): Parameters<GrepRequest>) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Search for code using exact keywords or regex patterns. Best for: finding specific function names, variable references, or pattern matching. Use ignore_case=true for case-insensitive search, regex=true for regex patterns."
+    )]
+    async fn grep(
+        &self,
+        Parameters(req): Parameters<GrepRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let limit = req.limit.unwrap_or(10);
         let ignore_case = req.ignore_case.unwrap_or(false);
         let use_regex = req.regex.unwrap_or(false);
 
         let type_filter = if let Some(ref t) = req.r#type {
-            Some(Self::parse_chunk_type(t).map_err(|e| McpError::internal_error(e.to_string(), None))?)
+            Some(
+                Self::parse_chunk_type(t)
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?,
+            )
         } else {
             None
         };
@@ -702,10 +740,14 @@ impl BobbinMcpServer {
             None
         };
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let stats = vector_store.get_stats(None).await
+        let stats = vector_store
+            .get_stats(None)
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         if stats.total_chunks == 0 {
             return Ok(CallToolResult::success(vec![Content::text(
@@ -718,7 +760,13 @@ impl BobbinMcpServer {
             let cleaned: String = req
                 .pattern
                 .chars()
-                .map(|c| if c.is_alphanumeric() || c == '_' || c == ' ' { c } else { ' ' })
+                .map(|c| {
+                    if c.is_alphanumeric() || c == '_' || c == ' ' {
+                        c
+                    } else {
+                        ' '
+                    }
+                })
                 .collect();
             let words: Vec<&str> = cleaned
                 .split_whitespace()
@@ -764,7 +812,10 @@ impl BobbinMcpServer {
             .filter(|r| {
                 if !ignore_case && regex_pattern.is_none() {
                     r.chunk.content.contains(&req.pattern)
-                        || r.chunk.name.as_ref().is_some_and(|n| n.contains(&req.pattern))
+                        || r.chunk
+                            .name
+                            .as_ref()
+                            .is_some_and(|n| n.contains(&req.pattern))
                 } else {
                     true
                 }
@@ -806,7 +857,9 @@ impl BobbinMcpServer {
     }
 
     /// Assemble task-relevant context
-    #[tool(description = "Assemble a comprehensive context bundle for a task. Given a natural language task description, combines semantic search results with temporally coupled files from git history. Returns a deduplicated, budget-aware set of relevant code chunks grouped by file. Ideal for understanding everything relevant to a task before making changes.")]
+    #[tool(
+        description = "Assemble a comprehensive context bundle for a task. Given a natural language task description, combines semantic search results with temporally coupled files from git history. Returns a deduplicated, budget-aware set of relevant code chunks grouped by file. Ideal for understanding everything relevant to a task before making changes."
+    )]
     async fn context(
         &self,
         Parameters(req): Parameters<ContextRequest>,
@@ -815,10 +868,14 @@ impl BobbinMcpServer {
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let stats = vector_store.get_stats(None).await
+        let stats = vector_store
+            .get_stats(None)
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         if stats.total_chunks == 0 {
             return Ok(CallToolResult::success(vec![Content::text(
@@ -826,16 +883,18 @@ impl BobbinMcpServer {
             )]));
         }
 
-        let metadata_store = self.open_metadata_store()
+        let metadata_store = self
+            .open_metadata_store()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let model_dir = Config::model_cache_dir()
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let model_dir =
+            Config::model_cache_dir().map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let embedder = Embedder::from_config(&config.embedding, &model_dir)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let mut extra_filter = Self::build_tag_filter(req.tag.as_deref(), req.exclude_tag.as_deref());
+        let mut extra_filter =
+            Self::build_tag_filter(req.tag.as_deref(), req.exclude_tag.as_deref());
 
         // Apply bundle filter if specified
         if let Some(ref bundle_name) = req.bundle {
@@ -875,7 +934,8 @@ impl BobbinMcpServer {
             ..ContextConfig::default()
         };
 
-        let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+        let mut assembler =
+            ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
         let bundle = assembler
             .assemble(&req.query, req.repo.as_deref())
             .await
@@ -887,33 +947,41 @@ impl BobbinMcpServer {
                 max_lines: bundle.budget.max_lines,
                 used_lines: bundle.budget.used_lines,
             },
-            files: bundle.files.iter().map(|f| ContextFileOutput {
-                path: f.path.clone(),
-                language: f.language.clone(),
-                relevance: match f.relevance {
-                    FileRelevance::Direct => "direct".to_string(),
-                    FileRelevance::Coupled => "coupled".to_string(),
-                    FileRelevance::Bridged => "bridged".to_string(),
-                    FileRelevance::Pinned => "pinned".to_string(),
-                    FileRelevance::Knowledge => "knowledge".to_string(),
-                },
-                score: f.score,
-                coupled_to: f.coupled_to.clone(),
-                chunks: f.chunks.iter().map(|c| ContextChunkOutput {
-                    name: c.name.clone(),
-                    chunk_type: c.chunk_type.to_string(),
-                    start_line: c.start_line,
-                    end_line: c.end_line,
-                    score: c.score,
-                    match_type: c.match_type.map(|mt| match mt {
-                        MatchType::Semantic => "semantic".to_string(),
-                        MatchType::Keyword => "keyword".to_string(),
-                        MatchType::Hybrid => "hybrid".to_string(),
-                    }),
-                    content: c.content.clone(),
-                }).collect(),
-                repo: f.repo.clone(),
-            }).collect(),
+            files: bundle
+                .files
+                .iter()
+                .map(|f| ContextFileOutput {
+                    path: f.path.clone(),
+                    language: f.language.clone(),
+                    relevance: match f.relevance {
+                        FileRelevance::Direct => "direct".to_string(),
+                        FileRelevance::Coupled => "coupled".to_string(),
+                        FileRelevance::Bridged => "bridged".to_string(),
+                        FileRelevance::Pinned => "pinned".to_string(),
+                        FileRelevance::Knowledge => "knowledge".to_string(),
+                    },
+                    score: f.score,
+                    coupled_to: f.coupled_to.clone(),
+                    chunks: f
+                        .chunks
+                        .iter()
+                        .map(|c| ContextChunkOutput {
+                            name: c.name.clone(),
+                            chunk_type: c.chunk_type.to_string(),
+                            start_line: c.start_line,
+                            end_line: c.end_line,
+                            score: c.score,
+                            match_type: c.match_type.map(|mt| match mt {
+                                MatchType::Semantic => "semantic".to_string(),
+                                MatchType::Keyword => "keyword".to_string(),
+                                MatchType::Hybrid => "hybrid".to_string(),
+                            }),
+                            content: c.content.clone(),
+                        })
+                        .collect(),
+                    repo: f.repo.clone(),
+                })
+                .collect(),
             summary: ContextSummaryOutput {
                 total_files: bundle.summary.total_files,
                 total_chunks: bundle.summary.total_chunks,
@@ -932,7 +1000,9 @@ impl BobbinMcpServer {
     }
 
     /// Find related files
-    #[tool(description = "Find files that are related to a given file based on git commit history. Files that frequently change together have higher coupling scores. Useful for understanding dependencies and impact analysis.")]
+    #[tool(
+        description = "Find files that are related to a given file based on git commit history. Files that frequently change together have higher coupling scores. Useful for understanding dependencies and impact analysis."
+    )]
     async fn related(
         &self,
         Parameters(req): Parameters<RelatedRequest>,
@@ -940,7 +1010,9 @@ impl BobbinMcpServer {
         let limit = req.limit.unwrap_or(10);
         let threshold = req.threshold.unwrap_or(0.0);
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         // Verify file exists in index via LanceDB
@@ -957,7 +1029,8 @@ impl BobbinMcpServer {
         }
 
         // Coupling data is in SQLite
-        let store = self.open_metadata_store()
+        let store = self
+            .open_metadata_store()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let couplings = store
@@ -1004,7 +1077,11 @@ impl BobbinMcpServer {
             co_changes: c.co_changes,
             repo: Some(c.repo),
         }));
-        related.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        related.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         related.truncate(limit);
 
         let response = RelatedResponse {
@@ -1019,7 +1096,9 @@ impl BobbinMcpServer {
     }
 
     /// Map test↔source coverage
-    #[tool(description = "Map test↔source coverage inferred from git co-change history. Given a source file, returns the test files that change with it (the tests that likely cover it); given a test file, returns the source files it covers. Useful for: 'which tests exercise auth.rs?', 'what does test_auth.rs cover?'.")]
+    #[tool(
+        description = "Map test↔source coverage inferred from git co-change history. Given a source file, returns the test files that change with it (the tests that likely cover it); given a test file, returns the source files it covers. Useful for: 'which tests exercise auth.rs?', 'what does test_auth.rs cover?'."
+    )]
     async fn test_coverage(
         &self,
         Parameters(req): Parameters<TestCoverageRequest>,
@@ -1027,7 +1106,9 @@ impl BobbinMcpServer {
         let limit = req.limit.unwrap_or(10);
         let threshold = req.threshold.unwrap_or(0.0);
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         // Verify file exists in index via LanceDB
@@ -1044,15 +1125,15 @@ impl BobbinMcpServer {
         }
 
         // Coupling data is in SQLite
-        let store = self.open_metadata_store()
+        let store = self
+            .open_metadata_store()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let couplings = store
             .get_coupling(&req.file, limit)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let (direction, links) =
-            crate::index::coverage::derive_coverage(&req.file, couplings);
+        let (direction, links) = crate::index::coverage::derive_coverage(&req.file, couplings);
 
         let links: Vec<CoverageLinkOutput> = links
             .into_iter()
@@ -1077,19 +1158,28 @@ impl BobbinMcpServer {
     }
 
     /// Find symbol references
-    #[tool(description = "Find the definition and all usages of a symbol by name. Returns the definition location (file, line, signature) and all usage sites across the codebase. Best for: 'where is parse_config defined?', 'who calls handle_request?', 'find all uses of Config struct'.")]
+    #[tool(
+        description = "Find the definition and all usages of a symbol by name. Returns the definition location (file, line, signature) and all usage sites across the codebase. Best for: 'where is parse_config defined?', 'who calls handle_request?', 'find all uses of Config struct'."
+    )]
     async fn find_refs(
         &self,
         Parameters(req): Parameters<FindRefsRequest>,
     ) -> Result<CallToolResult, McpError> {
         let limit = req.limit.unwrap_or(20);
 
-        let mut vector_store = self.open_vector_store().await
+        let mut vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let mut backend = IndexBackend::new(&mut vector_store);
         let refs = backend
-            .find_refs(&req.symbol, req.r#type.as_deref(), limit, req.repo.as_deref())
+            .find_refs(
+                &req.symbol,
+                req.r#type.as_deref(),
+                limit,
+                req.repo.as_deref(),
+            )
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
@@ -1122,12 +1212,16 @@ impl BobbinMcpServer {
     }
 
     /// List symbols in a file
-    #[tool(description = "List all symbols (functions, structs, traits, etc.) defined in a file. Returns each symbol's name, type, line range, and signature. Best for: 'what functions are in main.rs?', 'list all structs in config.rs', 'show me the API of this module'.")]
+    #[tool(
+        description = "List all symbols (functions, structs, traits, etc.) defined in a file. Returns each symbol's name, type, line range, and signature. Best for: 'what functions are in main.rs?', 'list all structs in config.rs', 'show me the API of this module'."
+    )]
     async fn list_symbols(
         &self,
         Parameters(req): Parameters<ListSymbolsRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let mut vector_store = self.open_vector_store().await
+        let mut vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let mut backend = IndexBackend::new(&mut vector_store);
@@ -1159,7 +1253,9 @@ impl BobbinMcpServer {
     }
 
     /// Read a specific code chunk
-    #[tool(description = "Read a specific section of code from a file. Specify the file path and line range. Optionally include context lines before and after.")]
+    #[tool(
+        description = "Read a specific section of code from a file. Specify the file path and line range. Optionally include context lines before and after."
+    )]
     async fn read_chunk(
         &self,
         Parameters(req): Parameters<ReadChunkRequest>,
@@ -1187,7 +1283,9 @@ impl BobbinMcpServer {
     }
 
     /// Identify code hotspots
-    #[tool(description = "Identify code hotspots — files that are both frequently changed (high churn) and complex. Hotspots are the riskiest parts of a codebase: they change often and are hard to change safely. Score is the geometric mean of normalized churn and AST complexity. Best for: 'which files need refactoring?', 'find risky code', 'where are the maintenance bottlenecks?'.")]
+    #[tool(
+        description = "Identify code hotspots — files that are both frequently changed (high churn) and complex. Hotspots are the riskiest parts of a codebase: they change often and are hard to change safely. Score is the geometric mean of normalized churn and AST complexity. Best for: 'which files need refactoring?', 'find risky code', 'where are the maintenance bottlenecks?'."
+    )]
     async fn hotspots(
         &self,
         Parameters(req): Parameters<HotspotsRequest>,
@@ -1214,8 +1312,8 @@ impl BobbinMcpServer {
             return Ok(CallToolResult::success(vec![Content::text(json)]));
         }
 
-        let mut analyzer = ComplexityAnalyzer::new()
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let mut analyzer =
+            ComplexityAnalyzer::new().map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let max_churn = churn_map.values().copied().max().unwrap_or(1) as f32;
         let mut hotspots: Vec<HotspotItem> = Vec::new();
@@ -1254,8 +1352,11 @@ impl BobbinMcpServer {
             }
         }
 
-        hotspots
-            .sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        hotspots.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         hotspots.truncate(limit);
 
         let response = HotspotsResponse {
@@ -1271,7 +1372,9 @@ impl BobbinMcpServer {
     }
 
     /// Impact analysis
-    #[tool(description = "Predict which files are affected by a change to a target file or function. Combines git co-change coupling and semantic similarity signals, with optional transitive expansion. Returns a ranked list of impacted files with signal attribution and scores. Best for: 'what breaks if I change this?', 'which files should I review after touching auth.rs?'.")]
+    #[tool(
+        description = "Predict which files are affected by a change to a target file or function. Combines git co-change coupling and semantic similarity signals, with optional transitive expansion. Returns a ranked list of impacted files with signal attribution and scores. Best for: 'what breaks if I change this?', 'which files should I review after touching auth.rs?'."
+    )]
     async fn impact(
         &self,
         Parameters(req): Parameters<ImpactRequest>,
@@ -1288,7 +1391,10 @@ impl BobbinMcpServer {
             "deps" => ImpactMode::Deps,
             _ => {
                 return Err(McpError::invalid_params(
-                    format!("Invalid mode: {}. Use: combined, coupling, semantic, deps", mode_str),
+                    format!(
+                        "Invalid mode: {}. Use: combined, coupling, semantic, deps",
+                        mode_str
+                    ),
                     None,
                 ));
             }
@@ -1304,12 +1410,15 @@ impl BobbinMcpServer {
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let mut metadata_store = self.open_metadata_store()
+        let mut metadata_store = self
+            .open_metadata_store()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-        let mut vector_store = self.open_vector_store().await
+        let mut vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-        let model_dir = Config::model_cache_dir()
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let model_dir =
+            Config::model_cache_dir().map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let mut embedder = Embedder::from_config(&config.embedding, &model_dir)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
@@ -1352,7 +1461,9 @@ impl BobbinMcpServer {
     }
 
     /// Diff-aware review context
-    #[tool(description = "Assemble review context from a git diff. Given a diff specification (unstaged changes, staged changes, branch comparison, or commit range), finds the indexed code chunks that overlap with the changed lines and expands via temporal coupling. Returns a budget-aware context bundle with changed-file annotations. Ideal for code review: 'what do I need to understand to review these changes?'")]
+    #[tool(
+        description = "Assemble review context from a git diff. Given a diff specification (unstaged changes, staged changes, branch comparison, or commit range), finds the indexed code chunks that overlap with the changed lines and expands via temporal coupling. Returns a budget-aware context bundle with changed-file annotations. Ideal for code review: 'what do I need to understand to review these changes?'"
+    )]
     async fn review(
         &self,
         Parameters(req): Parameters<ReviewRequest>,
@@ -1361,10 +1472,14 @@ impl BobbinMcpServer {
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let stats = vector_store.get_stats(None).await
+        let stats = vector_store
+            .get_stats(None)
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         if stats.total_chunks == 0 {
             return Ok(CallToolResult::success(vec![Content::text(
@@ -1372,11 +1487,12 @@ impl BobbinMcpServer {
             )]));
         }
 
-        let metadata_store = self.open_metadata_store()
+        let metadata_store = self
+            .open_metadata_store()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let model_dir = Config::model_cache_dir()
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let model_dir =
+            Config::model_cache_dir().map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let embedder = Embedder::from_config(&config.embedding, &model_dir)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -1432,7 +1548,8 @@ impl BobbinMcpServer {
             ..ContextConfig::default()
         };
 
-        let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+        let mut assembler =
+            ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
         let bundle = assembler
             .assemble_from_seeds(&diff_description, seeds, req.repo.as_deref())
             .await
@@ -1453,33 +1570,41 @@ impl BobbinMcpServer {
                 max_lines: bundle.budget.max_lines,
                 used_lines: bundle.budget.used_lines,
             },
-            files: bundle.files.iter().map(|f| ContextFileOutput {
-                path: f.path.clone(),
-                language: f.language.clone(),
-                relevance: match f.relevance {
-                    FileRelevance::Direct => "direct".to_string(),
-                    FileRelevance::Coupled => "coupled".to_string(),
-                    FileRelevance::Bridged => "bridged".to_string(),
-                    FileRelevance::Pinned => "pinned".to_string(),
-                    FileRelevance::Knowledge => "knowledge".to_string(),
-                },
-                score: f.score,
-                coupled_to: f.coupled_to.clone(),
-                chunks: f.chunks.iter().map(|c| ContextChunkOutput {
-                    name: c.name.clone(),
-                    chunk_type: c.chunk_type.to_string(),
-                    start_line: c.start_line,
-                    end_line: c.end_line,
-                    score: c.score,
-                    match_type: c.match_type.map(|mt| match mt {
-                        MatchType::Semantic => "semantic".to_string(),
-                        MatchType::Keyword => "keyword".to_string(),
-                        MatchType::Hybrid => "hybrid".to_string(),
-                    }),
-                    content: c.content.clone(),
-                }).collect(),
-                repo: f.repo.clone(),
-            }).collect(),
+            files: bundle
+                .files
+                .iter()
+                .map(|f| ContextFileOutput {
+                    path: f.path.clone(),
+                    language: f.language.clone(),
+                    relevance: match f.relevance {
+                        FileRelevance::Direct => "direct".to_string(),
+                        FileRelevance::Coupled => "coupled".to_string(),
+                        FileRelevance::Bridged => "bridged".to_string(),
+                        FileRelevance::Pinned => "pinned".to_string(),
+                        FileRelevance::Knowledge => "knowledge".to_string(),
+                    },
+                    score: f.score,
+                    coupled_to: f.coupled_to.clone(),
+                    chunks: f
+                        .chunks
+                        .iter()
+                        .map(|c| ContextChunkOutput {
+                            name: c.name.clone(),
+                            chunk_type: c.chunk_type.to_string(),
+                            start_line: c.start_line,
+                            end_line: c.end_line,
+                            score: c.score,
+                            match_type: c.match_type.map(|mt| match mt {
+                                MatchType::Semantic => "semantic".to_string(),
+                                MatchType::Keyword => "keyword".to_string(),
+                                MatchType::Hybrid => "hybrid".to_string(),
+                            }),
+                            content: c.content.clone(),
+                        })
+                        .collect(),
+                    repo: f.repo.clone(),
+                })
+                .collect(),
             summary: ContextSummaryOutput {
                 total_files: bundle.summary.total_files,
                 total_chunks: bundle.summary.total_chunks,
@@ -1498,7 +1623,9 @@ impl BobbinMcpServer {
     }
 
     /// Find similar code or scan for duplicates
-    #[tool(description = "Find code chunks semantically similar to a target, or scan the entire codebase for near-duplicate clusters. Single-target mode: provide a chunk reference ('file.rs:function_name') or free text to find similar code. Scan mode: set scan=true to detect duplicate/near-duplicate code clusters across the codebase. Useful for: 'find code similar to this function', 'detect copy-paste duplicates', 'find redundant implementations'.")]
+    #[tool(
+        description = "Find code chunks semantically similar to a target, or scan the entire codebase for near-duplicate clusters. Single-target mode: provide a chunk reference ('file.rs:function_name') or free text to find similar code. Scan mode: set scan=true to detect duplicate/near-duplicate code clusters across the codebase. Useful for: 'find code similar to this function', 'detect copy-paste duplicates', 'find redundant implementations'."
+    )]
     async fn similar(
         &self,
         Parameters(req): Parameters<SimilarRequest>,
@@ -1511,10 +1638,14 @@ impl BobbinMcpServer {
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let stats = vector_store.get_stats(None).await
+        let stats = vector_store
+            .get_stats(None)
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         if stats.total_chunks == 0 {
             return Ok(CallToolResult::success(vec![Content::text(
@@ -1522,8 +1653,8 @@ impl BobbinMcpServer {
             )]));
         }
 
-        let model_dir = Config::model_cache_dir()
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let model_dir =
+            Config::model_cache_dir().map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let embedder = Embedder::from_config(&config.embedding, &model_dir)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -1619,7 +1750,9 @@ impl BobbinMcpServer {
     }
 
     /// Project primer/overview
-    #[tool(description = "Get an LLM-friendly overview of Bobbin with live index statistics. Shows what Bobbin does, architecture, available commands, and MCP tools. Use 'section' to get a specific part, or 'brief' for a compact summary. Always includes live stats when the index is initialized.")]
+    #[tool(
+        description = "Get an LLM-friendly overview of Bobbin with live index statistics. Shows what Bobbin does, architecture, available commands, and MCP tools. Use 'section' to get a specific part, or 'brief' for a compact summary. Always includes live stats when the index is initialized."
+    )]
     async fn prime(
         &self,
         Parameters(req): Parameters<PrimeRequest>,
@@ -1673,7 +1806,9 @@ impl BobbinMcpServer {
     }
 
     /// Search indexed beads (issues) semantically, with optional live Dolt enrichment
-    #[tool(description = "Search for beads (issues/tasks from the Dolt issue tracker) using natural language. Finds issues related to your query by semantic similarity. Filter by priority, status, assignee, rig, issue_type, or label. Results are enriched with live Dolt metadata by default (set enrich=false for faster indexed-only results). Compact mode (default) omits snippets to save tokens. Requires beads to be indexed first via `bobbin index --include-beads`.")]
+    #[tool(
+        description = "Search for beads (issues/tasks from the Dolt issue tracker) using natural language. Finds issues related to your query by semantic similarity. Filter by priority, status, assignee, rig, issue_type, or label. Results are enriched with live Dolt metadata by default (set enrich=false for faster indexed-only results). Compact mode (default) omits snippets to save tokens. Requires beads to be indexed first via `bobbin index --include-beads`."
+    )]
     async fn search_beads(
         &self,
         Parameters(req): Parameters<SearchBeadsRequest>,
@@ -1686,19 +1821,17 @@ impl BobbinMcpServer {
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let model_dir = Config::model_cache_dir()
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let model_dir =
+            Config::model_cache_dir().map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let embedder = Embedder::from_config(&config.embedding, &model_dir)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let mut search = HybridSearch::new(
-            embedder,
-            vector_store,
-            config.search.semantic_weight,
-        );
+        let mut search = HybridSearch::new(embedder, vector_store, config.search.semantic_weight);
 
         // Fetch more results than needed so we can filter
         let search_results = search
@@ -1740,8 +1873,11 @@ impl BobbinMcpServer {
         };
 
         // Apply all filters using live data when available
-        let has_filters = req.status.is_some() || req.priority.is_some()
-            || req.assignee.is_some() || req.issue_type.is_some() || req.label.is_some();
+        let has_filters = req.status.is_some()
+            || req.priority.is_some()
+            || req.assignee.is_some()
+            || req.issue_type.is_some()
+            || req.label.is_some();
         if has_filters {
             filtered.retain(|r| {
                 let bead_id = r.chunk.file_path.split(':').nth(2).unwrap_or("");
@@ -1807,7 +1943,8 @@ impl BobbinMcpServer {
             // Title match boost: if query terms appear in the title, boost score
             if let Some(ref name) = result.chunk.name {
                 let title_lower = name.to_lowercase();
-                let matching_terms = query_terms.iter()
+                let matching_terms = query_terms
+                    .iter()
                     .filter(|t| title_lower.contains(**t))
                     .count();
                 if matching_terms > 0 {
@@ -1830,7 +1967,11 @@ impl BobbinMcpServer {
         }
 
         // Re-sort by boosted score
-        filtered.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        filtered.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         filtered.truncate(limit);
 
         // Convert to bead-specific response, using live metadata when available
@@ -1839,9 +1980,15 @@ impl BobbinMcpServer {
             .map(|r| {
                 let parts: Vec<&str> = r.chunk.file_path.splitn(3, ':').collect();
                 let rig = if parts.len() >= 2 { parts[1] } else { "" };
-                let bead_id = if parts.len() == 3 { parts[2] } else { &r.chunk.file_path };
+                let bead_id = if parts.len() == 3 {
+                    parts[2]
+                } else {
+                    &r.chunk.file_path
+                };
 
-                let match_type = r.match_type.as_ref()
+                let match_type = r
+                    .match_type
+                    .as_ref()
                     .map(|mt| format!("{:?}", mt).to_lowercase())
                     .unwrap_or_else(|| "hybrid".to_string());
 
@@ -1858,7 +2005,10 @@ impl BobbinMcpServer {
                         priority: format!("P{}", meta.priority),
                         status: meta.status.clone(),
                         issue_type: meta.issue_type.clone(),
-                        assignee: meta.assignee.clone().unwrap_or_else(|| "unassigned".to_string()),
+                        assignee: meta
+                            .assignee
+                            .clone()
+                            .unwrap_or_else(|| "unassigned".to_string()),
                         owner: meta.owner.clone(),
                         rig: rig.to_string(),
                         labels: meta.labels.clone(),
@@ -1907,7 +2057,9 @@ impl BobbinMcpServer {
     }
 
     /// Show import dependencies for a file
-    #[tool(description = "Show import dependencies for a file. Returns what the file imports (forward dependencies) and/or what imports the file (reverse dependencies). Use 'reverse=true' to see dependents only, 'both=true' for both directions. Requires the index to include dependency data (enabled by default).")]
+    #[tool(
+        description = "Show import dependencies for a file. Returns what the file imports (forward dependencies) and/or what imports the file (reverse dependencies). Use 'reverse=true' to see dependents only, 'both=true' for both directions. Requires the index to include dependency data (enabled by default)."
+    )]
     async fn dependencies(
         &self,
         Parameters(req): Parameters<DependenciesRequest>,
@@ -1917,7 +2069,9 @@ impl BobbinMcpServer {
         let show_imports = !reverse || both;
         let show_dependents = reverse || both;
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let imports = if show_imports {
@@ -1975,7 +2129,9 @@ impl BobbinMcpServer {
     }
 
     /// Show commit history for a specific file
-    #[tool(description = "Show the git commit history for a specific file. Returns a list of commits that touched the file, along with statistics like author breakdown and churn rate (commits/month). Best for: 'who has worked on this file?', 'how often does this file change?', 'recent changes to config.rs'.")]
+    #[tool(
+        description = "Show the git commit history for a specific file. Returns a list of commits that touched the file, along with statistics like author breakdown and churn rate (commits/month). Best for: 'who has worked on this file?', 'how often does this file change?', 'recent changes to config.rs'."
+    )]
     async fn file_history(
         &self,
         Parameters(req): Parameters<FileHistoryRequest>,
@@ -2036,12 +2192,16 @@ impl BobbinMcpServer {
     }
 
     /// Show index status and statistics
-    #[tool(description = "Show the current index status and statistics for the bobbin instance. Returns file/chunk counts, dependency stats, repository list, and optionally a per-language breakdown. Best for: 'is the index up to date?', 'how many files are indexed?', 'what languages are in the codebase?'.")]
+    #[tool(
+        description = "Show the current index status and statistics for the bobbin instance. Returns file/chunk counts, dependency stats, repository list, and optionally a per-language breakdown. Best for: 'is the index up to date?', 'how many files are indexed?', 'what languages are in the codebase?'."
+    )]
     async fn status(
         &self,
         Parameters(req): Parameters<StatusRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let repos = vector_store
@@ -2054,17 +2214,18 @@ impl BobbinMcpServer {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let dependency_stats = vector_store
-            .get_dependency_stats()
-            .await
-            .ok()
-            .and_then(|(total, resolved)| {
-                if total > 0 {
-                    Some(StatusDependencyStats { total, resolved })
-                } else {
-                    None
-                }
-            });
+        let dependency_stats =
+            vector_store
+                .get_dependency_stats()
+                .await
+                .ok()
+                .and_then(|(total, resolved)| {
+                    if total > 0 {
+                        Some(StatusDependencyStats { total, resolved })
+                    } else {
+                        None
+                    }
+                });
 
         let languages = if req.detailed.unwrap_or(false) {
             stats
@@ -2085,9 +2246,9 @@ impl BobbinMcpServer {
             total_files: stats.total_files,
             total_chunks: stats.total_chunks,
             total_embeddings: stats.total_embeddings,
-            last_indexed: stats.last_indexed.and_then(|ts| {
-                chrono::DateTime::from_timestamp(ts, 0).map(|t| t.to_rfc3339())
-            }),
+            last_indexed: stats
+                .last_indexed
+                .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0).map(|t| t.to_rfc3339())),
             dependency_stats,
             repos,
             languages,
@@ -2100,7 +2261,9 @@ impl BobbinMcpServer {
     }
 
     /// Search git commits semantically to find commits by what they did
-    #[tool(description = "Search git commit history using natural language. Finds commits by what they did, not just by message keywords. Best for: 'when was authentication added?', 'commits that changed the parser', 'who refactored the database layer?'. Filter by author or file path. Requires commits to be indexed (enabled by default in bobbin index).")]
+    #[tool(
+        description = "Search git commit history using natural language. Finds commits by what they did, not just by message keywords. Best for: 'when was authentication added?', 'commits that changed the parser', 'who refactored the database layer?'. Filter by author or file path. Requires commits to be indexed (enabled by default in bobbin index)."
+    )]
     async fn commit_search(
         &self,
         Parameters(req): Parameters<CommitSearchRequest>,
@@ -2111,19 +2274,17 @@ impl BobbinMcpServer {
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let model_dir = Config::model_cache_dir()
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let model_dir =
+            Config::model_cache_dir().map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let embedder = Embedder::from_config(&config.embedding, &model_dir)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let mut search = HybridSearch::new(
-            embedder,
-            vector_store,
-            config.search.semantic_weight,
-        );
+        let mut search = HybridSearch::new(embedder, vector_store, config.search.semantic_weight);
 
         // Fetch extra results to filter down to commits
         let search_results = search
@@ -2145,7 +2306,10 @@ impl BobbinMcpServer {
             })
             .filter(|r| {
                 if let Some(ref file) = req.file {
-                    r.chunk.content.to_lowercase().contains(&file.to_lowercase())
+                    r.chunk
+                        .content
+                        .to_lowercase()
+                        .contains(&file.to_lowercase())
                 } else {
                     true
                 }
@@ -2156,7 +2320,9 @@ impl BobbinMcpServer {
         let results: Vec<CommitResultItem> = filtered
             .iter()
             .map(|r| {
-                let hash = r.chunk.id
+                let hash = r
+                    .chunk
+                    .id
                     .strip_prefix("commit:")
                     .unwrap_or(&r.chunk.id)
                     .to_string();
@@ -2213,7 +2379,9 @@ impl BobbinMcpServer {
     }
 
     /// Submit feedback on a bobbin context injection
-    #[tool(description = "Submit feedback on a bobbin context injection. Rate injections as 'useful' (helped with task), 'noise' (irrelevant to current work), or 'harmful' (actively misleading). Reference the injection_id shown in [injection_id: inj-xxx] from the context injection output. Supports both standard (inj-xxx) and reaction (inj-react-xxx) injection IDs.")]
+    #[tool(
+        description = "Submit feedback on a bobbin context injection. Rate injections as 'useful' (helped with task), 'noise' (irrelevant to current work), or 'harmful' (actively misleading). Reference the injection_id shown in [injection_id: inj-xxx] from the context injection output. Supports both standard (inj-xxx) and reaction (inj-react-xxx) injection IDs."
+    )]
     async fn feedback_submit(
         &self,
         Parameters(req): Parameters<FeedbackSubmitRequest>,
@@ -2268,7 +2436,9 @@ impl BobbinMcpServer {
     }
 
     /// List recent bobbin feedback records
-    #[tool(description = "List recent bobbin injection feedback records. Filter by rating (useful/noise/harmful) and/or agent name. Use to review feedback trends and identify problematic injections.")]
+    #[tool(
+        description = "List recent bobbin injection feedback records. Filter by rating (useful/noise/harmful) and/or agent name. Use to review feedback trends and identify problematic injections."
+    )]
     async fn feedback_list(
         &self,
         Parameters(req): Parameters<FeedbackListRequest>,
@@ -2315,7 +2485,9 @@ impl BobbinMcpServer {
     }
 
     /// Get bobbin feedback statistics
-    #[tool(description = "Get aggregated bobbin injection feedback statistics — total injections, feedback count, coverage rate, and rating breakdown (useful/noise/harmful). Use group_by='bundle' or group_by='bead' to see per-bundle or per-bead breakdowns.")]
+    #[tool(
+        description = "Get aggregated bobbin injection feedback statistics — total injections, feedback count, coverage rate, and rating breakdown (useful/noise/harmful). Use group_by='bundle' or group_by='bead' to see per-bundle or per-bead breakdowns."
+    )]
     async fn feedback_stats(
         &self,
         Parameters(req): Parameters<FeedbackStatsRequest>,
@@ -2340,7 +2512,11 @@ impl BobbinMcpServer {
                     )]));
                 }
 
-                let label = if group_by == "bundle" { "Bundle" } else { "Bead" };
+                let label = if group_by == "bundle" {
+                    "Bundle"
+                } else {
+                    "Bead"
+                };
                 let mut lines = vec![format!(
                     "{:<30} {:>5} {:>5} {:>6} {:>5} {:>7}",
                     label, "Inj", "Fb", "Good", "Noise", "Harmful"
@@ -2393,7 +2569,9 @@ impl BobbinMcpServer {
     }
 
     /// Record a lineage action linking feedback to a fix (commit, bead, config change)
-    #[tool(description = "Record a lineage action that ties bobbin feedback to a concrete fix. Links one or more feedback records (by ID) to a commit, bead, or config change. This closes the feedback loop — proving that feedback led to action. Use after fixing an issue that feedback identified. Action types: 'code_fix', 'config_change', 'tag_effect', 'access_rule', 'exclusion_rule'.")]
+    #[tool(
+        description = "Record a lineage action that ties bobbin feedback to a concrete fix. Links one or more feedback records (by ID) to a commit, bead, or config change. This closes the feedback loop — proving that feedback led to action. Use after fixing an issue that feedback identified. Action types: 'code_fix', 'config_change', 'tag_effect', 'access_rule', 'exclusion_rule'."
+    )]
     async fn feedback_lineage_store(
         &self,
         Parameters(req): Parameters<FeedbackLineageStoreRequest>,
@@ -2404,7 +2582,13 @@ impl BobbinMcpServer {
             )]));
         }
 
-        let valid_actions = ["access_rule", "tag_effect", "config_change", "code_fix", "exclusion_rule"];
+        let valid_actions = [
+            "access_rule",
+            "tag_effect",
+            "config_change",
+            "code_fix",
+            "exclusion_rule",
+        ];
         if !valid_actions.contains(&req.action_type.as_str()) {
             return Ok(CallToolResult::success(vec![Content::text(format!(
                 "Error: action_type must be one of: {}",
@@ -2452,7 +2636,9 @@ impl BobbinMcpServer {
     }
 
     /// List lineage records showing how feedback was acted on
-    #[tool(description = "List lineage records showing how bobbin feedback was acted on. Each record links feedback IDs to a concrete action (code fix, config change, etc.) with optional bead and commit references. Filter by feedback_id, bead, or commit_hash. Use to audit the feedback-to-fix pipeline and verify that feedback is being closed.")]
+    #[tool(
+        description = "List lineage records showing how bobbin feedback was acted on. Each record links feedback IDs to a concrete action (code fix, config change, etc.) with optional bead and commit references. Filter by feedback_id, bead, or commit_hash. Use to audit the feedback-to-fix pipeline and verify that feedback is being closed."
+    )]
     async fn feedback_lineage_list(
         &self,
         Parameters(req): Parameters<FeedbackLineageListRequest>,
@@ -2507,7 +2693,9 @@ impl BobbinMcpServer {
     }
 
     /// Search archive records (HLA chat logs, Pensieve agent memory)
-    #[tool(description = "Search archive records using natural language. Archives include HLA (IRC/Telegram chat logs) and Pensieve (agent memory/snapshots). Filter by source ('hla' or 'pensieve'), name/channel, and date range. Best for: 'recent deploy discussions', 'what did goldblum decide about auth?', 'telegram messages about cert renewal'.")]
+    #[tool(
+        description = "Search archive records using natural language. Archives include HLA (IRC/Telegram chat logs) and Pensieve (agent memory/snapshots). Filter by source ('hla' or 'pensieve'), name/channel, and date range. Best for: 'recent deploy discussions', 'what did goldblum decide about auth?', 'telegram messages about cert renewal'."
+    )]
     async fn archive_search(
         &self,
         Parameters(req): Parameters<ArchiveSearchRequest>,
@@ -2525,13 +2713,20 @@ impl BobbinMcpServer {
             )]));
         }
 
-        let archive_languages: Vec<String> = config.archive.sources.iter().map(|s| s.name.clone()).collect();
+        let archive_languages: Vec<String> = config
+            .archive
+            .sources
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let model_dir = Config::model_cache_dir()
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let model_dir =
+            Config::model_cache_dir().map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let embedder = Embedder::from_config(&config.embedding, &model_dir)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
@@ -2539,7 +2734,8 @@ impl BobbinMcpServer {
         let lang_filter = if archive_languages.len() == 1 {
             format!("language = '{}'", archive_languages[0].replace('\'', "''"))
         } else {
-            let quoted: Vec<String> = archive_languages.iter()
+            let quoted: Vec<String> = archive_languages
+                .iter()
                 .map(|l| format!("'{}'", l.replace('\'', "''")))
                 .collect();
             format!("language IN ({})", quoted.join(", "))
@@ -2558,7 +2754,8 @@ impl BobbinMcpServer {
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?
             }
             _ => {
-                let mut search = HybridSearch::new(embedder, vector_store, config.search.semantic_weight);
+                let mut search =
+                    HybridSearch::new(embedder, vector_store, config.search.semantic_weight);
                 search
                     .search_filtered(&req.query, limit * 2, None, Some(&lang_filter))
                     .await
@@ -2567,7 +2764,8 @@ impl BobbinMcpServer {
         };
 
         // Post-filter
-        let mut filtered: Vec<_> = results.into_iter()
+        let mut filtered: Vec<_> = results
+            .into_iter()
             .filter(|r| archive_languages.contains(&r.chunk.language))
             .collect();
 
@@ -2593,7 +2791,9 @@ impl BobbinMcpServer {
         // Name/channel filter
         if let Some(ref name_filter) = req.filter {
             filtered.retain(|r| {
-                r.chunk.name.as_ref()
+                r.chunk
+                    .name
+                    .as_ref()
                     .is_some_and(|n| n.starts_with(&format!("{}/", name_filter)))
             });
         }
@@ -2601,17 +2801,25 @@ impl BobbinMcpServer {
         filtered.truncate(limit);
 
         if filtered.is_empty() {
-            return Ok(CallToolResult::success(vec![Content::text(
-                format!("No archive results for '{}'. Try broader terms or different source/date filters.", req.query),
-            )]));
+            return Ok(CallToolResult::success(vec![Content::text(format!(
+                "No archive results for '{}'. Try broader terms or different source/date filters.",
+                req.query
+            ))]));
         }
 
-        let mut text = format!("Archive search: {} results for '{}'\n\n", filtered.len(), req.query);
+        let mut text = format!(
+            "Archive search: {} results for '{}'\n\n",
+            filtered.len(),
+            req.query
+        );
         for r in &filtered {
             let date = extract_archive_date(&r.chunk.file_path).unwrap_or_default();
             let source = &r.chunk.language;
             let id = r.chunk.name.as_deref().unwrap_or("-");
-            text.push_str(&format!("--- {} ({}, {}) score={:.3} ---\n", id, source, date, r.score));
+            text.push_str(&format!(
+                "--- {} ({}, {}) score={:.3} ---\n",
+                id, source, date, r.score
+            ));
             text.push_str(&Self::truncate_content(&r.chunk.content, 500));
             text.push_str("\n\n");
         }
@@ -2620,7 +2828,9 @@ impl BobbinMcpServer {
     }
 
     /// List recent archive records
-    #[tool(description = "List recent archive records by date. Returns records from HLA (chat logs) or Pensieve (agent memory) after a specified date. Best for: 'what happened in chat today?', 'recent agent decisions', 'show me today's Pensieve entries'.")]
+    #[tool(
+        description = "List recent archive records by date. Returns records from HLA (chat logs) or Pensieve (agent memory) after a specified date. Best for: 'what happened in chat today?', 'recent agent decisions', 'show me today's Pensieve entries'."
+    )]
     async fn archive_recent(
         &self,
         Parameters(req): Parameters<ArchiveRecentRequest>,
@@ -2638,16 +2848,24 @@ impl BobbinMcpServer {
         }
 
         // Use FTS to find recent records by scanning archive chunks
-        let archive_languages: Vec<String> = config.archive.sources.iter().map(|s| s.name.clone()).collect();
+        let archive_languages: Vec<String> = config
+            .archive
+            .sources
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
 
-        let vector_store = self.open_vector_store().await
+        let vector_store = self
+            .open_vector_store()
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         // Build filter: archive language + date path prefix
         let lang_filter = if archive_languages.len() == 1 {
             format!("language = '{}'", archive_languages[0].replace('\'', "''"))
         } else {
-            let quoted: Vec<String> = archive_languages.iter()
+            let quoted: Vec<String> = archive_languages
+                .iter()
                 .map(|l| format!("'{}'", l.replace('\'', "''")))
                 .collect();
             format!("language IN ({})", quoted.join(", "))
@@ -2659,7 +2877,8 @@ impl BobbinMcpServer {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let mut filtered: Vec<_> = results.into_iter()
+        let mut filtered: Vec<_> = results
+            .into_iter()
             .filter(|r| archive_languages.contains(&r.chunk.language))
             .filter(|r| {
                 extract_archive_date(&r.chunk.file_path)
@@ -2682,12 +2901,17 @@ impl BobbinMcpServer {
         filtered.truncate(limit);
 
         if filtered.is_empty() {
-            return Ok(CallToolResult::success(vec![Content::text(
-                format!("No archive records found after {}.", req.after),
-            )]));
+            return Ok(CallToolResult::success(vec![Content::text(format!(
+                "No archive records found after {}.",
+                req.after
+            ))]));
         }
 
-        let mut text = format!("Archive recent: {} records after {}\n\n", filtered.len(), req.after);
+        let mut text = format!(
+            "Archive recent: {} records after {}\n\n",
+            filtered.len(),
+            req.after
+        );
         for r in &filtered {
             let date = extract_archive_date(&r.chunk.file_path).unwrap_or_default();
             let source = &r.chunk.language;
@@ -2720,21 +2944,24 @@ impl BobbinMcpServer {
     const KNOWLEDGE_SHACL_ENABLED: bool = false;
 
     /// Query the knowledge graph for entities relevant to a topic
-    #[tool(description = "Find entities and facts relevant to a topic across BOTH knowledge graphs this deployment has. \
+    #[tool(
+        description = "Find entities and facts relevant to a topic across BOTH knowledge graphs this deployment has. \
 Returns two clearly separated sections. 'ontology': the organisation knowledge graph on a remote Quipu (semantic search, then each \
 matching entity's facts fetched individually) — this is where infrastructure, ownership and operational facts live. \
 'local_code_graph': bobbin's own embedded graph of code entities and file-coupling from git history (IRIs under https://bobbin.dev/). \
 ALWAYS read the 'store' field: if ontology.consulted is false the ontology was NOT ASKED (no remote configured), and if it carries \
 an 'error' that is a TRANSPORT FAILURE — neither is evidence a fact is absent. Best for: 'who owns X?', 'what runs on Y?', \
-'which files change together with Z?'")]
+'which files change together with Z?'"
+    )]
     async fn knowledge_context(
         &self,
         Parameters(req): Parameters<KnowledgeContextRequest>,
     ) -> Result<CallToolResult, McpError> {
         #[cfg(feature = "knowledge")]
         {
-            let store = self.open_quipu_store()
-                .map_err(|e| McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None))?;
+            let store = self.open_quipu_store().map_err(|e| {
+                McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None)
+            })?;
 
             let input = serde_json::json!({
                 "query": req.query,
@@ -2742,8 +2969,9 @@ an 'error' that is a TRANSPORT FAILURE — neither is evidence a fact is absent.
                 "expand_links": req.expand_links.unwrap_or(true),
             });
 
-            let local = quipu::tool_context(&store, &input)
-                .map_err(|e| McpError::internal_error(format!("Knowledge graph query failed: {e}"), None))?;
+            let local = quipu::tool_context(&store, &input).map_err(|e| {
+                McpError::internal_error(format!("Knowledge graph query failed: {e}"), None)
+            })?;
 
             // The ontology leg is TWO calls on purpose (aegis-rwozs, measured):
             // /context is a LABEL/text match and returns 0 entities for a natural-language
@@ -2762,27 +2990,37 @@ an 'error' that is a TRANSPORT FAILURE — neither is evidence a fact is absent.
                 Some(base) => {
                     let max = req.max_entities.unwrap_or(20).min(25);
                     match Self::quipu_remote_post(
-                        &base, "/search", serde_json::json!({"query": req.query}),
-                    ).await {
+                        &base,
+                        "/search",
+                        serde_json::json!({"query": req.query}),
+                    )
+                    .await
+                    {
                         Err(e) => serde_json::json!({
                             "consulted": true,
                             "error": format!("{e:#}"),
                             "warning": "The ontology could NOT be reached. TRANSPORT FAILURE, \
-not an empty result — do not read it as 'the fact is absent'.",
+                        not an empty result — do not read it as 'the fact is absent'.",
                         }),
                         Ok(hits) => {
                             let mut entities = Vec::new();
                             let empty = Vec::new();
-                            let results = hits.get("results")
-                                .and_then(|r| r.as_array()).unwrap_or(&empty);
+                            let results = hits
+                                .get("results")
+                                .and_then(|r| r.as_array())
+                                .unwrap_or(&empty);
                             for hit in results.iter().take(max) {
-                                let Some(iri) = hit.get("entity").and_then(|v| v.as_str())
-                                else { continue };
+                                let Some(iri) = hit.get("entity").and_then(|v| v.as_str()) else {
+                                    continue;
+                                };
                                 let facts = Self::quipu_remote_post(
-                                    &base, "/query",
+                                    &base,
+                                    "/query",
                                     serde_json::json!({"query": format!(
                                         "SELECT ?p ?o WHERE {{ <{iri}> ?p ?o }}")}),
-                                ).await.ok();
+                                )
+                                .await
+                                .ok();
                                 entities.push(serde_json::json!({
                                     "iri": iri,
                                     "score": hit.get("score"),
@@ -2832,13 +3070,15 @@ not an empty result — do not read it as 'the fact is absent'.",
     }
 
     /// Write facts into the local knowledge graph.
-    #[tool(description = "Write facts into bobbin's LOCAL embedded knowledge graph as RDF Turtle. \
+    #[tool(
+        description = "Write facts into bobbin's LOCAL embedded knowledge graph as RDF Turtle. \
 ALWAYS READ THE 'shacl_validated' FIELD IN THE RESULT. When true, the write was checked against the configured \
 SHACL shapes before being committed and a violating write would have been refused. When FALSE, validation was \
 NOT COMPILED IN and the facts were stored UNCHECKED — a success does not mean they are conformant, only that they \
 were accepted. Do not treat an unvalidated success as evidence of well-formedness. \
 This writes only to the local graph — it never writes to the remote ontology Quipu, which is read-only from here. \
-Pass 'actor' and 'source' whenever you have them: a fact whose origin is unrecorded cannot be assessed later.")]
+Pass 'actor' and 'source' whenever you have them: a fact whose origin is unrecorded cannot be assessed later."
+    )]
     async fn knowledge_knot(
         &self,
         Parameters(req): Parameters<KnowledgeKnotRequest>,
@@ -2897,21 +3137,24 @@ Pass 'actor' and 'source' whenever you have them: a fact whose origin is unrecor
     }
 
     /// Run a SPARQL query against the knowledge graph
-    #[tool(description = "Execute a SPARQL SELECT against BOTH knowledge graphs and return each result separately. \
+    #[tool(
+        description = "Execute a SPARQL SELECT against BOTH knowledge graphs and return each result separately. \
 'ontology': the organisation knowledge graph on a remote Quipu (infrastructure, ownership, operational facts). \
 'local_code_graph': bobbin's own embedded graph (code entities and file-coupling from git history, IRIs under https://bobbin.dev/). \
 The SAME query runs against both, so an IRI that exists in only one returns rows in only that section. \
 ALWAYS read the 'store' field: ontology.consulted=false means NOT ASKED (no remote configured) and an 'error' means TRANSPORT \
 FAILURE — an empty section is NEVER by itself evidence the fact does not exist. Supports valid_at and tx for temporal queries. \
-Example: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10'")]
+Example: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10'"
+    )]
     async fn knowledge_query(
         &self,
         Parameters(req): Parameters<KnowledgeQueryRequest>,
     ) -> Result<CallToolResult, McpError> {
         #[cfg(feature = "knowledge")]
         {
-            let store = self.open_quipu_store()
-                .map_err(|e| McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None))?;
+            let store = self.open_quipu_store().map_err(|e| {
+                McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None)
+            })?;
 
             let input = serde_json::json!({
                 "query": req.query,
@@ -3197,7 +3440,10 @@ impl ServerHandler for BobbinMcpServer {
 
         Ok(GetPromptResult {
             description: Some(format!("Explore codebase with focus on: {}", focus)),
-            messages: vec![PromptMessage::new_text(PromptMessageRole::User, prompt_text)],
+            messages: vec![PromptMessage::new_text(
+                PromptMessageRole::User,
+                prompt_text,
+            )],
         })
     }
 }
@@ -3243,11 +3489,10 @@ pub async fn run_server(repo_root: PathBuf) -> Result<()> {
 /// Run the MCP server over Streamable HTTP transport (network-accessible).
 pub async fn run_http_server(repo_root: PathBuf, port: u16) -> Result<()> {
     use rmcp::transport::{
-        StreamableHttpServerConfig,
         streamable_http_server::{
-            session::local::LocalSessionManager,
-            tower::StreamableHttpService,
+            session::local::LocalSessionManager, tower::StreamableHttpService,
         },
+        StreamableHttpServerConfig,
     };
     use std::sync::Arc;
     use tokio_util::sync::CancellationToken;

@@ -7,7 +7,9 @@ use predicates::prelude::*;
 
 #[test]
 fn search_semantic_finds_relevant_results() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     TestProject::bobbin_cmd()
         .args(["search", "calculator", "--mode", "semantic"])
@@ -19,7 +21,9 @@ fn search_semantic_finds_relevant_results() {
 
 #[test]
 fn search_semantic_json_output_structure() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let output = TestProject::bobbin_cmd()
         .args(["--json", "search", "add numbers", "--mode", "semantic"])
@@ -49,10 +53,14 @@ fn search_semantic_json_output_structure() {
 
 #[test]
 fn search_limit_respected() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let output = TestProject::bobbin_cmd()
-        .args(["--json", "search", "function", "--limit", "2", "--mode", "semantic"])
+        .args([
+            "--json", "search", "function", "--limit", "2", "--mode", "semantic",
+        ])
         .arg(project.path())
         .assert()
         .success()
@@ -67,10 +75,20 @@ fn search_limit_respected() {
 
 #[test]
 fn search_type_filter() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let output = TestProject::bobbin_cmd()
-        .args(["--json", "search", "calculator", "--type", "struct", "--mode", "semantic"])
+        .args([
+            "--json",
+            "search",
+            "calculator",
+            "--type",
+            "struct",
+            "--mode",
+            "semantic",
+        ])
         .arg(project.path())
         .assert()
         .success()
@@ -90,7 +108,9 @@ fn search_type_filter() {
 
 #[test]
 fn search_finds_python_code() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let output = TestProject::bobbin_cmd()
         .args(["--json", "search", "user management", "--mode", "semantic"])
@@ -103,13 +123,20 @@ fn search_finds_python_code() {
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     let results = json["results"].as_array().unwrap();
-    let has_python = results.iter().any(|r| r["language"].as_str().unwrap() == "python");
-    assert!(has_python, "semantic search for 'user management' should find python UserService");
+    let has_python = results
+        .iter()
+        .any(|r| r["language"].as_str().unwrap() == "python");
+    assert!(
+        has_python,
+        "semantic search for 'user management' should find python UserService"
+    );
 }
 
 #[test]
 fn search_returns_content_preview() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let output = TestProject::bobbin_cmd()
         .args(["--json", "search", "clamp value", "--mode", "semantic"])
@@ -132,7 +159,9 @@ fn search_returns_content_preview() {
 
 #[test]
 fn grep_finds_results() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     TestProject::bobbin_cmd()
         .args(["grep", "Calculator"])

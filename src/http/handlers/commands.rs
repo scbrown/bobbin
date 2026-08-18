@@ -33,8 +33,8 @@ pub(super) struct CommandEntry {
 pub(super) async fn list_commands(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CommandsListResponse>, (StatusCode, Json<ErrorBody>)> {
-    let commands = crate::commands::load_commands(&state.repo_root)
-        .map_err(|e| internal_error(e.into()))?;
+    let commands =
+        crate::commands::load_commands(&state.repo_root).map_err(|e| internal_error(e.into()))?;
 
     let entries: std::collections::BTreeMap<String, CommandEntry> = commands
         .into_iter()
@@ -94,17 +94,38 @@ pub(super) struct HttpCommandsFile {
     commands: std::collections::HashMap<String, HttpCommandDef>,
 }
 
-fn default_version() -> u32 { 1 }
+fn default_version() -> u32 {
+    1
+}
 
 /// Known valid endpoints that commands can proxy to.
 const VALID_CMD_ENDPOINTS: &[&str] = &[
-    "/search", "/grep", "/context", "/related", "/refs", "/symbols",
-    "/hotspots", "/impact", "/review", "/similar", "/prime", "/beads",
-    "/archive/search", "/archive/recent", "/repos", "/groups", "/tags",
-    "/suggest", "/status", "/feedback", "/feedback/stats",
+    "/search",
+    "/grep",
+    "/context",
+    "/related",
+    "/refs",
+    "/symbols",
+    "/hotspots",
+    "/impact",
+    "/review",
+    "/similar",
+    "/prime",
+    "/beads",
+    "/archive/search",
+    "/archive/recent",
+    "/repos",
+    "/groups",
+    "/tags",
+    "/suggest",
+    "/status",
+    "/feedback",
+    "/feedback/stats",
 ];
 
-fn load_http_commands(repo_root: &std::path::Path) -> std::collections::HashMap<String, HttpCommandDef> {
+fn load_http_commands(
+    repo_root: &std::path::Path,
+) -> std::collections::HashMap<String, HttpCommandDef> {
     let path = repo_root.join(".bobbin").join("commands.json");
     if !path.exists() {
         return std::collections::HashMap::new();
@@ -157,7 +178,9 @@ pub(super) async fn register_http_command(
     // Validate name: lowercase alphanumeric + hyphens, 2-64 chars
     let name_re = regex::Regex::new(r"^[a-z0-9][a-z0-9-]{1,63}$").unwrap();
     if !name_re.is_match(&body.name) {
-        return Err(bad_request("Command name must be 2-64 chars, lowercase alphanumeric + hyphens".into()));
+        return Err(bad_request(
+            "Command name must be 2-64 chars, lowercase alphanumeric + hyphens".into(),
+        ));
     }
 
     // Validate endpoint
@@ -178,15 +201,15 @@ pub(super) async fn register_http_command(
     for req in &body.def.required {
         if body.def.pinned.contains_key(req) {
             return Err(bad_request(format!(
-                "Required param '{}' is already pinned (redundant)", req
+                "Required param '{}' is already pinned (redundant)",
+                req
             )));
         }
     }
 
     let mut commands = load_http_commands(&state.repo_root);
     commands.insert(body.name.clone(), body.def.clone());
-    save_http_commands(&state.repo_root, &commands)
-        .map_err(|e| internal_error(e.into()))?;
+    save_http_commands(&state.repo_root, &commands).map_err(|e| internal_error(e.into()))?;
 
     Ok((StatusCode::CREATED, Json(body.def)))
 }
@@ -207,8 +230,7 @@ pub(super) async fn delete_http_command(
     if commands.remove(&name).is_none() {
         return Err(not_found(format!("Command '{}' not found", name)));
     }
-    save_http_commands(&state.repo_root, &commands)
-        .map_err(|e| internal_error(e.into()))?;
+    save_http_commands(&state.repo_root, &commands).map_err(|e| internal_error(e.into()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -226,8 +248,11 @@ pub(super) async fn invoke_http_command(
     let Some(cmd) = commands.get(&name) else {
         return (
             StatusCode::NOT_FOUND,
-            Json(ErrorBody { error: format!("Command '{}' not found", name) }),
-        ).into_response();
+            Json(ErrorBody {
+                error: format!("Command '{}' not found", name),
+            }),
+        )
+            .into_response();
     };
 
     // Parse caller-supplied params
@@ -267,7 +292,8 @@ pub(super) async fn invoke_http_command(
                     "command": name,
                     "required": cmd.required,
                 })),
-            ).into_response();
+            )
+                .into_response();
         }
     }
 
@@ -288,20 +314,23 @@ pub(super) async fn invoke_http_command(
     let Some(router) = state.inner_router.get() else {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorBody { error: "Internal router not initialized".into() }),
-        ).into_response();
+            Json(ErrorBody {
+                error: "Internal router not initialized".into(),
+            }),
+        )
+            .into_response();
     };
 
-    let req = Request::builder()
-        .uri(&uri)
-        .body(Body::empty())
-        .unwrap();
+    let req = Request::builder().uri(&uri).body(Body::empty()).unwrap();
 
     match router.clone().oneshot(req).await {
         Ok(response) => response,
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorBody { error: format!("Internal dispatch error: {}", e) }),
-        ).into_response(),
+            Json(ErrorBody {
+                error: format!("Internal dispatch error: {}", e),
+            }),
+        )
+            .into_response(),
     }
 }

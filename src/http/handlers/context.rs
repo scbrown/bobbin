@@ -110,13 +110,21 @@ pub(super) async fn context(
     // Build tag filter for context pipeline
     let mut tag_filters: Vec<String> = Vec::new();
     if let Some(ref tags) = params.tag {
-        let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        let tag_list: Vec<String> = tags
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
         if !tag_list.is_empty() {
             tag_filters.push(build_tag_include_filter(&tag_list));
         }
     }
     if let Some(ref tags) = params.exclude_tag {
-        let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        let tag_list: Vec<String> = tags
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
         if !tag_list.is_empty() {
             tag_filters.push(build_tag_exclude_filter(&tag_list));
         }
@@ -144,13 +152,21 @@ pub(super) async fn context(
         budget_unit: state.config.context.budget_unit,
         depth: params.depth.unwrap_or(1),
         max_coupled: params.max_coupled.unwrap_or(3),
-        coupling_threshold: params.coupling_threshold.unwrap_or(state.config.context.coupling_threshold),
-        semantic_weight: params.semantic_weight.unwrap_or(state.config.search.semantic_weight),
+        coupling_threshold: params
+            .coupling_threshold
+            .unwrap_or(state.config.context.coupling_threshold),
+        semantic_weight: params
+            .semantic_weight
+            .unwrap_or(state.config.search.semantic_weight),
         content_mode: ContentMode::Full,
         search_limit: params.limit.unwrap_or(20),
-        doc_demotion: params.doc_demotion.unwrap_or(state.config.search.doc_demotion),
+        doc_demotion: params
+            .doc_demotion
+            .unwrap_or(state.config.search.doc_demotion),
         recency_half_life_days: state.config.search.recency_half_life_days,
-        recency_weight: params.recency_weight.unwrap_or(state.config.search.recency_weight),
+        recency_weight: params
+            .recency_weight
+            .unwrap_or(state.config.search.recency_weight),
         rrf_k: state.config.search.rrf_k,
         bridge_mode: BridgeMode::default(),
         bridge_boost_factor: state.config.context.bridge_boost_factor,
@@ -175,7 +191,8 @@ pub(super) async fn context(
         ..ContextConfig::default()
     };
 
-    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let mut assembler =
+        ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
 
     // Wire the Quipu store so PPR runs on the served /context path too (knowledge build only).
     // Mirrors cli/context.rs; without this the HTTP endpoint left quipu_store None and PPR was dark
@@ -205,15 +222,26 @@ pub(super) async fn context(
 
     // Apply group filtering (narrow to repos in the named group)
     if let Some(ref group_name) = params.group {
-        let group_repos = state.config.resolve_group(group_name)
-            .ok_or_else(|| {
-                let available: Vec<&str> = state.config.groups.iter().map(|g| g.name.as_str()).collect();
-                if available.is_empty() {
-                    bad_request(format!("Unknown group '{}'. No groups configured.", group_name))
-                } else {
-                    bad_request(format!("Unknown group '{}'. Available: {}", group_name, available.join(", ")))
-                }
-            })?;
+        let group_repos = state.config.resolve_group(group_name).ok_or_else(|| {
+            let available: Vec<&str> = state
+                .config
+                .groups
+                .iter()
+                .map(|g| g.name.as_str())
+                .collect();
+            if available.is_empty() {
+                bad_request(format!(
+                    "Unknown group '{}'. No groups configured.",
+                    group_name
+                ))
+            } else {
+                bad_request(format!(
+                    "Unknown group '{}'. Available: {}",
+                    group_name,
+                    available.join(", ")
+                ))
+            }
+        })?;
         bundle.files.retain(|f| {
             let repo = RepoFilter::repo_from_path(&f.path);
             group_repos.iter().any(|g| g == repo)
@@ -287,9 +315,14 @@ pub(super) async fn read_chunk(
     Query(params): Query<ReadChunkParams>,
 ) -> Result<Json<ReadChunkResponse>, (StatusCode, Json<ErrorBody>)> {
     let ctx = params.context.unwrap_or(0);
-    let (content, actual_start, actual_end) =
-        read_file_lines(&state.repo_root, &params.file, params.start_line, params.end_line, ctx)
-            .map_err(internal_error)?;
+    let (content, actual_start, actual_end) = read_file_lines(
+        &state.repo_root,
+        &params.file,
+        params.start_line,
+        params.end_line,
+        ctx,
+    )
+    .map_err(internal_error)?;
 
     Ok(Json(ReadChunkResponse {
         file: params.file.clone(),

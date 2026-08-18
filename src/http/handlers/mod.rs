@@ -12,6 +12,7 @@ mod feedback;
 mod grep;
 mod review;
 mod search;
+mod search_exec;
 mod similar;
 mod tags;
 mod webhook;
@@ -83,9 +84,18 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/feedback", post(feedback::feedback_submit))
         .route("/feedback", get(feedback::feedback_list))
         .route("/feedback/stats", get(feedback::feedback_stats))
-        .route("/feedback/lineage", post(feedback::lineage_store).get(feedback::lineage_list))
-        .route("/cmd", get(commands::list_http_commands).post(commands::register_http_command))
-        .route("/cmd/{name}", get(commands::invoke_http_command).delete(commands::delete_http_command))
+        .route(
+            "/feedback/lineage",
+            post(feedback::lineage_store).get(feedback::lineage_list),
+        )
+        .route(
+            "/cmd",
+            get(commands::list_http_commands).post(commands::register_http_command),
+        )
+        .route(
+            "/cmd/{name}",
+            get(commands::invoke_http_command).delete(commands::delete_http_command),
+        )
         .with_state(state.clone())
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
@@ -145,16 +155,23 @@ fn resolve_filter(state: &AppState, role: Option<&str>) -> RepoFilter {
 fn resolve_group_filter(state: &AppState, group: Option<&str>) -> Result<Option<String>, String> {
     match group {
         None => Ok(None),
-        Some(name) => {
-            state.config.group_filter(name).map(Some).ok_or_else(|| {
-                let available: Vec<&str> = state.config.groups.iter().map(|g| g.name.as_str()).collect();
-                if available.is_empty() {
-                    format!("Unknown group '{}'. No groups configured.", name)
-                } else {
-                    format!("Unknown group '{}'. Available: {}", name, available.join(", "))
-                }
-            })
-        }
+        Some(name) => state.config.group_filter(name).map(Some).ok_or_else(|| {
+            let available: Vec<&str> = state
+                .config
+                .groups
+                .iter()
+                .map(|g| g.name.as_str())
+                .collect();
+            if available.is_empty() {
+                format!("Unknown group '{}'. No groups configured.", name)
+            } else {
+                format!(
+                    "Unknown group '{}'. Available: {}",
+                    name,
+                    available.join(", ")
+                )
+            }
+        }),
     }
 }
 

@@ -2,11 +2,11 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-use crate::index::Embedder;
 use crate::index::git::GitAnalyzer;
+use crate::index::Embedder;
 use crate::search::hybrid::apply_recency_boost;
 use crate::storage::{MetadataStore, VectorStore};
-use crate::types::{Chunk, ChunkType, FileCategory, MatchType, classify_file_with_rules};
+use crate::types::{classify_file_with_rules, Chunk, ChunkType, FileCategory, MatchType};
 
 /// How bridging (doc→source, commit→source) affects search results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,7 +47,10 @@ impl std::str::FromStr for BridgeMode {
             "inject" => Ok(BridgeMode::Inject),
             "boost" => Ok(BridgeMode::Boost),
             "boost_inject" | "boost+inject" => Ok(BridgeMode::BoostInject),
-            _ => anyhow::bail!("Unknown bridge_mode '{}'. Use: off, inject, boost, boost_inject", s),
+            _ => anyhow::bail!(
+                "Unknown bridge_mode '{}'. Use: off, inject, boost, boost_inject",
+                s
+            ),
         }
     }
 }
@@ -334,9 +337,7 @@ pub enum FileRelevance {
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum SeedSource {
     /// Found via hybrid search (semantic + keyword)
-    Search {
-        match_type: MatchType,
-    },
+    Search { match_type: MatchType },
     /// Found via git diff overlap
     Diff {
         status: String,
@@ -523,8 +524,7 @@ impl ContextAssembler {
         repo: Option<&str>,
     ) -> Result<ContextBundle> {
         // Collect unique files from seeds
-        let seed_files: HashSet<String> =
-            seeds.iter().map(|s| s.chunk.file_path.clone()).collect();
+        let seed_files: HashSet<String> = seeds.iter().map(|s| s.chunk.file_path.clone()).collect();
 
         // Convert SeedChunks to internal SeedResults for assembly
         let seed_results: Vec<SeedResult> = seeds
@@ -554,15 +554,18 @@ impl ContextAssembler {
             .collect();
 
         // Phase 2: Expand via temporal coupling
-        let coupled_chunks = self
-            .expand_coupling(&seed_files, repo)
-            .await?;
+        let coupled_chunks = self.expand_coupling(&seed_files, repo).await?;
 
         // Phase 2b: Collect bridge signals (commit→source + doc→source)
-        let bridge_files = self.collect_bridge_signals(&seed_results, &commit_chunks, repo).await?;
+        let bridge_files = self
+            .collect_bridge_signals(&seed_results, &commit_chunks, repo)
+            .await?;
 
         // Phase 2c: Apply bridge boost to seed scores if in Boost/BoostInject mode
-        let seed_results = if matches!(self.config.bridge_mode, BridgeMode::Boost | BridgeMode::BoostInject) {
+        let seed_results = if matches!(
+            self.config.bridge_mode,
+            BridgeMode::Boost | BridgeMode::BoostInject
+        ) {
             let factor = self.config.bridge_boost_factor;
             seed_results
                 .into_iter()
@@ -578,8 +581,12 @@ impl ContextAssembler {
         };
 
         // Phase 2d: Collect bridged chunks for injection (Inject/BoostInject modes)
-        let bridged_chunks = if matches!(self.config.bridge_mode, BridgeMode::Inject | BridgeMode::BoostInject) {
-            self.fetch_bridged_chunks(&seed_results, &bridge_files, repo).await?
+        let bridged_chunks = if matches!(
+            self.config.bridge_mode,
+            BridgeMode::Inject | BridgeMode::BoostInject
+        ) {
+            self.fetch_bridged_chunks(&seed_results, &bridge_files, repo)
+                .await?
         } else {
             vec![]
         };
@@ -591,7 +598,14 @@ impl ContextAssembler {
         let knowledge_chunks: Vec<KnowledgeChunkInfo> = vec![];
 
         // Phase 3: Assemble with budget
-        assemble_bundle(query, &self.config, seed_results, coupled_chunks, bridged_chunks, knowledge_chunks)
+        assemble_bundle(
+            query,
+            &self.config,
+            seed_results,
+            coupled_chunks,
+            bridged_chunks,
+            knowledge_chunks,
+        )
     }
 
     /// Collect bridge signal file paths from both doc→source and commit→source paths.
@@ -613,7 +627,10 @@ impl ContextAssembler {
 
         // Determine the repo root for resolving relative paths from git commands
         // to absolute paths that match the vector store's storage format.
-        let repo_root = self.git_analyzer.as_ref().map(|g| g.repo_root().to_path_buf());
+        let repo_root = self
+            .git_analyzer
+            .as_ref()
+            .map(|g| g.repo_root().to_path_buf());
 
         // Helper: resolve a relative path from git to match vector store paths.
         // git diff-tree returns relative paths, but the index stores absolute paths.
@@ -644,15 +661,14 @@ impl ContextAssembler {
                     continue;
                 }
 
-                let blame_entries = match git.blame_lines(&seed.file_path, seed.start_line, seed.end_line) {
-                    Ok(entries) => entries,
-                    Err(_) => continue,
-                };
+                let blame_entries =
+                    match git.blame_lines(&seed.file_path, seed.start_line, seed.end_line) {
+                        Ok(entries) => entries,
+                        Err(_) => continue,
+                    };
 
-                let commit_hashes: HashSet<String> = blame_entries
-                    .into_iter()
-                    .map(|e| e.commit_hash)
-                    .collect();
+                let commit_hashes: HashSet<String> =
+                    blame_entries.into_iter().map(|e| e.commit_hash).collect();
 
                 for hash in &commit_hashes {
                     let commit_files = match git.get_commit_files(hash) {
@@ -662,7 +678,9 @@ impl ContextAssembler {
 
                     for file_path in commit_files {
                         let file_category = self.classify(&file_path);
-                        if file_category == FileCategory::Source || file_category == FileCategory::Test {
+                        if file_category == FileCategory::Source
+                            || file_category == FileCategory::Test
+                        {
                             bridge_files.insert(resolve_path(file_path));
                         }
                     }
@@ -739,9 +757,9 @@ impl ContextAssembler {
             let mut seen_coupled_files: HashSet<String> = HashSet::new();
 
             for seed_file in seed_files {
-                let couplings =
-                    self.metadata_store
-                        .get_coupling(seed_file, self.config.max_coupled)?;
+                let couplings = self
+                    .metadata_store
+                    .get_coupling(seed_file, self.config.max_coupled)?;
 
                 for coupling in couplings {
                     if coupling.score < self.config.coupling_threshold {
@@ -755,9 +773,7 @@ impl ContextAssembler {
                     };
 
                     // Skip files already in seed results or already fetched
-                    if seed_files.contains(other_file)
-                        || seen_coupled_files.contains(other_file)
-                    {
+                    if seed_files.contains(other_file) || seen_coupled_files.contains(other_file) {
                         continue;
                     }
                     seen_coupled_files.insert(other_file.to_string());
@@ -936,7 +952,12 @@ impl ContextAssembler {
         let query_embedding = self.embedder.embed(query).await?;
         let all_semantic = self
             .vector_store
-            .search_filtered(&query_embedding, fetch_limit, repo, self.config.extra_filter.as_deref())
+            .search_filtered(
+                &query_embedding,
+                fetch_limit,
+                repo,
+                self.config.extra_filter.as_deref(),
+            )
             .await?;
 
         // Capture top commit chunks before filtering (for commit→source bridging).
@@ -945,7 +966,9 @@ impl ContextAssembler {
         let mut commit_chunks: Vec<Chunk> = Vec::new();
         if self.config.bridge_mode != BridgeMode::Off {
             for r in &all_semantic {
-                if r.chunk.chunk_type == ChunkType::Commit && commit_chunks.len() < max_commit_chunks {
+                if r.chunk.chunk_type == ChunkType::Commit
+                    && commit_chunks.len() < max_commit_chunks
+                {
                     commit_chunks.push(r.chunk.clone());
                 }
             }
@@ -959,7 +982,12 @@ impl ContextAssembler {
         let keyword_query = crate::search::preprocess::preprocess_for_keywords(query);
         let all_keyword = self
             .vector_store
-            .search_fts_filtered(&keyword_query, fetch_limit, repo, self.config.extra_filter.as_deref())
+            .search_fts_filtered(
+                &keyword_query,
+                fetch_limit,
+                repo,
+                self.config.extra_filter.as_deref(),
+            )
             .await
             .unwrap_or_default();
 
@@ -982,10 +1010,7 @@ impl ContextAssembler {
             .collect();
 
         // Capture raw cosine similarity of the top semantic result before RRF
-        let top_semantic_score = semantic_results
-            .first()
-            .map(|r| r.score)
-            .unwrap_or(0.0);
+        let top_semantic_score = semantic_results.first().map(|r| r.score).unwrap_or(0.0);
 
         // RRF combination
         let k = self.config.rrf_k;
@@ -1107,9 +1132,7 @@ impl ContextAssembler {
                             crate::search::ppr::DEFAULT_DAMPING,
                         )
                         .into_iter()
-                        .map(|(rel, score)| {
-                            (rel_to_abs.get(&rel).cloned().unwrap_or(rel), score)
-                        })
+                        .map(|(rel, score)| (rel_to_abs.get(&rel).cloned().unwrap_or(rel), score))
                         .collect()
                     } else {
                         std::collections::HashMap::new()
@@ -1135,14 +1158,27 @@ impl ContextAssembler {
                         score
                     } else {
                         // Tag effects mode: compute product of (1+boost) for all tags
-                        apply_tag_effects(tc, &result.tags, role, score, doc_demotion, &result.file_path, ft_rules)
+                        apply_tag_effects(
+                            tc,
+                            &result.tags,
+                            role,
+                            score,
+                            doc_demotion,
+                            &result.file_path,
+                            ft_rules,
+                        )
                     }
                 } else {
                     // Legacy mode: category-based doc demotion
                     let category = classify_file_with_rules(&result.file_path, ft_rules);
-                    if category.is_doc_like() { score * doc_demotion } else { score }
+                    if category.is_doc_like() {
+                        score * doc_demotion
+                    } else {
+                        score
+                    }
                 };
-                let after_recency = apply_recency_boost(adjusted_score, result.indexed_at, recency_hl, recency_w);
+                let after_recency =
+                    apply_recency_boost(adjusted_score, result.indexed_at, recency_hl, recency_w);
                 // Repo affinity: soft boost for files from the agent's current repo
                 let after_affinity = if let Some(affinity) = repo_affinity {
                     if result.repo.as_deref() == Some(affinity) {
@@ -1253,7 +1289,9 @@ fn assemble_bundle(
         .filter(|r| r.chunk_type != ChunkType::Commit)
         .filter(|r| !ARCHIVE_LANGUAGES.contains(&r.language.as_str()))
         .filter(|r| {
-            !r.repo.as_ref().is_some_and(|repo| ARCHIVE_REPOS.contains(&repo.as_str()))
+            !r.repo
+                .as_ref()
+                .is_some_and(|repo| ARCHIVE_REPOS.contains(&repo.as_str()))
         })
         .collect();
 
@@ -1319,23 +1357,35 @@ fn assemble_bundle(
         // context. Doc types with tag effects (design, runbook, audit, probe) are
         // intentionally NOT filtered here — tag scoring handles their relevance.
         let lower = path.to_lowercase();
-        if lower.contains("/_plans/") || lower.contains("/_roadmap/") || lower.contains("/_specs/")
-            || lower.contains("/crew/") || lower.contains("/polecats/")
-            || lower.contains("/docs/tasks/") || lower.contains("/docs/plans/")
-            || lower.contains("/memory/") || lower.contains("/.beads/")
-            || lower.contains("/session-notes/") || lower.contains("/sessions/")
-            || lower.ends_with("/roadmap.md") || lower.ends_with("/changelog.md")
+        if lower.contains("/_plans/")
+            || lower.contains("/_roadmap/")
+            || lower.contains("/_specs/")
+            || lower.contains("/crew/")
+            || lower.contains("/polecats/")
+            || lower.contains("/docs/tasks/")
+            || lower.contains("/docs/plans/")
+            || lower.contains("/memory/")
+            || lower.contains("/.beads/")
+            || lower.contains("/session-notes/")
+            || lower.contains("/sessions/")
+            || lower.ends_with("/roadmap.md")
+            || lower.ends_with("/changelog.md")
         {
             return true;
         }
         // Test/example directories — test code scores high for implementation
         // queries but rarely provides useful context for the agent's actual task.
-        if lower.contains("/tests/") || lower.contains("/test/")
-            || lower.contains("/__tests__/") || lower.contains("/spec/")
-            || lower.contains("/specs/") || lower.contains("/testdata/")
+        if lower.contains("/tests/")
+            || lower.contains("/test/")
+            || lower.contains("/__tests__/")
+            || lower.contains("/spec/")
+            || lower.contains("/specs/")
+            || lower.contains("/testdata/")
             || lower.contains("/fixtures/")
-            || lower.contains("/examples/") || lower.contains("/example/")
-            || lower.contains("/samples/") || lower.contains("/demo/")
+            || lower.contains("/examples/")
+            || lower.contains("/example/")
+            || lower.contains("/samples/")
+            || lower.contains("/demo/")
             || lower.contains("/demos/")
         {
             return true;
@@ -1343,19 +1393,38 @@ fn assemble_bundle(
         // CI workflow paths — GitHub/GitLab/CircleCI workflows are rarely useful
         // as code context. Ansible, Terraform, and Helm have tag effects (domain:iac)
         // and are intentionally NOT hard-filtered here.
-        if lower.contains("/.github/workflows/") || lower.contains("/.github/actions/")
-            || lower.contains("/.circleci/") || lower.contains("/.gitlab-ci")
+        if lower.contains("/.github/workflows/")
+            || lower.contains("/.github/actions/")
+            || lower.contains("/.circleci/")
+            || lower.contains("/.gitlab-ci")
             || lower.contains("/.forgejo/workflows/")
         {
             return true;
         }
         // CLAUDE.md/AGENTS.md and static product docs already in agent context
         let filename = path.rsplit('/').next().unwrap_or(path);
-        if matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "VISION.md" | "PRD.md"
-            | "ARCHITECTURE.md" | "DESIGN.md" | "CHANGELOG.md"
-            | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md"
-            | "QUICKSTART.md" | "FAQ.md" | "INSTALLING.md" | "UNINSTALLING.md"
-            | "TROUBLESHOOTING.md" | "RELEASING.md" | "SETUP.md") {
+        if matches!(
+            filename,
+            "CLAUDE.md"
+                | "AGENTS.md"
+                | "@AGENTS.md"
+                | "VISION.md"
+                | "PRD.md"
+                | "ARCHITECTURE.md"
+                | "DESIGN.md"
+                | "CHANGELOG.md"
+                | "MEMORY.md"
+                | "README.md"
+                | "CONTRIBUTING.md"
+                | "LICENSE.md"
+                | "QUICKSTART.md"
+                | "FAQ.md"
+                | "INSTALLING.md"
+                | "UNINSTALLING.md"
+                | "TROUBLESHOOTING.md"
+                | "RELEASING.md"
+                | "SETUP.md"
+        ) {
             return true;
         }
         // Test file patterns (catches test files outside /test/ directories)
@@ -1370,16 +1439,27 @@ fn assemble_bundle(
             return true;
         }
         // Lock files and generated output — never useful as code context
-        if matches!(filename, "Cargo.lock" | "package-lock.json" | "yarn.lock"
-            | "pnpm-lock.yaml" | "go.sum" | "Gemfile.lock" | "poetry.lock"
-            | "composer.lock" | "Pipfile.lock")
-        {
+        if matches!(
+            filename,
+            "Cargo.lock"
+                | "package-lock.json"
+                | "yarn.lock"
+                | "pnpm-lock.yaml"
+                | "go.sum"
+                | "Gemfile.lock"
+                | "poetry.lock"
+                | "composer.lock"
+                | "Pipfile.lock"
+        ) {
             return true;
         }
         // Vendored/generated directories — third-party code wastes context
-        if lower.contains("/vendor/") || lower.contains("/node_modules/")
-            || lower.contains("/third_party/") || lower.contains("/dist/")
-            || lower.contains("/build/") || lower.contains("/target/")
+        if lower.contains("/vendor/")
+            || lower.contains("/node_modules/")
+            || lower.contains("/third_party/")
+            || lower.contains("/dist/")
+            || lower.contains("/build/")
+            || lower.contains("/target/")
         {
             return true;
         }
@@ -1422,7 +1502,9 @@ fn assemble_bundle(
     let pin_budget_reserve = if pinned_results.is_empty() {
         0
     } else if let Some(ref tc) = config.tags_config {
-        let max_reserve = tc.effects.values()
+        let max_reserve = tc
+            .effects
+            .values()
             .filter(|e| e.pin && e.budget_reserve > 0)
             .map(|e| e.budget_reserve)
             .max()
@@ -1452,9 +1534,17 @@ fn assemble_bundle(
         let mut pinned_file_list: Vec<(String, Vec<SeedResult>)> =
             pinned_files.into_iter().collect();
         pinned_file_list.sort_by(|a, b| {
-            let max_a = a.1.iter().map(|r| r.score).fold(f32::NEG_INFINITY, f32::max);
-            let max_b = b.1.iter().map(|r| r.score).fold(f32::NEG_INFINITY, f32::max);
-            max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
+            let max_a =
+                a.1.iter()
+                    .map(|r| r.score)
+                    .fold(f32::NEG_INFINITY, f32::max);
+            let max_b =
+                b.1.iter()
+                    .map(|r| r.score)
+                    .fold(f32::NEG_INFINITY, f32::max);
+            max_b
+                .partial_cmp(&max_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         for (file_path, mut results) in pinned_file_list {
@@ -1463,16 +1553,27 @@ fn assemble_bundle(
             }
             results.sort_by_key(|r| r.start_line);
 
-            let language = results.first().map(|r| r.language.clone()).unwrap_or_default();
+            let language = results
+                .first()
+                .map(|r| r.language.clone())
+                .unwrap_or_default();
             let file_repo = results.first().and_then(|r| r.repo.clone());
-            let file_score = results.iter().map(|r| r.score).fold(f32::NEG_INFINITY, f32::max);
+            let file_score = results
+                .iter()
+                .map(|r| r.score)
+                .fold(f32::NEG_INFINITY, f32::max);
 
             let mut file_chunks = Vec::new();
             for result in results {
                 if seen_chunk_ids.contains(&result.chunk_id) {
                     continue;
                 }
-                let chunk_lines = chunk_cost(config.budget_unit, &result.content, result.start_line, result.end_line);
+                let chunk_lines = chunk_cost(
+                    config.budget_unit,
+                    &result.content,
+                    result.start_line,
+                    result.end_line,
+                );
                 let capped_lines = chunk_lines.min(max_chunk_lines);
                 if used_lines + capped_lines > pin_budget_reserve {
                     break;
@@ -1518,20 +1619,19 @@ fn assemble_bundle(
     }
 
     // Sort files by highest score
-    let mut direct_file_list: Vec<(String, Vec<SeedResult>)> =
-        direct_files.into_iter().collect();
+    let mut direct_file_list: Vec<(String, Vec<SeedResult>)> = direct_files.into_iter().collect();
     direct_file_list.sort_by(|a, b| {
-        let max_a = a
-            .1
-            .iter()
-            .map(|r| r.score)
-            .fold(f32::NEG_INFINITY, f32::max);
-        let max_b = b
-            .1
-            .iter()
-            .map(|r| r.score)
-            .fold(f32::NEG_INFINITY, f32::max);
-        max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
+        let max_a =
+            a.1.iter()
+                .map(|r| r.score)
+                .fold(f32::NEG_INFINITY, f32::max);
+        let max_b =
+            b.1.iter()
+                .map(|r| r.score)
+                .fold(f32::NEG_INFINITY, f32::max);
+        max_b
+            .partial_cmp(&max_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     let mut direct_hit_count: usize = 0;
@@ -1545,9 +1645,7 @@ fn assemble_bundle(
             .map(|r| r.language.clone())
             .unwrap_or_default();
 
-        let file_repo = results
-            .first()
-            .and_then(|r| r.repo.clone());
+        let file_repo = results.first().and_then(|r| r.repo.clone());
 
         let file_score = results
             .iter()
@@ -1560,7 +1658,12 @@ fn assemble_bundle(
                 continue;
             }
 
-            let chunk_lines = chunk_cost(config.budget_unit, &result.content, result.start_line, result.end_line);
+            let chunk_lines = chunk_cost(
+                config.budget_unit,
+                &result.content,
+                result.start_line,
+                result.end_line,
+            );
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
             if used_lines + capped_lines > budget {
@@ -1624,17 +1727,17 @@ fn assemble_bundle(
             .map(|(path, (chunks, sources))| (path, chunks, sources))
             .collect();
     coupled_file_list.sort_by(|a, b| {
-        let max_a = a
-            .1
-            .iter()
-            .map(|c| c.coupling_score)
-            .fold(f32::NEG_INFINITY, f32::max);
-        let max_b = b
-            .1
-            .iter()
-            .map(|c| c.coupling_score)
-            .fold(f32::NEG_INFINITY, f32::max);
-        max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
+        let max_a =
+            a.1.iter()
+                .map(|c| c.coupling_score)
+                .fold(f32::NEG_INFINITY, f32::max);
+        let max_b =
+            b.1.iter()
+                .map(|c| c.coupling_score)
+                .fold(f32::NEG_INFINITY, f32::max);
+        max_b
+            .partial_cmp(&max_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     let mut coupled_addition_count: usize = 0;
@@ -1663,7 +1766,12 @@ fn assemble_bundle(
                 continue;
             }
 
-            let chunk_lines = chunk_cost(config.budget_unit, &chunk.content, chunk.start_line, chunk.end_line);
+            let chunk_lines = chunk_cost(
+                config.budget_unit,
+                &chunk.content,
+                chunk.start_line,
+                chunk.end_line,
+            );
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
             if used_lines + capped_lines > budget {
@@ -1719,9 +1827,17 @@ fn assemble_bundle(
             .map(|(path, (chunks, sources))| (path, chunks, sources))
             .collect();
     bridged_file_list.sort_by(|a, b| {
-        let max_a = a.1.iter().map(|c| c.coupling_score).fold(f32::NEG_INFINITY, f32::max);
-        let max_b = b.1.iter().map(|c| c.coupling_score).fold(f32::NEG_INFINITY, f32::max);
-        max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
+        let max_a =
+            a.1.iter()
+                .map(|c| c.coupling_score)
+                .fold(f32::NEG_INFINITY, f32::max);
+        let max_b =
+            b.1.iter()
+                .map(|c| c.coupling_score)
+                .fold(f32::NEG_INFINITY, f32::max);
+        max_b
+            .partial_cmp(&max_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     let mut bridged_addition_count: usize = 0;
@@ -1736,8 +1852,14 @@ fn assemble_bundle(
 
         chunks.sort_by_key(|c| c.start_line);
 
-        let language = chunks.first().map(|c| c.language.clone()).unwrap_or_default();
-        let file_score = chunks.iter().map(|c| c.coupling_score).fold(f32::NEG_INFINITY, f32::max);
+        let language = chunks
+            .first()
+            .map(|c| c.language.clone())
+            .unwrap_or_default();
+        let file_score = chunks
+            .iter()
+            .map(|c| c.coupling_score)
+            .fold(f32::NEG_INFINITY, f32::max);
 
         let mut file_chunks = Vec::new();
         for chunk in chunks {
@@ -1745,7 +1867,12 @@ fn assemble_bundle(
                 continue;
             }
 
-            let chunk_lines = chunk_cost(config.budget_unit, &chunk.content, chunk.start_line, chunk.end_line);
+            let chunk_lines = chunk_cost(
+                config.budget_unit,
+                &chunk.content,
+                chunk.start_line,
+                chunk.end_line,
+            );
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
             if used_lines + capped_lines > budget || bridged_lines + capped_lines > bridged_budget {
@@ -1806,9 +1933,17 @@ fn assemble_bundle(
             .map(|(path, (chunks, sources))| (path, chunks, sources))
             .collect();
     knowledge_file_list.sort_by(|a, b| {
-        let max_a = a.1.iter().map(|c| c.knowledge_score).fold(f32::NEG_INFINITY, f32::max);
-        let max_b = b.1.iter().map(|c| c.knowledge_score).fold(f32::NEG_INFINITY, f32::max);
-        max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
+        let max_a =
+            a.1.iter()
+                .map(|c| c.knowledge_score)
+                .fold(f32::NEG_INFINITY, f32::max);
+        let max_b =
+            b.1.iter()
+                .map(|c| c.knowledge_score)
+                .fold(f32::NEG_INFINITY, f32::max);
+        max_b
+            .partial_cmp(&max_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     let mut knowledge_addition_count: usize = 0;
@@ -1823,8 +1958,14 @@ fn assemble_bundle(
 
         chunks.sort_by_key(|c| c.start_line);
 
-        let language = chunks.first().map(|c| c.language.clone()).unwrap_or_default();
-        let file_score = chunks.iter().map(|c| c.knowledge_score).fold(f32::NEG_INFINITY, f32::max);
+        let language = chunks
+            .first()
+            .map(|c| c.language.clone())
+            .unwrap_or_default();
+        let file_score = chunks
+            .iter()
+            .map(|c| c.knowledge_score)
+            .fold(f32::NEG_INFINITY, f32::max);
 
         let mut file_chunks = Vec::new();
         for chunk in chunks {
@@ -1832,10 +1973,17 @@ fn assemble_bundle(
                 continue;
             }
 
-            let chunk_lines = chunk_cost(config.budget_unit, &chunk.content, chunk.start_line, chunk.end_line);
+            let chunk_lines = chunk_cost(
+                config.budget_unit,
+                &chunk.content,
+                chunk.start_line,
+                chunk.end_line,
+            );
             let capped_lines = chunk_lines.min(max_chunk_lines);
 
-            if used_lines + capped_lines > budget || knowledge_lines + capped_lines > knowledge_budget {
+            if used_lines + capped_lines > budget
+                || knowledge_lines + capped_lines > knowledge_budget
+            {
                 break;
             }
 
@@ -1874,8 +2022,14 @@ fn assemble_bundle(
 
     let total_chunks = context_files.iter().map(|f| f.chunks.len()).sum();
     let total_files = context_files.len();
-    let source_files = context_files.iter().filter(|f| f.category == FileCategory::Source || f.category == FileCategory::Test).count();
-    let doc_files = context_files.iter().filter(|f| f.category == FileCategory::Documentation).count();
+    let source_files = context_files
+        .iter()
+        .filter(|f| f.category == FileCategory::Source || f.category == FileCategory::Test)
+        .count();
+    let doc_files = context_files
+        .iter()
+        .filter(|f| f.category == FileCategory::Documentation)
+        .count();
 
     Ok(ContextBundle {
         query: query.to_string(),
@@ -1944,7 +2098,11 @@ fn apply_tag_effects(
     } else {
         // Tags present but no effects configured: fall back to category demotion
         let category = classify_file_with_rules(file_path, file_type_rules);
-        if category.is_doc_like() { score * doc_demotion } else { score }
+        if category.is_doc_like() {
+            score * doc_demotion
+        } else {
+            score
+        }
     }
 }
 
@@ -2009,9 +2167,9 @@ mod tests {
         };
 
         let seeds = vec![
-            make_seed("c1", "a.rs", 1, 6, 0.9),  // 6 lines
-            make_seed("c2", "b.rs", 1, 8, 0.8),  // 8 lines - won't fit (6+8 > 10)
-            make_seed("c3", "c.rs", 1, 3, 0.7),  // 3 lines - fits (6+3 = 9 <= 10)
+            make_seed("c1", "a.rs", 1, 6, 0.9), // 6 lines
+            make_seed("c2", "b.rs", 1, 8, 0.8), // 8 lines - won't fit (6+8 > 10)
+            make_seed("c3", "c.rs", 1, 3, 0.7), // 3 lines - fits (6+3 = 9 <= 10)
         ];
 
         let bundle = assemble_bundle("test", &config, seeds, vec![], vec![], vec![]).unwrap();
@@ -2061,7 +2219,8 @@ mod tests {
         let mut c = make_seed("c3", "c.rs", 1, 3, 0.7);
         c.content = "x".repeat(16);
 
-        let bundle = assemble_bundle("test", &config, vec![a, b, c], vec![], vec![], vec![]).unwrap();
+        let bundle =
+            assemble_bundle("test", &config, vec![a, b, c], vec![], vec![], vec![]).unwrap();
 
         assert_eq!(bundle.budget.max_lines, 20);
         assert_eq!(bundle.budget.used_lines, 18); // tokens, not lines
@@ -2372,7 +2531,12 @@ mod tests {
 
     #[test]
     fn test_bridge_mode_roundtrip() {
-        for mode in [BridgeMode::Off, BridgeMode::Inject, BridgeMode::Boost, BridgeMode::BoostInject] {
+        for mode in [
+            BridgeMode::Off,
+            BridgeMode::Inject,
+            BridgeMode::Boost,
+            BridgeMode::BoostInject,
+        ] {
             let s = mode.to_string();
             let parsed: BridgeMode = s.parse().unwrap();
             assert_eq!(parsed, mode);
@@ -2381,14 +2545,17 @@ mod tests {
 
     #[test]
     fn test_pinned_chunks_injected_first() {
-        use crate::tags::{TagsConfig, TagEffect};
+        use crate::tags::{TagEffect, TagsConfig};
 
         let mut effects = std::collections::HashMap::new();
-        effects.insert("user:pin".to_string(), TagEffect {
-            pin: true,
-            budget_reserve: 20,
-            ..Default::default()
-        });
+        effects.insert(
+            "user:pin".to_string(),
+            TagEffect {
+                pin: true,
+                budget_reserve: 20,
+                ..Default::default()
+            },
+        );
         let tags_config = TagsConfig {
             effects,
             ..Default::default()
@@ -2444,14 +2611,17 @@ mod tests {
 
     #[test]
     fn test_pinned_chunks_respect_reserved_budget() {
-        use crate::tags::{TagsConfig, TagEffect};
+        use crate::tags::{TagEffect, TagsConfig};
 
         let mut effects = std::collections::HashMap::new();
-        effects.insert("user:pin".to_string(), TagEffect {
-            pin: true,
-            budget_reserve: 10,
-            ..Default::default()
-        });
+        effects.insert(
+            "user:pin".to_string(),
+            TagEffect {
+                pin: true,
+                budget_reserve: 10,
+                ..Default::default()
+            },
+        );
         let tags_config = TagsConfig {
             effects,
             ..Default::default()
@@ -2535,7 +2705,10 @@ mod tests {
         assert_eq!(bundle.summary.pinned_chunks, 0);
         assert_eq!(bundle.budget.pinned_lines, 0);
         assert_eq!(bundle.files.len(), 2);
-        assert!(bundle.files.iter().all(|f| f.relevance == FileRelevance::Direct));
+        assert!(bundle
+            .files
+            .iter()
+            .all(|f| f.relevance == FileRelevance::Direct));
     }
 
     #[test]

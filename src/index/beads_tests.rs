@@ -64,7 +64,10 @@ fn test_bead_excluded_by_label() {
     let exclude = vec!["security".to_string(), "escalation".to_string()];
     assert!(bead_excluded(&["security".to_string()], &exclude));
     assert!(bead_excluded(&["Escalation".to_string()], &exclude)); // case-insensitive
-    assert!(bead_excluded(&["pitch".to_string(), "security".to_string()], &exclude));
+    assert!(bead_excluded(
+        &["pitch".to_string(), "security".to_string()],
+        &exclude
+    ));
     assert!(!bead_excluded(&["pitch".to_string()], &exclude));
     assert!(!bead_excluded(&["security".to_string()], &[])); // empty = no exclusion
 }

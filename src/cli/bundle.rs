@@ -311,7 +311,10 @@ async fn run_list(path: PathBuf, args: ListArgs, output: OutputConfig) -> Result
                 })
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "bundles": json_bundles }))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({ "bundles": json_bundles }))?
+        );
         return Ok(());
     }
 
@@ -358,12 +361,19 @@ fn print_bundle_tree(bundles: &[&BundleConfig]) {
         );
         if let Some(kids) = children.get(root_bundle.name.as_str()) {
             for (i, kid) in kids.iter().enumerate() {
-                let prefix = if i == kids.len() - 1 { "└──" } else { "├──" };
+                let prefix = if i == kids.len() - 1 {
+                    "└──"
+                } else {
+                    "├──"
+                };
                 let kid_files = kid.member_files().len();
                 println!(
                     "    {} {} — \"{}\" ({} files)",
                     prefix,
-                    kid.name.rsplit_once('/').map(|(_, n)| n).unwrap_or(&kid.name),
+                    kid.name
+                        .rsplit_once('/')
+                        .map(|(_, n)| n)
+                        .unwrap_or(&kid.name),
                     kid.description,
                     kid_files
                 );
@@ -428,29 +438,35 @@ async fn run_show(path: PathBuf, args: ShowArgs, output: OutputConfig) -> Result
             .bundles
             .iter()
             .filter(|b| b.parent_name() == Some(&bundle.name))
-            .map(|b| serde_json::json!({
-                "name": b.name,
-                "description": b.description,
-                "file_count": b.member_files().len(),
-            }))
-            .collect();
-        let refs_json: Vec<serde_json::Value> = bundle.refs.iter().map(|r| {
-            if let Some(parsed) = BundleRef::parse(r) {
+            .map(|b| {
                 serde_json::json!({
-                    "raw": r,
-                    "file": parsed.file,
-                    "target": match &parsed.target {
-                        RefTarget::WholeFile => "file".to_string(),
-                        RefTarget::Symbol(s) => format!("symbol:{}", s),
-                        RefTarget::Heading(h) => format!("heading:{}", h),
-                    },
-                    "repo": parsed.repo,
-                    "modifier": parsed.modifier,
+                    "name": b.name,
+                    "description": b.description,
+                    "file_count": b.member_files().len(),
                 })
-            } else {
-                serde_json::json!({ "raw": r })
-            }
-        }).collect();
+            })
+            .collect();
+        let refs_json: Vec<serde_json::Value> = bundle
+            .refs
+            .iter()
+            .map(|r| {
+                if let Some(parsed) = BundleRef::parse(r) {
+                    serde_json::json!({
+                        "raw": r,
+                        "file": parsed.file,
+                        "target": match &parsed.target {
+                            RefTarget::WholeFile => "file".to_string(),
+                            RefTarget::Symbol(s) => format!("symbol:{}", s),
+                            RefTarget::Heading(h) => format!("heading:{}", h),
+                        },
+                        "repo": parsed.repo,
+                        "modifier": parsed.modifier,
+                    })
+                } else {
+                    serde_json::json!({ "raw": r })
+                }
+            })
+            .collect();
         let json = serde_json::json!({
             "name": bundle.name,
             "slug": bundle.slug(),
@@ -605,7 +621,11 @@ fn show_l0(bundle: &BundleConfig, all_bundles: &[BundleConfig]) -> Result<()> {
     if !children.is_empty() {
         println!();
         for child in &children {
-            let child_short = child.name.rsplit_once('/').map(|(_, n)| n).unwrap_or(&child.name);
+            let child_short = child
+                .name
+                .rsplit_once('/')
+                .map(|(_, n)| n)
+                .unwrap_or(&child.name);
             println!("   {} — \"{}\"", child_short, child.description);
         }
     }
@@ -633,7 +653,10 @@ fn show_l0(bundle: &BundleConfig, all_bundles: &[BundleConfig]) -> Result<()> {
         );
     }
     println!("   → `bobbin bundle show {}` for outline", bundle.name);
-    println!("   → `bobbin bundle show {} --deep` for full context", bundle.name);
+    println!(
+        "   → `bobbin bundle show {} --deep` for full context",
+        bundle.name
+    );
 
     Ok(())
 }
@@ -729,9 +752,8 @@ async fn show_l1(
     }
 
     // Show ontology relationships
-    let has_relationships = !bundle.implements.is_empty()
-        || !bundle.depends_on.is_empty()
-        || !bundle.tests.is_empty();
+    let has_relationships =
+        !bundle.implements.is_empty() || !bundle.depends_on.is_empty() || !bundle.tests.is_empty();
     if has_relationships {
         println!();
         println!("=== Relationships ===");
@@ -755,14 +777,24 @@ async fn show_l1(
         println!();
         println!("=== Sub-bundles ({}) ===", children.len());
         for child in &children {
-            let child_short = child.name.rsplit_once('/').map(|(_, n)| n).unwrap_or(&child.name);
+            let child_short = child
+                .name
+                .rsplit_once('/')
+                .map(|(_, n)| n)
+                .unwrap_or(&child.name);
             let files = child.member_files().len();
-            println!("  {} — \"{}\" ({} files)", child_short, child.description, files);
+            println!(
+                "  {} — \"{}\" ({} files)",
+                child_short, child.description, files
+            );
         }
     }
 
     println!();
-    println!("→ `bobbin bundle show {} --deep` for full file contents", bundle.name);
+    println!(
+        "→ `bobbin bundle show {} --deep` for full file contents",
+        bundle.name
+    );
 
     Ok(())
 }
@@ -773,7 +805,10 @@ async fn show_l2(
     all_bundles: &[BundleConfig],
     repo_root: &std::path::Path,
 ) -> Result<()> {
-    println!("📦 bundle:{} — \"{}\" [DEEP]", bundle.name, bundle.description);
+    println!(
+        "📦 bundle:{} — \"{}\" [DEEP]",
+        bundle.name, bundle.description
+    );
     println!();
 
     if !bundle.keywords.is_empty() {
@@ -827,7 +862,10 @@ async fn show_l2(
             // Handle cross-repo refs (repo:path)
             let file_path = if f.contains(':') {
                 // Cross-repo — just show the path, can't resolve locally
-                println!("  (cross-repo file, use `bobbin bundle show {} --deep` on the target repo)", bundle.name);
+                println!(
+                    "  (cross-repo file, use `bobbin bundle show {} --deep` on the target repo)",
+                    bundle.name
+                );
                 continue;
             } else {
                 repo_root.join(f)
@@ -1066,13 +1104,20 @@ async fn run_create(path: PathBuf, args: CreateArgs, output: OutputConfig) -> Re
     if tags_path.exists() {
         let config = TagsConfig::load_or_default(&tags_path);
         if config.find_bundle(&args.name).is_some() {
-            bail!("Bundle '{}' already exists in {}", args.name, tags_path.display());
+            bail!(
+                "Bundle '{}' already exists in {}",
+                args.name,
+                tags_path.display()
+            );
         }
     }
 
     // Validate name
     if args.name.is_empty() || args.name.starts_with('/') || args.name.ends_with('/') {
-        bail!("Invalid bundle name '{}': must not be empty or start/end with '/'", args.name);
+        bail!(
+            "Invalid bundle name '{}': must not be empty or start/end with '/'",
+            args.name
+        );
     }
 
     let description = args
@@ -1310,7 +1355,9 @@ async fn run_remove(path: PathBuf, args: RemoveArgs, _output: OutputConfig) -> R
 }
 
 async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Result<()> {
-    let repo_root = args.repo_root.unwrap_or_else(|| path.canonicalize().unwrap_or(path));
+    let repo_root = args
+        .repo_root
+        .unwrap_or_else(|| path.canonicalize().unwrap_or(path));
     let config = load_tags_with_bundles(&repo_root);
 
     let bundles_to_check: Vec<&BundleConfig> = if let Some(ref name) = args.name {
@@ -1373,14 +1420,24 @@ async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Resu
                     // Check symbol exists in the file
                     if let Ok(content) = std::fs::read_to_string(&file_path) {
                         if !content.contains(sym.as_str()) {
-                            issues.push(format!("  ⚠ symbol not found: {} (in {})", sym, parsed.file));
+                            issues.push(format!(
+                                "  ⚠ symbol not found: {} (in {})",
+                                sym, parsed.file
+                            ));
                         }
                     }
                 } else if let RefTarget::Heading(ref heading) = parsed.target {
                     if let Ok(content) = std::fs::read_to_string(&file_path) {
                         let heading_pattern = format!("# {}", heading);
-                        if !content.lines().any(|l| l.trim_start_matches('#').trim().starts_with(heading.as_str())) {
-                            issues.push(format!("  ⚠ heading not found: {} (in {})", heading, parsed.file));
+                        if !content.lines().any(|l| {
+                            l.trim_start_matches('#')
+                                .trim()
+                                .starts_with(heading.as_str())
+                        }) {
+                            issues.push(format!(
+                                "  ⚠ heading not found: {} (in {})",
+                                heading, parsed.file
+                            ));
                         }
                         let _ = heading_pattern; // used for clarity
                     }
@@ -1433,9 +1490,17 @@ async fn run_check(path: PathBuf, args: CheckArgs, output: OutputConfig) -> Resu
             bundles_to_check.len(), bundles_healthy, bundles_stale, total_issues, total_refs, total_files
         );
     } else {
-        println!("Bundle health: {} checked, {} healthy, {} with issues ({} total issues)",
-            bundles_to_check.len(), bundles_healthy, bundles_stale, total_issues);
-        println!("  Refs checked: {}, Files checked: {}", total_refs, total_files);
+        println!(
+            "Bundle health: {} checked, {} healthy, {} with issues ({} total issues)",
+            bundles_to_check.len(),
+            bundles_healthy,
+            bundles_stale,
+            total_issues
+        );
+        println!(
+            "  Refs checked: {}, Files checked: {}",
+            total_refs, total_files
+        );
         if bundles_stale == 0 {
             println!("  ✓ All bundles healthy");
         }
@@ -1471,7 +1536,9 @@ async fn run_stats(path: PathBuf, args: StatsArgs, output: OutputConfig) -> Resu
 
         // Try bd list with label filter (best-effort — bd might not be available)
         let result = std::process::Command::new("bd")
-            .args(["list", "--json", "--label", &label, "--limit", "0", "--flat"])
+            .args([
+                "list", "--json", "--label", &label, "--limit", "0", "--flat",
+            ])
             .output();
 
         match result {
@@ -1480,13 +1547,17 @@ async fn run_stats(path: PathBuf, args: StatsArgs, output: OutputConfig) -> Resu
                 // Parse JSON array of issues
                 if let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
                     let total = issues.len();
-                    let open = issues.iter().filter(|i| {
-                        let s = i.get("status").and_then(|v| v.as_str()).unwrap_or("");
-                        s == "open" || s == "in_progress"
-                    }).count();
-                    let closed = issues.iter().filter(|i| {
-                        i.get("status").and_then(|v| v.as_str()) == Some("closed")
-                    }).count();
+                    let open = issues
+                        .iter()
+                        .filter(|i| {
+                            let s = i.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                            s == "open" || s == "in_progress"
+                        })
+                        .count();
+                    let closed = issues
+                        .iter()
+                        .filter(|i| i.get("status").and_then(|v| v.as_str()) == Some("closed"))
+                        .count();
                     stats.push((bundle.name.clone(), slug, open, closed, total));
                 } else {
                     stats.push((bundle.name.clone(), slug, 0, 0, 0));
@@ -1500,16 +1571,19 @@ async fn run_stats(path: PathBuf, args: StatsArgs, output: OutputConfig) -> Resu
     }
 
     if output.json {
-        let json_stats: Vec<serde_json::Value> = stats.iter().map(|(name, slug, open, closed, total)| {
-            serde_json::json!({
-                "bundle": name,
-                "slug": slug,
-                "label": format!("b:{}", slug),
-                "open": open,
-                "closed": closed,
-                "total": total,
+        let json_stats: Vec<serde_json::Value> = stats
+            .iter()
+            .map(|(name, slug, open, closed, total)| {
+                serde_json::json!({
+                    "bundle": name,
+                    "slug": slug,
+                    "label": format!("b:{}", slug),
+                    "open": open,
+                    "closed": closed,
+                    "total": total,
+                })
             })
-        }).collect();
+            .collect();
         println!("{}", serde_json::to_string_pretty(&json_stats)?);
     } else {
         println!("Bundle usage (beads with b:<slug> labels):\n");
@@ -1517,14 +1591,20 @@ async fn run_stats(path: PathBuf, args: StatsArgs, output: OutputConfig) -> Resu
         for (name, slug, open, closed, total) in &stats {
             if *total > 0 {
                 any_beads = true;
-                println!("  {} (b:{}) — {} total ({} open, {} closed)", name, slug, total, open, closed);
+                println!(
+                    "  {} (b:{}) — {} total ({} open, {} closed)",
+                    name, slug, total, open, closed
+                );
             }
         }
         if !any_beads {
             println!("  No beads found with b:<slug> labels.");
             println!();
             println!("  Label beads with bundle slugs to track work:");
-            println!("    bd new -t task \"description\" -l b:{}", stats.first().map(|s| s.1.as_str()).unwrap_or("context"));
+            println!(
+                "    bd new -t task \"description\" -l b:{}",
+                stats.first().map(|s| s.1.as_str()).unwrap_or("context")
+            );
         }
     }
 
@@ -1561,7 +1641,10 @@ fn compute_bundle_freq(
         total_beads += 1;
         let unique: BTreeSet<&String> = files.iter().collect();
         for f in unique {
-            file_beads.entry(f.clone()).or_default().insert(bead.clone());
+            file_beads
+                .entry(f.clone())
+                .or_default()
+                .insert(bead.clone());
         }
     }
     // No changeset data → nothing to suggest and nothing can be judged "dead".
@@ -1680,11 +1763,17 @@ async fn run_additions(path: PathBuf, args: AdditionsArgs, output: OutputConfig)
                 bundle.name, freq.total_beads
             );
             if freq.additions.is_empty() {
-                println!("  (no files above the {:.0}% threshold)", args.min_fraction * 100.0);
+                println!(
+                    "  (no files above the {:.0}% threshold)",
+                    args.min_fraction * 100.0
+                );
             }
             for (f, n) in &freq.additions {
                 let pct = (*n as f32 / freq.total_beads as f32) * 100.0;
-                println!("  {}  — touched in {}/{} beads ({:.0}%)", f, n, freq.total_beads, pct);
+                println!(
+                    "  {}  — touched in {}/{} beads ({:.0}%)",
+                    f, n, freq.total_beads, pct
+                );
             }
         }
     }
@@ -1726,7 +1815,10 @@ async fn run_drift(path: PathBuf, args: DriftArgs, output: OutputConfig) -> Resu
                 })
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({"bundles": items}))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({"bundles": items}))?
+        );
     } else if !output.quiet {
         for (name, f) in &report {
             if f.total_beads == 0 {
@@ -1740,7 +1832,10 @@ async fn run_drift(path: PathBuf, args: DriftArgs, output: OutputConfig) -> Resu
             };
             println!("{} [{}] — {} beads", name, status, f.total_beads);
             for (file, n) in &f.additions {
-                println!("  + missing: {}  (touched in {}/{} beads)", file, n, f.total_beads);
+                println!(
+                    "  + missing: {}  (touched in {}/{} beads)",
+                    file, n, f.total_beads
+                );
             }
             for file in &f.dead {
                 println!("  - dead member: {} (never touched)", file);
@@ -1765,21 +1860,31 @@ async fn run_suggest(path: PathBuf, args: SuggestArgs, output: OutputConfig) -> 
     // Load coupling data from local index store
     let index_path = repo_root.join(".bobbin").join("index.db");
     if !index_path.exists() {
-        bail!("No index.db found at {:?}. Run `bobbin index` first.", index_path);
+        bail!(
+            "No index.db found at {:?}. Run `bobbin index` first.",
+            index_path
+        );
     }
     let store = crate::storage::sqlite::MetadataStore::open(&index_path)?;
     let edges = store.all_coupling(args.threshold, 5000)?;
 
     if edges.is_empty() {
-        println!("No coupling data found above threshold {}. Try lowering --threshold.", args.threshold);
+        println!(
+            "No coupling data found above threshold {}. Try lowering --threshold.",
+            args.threshold
+        );
         return Ok(());
     }
 
     // Build adjacency graph (union-find for connected components)
     let mut adj: HashMap<String, Vec<(String, f32)>> = HashMap::new();
     for edge in &edges {
-        adj.entry(edge.file_a.clone()).or_default().push((edge.file_b.clone(), edge.score));
-        adj.entry(edge.file_b.clone()).or_default().push((edge.file_a.clone(), edge.score));
+        adj.entry(edge.file_a.clone())
+            .or_default()
+            .push((edge.file_b.clone(), edge.score));
+        adj.entry(edge.file_b.clone())
+            .or_default()
+            .push((edge.file_a.clone(), edge.score));
     }
 
     // Find connected components via BFS
@@ -1814,8 +1919,10 @@ async fn run_suggest(path: PathBuf, args: SuggestArgs, output: OutputConfig) -> 
     clusters.sort_by(|a, b| b.len().cmp(&a.len()));
 
     if clusters.is_empty() {
-        println!("No file clusters found with >= {} members above coupling threshold {}.",
-            args.min_size, args.threshold);
+        println!(
+            "No file clusters found with >= {} members above coupling threshold {}.",
+            args.min_size, args.threshold
+        );
         return Ok(());
     }
 
@@ -1824,7 +1931,10 @@ async fn run_suggest(path: PathBuf, args: SuggestArgs, output: OutputConfig) -> 
     let mut suggestion_count = 0;
 
     for (i, cluster) in clusters.iter().enumerate() {
-        let unbundled: Vec<&String> = cluster.iter().filter(|f| !bundled_files.contains(*f)).collect();
+        let unbundled: Vec<&String> = cluster
+            .iter()
+            .filter(|f| !bundled_files.contains(*f))
+            .collect();
         let bundled_count = cluster.len() - unbundled.len();
 
         // Skip clusters where most files are already bundled
@@ -1835,7 +1945,8 @@ async fn run_suggest(path: PathBuf, args: SuggestArgs, output: OutputConfig) -> 
         suggestion_count += 1;
 
         // Try to derive a name from common path prefix
-        let common_prefix = common_path_prefix(&cluster.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        let common_prefix =
+            common_path_prefix(&cluster.iter().map(|s| s.as_str()).collect::<Vec<_>>());
         let suggested_name = if common_prefix.is_empty() {
             format!("cluster-{}", i + 1)
         } else {
@@ -1851,14 +1962,29 @@ async fn run_suggest(path: PathBuf, args: SuggestArgs, output: OutputConfig) -> 
                 edge_count += 1;
             }
         }
-        let avg_score = if edge_count > 0 { total_score / edge_count as f32 } else { 0.0 };
+        let avg_score = if edge_count > 0 {
+            total_score / edge_count as f32
+        } else {
+            0.0
+        };
 
         if output.json {
-            println!("  {{\"name\":\"{}\",\"files\":{},\"unbundled\":{},\"avg_coupling\":{:.2}}}",
-                suggested_name, cluster.len(), unbundled.len(), avg_score);
+            println!(
+                "  {{\"name\":\"{}\",\"files\":{},\"unbundled\":{},\"avg_coupling\":{:.2}}}",
+                suggested_name,
+                cluster.len(),
+                unbundled.len(),
+                avg_score
+            );
         } else {
-            println!("{}. {} ({} files, {} unbundled, avg coupling: {:.2})",
-                suggestion_count, suggested_name, cluster.len(), unbundled.len(), avg_score);
+            println!(
+                "{}. {} ({} files, {} unbundled, avg coupling: {:.2})",
+                suggestion_count,
+                suggested_name,
+                cluster.len(),
+                unbundled.len(),
+                avg_score
+            );
             if bundled_count > 0 {
                 println!("   Already bundled: {} files", bundled_count);
             }
@@ -1875,7 +2001,10 @@ async fn run_suggest(path: PathBuf, args: SuggestArgs, output: OutputConfig) -> 
     if suggestion_count == 0 {
         println!("All coupled file clusters are already covered by existing bundles.");
     } else {
-        println!("Found {} potential bundle(s). Create with:", suggestion_count);
+        println!(
+            "Found {} potential bundle(s). Create with:",
+            suggestion_count
+        );
         println!("  bobbin bundle create \"<name>\" --global -f \"<file1>,<file2>,...\"");
     }
 
@@ -1890,7 +2019,10 @@ fn common_path_prefix(paths: &[&str]) -> String {
     let first = paths[0];
     let mut prefix_len = 0;
     for (i, c) in first.char_indices() {
-        if paths.iter().all(|p| p.get(..=i).map(|s| s.ends_with(c)).unwrap_or(false)) {
+        if paths
+            .iter()
+            .all(|p| p.get(..=i).map(|s| s.ends_with(c)).unwrap_or(false))
+        {
             if c == '/' {
                 prefix_len = i + 1;
             }
@@ -1990,8 +2122,10 @@ fn print_symbol_from_content(content: &str, symbol_name: &str, file_path: &str) 
 
 /// Extract a symbol name from a code line (the identifier after fn/struct/etc keywords).
 fn extract_symbol_name_from_line(line: &str) -> Option<String> {
-    let keywords = ["fn ", "struct ", "enum ", "trait ", "impl ", "type ", "const ", "static ",
-                     "mod ", "def ", "class ", "func "];
+    let keywords = [
+        "fn ", "struct ", "enum ", "trait ", "impl ", "type ", "const ", "static ", "mod ", "def ",
+        "class ", "func ",
+    ];
     for kw in &keywords {
         if let Some(idx) = line.find(kw) {
             let after = &line[idx + kw.len()..];
@@ -2087,12 +2221,23 @@ mod tests {
         // 3 beads. weights.rs touched by all 3, scorer.rs by 2, main.rs by 1.
         // Bundle members: weights.rs (touched) + legacy.rs (never touched → dead).
         let changesets = vec![
-            ("b1".into(), vec!["src/weights.rs".into(), "src/scorer.rs".into()]),
-            ("b2".into(), vec!["src/weights.rs".into(), "src/scorer.rs".into(), "src/main.rs".into()]),
+            (
+                "b1".into(),
+                vec!["src/weights.rs".into(), "src/scorer.rs".into()],
+            ),
+            (
+                "b2".into(),
+                vec![
+                    "src/weights.rs".into(),
+                    "src/scorer.rs".into(),
+                    "src/main.rs".into(),
+                ],
+            ),
             ("b3".into(), vec!["src/weights.rs".into()]),
         ];
-        let members: HashSet<String> =
-            ["src/weights.rs".to_string(), "src/legacy.rs".to_string()].into_iter().collect();
+        let members: HashSet<String> = ["src/weights.rs".to_string(), "src/legacy.rs".to_string()]
+            .into_iter()
+            .collect();
 
         // min_fraction 0.5 → threshold ceil(1.5)=2 beads.
         let freq = compute_bundle_freq(&changesets, &members, 0.5);

@@ -13,7 +13,13 @@ pub fn resolve_imports(
     source_root: &Path,
 ) {
     for edge in imports.iter_mut() {
-        edge.resolved_path = resolve_one(&edge.import_specifier, &edge.source_file, &edge.language, indexed_files, source_root);
+        edge.resolved_path = resolve_one(
+            &edge.import_specifier,
+            &edge.source_file,
+            &edge.language,
+            indexed_files,
+            source_root,
+        );
     }
 }
 
@@ -36,7 +42,11 @@ fn resolve_one(
 }
 
 /// Rust: `crate::foo::bar` → `src/foo/bar.rs` or `src/foo/bar/mod.rs`
-fn resolve_rust(specifier: &str, source_file: &str, indexed_files: &HashSet<String>) -> Option<String> {
+fn resolve_rust(
+    specifier: &str,
+    source_file: &str,
+    indexed_files: &HashSet<String>,
+) -> Option<String> {
     // Strip leading path qualifiers
     let path_part = if specifier.starts_with("crate::") {
         specifier.strip_prefix("crate::")
@@ -94,7 +104,11 @@ fn try_rust_path(base: &str, path_part: &str, indexed_files: &HashSet<String>) -
 
 /// TypeScript: `./foo/bar` → `foo/bar.ts`, `foo/bar/index.ts`, etc.
 /// Also handles `@/foo` alias → `src/foo`
-fn resolve_typescript(specifier: &str, source_file: &str, indexed_files: &HashSet<String>) -> Option<String> {
+fn resolve_typescript(
+    specifier: &str,
+    source_file: &str,
+    indexed_files: &HashSet<String>,
+) -> Option<String> {
     let normalized = if specifier.starts_with("./") || specifier.starts_with("../") {
         // Relative import — resolve from source file's directory
         let source_dir = Path::new(source_file).parent().unwrap_or(Path::new(""));
@@ -129,7 +143,11 @@ fn resolve_typescript(specifier: &str, source_file: &str, indexed_files: &HashSe
 }
 
 /// Python: `foo.bar.baz` → `foo/bar/baz.py` or `foo/bar/baz/__init__.py`
-fn resolve_python(specifier: &str, source_file: &str, indexed_files: &HashSet<String>) -> Option<String> {
+fn resolve_python(
+    specifier: &str,
+    source_file: &str,
+    indexed_files: &HashSet<String>,
+) -> Option<String> {
     // Handle relative imports (leading dots)
     let (dots, module) = count_leading_dots(specifier);
 
@@ -241,7 +259,11 @@ fn resolve_java(specifier: &str, indexed_files: &HashSet<String>) -> Option<Stri
 }
 
 /// C/C++: `#include "foo.h"` → resolve relative to source file or project root
-fn resolve_cpp(specifier: &str, source_file: &str, indexed_files: &HashSet<String>) -> Option<String> {
+fn resolve_cpp(
+    specifier: &str,
+    source_file: &str,
+    indexed_files: &HashSet<String>,
+) -> Option<String> {
     // Direct match in indexed files
     if indexed_files.contains(specifier) {
         return Some(specifier.to_string());
@@ -439,7 +461,10 @@ mod tests {
     fn test_resolve_java_maven_convention() {
         let files = make_files(&["src/main/java/com/example/App.java"]);
         let result = resolve_java("com.example.App", &files);
-        assert_eq!(result, Some("src/main/java/com/example/App.java".to_string()));
+        assert_eq!(
+            result,
+            Some("src/main/java/com/example/App.java".to_string())
+        );
     }
 
     #[test]

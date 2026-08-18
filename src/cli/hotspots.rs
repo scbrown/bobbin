@@ -87,8 +87,11 @@ pub async fn run(args: HotspotsArgs, output: OutputConfig) -> Result<()> {
 
     for (file_path, churn) in &churn_map {
         let language = detect_language(file_path);
-        if language == "unknown" || language == "markdown" || language == "json"
-            || language == "yaml" || language == "toml"
+        if language == "unknown"
+            || language == "markdown"
+            || language == "json"
+            || language == "yaml"
+            || language == "toml"
         {
             continue;
         }
@@ -120,7 +123,11 @@ pub async fn run(args: HotspotsArgs, output: OutputConfig) -> Result<()> {
     }
 
     // Sort by score descending
-    hotspots.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    hotspots.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     hotspots.truncate(args.limit);
 
     if output.json {
@@ -175,11 +182,7 @@ pub async fn run(args: HotspotsArgs, output: OutputConfig) -> Result<()> {
 fn render_bar(score: f32, width: usize) -> String {
     let filled = (score * width as f32).round() as usize;
     let empty = width.saturating_sub(filled);
-    format!(
-        "{}{}",
-        "█".repeat(filled).red(),
-        "░".repeat(empty).dimmed()
-    )
+    format!("{}{}", "█".repeat(filled).red(), "░".repeat(empty).dimmed())
 }
 
 fn detect_language(file: &str) -> String {

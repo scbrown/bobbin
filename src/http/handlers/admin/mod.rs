@@ -9,9 +9,7 @@ use axum::response::IntoResponse;
 use axum::Json;
 use serde::Serialize;
 
-use super::{
-    internal_error, open_vector_store, AppState, ErrorBody,
-};
+use super::{internal_error, open_vector_store, AppState, ErrorBody};
 
 mod repos;
 pub(super) use repos::*;
@@ -97,9 +95,7 @@ pub(super) async fn version() -> Json<VersionResponse> {
 // /metrics
 // ---------------------------------------------------------------------------
 
-pub(super) async fn metrics(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub(super) async fn metrics(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let store = match open_vector_store(&state).await {
         Ok(s) => s,
         Err(_) => {

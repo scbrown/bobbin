@@ -72,14 +72,8 @@ pub async fn run(args: BenchmarkArgs, output: OutputConfig) -> Result<()> {
     let model_dir = Config::model_cache_dir()?;
 
     if !output.quiet && !output.json {
-        println!(
-            "{} Embedding model benchmark",
-            "▶".cyan()
-        );
-        println!(
-            "  Models:     {}",
-            models.join(", ")
-        );
+        println!("{} Embedding model benchmark", "▶".cyan());
+        println!("  Models:     {}", models.join(", "));
         println!("  Queries:    {}", args.query.len());
         println!("  Iterations: {}", args.iterations);
         println!();

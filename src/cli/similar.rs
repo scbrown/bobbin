@@ -6,7 +6,9 @@ use std::path::PathBuf;
 
 use super::OutputConfig;
 use crate::access::RepoFilter;
-use crate::analysis::similar::{DuplicateCluster, SimilarResult, SimilarTarget, SimilarityAnalyzer};
+use crate::analysis::similar::{
+    DuplicateCluster, SimilarResult, SimilarTarget, SimilarityAnalyzer,
+};
 use crate::config::Config;
 use crate::index::Embedder;
 use crate::storage::VectorStore;
@@ -141,7 +143,9 @@ pub async fn run(args: SimilarArgs, output: OutputConfig) -> Result<()> {
         let clusters: Vec<DuplicateCluster> = clusters
             .into_iter()
             .map(|mut c| {
-                c.members.retain(|m| access_filter.is_allowed(RepoFilter::repo_from_path(&m.chunk.file_path)));
+                c.members.retain(|m| {
+                    access_filter.is_allowed(RepoFilter::repo_from_path(&m.chunk.file_path))
+                });
                 c
             })
             .filter(|c| c.members.len() >= 2)
@@ -305,18 +309,11 @@ fn print_scan_human(clusters: &[DuplicateCluster], threshold: f32, verbose: bool
         return;
     }
 
-    println!(
-        "Duplicate clusters (threshold: {:.2}):",
-        threshold
-    );
+    println!("Duplicate clusters (threshold: {:.2}):", threshold);
     println!();
 
     for (i, cluster) in clusters.iter().enumerate() {
-        let rep_name = cluster
-            .representative
-            .name
-            .as_deref()
-            .unwrap_or("unnamed");
+        let rep_name = cluster.representative.name.as_deref().unwrap_or("unnamed");
 
         println!(
             "  Cluster {} ({} chunks, avg similarity: {:.2}):",

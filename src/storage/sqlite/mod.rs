@@ -119,7 +119,9 @@ impl MetadataStore {
     /// Clearing the watermark forces the next index to rebuild from scratch
     /// (`since=None` → `git log` → all commits).
     pub fn delete_meta(&self, key: &str) -> Result<usize> {
-        let n = self.conn.execute("DELETE FROM meta WHERE key = ?1", [key])?;
+        let n = self
+            .conn
+            .execute("DELETE FROM meta WHERE key = ?1", [key])?;
         Ok(n)
     }
 

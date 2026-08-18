@@ -1,6 +1,7 @@
 //! Search and chunk retrieval handlers.
 #![allow(private_interfaces)]
 
+use super::search_exec::{execute_or_search, execute_single_search};
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -132,8 +133,12 @@ pub(super) async fn search(
     };
 
     // Repo filter: prefer inline filter, fall back to query param
-    let inline_repo: Option<String> = parsed.filters.iter()
-        .find(|f| f.field == crate::search::query::FilterField::Repo && !f.negated && f.values.len() == 1)
+    let inline_repo: Option<String> = parsed
+        .filters
+        .iter()
+        .find(|f| {
+            f.field == crate::search::query::FilterField::Repo && !f.negated && f.values.len() == 1
+        })
         .map(|f| f.values[0].clone());
     let repo_filter_str = inline_repo.as_deref().or(params.repo.as_deref());
 
@@ -144,8 +149,7 @@ pub(super) async fn search(
     } else {
         params.group.as_deref()
     };
-    let group_sql = super::resolve_group_filter(&state, group_param)
-        .map_err(|e| bad_request(e))?;
+    let group_sql = super::resolve_group_filter(&state, group_param).map_err(|e| bad_request(e))?;
 
     // Build combined filter from parsed inline filters + group + tag include/exclude
     let mut extra_filters: Vec<String> = Vec::new();
@@ -158,7 +162,11 @@ pub(super) async fn search(
         extra_filters.push(g.clone());
     }
     if let Some(ref tags) = params.tag {
-        let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        let tag_list: Vec<String> = tags
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
         if !tag_list.is_empty() {
             // Expand requested tags through the ontology hierarchy so a query for
             // a parent concept (e.g. `security`) also matches descendant tags
@@ -168,7 +176,11 @@ pub(super) async fn search(
         }
     }
     if let Some(ref tags) = params.exclude_tag {
-        let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        let tag_list: Vec<String> = tags
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
         if !tag_list.is_empty() {
             extra_filters.push(build_tag_exclude_filter(&tag_list));
         }
@@ -177,12 +189,17 @@ pub(super) async fn search(
     // ontology-aware variant so a bundle's tags expand through the hierarchy
     // (GH#14); falls back to plain tag membership when no ontology is defined.
     if let Some(ref bundle_name) = params.bundle {
-        if let Some(bundle_filter) = state.tags_config.build_bundle_file_filter_with_ontology(bundle_name) {
+        if let Some(bundle_filter) = state
+            .tags_config
+            .build_bundle_file_filter_with_ontology(bundle_name)
+        {
             extra_filters.push(bundle_filter);
         }
     }
     // Apply tag effect exclusions (e.g. auto:init exclude=true from tags.toml)
-    if let Some(effect_filter) = crate::tags::build_effect_exclude_filter(&state.tags_config, params.role.as_deref()) {
+    if let Some(effect_filter) =
+        crate::tags::build_effect_exclude_filter(&state.tags_config, params.role.as_deref())
+    {
         extra_filters.push(effect_filter);
     }
     let combined_filter = if extra_filters.is_empty() {
@@ -341,98 +358,6 @@ pub(super) async fn get_chunk(
 // ---------------------------------------------------------------------------
 // Search helpers
 // ---------------------------------------------------------------------------
-
-/// Execute a single search query against the given mode.
-async fn execute_single_search(
-    state: &AppState,
-    query: &str,
-    mode: &str,
-    limit: usize,
-    repo_filter: Option<&str>,
-    combined_filter: Option<&str>,
-) -> Result<Vec<SearchResult>, (StatusCode, Json<ErrorBody>)> {
-    let vector_store = open_vector_store(state).await.map_err(internal_error)?;
-
-    match mode {
-        "keyword" => vector_store
-            .search_fts_filtered(query, limit, repo_filter, combined_filter)
-            .await
-            .map_err(|e| internal_error(e.into())),
-
-        "semantic" | "hybrid" => {
-            let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
-
-            if mode == "semantic" {
-                let mut search = SemanticSearch::new(embedder, vector_store);
-                search
-                    .search_filtered(query, limit, repo_filter, combined_filter)
-                    .await
-                    .map_err(|e| internal_error(e.into()))
-            } else {
-                let mut search = HybridSearch::new(
-                    embedder,
-                    vector_store,
-                    state.config.search.semantic_weight,
-                );
-                search
-                    .search_filtered(query, limit, repo_filter, combined_filter)
-                    .await
-                    .map_err(|e| internal_error(e.into()))
-            }
-        }
-
-        _ => Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorBody {
-                error: format!(
-                    "Invalid mode: {}. Use 'hybrid', 'semantic', or 'keyword'",
-                    mode
-                ),
-            }),
-        )),
-    }
-}
-
-/// Execute OR-branched search: run each branch, merge results by best score per chunk.
-async fn execute_or_search(
-    state: &AppState,
-    branches: &[String],
-    mode: &str,
-    limit: usize,
-    repo_filter: Option<&str>,
-    combined_filter: Option<&str>,
-) -> Result<Vec<SearchResult>, (StatusCode, Json<ErrorBody>)> {
-    use std::collections::HashMap;
-
-    let mut best_by_id: HashMap<String, SearchResult> = HashMap::new();
-
-    for branch in branches {
-        let results = execute_single_search(
-            state,
-            branch,
-            mode,
-            limit,
-            repo_filter,
-            combined_filter,
-        )
-        .await?;
-
-        for result in results {
-            let id = result.chunk.id.clone();
-            match best_by_id.get(&id) {
-                Some(existing) if existing.score >= result.score => {}
-                _ => {
-                    best_by_id.insert(id, result);
-                }
-            }
-        }
-    }
-
-    // Sort merged results by score descending
-    let mut merged: Vec<SearchResult> = best_by_id.into_values().collect();
-    merged.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-    Ok(merged)
-}
 
 /// Call Quipu's spotlight API to get entity annotations for a query.
 /// Returns empty vec on any error (graceful degradation).

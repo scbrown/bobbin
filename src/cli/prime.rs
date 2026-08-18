@@ -123,10 +123,15 @@ pub async fn run(args: PrimeArgs, output: OutputConfig) -> Result<()> {
         }
 
         if !stats.languages.is_empty() {
-            println!("  Languages:    {}", stats.languages.iter()
-                .map(|l| format!("{} ({} files)", l.language, l.file_count))
-                .collect::<Vec<_>>()
-                .join(", "));
+            println!(
+                "  Languages:    {}",
+                stats
+                    .languages
+                    .iter()
+                    .map(|l| format!("{} ({} files)", l.language, l.file_count))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
         }
 
         // Show dependency stats
@@ -253,8 +258,11 @@ fn extract_section(primer: &str, query: &str) -> String {
     }
 
     if result.is_empty() {
-        format!("Section '{}' not found. Available sections: {}", query,
-            SECTIONS.join(", "))
+        format!(
+            "Section '{}' not found. Available sections: {}",
+            query,
+            SECTIONS.join(", ")
+        )
     } else {
         result.trim_end().to_string()
     }

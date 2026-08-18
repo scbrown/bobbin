@@ -40,7 +40,11 @@ fn detect_server_repo_name(dir: &Path) -> Option<String> {
         if let Some(name) = current.file_name().and_then(|n| n.to_str()) {
             if name == "crew" || name == "polecats" {
                 // Parent of crew/polecats is the rig name (= server repo name)
-                return current.parent()?.file_name()?.to_str().map(|s| s.to_string());
+                return current
+                    .parent()?
+                    .file_name()?
+                    .to_str()
+                    .map(|s| s.to_string());
             }
         }
         if !current.pop() {
@@ -134,7 +138,11 @@ fn is_automated_message(prompt: &str) -> bool {
     // Trim leading whitespace — prompts may start with \n from nudge/hook wrappers
     let prompt = prompt.trim_start();
     // Check first 500 chars for efficiency (patterns appear early in messages)
-    let check = if prompt.len() > 500 { &prompt[..500] } else { prompt };
+    let check = if prompt.len() > 500 {
+        &prompt[..500]
+    } else {
+        prompt
+    };
 
     // Auto-patrol nudge patterns (from crew-patrol.sh / gt nudge)
     if check.contains("Auto-patrol: pick up") || check.contains("PATROL LOOP") {
@@ -145,7 +153,11 @@ fn is_automated_message(prompt: &str) -> bool {
     }
 
     // Reactor alert patterns
-    if check.contains("[reactor]") && (check.contains("ESCALATION:") || check.contains("P1 bead:") || check.contains("P0 bead:")) {
+    if check.contains("[reactor]")
+        && (check.contains("ESCALATION:")
+            || check.contains("P1 bead:")
+            || check.contains("P0 bead:"))
+    {
         return true;
     }
 
@@ -173,7 +185,9 @@ fn is_automated_message(prompt: &str) -> bool {
     }
 
     // Session start hook output (system boilerplate injected at conversation start)
-    if check.contains("SessionStart:startup hook") || check.contains("[GAS TOWN]") && check.contains("session:") {
+    if check.contains("SessionStart:startup hook")
+        || check.contains("[GAS TOWN]") && check.contains("session:")
+    {
         return true;
     }
 
@@ -204,9 +218,13 @@ fn is_automated_message(prompt: &str) -> bool {
 
     // Tool loaded / tool result acknowledgments (no domain content)
     let trimmed = check.trim();
-    if trimmed == "Tool loaded." || trimmed == "Acknowledged."
-        || trimmed == "Continue." || trimmed == "OK" || trimmed == "ok"
-        || trimmed == "Go ahead." || trimmed == "Proceed."
+    if trimmed == "Tool loaded."
+        || trimmed == "Acknowledged."
+        || trimmed == "Continue."
+        || trimmed == "OK"
+        || trimmed == "ok"
+        || trimmed == "Go ahead."
+        || trimmed == "Proceed."
         || trimmed.starts_with("Tool loaded")
         || trimmed.starts_with("Human: Tool loaded")
     {
@@ -252,11 +270,13 @@ fn is_automated_message(prompt: &str) -> bool {
     {
         let lower = trimmed.to_lowercase();
         let confirmation_words = [
-            "yes", "no", "ok", "sure", "thanks", "done", "good", "fine",
-            "right", "correct", "agreed", "continue", "proceed", "next",
-            "go", "yep", "nope", "ack", "roger", "noted",
+            "yes", "no", "ok", "sure", "thanks", "done", "good", "fine", "right", "correct",
+            "agreed", "continue", "proceed", "next", "go", "yep", "nope", "ack", "roger", "noted",
         ];
-        if confirmation_words.iter().any(|w| lower == *w || lower.starts_with(w)) {
+        if confirmation_words
+            .iter()
+            .any(|w| lower == *w || lower.starts_with(w))
+        {
             return true;
         }
     }
@@ -660,9 +680,8 @@ fn bobbin_hook_entries() -> serde_json::Value {
 /// `/usr/bin/bobbin hook` match while a different binary such as `mybobbin`
 /// does not.
 fn command_invokes_bobbin_hook(cmd: &str) -> bool {
-    cmd.match_indices("bobbin hook ").any(|(i, _)| {
-        i == 0 || matches!(cmd.as_bytes()[i - 1], b'/' | b' ' | b'\t' | b'=')
-    })
+    cmd.match_indices("bobbin hook ")
+        .any(|(i, _)| i == 0 || matches!(cmd.as_bytes()[i - 1], b'/' | b' ' | b'\t' | b'='))
 }
 
 /// Check if a hook group entry contains a bobbin command.
@@ -727,9 +746,7 @@ fn remove_bobbin_hooks(settings: &mut serde_json::Value) -> bool {
             }
         }
         // Clean up empty event arrays
-        hooks.retain(|_, v| {
-            v.as_array().map(|a| !a.is_empty()).unwrap_or(true)
-        });
+        hooks.retain(|_, v| v.as_array().map(|a| !a.is_empty()).unwrap_or(true));
     }
     // Remove empty hooks object
     if let Some(hooks) = settings.get("hooks").and_then(|h| h.as_object()) {
@@ -775,10 +792,8 @@ pub(super) fn write_settings(path: &Path, settings: &serde_json::Value) -> Resul
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create directory {}", parent.display()))?;
     }
-    let content = serde_json::to_string_pretty(settings)
-        .context("Failed to serialize settings")?;
-    std::fs::write(path, content)
-        .with_context(|| format!("Failed to write {}", path.display()))
+    let content = serde_json::to_string_pretty(settings).context("Failed to serialize settings")?;
+    std::fs::write(path, content).with_context(|| format!("Failed to write {}", path.display()))
 }
 
 async fn run_install(args: InstallArgs, output: OutputConfig) -> Result<()> {
@@ -815,15 +830,20 @@ async fn run_install(args: InstallArgs, output: OutputConfig) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&result)?);
     } else if !output.quiet {
         let scope = if args.global { "global" } else { "project" };
+        println!("{} Bobbin hooks installed ({})", "✓".green(), scope.cyan());
         println!(
-            "{} Bobbin hooks installed ({})",
-            "✓".green(),
-            scope.cyan()
+            "  Location: {}",
+            settings_path.display().to_string().dimmed()
         );
-        println!("  Location: {}", settings_path.display().to_string().dimmed());
         println!("  UserPromptSubmit:    {}", "inject-context".cyan());
-        println!("  SessionStart:        {}", "session-context (compact)".cyan());
-        println!("  PostToolUse:         {}", "post-tool-use (Write|Edit|Bash|Grep|Glob)".cyan());
+        println!(
+            "  SessionStart:        {}",
+            "session-context (compact)".cyan()
+        );
+        println!(
+            "  PostToolUse:         {}",
+            "post-tool-use (Write|Edit|Bash|Grep|Glob)".cyan()
+        );
         println!("  PostToolUseFailure:  {}", "post-tool-use-failure".cyan());
         if let Some(ref url) = server_url {
             println!("  Server:              {}", url.cyan());
@@ -981,12 +1001,31 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
     } else if !output.quiet {
         println!("{} Hook configuration", "⚡".bold());
         println!();
-        println!("  Threshold:        {}", hooks_cfg.threshold.to_string().cyan());
-        println!("  Budget:           {} lines", hooks_cfg.budget.to_string().cyan());
+        println!(
+            "  Threshold:        {}",
+            hooks_cfg.threshold.to_string().cyan()
+        );
+        println!(
+            "  Budget:           {} lines",
+            hooks_cfg.budget.to_string().cyan()
+        );
         println!("  Content mode:     {}", hooks_cfg.content_mode.cyan());
-        println!("  Min prompt len:   {}", hooks_cfg.min_prompt_length.to_string().cyan());
-        println!("  Gate threshold:   {}", hooks_cfg.gate_threshold.to_string().cyan());
-        println!("  Dedup enabled:    {}", if hooks_cfg.dedup_enabled { "yes".green() } else { "no".yellow() });
+        println!(
+            "  Min prompt len:   {}",
+            hooks_cfg.min_prompt_length.to_string().cyan()
+        );
+        println!(
+            "  Gate threshold:   {}",
+            hooks_cfg.gate_threshold.to_string().cyan()
+        );
+        println!(
+            "  Dedup enabled:    {}",
+            if hooks_cfg.dedup_enabled {
+                "yes".green()
+            } else {
+                "no".yellow()
+            }
+        );
         println!();
         let hooks_str = if hooks_installed {
             if let Some(ref p) = hooks_found_at {
@@ -1013,7 +1052,10 @@ async fn run_status(args: StatusArgs, output: OutputConfig) -> Result<()> {
         println!();
         println!("{} Injection stats", "📊".bold());
         println!();
-        println!("  Injection count:  {}", state.injection_count.to_string().cyan());
+        println!(
+            "  Injection count:  {}",
+            state.injection_count.to_string().cyan()
+        );
         if !state.last_injection_time.is_empty() {
             println!("  Last injected:    {}", state.last_injection_time.cyan());
         } else {
@@ -1058,8 +1100,8 @@ async fn inject_context_remote(
     use crate::http::client::Client;
 
     // 1. Read stdin JSON
-    let input: HookInput = serde_json::from_reader(std::io::stdin().lock())
-        .context("Failed to parse stdin JSON")?;
+    let input: HookInput =
+        serde_json::from_reader(std::io::stdin().lock()).context("Failed to parse stdin JSON")?;
 
     // 2. Load config for hook settings (use defaults if not found)
     let cwd = if input.cwd.is_empty() {
@@ -1073,9 +1115,14 @@ async fn inject_context_remote(
     let hooks_cfg = &config.hooks;
 
     // Apply CLI overrides
-    let min_prompt_length = args.min_prompt_length.unwrap_or(hooks_cfg.min_prompt_length);
+    let min_prompt_length = args
+        .min_prompt_length
+        .unwrap_or(hooks_cfg.min_prompt_length);
     let budget = args.budget.unwrap_or(hooks_cfg.budget);
-    let format_mode = args.format_mode.as_deref().unwrap_or(&hooks_cfg.format_mode);
+    let format_mode = args
+        .format_mode
+        .as_deref()
+        .unwrap_or(&hooks_cfg.format_mode);
 
     // Resolve repo root and metrics source early (needed for metrics in all paths)
     let repo_root = find_bobbin_root(&cwd).unwrap_or_else(|| cwd.clone());
@@ -1092,10 +1139,27 @@ async fn inject_context_remote(
     // Built-in prefixes always apply; user-configured prefixes extend them.
     let prompt_lower = prompt.to_lowercase();
     const BUILTIN_SKIP_PREFIXES: &[&str] = &[
-        "git ", "git push", "git pull", "git status", "git diff", "git log",
-        "git commit", "git add", "git stash", "git rebase", "git merge",
-        "bd ", "gt ", "cargo ", "go test", "go build", "go run",
-        "npm ", "make ", "docker ", "kubectl ",
+        "git ",
+        "git push",
+        "git pull",
+        "git status",
+        "git diff",
+        "git log",
+        "git commit",
+        "git add",
+        "git stash",
+        "git rebase",
+        "git merge",
+        "bd ",
+        "gt ",
+        "cargo ",
+        "go test",
+        "go build",
+        "go run",
+        "npm ",
+        "make ",
+        "docker ",
+        "kubectl ",
         "/", // Slash commands (Claude Code skills)
     ];
     let matches_prefix = |pl: &str| -> bool {
@@ -1106,7 +1170,10 @@ async fn inject_context_remote(
         }
     };
     if BUILTIN_SKIP_PREFIXES.iter().any(|p| matches_prefix(p))
-        || hooks_cfg.skip_prefixes.iter().any(|p| matches_prefix(&p.to_lowercase()))
+        || hooks_cfg
+            .skip_prefixes
+            .iter()
+            .any(|p| matches_prefix(&p.to_lowercase()))
     {
         return Ok(());
     }
@@ -1207,7 +1274,8 @@ async fn inject_context_remote(
     // Compute per-request scoring overrides from intent classification.
     // Only send overrides when intent adjustments differ from defaults (factor != 1.0).
     let search_cfg = &config.search;
-    let semantic_weight_override = if (intent_adj.semantic_weight_factor - 1.0).abs() > f32::EPSILON {
+    let semantic_weight_override = if (intent_adj.semantic_weight_factor - 1.0).abs() > f32::EPSILON
+    {
         // Direct multiplication: factor < 1.0 = more keyword, > 1.0 = more semantic
         Some((search_cfg.semantic_weight * intent_adj.semantic_weight_factor).clamp(0.0, 1.0))
     } else {
@@ -1239,9 +1307,9 @@ async fn inject_context_remote(
         .context_with_weights(
             search_query,
             Some(budget),
-            Some(1),    // depth: 1 level of coupling expansion
-            Some(2),    // max_coupled: 2 coupled files per seed (was 3, tightened to reduce noise)
-            Some(12),   // search_limit: 12 initial results (was 15, tightened for precision)
+            Some(1),  // depth: 1 level of coupling expansion
+            Some(2),  // max_coupled: 2 coupled files per seed (was 3, tightened to reduce noise)
+            Some(12), // search_limit: 12 initial results (was 15, tightened for precision)
             Some(coupling_threshold),
             repo_filter.as_deref(),
             Some(&role),
@@ -1267,7 +1335,8 @@ async fn inject_context_remote(
                 resp.summary.top_semantic_score
             } else {
                 // Fallback for older servers that don't return top_semantic_score
-                resp.files.iter()
+                resp.files
+                    .iter()
                     .flat_map(|f| f.chunks.iter())
                     .map(|c| c.score)
                     .fold(0.0_f32, f32::max)
@@ -1279,19 +1348,22 @@ async fn inject_context_remote(
                         top_score, gate, intent,
                     );
                 }
-                crate::metrics::emit(&repo_root, &crate::metrics::event(
-                    &metrics_source,
-                    "hook_gate_skip",
-                    "hook inject-context-remote",
-                    hook_start.elapsed().as_millis() as u64,
-                    serde_json::json!({
-                        "query": &prompt[..prompt.len().min(200)],
-                        "top_score": top_score,
-                        "gate_threshold": gate,
-                        "intent": format!("{:?}", intent),
-                        "gate_boost": intent_adj.gate_boost,
-                    }),
-                ));
+                crate::metrics::emit(
+                    &repo_root,
+                    &crate::metrics::event(
+                        &metrics_source,
+                        "hook_gate_skip",
+                        "hook inject-context-remote",
+                        hook_start.elapsed().as_millis() as u64,
+                        serde_json::json!({
+                            "query": &prompt[..prompt.len().min(200)],
+                            "top_score": top_score,
+                            "gate_threshold": gate,
+                            "intent": format!("{:?}", intent),
+                            "gate_boost": intent_adj.gate_boost,
+                        }),
+                    ),
+                );
                 return Ok(());
             }
 
@@ -1301,7 +1373,12 @@ async fn inject_context_remote(
             let reducing_enabled = hooks_cfg.reducing_enabled && !input.session_id.is_empty();
 
             // Destructure to avoid partial-move issues
-            let crate::http::client::ContextResponse { query: resp_query, budget: resp_budget, files: mut resp_files, summary: resp_summary } = resp;
+            let crate::http::client::ContextResponse {
+                query: resp_query,
+                budget: resp_budget,
+                files: mut resp_files,
+                summary: resp_summary,
+            } = resp;
 
             if reducing_enabled {
                 // Filter chunks already seen, remove empty files
@@ -1323,15 +1400,18 @@ async fn inject_context_remote(
                 resp_files.retain(|f| !f.chunks.is_empty());
                 if resp_files.is_empty() {
                     eprintln!("bobbin: all chunks already injected this session, skipping");
-                    crate::metrics::emit(&repo_root, &crate::metrics::event(
-                        &metrics_source,
-                        "hook_reducing_skip",
-                        "hook inject-context-remote",
-                        hook_start.elapsed().as_millis() as u64,
-                        serde_json::json!({
-                            "query": &prompt[..prompt.len().min(200)],
-                        }),
-                    ));
+                    crate::metrics::emit(
+                        &repo_root,
+                        &crate::metrics::event(
+                            &metrics_source,
+                            "hook_reducing_skip",
+                            "hook inject-context-remote",
+                            hook_start.elapsed().as_millis() as u64,
+                            serde_json::json!({
+                                "query": &prompt[..prompt.len().min(200)],
+                            }),
+                        ),
+                    );
                     return Ok(());
                 }
             }
@@ -1343,15 +1423,22 @@ async fn inject_context_remote(
                 let mut seen_filenames: HashMap<String, usize> = HashMap::new();
                 let mut to_remove = Vec::new();
                 for (idx, file) in resp_files.iter().enumerate() {
-                    let filename = file.path.rsplit('/').next().unwrap_or(&file.path).to_string();
+                    let filename = file
+                        .path
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(&file.path)
+                        .to_string();
                     if let Some(&prev_idx) = seen_filenames.get(&filename) {
                         // Duplicate filename — keep the one from agent's repo, or higher score
                         let prev = &resp_files[prev_idx];
                         let prev_is_affinity = repo_affinity.as_ref().map_or(false, |ra| {
-                            prev.repo.as_deref() == Some(ra.as_str()) || prev.path.contains(ra.as_str())
+                            prev.repo.as_deref() == Some(ra.as_str())
+                                || prev.path.contains(ra.as_str())
                         });
                         let curr_is_affinity = repo_affinity.as_ref().map_or(false, |ra| {
-                            file.repo.as_deref() == Some(ra.as_str()) || file.path.contains(ra.as_str())
+                            file.repo.as_deref() == Some(ra.as_str())
+                                || file.path.contains(ra.as_str())
                         });
                         if curr_is_affinity && !prev_is_affinity {
                             // Current is from agent's repo, remove previous
@@ -1372,7 +1459,10 @@ async fn inject_context_remote(
                     }
                 }
                 if !to_remove.is_empty() {
-                    eprintln!("bobbin: cross-repo dedup removed {} duplicate filenames", to_remove.len());
+                    eprintln!(
+                        "bobbin: cross-repo dedup removed {} duplicate filenames",
+                        to_remove.len()
+                    );
                     to_remove.sort_unstable();
                     to_remove.dedup();
                     for idx in to_remove.into_iter().rev() {
@@ -1387,14 +1477,31 @@ async fn inject_context_remote(
                 let before = resp_files.len();
                 resp_files.retain(|f| {
                     let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
-                    !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "CLAUDE.local.md"
-                        | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md"
-                        | "QUICKSTART.md" | "FAQ.md" | "INSTALLING.md" | "UNINSTALLING.md"
-                        | "TROUBLESHOOTING.md" | "RELEASING.md" | "SETUP.md")
+                    !matches!(
+                        filename,
+                        "CLAUDE.md"
+                            | "AGENTS.md"
+                            | "@AGENTS.md"
+                            | "CLAUDE.local.md"
+                            | "MEMORY.md"
+                            | "README.md"
+                            | "CONTRIBUTING.md"
+                            | "LICENSE.md"
+                            | "QUICKSTART.md"
+                            | "FAQ.md"
+                            | "INSTALLING.md"
+                            | "UNINSTALLING.md"
+                            | "TROUBLESHOOTING.md"
+                            | "RELEASING.md"
+                            | "SETUP.md"
+                    )
                 });
                 let removed = before - resp_files.len();
                 if removed > 0 {
-                    eprintln!("bobbin: filtered {} already-in-context files (CLAUDE.md etc.)", removed);
+                    eprintln!(
+                        "bobbin: filtered {} already-in-context files (CLAUDE.md etc.)",
+                        removed
+                    );
                 }
             }
 
@@ -1404,22 +1511,55 @@ async fn inject_context_remote(
             {
                 let before = resp_files.len();
                 let design_dirs = [
-                    "/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/",
-                    "/docs/tasks/", "/docs/plans/", "/docs/design/", "/docs/designs/", "/docs/runbooks/",
-                    "/crew/", "/polecats/",
-                    "/memory/", "/.beads/", "/session-notes/", "/sessions/",
+                    "/_plans/",
+                    "/_design/",
+                    "/_roadmap/",
+                    "/_specs/",
+                    "/audit/",
+                    "/docs/tasks/",
+                    "/docs/plans/",
+                    "/docs/design/",
+                    "/docs/designs/",
+                    "/docs/runbooks/",
+                    "/crew/",
+                    "/polecats/",
+                    "/memory/",
+                    "/.beads/",
+                    "/session-notes/",
+                    "/sessions/",
                 ];
                 let test_dirs = [
-                    "/tests/", "/test/", "/__tests__/", "/spec/", "/specs/",
-                    "/testdata/", "/fixtures/",
-                    "/examples/", "/example/", "/samples/", "/demo/", "/demos/",
+                    "/tests/",
+                    "/test/",
+                    "/__tests__/",
+                    "/spec/",
+                    "/specs/",
+                    "/testdata/",
+                    "/fixtures/",
+                    "/examples/",
+                    "/example/",
+                    "/samples/",
+                    "/demo/",
+                    "/demos/",
                 ];
                 let infra_dirs = [
-                    "/.github/workflows/", "/.github/actions/",
-                    "/terraform/", "/ansible/", "/helm/", "/deploy/",
-                    "/.circleci/", "/.gitlab-ci",
+                    "/.github/workflows/",
+                    "/.github/actions/",
+                    "/terraform/",
+                    "/ansible/",
+                    "/helm/",
+                    "/deploy/",
+                    "/.circleci/",
+                    "/.gitlab-ci",
                 ];
-                let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md", "CHANGELOG.md"];
+                let design_files = [
+                    "ROADMAP.md",
+                    "DESIGN.md",
+                    "ARCHITECTURE.md",
+                    "VISION.md",
+                    "PRD.md",
+                    "CHANGELOG.md",
+                ];
                 resp_files.retain(|f| {
                     let path_lower = f.path.to_lowercase();
                     // Skip if path contains a design/planning directory
@@ -1436,31 +1576,55 @@ async fn inject_context_remote(
                     }
                     // Skip known design doc filenames
                     let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
-                    if design_files.iter().any(|d| filename.eq_ignore_ascii_case(d)) {
+                    if design_files
+                        .iter()
+                        .any(|d| filename.eq_ignore_ascii_case(d))
+                    {
                         return false;
                     }
                     // Skip test file patterns (catches test files outside /test/ dirs)
                     let fname_lower = filename.to_lowercase();
-                    if fname_lower.ends_with("_test.go") || fname_lower.ends_with("_test.rs")
-                        || fname_lower.ends_with(".test.ts") || fname_lower.ends_with(".test.js")
-                        || fname_lower.ends_with(".spec.ts") || fname_lower.ends_with(".spec.js")
+                    if fname_lower.ends_with("_test.go")
+                        || fname_lower.ends_with("_test.rs")
+                        || fname_lower.ends_with(".test.ts")
+                        || fname_lower.ends_with(".test.js")
+                        || fname_lower.ends_with(".spec.ts")
+                        || fname_lower.ends_with(".spec.js")
                         || fname_lower.starts_with("test_")
-                        || matches!(filename, "Dockerfile" | "docker-compose.yml" | "docker-compose.yaml"
-                            | "Makefile" | "Justfile" | "Taskfile.yml")
+                        || matches!(
+                            filename,
+                            "Dockerfile"
+                                | "docker-compose.yml"
+                                | "docker-compose.yaml"
+                                | "Makefile"
+                                | "Justfile"
+                                | "Taskfile.yml"
+                        )
                     {
                         return false;
                     }
                     // Skip lock files and generated output
-                    if matches!(filename, "Cargo.lock" | "package-lock.json" | "yarn.lock"
-                        | "pnpm-lock.yaml" | "go.sum" | "Gemfile.lock" | "poetry.lock"
-                        | "composer.lock" | "Pipfile.lock")
-                    {
+                    if matches!(
+                        filename,
+                        "Cargo.lock"
+                            | "package-lock.json"
+                            | "yarn.lock"
+                            | "pnpm-lock.yaml"
+                            | "go.sum"
+                            | "Gemfile.lock"
+                            | "poetry.lock"
+                            | "composer.lock"
+                            | "Pipfile.lock"
+                    ) {
                         return false;
                     }
                     // Skip vendored/generated directories
-                    if path_lower.contains("/vendor/") || path_lower.contains("/node_modules/")
-                        || path_lower.contains("/third_party/") || path_lower.contains("/dist/")
-                        || path_lower.contains("/build/") || path_lower.contains("/target/")
+                    if path_lower.contains("/vendor/")
+                        || path_lower.contains("/node_modules/")
+                        || path_lower.contains("/third_party/")
+                        || path_lower.contains("/dist/")
+                        || path_lower.contains("/build/")
+                        || path_lower.contains("/target/")
                     {
                         return false;
                     }
@@ -1468,7 +1632,10 @@ async fn inject_context_remote(
                 });
                 let removed = before - resp_files.len();
                 if removed > 0 {
-                    eprintln!("bobbin: filtered {} noise path files (design/test/infra)", removed);
+                    eprintln!(
+                        "bobbin: filtered {} noise path files (design/test/infra)",
+                        removed
+                    );
                 }
             }
 
@@ -1490,7 +1657,8 @@ async fn inject_context_remote(
                 if let Some(ref affinity) = repo_affinity {
                     // Detect dominant language from affinity-repo results
                     let affinity_lang: Option<String> = {
-                        let mut lang_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+                        let mut lang_counts: std::collections::HashMap<&str, usize> =
+                            std::collections::HashMap::new();
                         for f in resp_files.iter() {
                             let is_aff = f.repo.as_deref() == Some(affinity.as_str())
                                 || f.path.contains(affinity.as_str());
@@ -1498,7 +1666,8 @@ async fn inject_context_remote(
                                 *lang_counts.entry(&f.language).or_insert(0) += 1;
                             }
                         }
-                        lang_counts.into_iter()
+                        lang_counts
+                            .into_iter()
                             .max_by_key(|(_, count)| *count)
                             .filter(|(_, count)| *count >= 2) // Need at least 2 files to establish dominance
                             .map(|(lang, _)| lang.to_string())
@@ -1564,7 +1733,10 @@ async fn inject_context_remote(
                 if keep < resp_files.len() {
                     let dropped = resp_files.len() - keep;
                     omitted_files = dropped;
-                    eprintln!("bobbin: chunks cap dropped {} trailing files ({} chunks > {})", dropped, running, max_chunks);
+                    eprintln!(
+                        "bobbin: chunks cap dropped {} trailing files ({} chunks > {})",
+                        dropped, running, max_chunks
+                    );
                     resp_files.truncate(keep);
                 }
             }
@@ -1595,7 +1767,11 @@ async fn inject_context_remote(
 
             // Check for bundle keyword matches (local tags.toml, then global)
             let mut tags_config = find_bobbin_root(&cwd)
-                .map(|root| crate::tags::TagsConfig::load_or_default(&crate::tags::TagsConfig::tags_path(&root)))
+                .map(|root| {
+                    crate::tags::TagsConfig::load_or_default(&crate::tags::TagsConfig::tags_path(
+                        &root,
+                    ))
+                })
                 .unwrap_or_default();
             if tags_config.bundles.is_empty() {
                 if let Some(global_dir) = Config::global_config_dir() {
@@ -1614,13 +1790,29 @@ async fn inject_context_remote(
                 .map(|(b, _)| b.clone())
                 .collect();
 
-            let out = format_context_response_with_bundles(&resp, budget, hooks_cfg.show_docs, &injection_id, format_mode, &matched_bundles, hooks_cfg.bundle_auto_inject, hooks_cfg.bundle_inject_lines, hooks_cfg.bundle_max_inject);
+            let out = format_context_response_with_bundles(
+                &resp,
+                budget,
+                hooks_cfg.show_docs,
+                &injection_id,
+                format_mode,
+                &matched_bundles,
+                hooks_cfg.bundle_auto_inject,
+                hooks_cfg.bundle_inject_lines,
+                hooks_cfg.bundle_max_inject,
+            );
             print!("{}", out);
 
             // Record injected chunks in session ledger
             if reducing_enabled {
-                let chunk_keys: Vec<String> = resp.files.iter()
-                    .flat_map(|f| f.chunks.iter().map(|c| chunk_key(&f.path, c.start_line, c.end_line)))
+                let chunk_keys: Vec<String> = resp
+                    .files
+                    .iter()
+                    .flat_map(|f| {
+                        f.chunks
+                            .iter()
+                            .map(|c| chunk_key(&f.path, c.start_line, c.end_line))
+                    })
                     .collect();
                 ledger.record(&chunk_keys, &injection_id);
             }
@@ -1628,38 +1820,47 @@ async fn inject_context_remote(
             // Emit injection metric
             let files_json: Vec<String> = resp.files.iter().map(|f| f.path.clone()).collect();
             let total_chunks: usize = resp.files.iter().map(|f| f.chunks.len()).sum();
-            crate::metrics::emit(&repo_root, &crate::metrics::event(
-                &metrics_source,
-                "hook_injection",
-                "hook inject-context-remote",
-                hook_start.elapsed().as_millis() as u64,
-                serde_json::json!({
-                    "query": &prompt[..prompt.len().min(200)],
-                    "top_score": top_score,
-                    "gate_threshold": gate,
-                    "intent": format!("{:?}", intent),
-                    "gate_boost": intent_adj.gate_boost,
-                    "semantic_weight_override": semantic_weight_override,
-                    "doc_demotion_override": doc_demotion_override,
-                    "recency_weight_override": recency_weight_override,
-                    "files_returned": &files_json,
-                    "chunks_returned": total_chunks,
-                    "injection_id": &injection_id,
-                }),
-            ));
+            crate::metrics::emit(
+                &repo_root,
+                &crate::metrics::event(
+                    &metrics_source,
+                    "hook_injection",
+                    "hook inject-context-remote",
+                    hook_start.elapsed().as_millis() as u64,
+                    serde_json::json!({
+                        "query": &prompt[..prompt.len().min(200)],
+                        "top_score": top_score,
+                        "gate_threshold": gate,
+                        "intent": format!("{:?}", intent),
+                        "gate_boost": intent_adj.gate_boost,
+                        "semantic_weight_override": semantic_weight_override,
+                        "doc_demotion_override": doc_demotion_override,
+                        "recency_weight_override": recency_weight_override,
+                        "files_returned": &files_json,
+                        "chunks_returned": total_chunks,
+                        "injection_id": &injection_id,
+                    }),
+                ),
+            );
 
             // Store injection payload server-side (best-effort, don't block)
-            let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
-            let _ = client.store_injection_with_output(
-                &injection_id,
-                session_id,
-                None, // agent resolved server-side or by feedback submitter
-                prompt,
-                &files_json,
-                total_chunks,
-                budget,
-                Some(&out),
-            ).await;
+            let session_id = if input.session_id.is_empty() {
+                None
+            } else {
+                Some(input.session_id.as_str())
+            };
+            let _ = client
+                .store_injection_with_output(
+                    &injection_id,
+                    session_id,
+                    None, // agent resolved server-side or by feedback submitter
+                    prompt,
+                    &files_json,
+                    total_chunks,
+                    budget,
+                    Some(&out),
+                )
+                .await;
 
             // Mirror the local inject path: advance the client-side counter so
             // `hook status` reflects remote injections too (bobbin #42, Bug A).
@@ -1675,8 +1876,24 @@ async fn inject_context_remote(
         }
         Err(_) => {
             // Fallback: /context endpoint unavailable, use /search
-            let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
-            inject_context_remote_search_fallback(&client, search_query, budget, hooks_cfg.show_docs, gate, output, Some(&role), session_id, format_mode, repo_filter.as_deref()).await
+            let session_id = if input.session_id.is_empty() {
+                None
+            } else {
+                Some(input.session_id.as_str())
+            };
+            inject_context_remote_search_fallback(
+                &client,
+                search_query,
+                budget,
+                hooks_cfg.show_docs,
+                gate,
+                output,
+                Some(&role),
+                session_id,
+                format_mode,
+                repo_filter.as_deref(),
+            )
+            .await
         }
     }
 }
@@ -1693,7 +1910,17 @@ fn format_context_response_with_bundles(
     bundle_inject_lines: usize,
     bundle_max_inject: usize,
 ) -> String {
-    format_context_response_inner(resp, budget, show_docs, injection_id, format_mode, matched_bundles, bundle_auto_inject, bundle_inject_lines, bundle_max_inject)
+    format_context_response_inner(
+        resp,
+        budget,
+        show_docs,
+        injection_id,
+        format_mode,
+        matched_bundles,
+        bundle_auto_inject,
+        bundle_inject_lines,
+        bundle_max_inject,
+    )
 }
 
 fn format_context_response_inner(
@@ -1758,7 +1985,11 @@ fn format_context_response_inner(
         let inject_count = matched_bundles.len().min(bundle_max_inject);
         let _ = writeln!(out);
         for (i, bundle) in matched_bundles.iter().enumerate() {
-            let _ = writeln!(out, "📦 bundle:{} — \"{}\"", bundle.name, bundle.description);
+            let _ = writeln!(
+                out,
+                "📦 bundle:{} — \"{}\"",
+                bundle.name, bundle.description
+            );
             if bundle_auto_inject && i < inject_count {
                 // Render compact inline content: refs, files, docs, sub-bundles
                 let mut lines_used = 0;
@@ -1769,7 +2000,9 @@ fn format_context_response_inner(
                     let _ = writeln!(out, "   Refs:");
                     lines_used += 1;
                     for ref_str in &bundle.refs {
-                        if lines_used >= max_lines { break; }
+                        if lines_used >= max_lines {
+                            break;
+                        }
                         if let Some(parsed) = crate::tags::BundleRef::parse(ref_str) {
                             let _ = writeln!(out, "   - {}", parsed.display_l0());
                         } else {
@@ -1784,7 +2017,9 @@ fn format_context_response_inner(
                     let _ = writeln!(out, "   Files:");
                     lines_used += 1;
                     for f in &bundle.files {
-                        if lines_used >= max_lines { break; }
+                        if lines_used >= max_lines {
+                            break;
+                        }
                         let _ = writeln!(out, "   - {}", f);
                         lines_used += 1;
                     }
@@ -1795,7 +2030,9 @@ fn format_context_response_inner(
                     let _ = writeln!(out, "   Docs:");
                     lines_used += 1;
                     for d in &bundle.docs {
-                        if lines_used >= max_lines { break; }
+                        if lines_used >= max_lines {
+                            break;
+                        }
                         let _ = writeln!(out, "   - {}", d);
                         lines_used += 1;
                     }
@@ -1806,7 +2043,9 @@ fn format_context_response_inner(
                     let _ = writeln!(out, "   Beads:");
                     lines_used += 1;
                     for b in &bundle.beads {
-                        if lines_used >= max_lines { break; }
+                        if lines_used >= max_lines {
+                            break;
+                        }
                         let _ = writeln!(out, "   - bead:{}", b);
                         lines_used += 1;
                     }
@@ -1817,17 +2056,28 @@ fn format_context_response_inner(
                     let _ = writeln!(out, "   Includes: {}", bundle.includes.join(", "));
                 }
 
-                let _ = writeln!(out, "   → `bobbin bundle show {} --deep` for full source", bundle.name);
+                let _ = writeln!(
+                    out,
+                    "   → `bobbin bundle show {} --deep` for full source",
+                    bundle.name
+                );
             } else {
-                let _ = writeln!(out, "   → `bobbin bundle show {}` for full context", bundle.name);
+                let _ = writeln!(
+                    out,
+                    "   → `bobbin bundle show {}` for full context",
+                    bundle.name
+                );
             }
         }
     }
 
     // Partition files by type
     let is_doc = |path: &str| -> bool {
-        path.ends_with(".md") || path.ends_with(".txt") || path.ends_with(".rst")
-            || path.ends_with(".adoc") || path.contains("/docs/")
+        path.ends_with(".md")
+            || path.ends_with(".txt")
+            || path.ends_with(".rst")
+            || path.ends_with(".adoc")
+            || path.contains("/docs/")
     };
 
     let source_files: Vec<_> = resp.files.iter().filter(|f| !is_doc(&f.path)).collect();
@@ -1847,8 +2097,13 @@ fn format_context_response_inner(
                 line_count += 2;
             }
         }
-        cut_by_budget +=
-            format_remote_file_chunks(&mut out, &source_files, budget, &mut line_count, format_mode);
+        cut_by_budget += format_remote_file_chunks(
+            &mut out,
+            &source_files,
+            budget,
+            &mut line_count,
+            format_mode,
+        );
     }
 
     if show_docs && !doc_files.is_empty() {
@@ -1934,7 +2189,8 @@ async fn inject_context_remote_search_fallback(
         }
 
         // Skip docs if show_docs is false
-        if !show_docs && (result.file_path.ends_with(".md") || result.file_path.contains("/docs/")) {
+        if !show_docs && (result.file_path.ends_with(".md") || result.file_path.contains("/docs/"))
+        {
             continue;
         }
 
@@ -1970,20 +2226,24 @@ async fn inject_context_remote_search_fallback(
     print!("{}", out);
 
     // Store injection payload server-side (best-effort)
-    let files_json: Vec<String> = resp.results.iter()
+    let files_json: Vec<String> = resp
+        .results
+        .iter()
         .filter(|r| r.score >= 0.005)
         .map(|r| r.file_path.clone())
         .collect();
-    let _ = client.store_injection_with_output(
-        &injection_id,
-        session_id,
-        None,
-        prompt,
-        &files_json,
-        result_count,
-        budget,
-        Some(&out),
-    ).await;
+    let _ = client
+        .store_injection_with_output(
+            &injection_id,
+            session_id,
+            None,
+            prompt,
+            &files_json,
+            result_count,
+            budget,
+            Some(&out),
+        )
+        .await;
 
     Ok(())
 }
@@ -2008,7 +2268,11 @@ fn format_remote_file_chunks(
     for (idx, file) in files.iter().enumerate() {
         // Build display path with repo prefix when available and not already present
         let display_path = match &file.repo {
-            Some(repo) if !file.path.starts_with("repos/") && !file.path.starts_with("/") && !file.path.starts_with("beads:") => {
+            Some(repo)
+                if !file.path.starts_with("repos/")
+                    && !file.path.starts_with("/")
+                    && !file.path.starts_with("beads:") =>
+            {
                 format!("repos/{}/{}", repo, file.path)
             }
             _ => file.path.clone(),
@@ -2100,28 +2364,49 @@ fn format_search_chunk(
             let rel_attr = if relevance_info.is_empty() {
                 String::new()
             } else {
-                format!(" relevance=\"{}\"", relevance_info.trim().trim_matches(|c| c == '[' || c == ']'))
+                format!(
+                    " relevance=\"{}\"",
+                    relevance_info.trim().trim_matches(|c| c == '[' || c == ']')
+                )
             };
             format!(
                 "<file path=\"{}\" lines=\"{}-{}\" type=\"{}\" score=\"{:.2}\"{}{}>
 {}{}</file>\n",
-                path, start_line, end_line, chunk_type, score, name_attr, rel_attr,
-                content, content_suffix,
+                path,
+                start_line,
+                end_line,
+                chunk_type,
+                score,
+                name_attr,
+                rel_attr,
+                content,
+                content_suffix,
             )
         }
         _ => {
             // "standard" — the current default format
             format!(
                 "\n--- {}:{}-{}{} ({}, score {:.2}){} ---\n{}{}",
-                path, start_line, end_line, name, chunk_type, score, relevance_info,
-                content, content_suffix,
+                path,
+                start_line,
+                end_line,
+                name,
+                chunk_type,
+                score,
+                relevance_info,
+                content,
+                content_suffix,
             )
         }
     }
 }
 
 /// Format the header for search fallback injection.
-fn format_search_fallback_header(result_count: usize, injection_id: &str, format_mode: &str) -> String {
+fn format_search_fallback_header(
+    result_count: usize,
+    injection_id: &str,
+    format_mode: &str,
+) -> String {
     match format_mode {
         "xml" => format!(
             "<bobbin-context chunks=\"{}\" mode=\"search-fallback\" injection_id=\"{}\">\n",
@@ -2235,7 +2520,6 @@ fn format_context_for_injection(
     injection_id: Option<&str>,
     format_mode: &str,
 ) -> String {
-
     use std::fmt::Write;
 
     let budget = bundle.budget.max_lines;
@@ -2298,10 +2582,14 @@ fn format_context_for_injection(
     }
 
     // Partition files: source/test/custom first, then docs/config
-    let source_files: Vec<_> = bundle.files.iter()
+    let source_files: Vec<_> = bundle
+        .files
+        .iter()
         .filter(|f| !f.category.is_doc_like())
         .collect();
-    let doc_files: Vec<_> = bundle.files.iter()
+    let doc_files: Vec<_> = bundle
+        .files
+        .iter()
         .filter(|f| f.category.is_doc_like())
         .collect();
 
@@ -2350,7 +2638,11 @@ fn format_file_chunks(
     for file in files {
         // Build display path with repo prefix when available and not already present
         let display_path = match &file.repo {
-            Some(repo) if !file.path.starts_with("repos/") && !file.path.starts_with("/") && !file.path.starts_with("beads:") => {
+            Some(repo)
+                if !file.path.starts_with("repos/")
+                    && !file.path.starts_with("/")
+                    && !file.path.starts_with("beads:") =>
+            {
                 format!("repos/{}/{}", repo, file.path)
             }
             _ => file.path.clone(),
@@ -2523,9 +2815,16 @@ impl SessionLedger {
     /// is empty or file doesn't exist.
     fn load(repo_root: &Path, cc_session_id: &str) -> Self {
         if cc_session_id.is_empty() {
-            return Self { entries: HashSet::new(), turn: 0, path: None };
+            return Self {
+                entries: HashSet::new(),
+                turn: 0,
+                path: None,
+            };
         }
-        let dir = repo_root.join(".bobbin").join("session").join(cc_session_id);
+        let dir = repo_root
+            .join(".bobbin")
+            .join("session")
+            .join(cc_session_id);
         let path = dir.join("ledger.jsonl");
 
         let mut entries = HashSet::new();
@@ -2544,7 +2843,11 @@ impl SessionLedger {
             }
         }
 
-        Self { entries, turn: max_turn, path: Some(path) }
+        Self {
+            entries,
+            turn: max_turn,
+            path: Some(path),
+        }
     }
 
     /// Check if a chunk was already injected in a previous turn.
@@ -2789,9 +3092,16 @@ impl PromptHistory {
     /// Load prompt history for a Claude Code session.
     fn load(repo_root: &Path, cc_session_id: &str, max_entries: usize) -> Self {
         if cc_session_id.is_empty() {
-            return Self { entries: Vec::new(), path: None, max_entries };
+            return Self {
+                entries: Vec::new(),
+                path: None,
+                max_entries,
+            };
         }
-        let dir = repo_root.join(".bobbin").join("session").join(cc_session_id);
+        let dir = repo_root
+            .join(".bobbin")
+            .join("session")
+            .join(cc_session_id);
         let path = dir.join("prompts.jsonl");
 
         let mut entries = Vec::new();
@@ -2810,7 +3120,11 @@ impl PromptHistory {
             entries = entries.split_off(entries.len() - max_entries);
         }
 
-        Self { entries, path: Some(path), max_entries }
+        Self {
+            entries,
+            path: Some(path),
+            max_entries,
+        }
     }
 
     /// Record a new prompt. Appends to the JSONL file and maintains window size.
@@ -2827,7 +3141,9 @@ impl PromptHistory {
 
         // Trim to max_entries
         if self.entries.len() > self.max_entries {
-            self.entries = self.entries.split_off(self.entries.len() - self.max_entries);
+            self.entries = self
+                .entries
+                .split_off(self.entries.len() - self.max_entries);
         }
 
         // Append to file
@@ -2867,7 +3183,8 @@ impl PromptHistory {
         let remaining = max_chars - current_len;
 
         // Collect recent prompts (excluding any that match the current prompt)
-        let recent: Vec<&str> = self.entries
+        let recent: Vec<&str> = self
+            .entries
             .iter()
             .rev()
             .filter(|e| e.prompt != current_prompt)
@@ -2930,12 +3247,7 @@ fn generate_hot_topics(state: &HookState, output_path: &Path) -> Result<()> {
             + " UTC"
     };
     writeln!(md, "Last updated: {}", timestamp).unwrap();
-    writeln!(
-        md,
-        "Based on {} context injections.",
-        state.injection_count
-    )
-    .unwrap();
+    writeln!(md, "Based on {} context injections.", state.injection_count).unwrap();
     writeln!(md).unwrap();
 
     // Frequently referenced chunks, sorted by count descending
@@ -3035,8 +3347,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let hook_start = std::time::Instant::now();
 
     // 1. Read stdin JSON
-    let input: HookInput = serde_json::from_reader(std::io::stdin().lock())
-        .context("Failed to parse stdin JSON")?;
+    let input: HookInput =
+        serde_json::from_reader(std::io::stdin().lock()).context("Failed to parse stdin JSON")?;
 
     // 2. Resolve effective config
     let cwd = if input.cwd.is_empty() {
@@ -3048,14 +3360,20 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let repo_root = find_bobbin_root(&cwd).context("Bobbin not initialized")?;
     let metrics_source = crate::metrics::resolve_source(
         None, // no CLI flag in hook context
-        if input.session_id.is_empty() { None } else { Some(&input.session_id) },
+        if input.session_id.is_empty() {
+            None
+        } else {
+            Some(&input.session_id)
+        },
     );
-    let config = Config::load(&Config::config_path(&repo_root))
-        .context("Failed to load bobbin config")?;
+    let config =
+        Config::load(&Config::config_path(&repo_root)).context("Failed to load bobbin config")?;
     let hooks_cfg = &config.hooks;
 
     // Apply CLI overrides
-    let min_prompt_length = args.min_prompt_length.unwrap_or(hooks_cfg.min_prompt_length);
+    let min_prompt_length = args
+        .min_prompt_length
+        .unwrap_or(hooks_cfg.min_prompt_length);
     let threshold = args.threshold.unwrap_or(hooks_cfg.threshold);
     let budget = args.budget.unwrap_or(hooks_cfg.budget);
     let content_mode_str = args
@@ -3067,7 +3385,10 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         "none" => ContentMode::None,
         _ => ContentMode::Preview,
     };
-    let format_mode = args.format_mode.as_deref().unwrap_or(&hooks_cfg.format_mode);
+    let format_mode = args
+        .format_mode
+        .as_deref()
+        .unwrap_or(&hooks_cfg.format_mode);
 
     // 3. Check min prompt length
     let prompt = input.prompt.trim();
@@ -3079,10 +3400,27 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     // Built-in prefixes always apply; user-configured prefixes extend them.
     let prompt_lower = prompt.to_lowercase();
     const BUILTIN_SKIP_PREFIXES_LOCAL: &[&str] = &[
-        "git ", "git push", "git pull", "git status", "git diff", "git log",
-        "git commit", "git add", "git stash", "git rebase", "git merge",
-        "bd ", "gt ", "cargo ", "go test", "go build", "go run",
-        "npm ", "make ", "docker ", "kubectl ",
+        "git ",
+        "git push",
+        "git pull",
+        "git status",
+        "git diff",
+        "git log",
+        "git commit",
+        "git add",
+        "git stash",
+        "git rebase",
+        "git merge",
+        "bd ",
+        "gt ",
+        "cargo ",
+        "go test",
+        "go build",
+        "go run",
+        "npm ",
+        "make ",
+        "docker ",
+        "kubectl ",
         "/", // Slash commands (Claude Code skills)
     ];
     let matches_prefix = |pl: &str| -> bool {
@@ -3092,8 +3430,13 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             prompt_lower.starts_with(pl)
         }
     };
-    if BUILTIN_SKIP_PREFIXES_LOCAL.iter().any(|p| matches_prefix(p))
-        || hooks_cfg.skip_prefixes.iter().any(|p| matches_prefix(&p.to_lowercase()))
+    if BUILTIN_SKIP_PREFIXES_LOCAL
+        .iter()
+        .any(|p| matches_prefix(p))
+        || hooks_cfg
+            .skip_prefixes
+            .iter()
+            .any(|p| matches_prefix(&p.to_lowercase()))
     {
         return Ok(());
     }
@@ -3149,8 +3492,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         return Ok(());
     }
 
-    let metadata_store =
-        MetadataStore::open(&db_path).context("Failed to open metadata store")?;
+    let metadata_store = MetadataStore::open(&db_path).context("Failed to open metadata store")?;
 
     // 5. Check model consistency
     let current_model = config.embedding.model.as_str();
@@ -3168,12 +3510,22 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let cal_sw = calibration.as_ref().map(|c| c.best_config.semantic_weight);
     let cal_dd = calibration.as_ref().map(|c| c.best_config.doc_demotion);
     let cal_rrf = calibration.as_ref().map(|c| c.best_config.rrf_k);
-    let cal_hl = calibration.as_ref().and_then(|c| c.best_config.recency_half_life_days);
-    let cal_rw = calibration.as_ref().and_then(|c| c.best_config.recency_weight);
-    let cal_budget = calibration.as_ref().and_then(|c| c.best_config.budget_lines);
-    let cal_sl = calibration.as_ref().and_then(|c| c.best_config.search_limit);
+    let cal_hl = calibration
+        .as_ref()
+        .and_then(|c| c.best_config.recency_half_life_days);
+    let cal_rw = calibration
+        .as_ref()
+        .and_then(|c| c.best_config.recency_weight);
+    let cal_budget = calibration
+        .as_ref()
+        .and_then(|c| c.best_config.budget_lines);
+    let cal_sl = calibration
+        .as_ref()
+        .and_then(|c| c.best_config.search_limit);
     let cal_bm = calibration.as_ref().and_then(|c| c.best_config.bridge_mode);
-    let cal_bbf = calibration.as_ref().and_then(|c| c.best_config.bridge_boost_factor);
+    let cal_bbf = calibration
+        .as_ref()
+        .and_then(|c| c.best_config.bridge_boost_factor);
 
     // Query intent classification: adjust search parameters based on prompt type
     let intent = crate::search::intent::classify_intent(search_query);
@@ -3205,8 +3557,10 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         budget_lines: cal_budget.unwrap_or(budget),
         budget_unit: config.context.budget_unit,
         depth: 1,
-        max_coupled: 2,    // Tightened from 3 to reduce coupled noise (matches remote mode)
-        coupling_threshold: adj.coupling_threshold.unwrap_or(config.context.coupling_threshold),
+        max_coupled: 2, // Tightened from 3 to reduce coupled noise (matches remote mode)
+        coupling_threshold: adj
+            .coupling_threshold
+            .unwrap_or(config.context.coupling_threshold),
         semantic_weight: (base_sw * adj.semantic_weight_factor).clamp(0.0, 1.0),
         content_mode,
         search_limit: cal_sl.unwrap_or(12), // Tightened from 20 for precision (matches remote mode)
@@ -3241,7 +3595,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         ..ContextConfig::default()
     };
 
-    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let mut assembler =
+        ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
     if let Ok(git) = crate::index::git::GitAnalyzer::new(&repo_root) {
         assembler = assembler.with_git_analyzer(git);
     }
@@ -3259,17 +3614,20 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             "bobbin: skipped (semantic={:.2} < gate={:.2})",
             bundle.summary.top_semantic_score, gate
         );
-        crate::metrics::emit(&repo_root, &crate::metrics::event(
-            &metrics_source,
-            "hook_gate_skip",
-            "hook inject-context",
-            hook_start.elapsed().as_millis() as u64,
-            serde_json::json!({
-                "query": prompt,
-                "top_score": bundle.summary.top_semantic_score,
-                "gate_threshold": gate,
-            }),
-        ));
+        crate::metrics::emit(
+            &repo_root,
+            &crate::metrics::event(
+                &metrics_source,
+                "hook_gate_skip",
+                "hook inject-context",
+                hook_start.elapsed().as_millis() as u64,
+                serde_json::json!({
+                    "query": prompt,
+                    "top_score": bundle.summary.top_semantic_score,
+                    "gate_threshold": gate,
+                }),
+            ),
+        );
         return Ok(());
     }
 
@@ -3277,7 +3635,9 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let role = crate::access::RepoFilter::resolve_role(None);
     let access_filter = crate::access::RepoFilter::from_config(&config.access, &role);
     let mut bundle = bundle;
-    bundle.files.retain(|f| access_filter.is_allowed(crate::access::RepoFilter::repo_from_path(&f.path)));
+    bundle
+        .files
+        .retain(|f| access_filter.is_allowed(crate::access::RepoFilter::repo_from_path(&f.path)));
 
     // 7c. Filter out files already in agent context (CLAUDE.md, AGENTS.md, etc.)
     // and static product docs that waste injection budget.
@@ -3285,14 +3645,31 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         let before = bundle.files.len();
         bundle.files.retain(|f| {
             let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
-            !matches!(filename, "CLAUDE.md" | "AGENTS.md" | "@AGENTS.md" | "CLAUDE.local.md"
-                | "MEMORY.md" | "README.md" | "CONTRIBUTING.md" | "LICENSE.md"
-                        | "QUICKSTART.md" | "FAQ.md" | "INSTALLING.md" | "UNINSTALLING.md"
-                        | "TROUBLESHOOTING.md" | "RELEASING.md" | "SETUP.md")
+            !matches!(
+                filename,
+                "CLAUDE.md"
+                    | "AGENTS.md"
+                    | "@AGENTS.md"
+                    | "CLAUDE.local.md"
+                    | "MEMORY.md"
+                    | "README.md"
+                    | "CONTRIBUTING.md"
+                    | "LICENSE.md"
+                    | "QUICKSTART.md"
+                    | "FAQ.md"
+                    | "INSTALLING.md"
+                    | "UNINSTALLING.md"
+                    | "TROUBLESHOOTING.md"
+                    | "RELEASING.md"
+                    | "SETUP.md"
+            )
         });
         let removed = before - bundle.files.len();
         if removed > 0 {
-            eprintln!("bobbin: filtered {} already-in-context files (CLAUDE.md etc.)", removed);
+            eprintln!(
+                "bobbin: filtered {} already-in-context files (CLAUDE.md etc.)",
+                removed
+            );
         }
     }
 
@@ -3301,22 +3678,55 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     {
         let before = bundle.files.len();
         let design_dirs = [
-            "/_plans/", "/_design/", "/_roadmap/", "/_specs/", "/audit/",
-            "/docs/tasks/", "/docs/plans/", "/docs/design/", "/docs/designs/", "/docs/runbooks/",
-            "/crew/", "/polecats/",
-            "/memory/", "/.beads/", "/session-notes/", "/sessions/",
+            "/_plans/",
+            "/_design/",
+            "/_roadmap/",
+            "/_specs/",
+            "/audit/",
+            "/docs/tasks/",
+            "/docs/plans/",
+            "/docs/design/",
+            "/docs/designs/",
+            "/docs/runbooks/",
+            "/crew/",
+            "/polecats/",
+            "/memory/",
+            "/.beads/",
+            "/session-notes/",
+            "/sessions/",
         ];
         let test_dirs = [
-            "/tests/", "/test/", "/__tests__/", "/spec/", "/specs/",
-            "/testdata/", "/fixtures/",
-            "/examples/", "/example/", "/samples/", "/demo/", "/demos/",
+            "/tests/",
+            "/test/",
+            "/__tests__/",
+            "/spec/",
+            "/specs/",
+            "/testdata/",
+            "/fixtures/",
+            "/examples/",
+            "/example/",
+            "/samples/",
+            "/demo/",
+            "/demos/",
         ];
         let infra_dirs = [
-            "/.github/workflows/", "/.github/actions/",
-            "/terraform/", "/ansible/", "/helm/", "/deploy/",
-            "/.circleci/", "/.gitlab-ci",
+            "/.github/workflows/",
+            "/.github/actions/",
+            "/terraform/",
+            "/ansible/",
+            "/helm/",
+            "/deploy/",
+            "/.circleci/",
+            "/.gitlab-ci",
         ];
-        let design_files = ["ROADMAP.md", "DESIGN.md", "ARCHITECTURE.md", "VISION.md", "PRD.md", "CHANGELOG.md"];
+        let design_files = [
+            "ROADMAP.md",
+            "DESIGN.md",
+            "ARCHITECTURE.md",
+            "VISION.md",
+            "PRD.md",
+            "CHANGELOG.md",
+        ];
         bundle.files.retain(|f| {
             let path_lower = f.path.to_lowercase();
             if design_dirs.iter().any(|d| path_lower.contains(d)) {
@@ -3329,31 +3739,55 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
                 return false;
             }
             let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
-            if design_files.iter().any(|d| filename.eq_ignore_ascii_case(d)) {
+            if design_files
+                .iter()
+                .any(|d| filename.eq_ignore_ascii_case(d))
+            {
                 return false;
             }
             // Skip test file patterns (catches test files outside /test/ dirs)
             let fname_lower = filename.to_lowercase();
-            if fname_lower.ends_with("_test.go") || fname_lower.ends_with("_test.rs")
-                || fname_lower.ends_with(".test.ts") || fname_lower.ends_with(".test.js")
-                || fname_lower.ends_with(".spec.ts") || fname_lower.ends_with(".spec.js")
+            if fname_lower.ends_with("_test.go")
+                || fname_lower.ends_with("_test.rs")
+                || fname_lower.ends_with(".test.ts")
+                || fname_lower.ends_with(".test.js")
+                || fname_lower.ends_with(".spec.ts")
+                || fname_lower.ends_with(".spec.js")
                 || fname_lower.starts_with("test_")
-                || matches!(filename, "Dockerfile" | "docker-compose.yml" | "docker-compose.yaml"
-                    | "Makefile" | "Justfile" | "Taskfile.yml")
+                || matches!(
+                    filename,
+                    "Dockerfile"
+                        | "docker-compose.yml"
+                        | "docker-compose.yaml"
+                        | "Makefile"
+                        | "Justfile"
+                        | "Taskfile.yml"
+                )
             {
                 return false;
             }
             // Skip lock files and generated output
-            if matches!(filename, "Cargo.lock" | "package-lock.json" | "yarn.lock"
-                | "pnpm-lock.yaml" | "go.sum" | "Gemfile.lock" | "poetry.lock"
-                | "composer.lock" | "Pipfile.lock")
-            {
+            if matches!(
+                filename,
+                "Cargo.lock"
+                    | "package-lock.json"
+                    | "yarn.lock"
+                    | "pnpm-lock.yaml"
+                    | "go.sum"
+                    | "Gemfile.lock"
+                    | "poetry.lock"
+                    | "composer.lock"
+                    | "Pipfile.lock"
+            ) {
                 return false;
             }
             // Skip vendored/generated directories
-            if path_lower.contains("/vendor/") || path_lower.contains("/node_modules/")
-                || path_lower.contains("/third_party/") || path_lower.contains("/dist/")
-                || path_lower.contains("/build/") || path_lower.contains("/target/")
+            if path_lower.contains("/vendor/")
+                || path_lower.contains("/node_modules/")
+                || path_lower.contains("/third_party/")
+                || path_lower.contains("/dist/")
+                || path_lower.contains("/build/")
+                || path_lower.contains("/target/")
             {
                 return false;
             }
@@ -3361,7 +3795,10 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         });
         let removed = before - bundle.files.len();
         if removed > 0 {
-            eprintln!("bobbin: filtered {} noise path files (design/test/infra)", removed);
+            eprintln!(
+                "bobbin: filtered {} noise path files (design/test/infra)",
+                removed
+            );
         }
     }
 
@@ -3381,7 +3818,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         if let Some(ref affinity) = repo_affinity {
             // Detect dominant language from affinity-repo results
             let affinity_lang: Option<String> = {
-                let mut lang_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+                let mut lang_counts: std::collections::HashMap<&str, usize> =
+                    std::collections::HashMap::new();
                 for f in bundle.files.iter() {
                     let is_aff = f.repo.as_deref() == Some(affinity.as_str())
                         || f.path.contains(affinity.as_str());
@@ -3389,7 +3827,8 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
                         *lang_counts.entry(&f.language).or_insert(0) += 1;
                     }
                 }
-                lang_counts.into_iter()
+                lang_counts
+                    .into_iter()
                     .max_by_key(|(_, count)| *count)
                     .filter(|(_, count)| *count >= 2)
                     .map(|(lang, _)| lang.to_string())
@@ -3437,11 +3876,17 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let mut ledger = if reducing_enabled {
         SessionLedger::load(&repo_root, &input.session_id)
     } else {
-        SessionLedger { entries: HashSet::new(), turn: 0, path: None }
+        SessionLedger {
+            entries: HashSet::new(),
+            turn: 0,
+            path: None,
+        }
     };
 
     // Count total chunks before reducing (for metrics)
-    let total_chunks_before: usize = bundle.files.iter()
+    let total_chunks_before: usize = bundle
+        .files
+        .iter()
         .flat_map(|f| f.chunks.iter())
         .filter(|c| c.score >= threshold)
         .count();
@@ -3461,19 +3906,24 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         let s = load_hook_state(&repo_root);
         if s.last_session_id == dedup_session_id && !dedup_session_id.is_empty() {
             eprintln!("bobbin: skipped (session unchanged)");
-            crate::metrics::emit(&repo_root, &crate::metrics::event(
-                &metrics_source,
-                "hook_dedup_skip",
-                "hook inject-context",
-                hook_start.elapsed().as_millis() as u64,
-                serde_json::json!({ "query": prompt }),
-            ));
+            crate::metrics::emit(
+                &repo_root,
+                &crate::metrics::event(
+                    &metrics_source,
+                    "hook_dedup_skip",
+                    "hook inject-context",
+                    hook_start.elapsed().as_millis() as u64,
+                    serde_json::json!({ "query": prompt }),
+                ),
+            );
             return Ok(());
         }
     }
 
     // Count new chunks after reducing
-    let new_chunks: usize = bundle.files.iter()
+    let new_chunks: usize = bundle
+        .files
+        .iter()
         .flat_map(|f| f.chunks.iter())
         .filter(|c| c.score >= threshold)
         .count();
@@ -3484,22 +3934,27 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         if reducing_enabled && reduced_count > 0 {
             // 9a. Complementary expansion: find coupled files the agent hasn't seen yet
             let previously_seen_files = ledger.injected_files();
-            let seen_set: HashSet<&str> = previously_seen_files.iter().map(|s| s.as_str()).collect();
+            let seen_set: HashSet<&str> =
+                previously_seen_files.iter().map(|s| s.as_str()).collect();
 
             let mut complementary_files: Vec<(String, f32)> = Vec::new();
             // Reopen metadata store (original was moved into ContextAssembler)
             let comp_metadata = MetadataStore::open(&db_path).ok();
             if let Some(ref comp_ms) = comp_metadata {
-            for seen_file in &previously_seen_files {
-                if let Ok(coupled) = comp_ms.get_coupling(seen_file, 5) {
-                    for c in coupled {
-                        let other = if c.file_a == *seen_file { &c.file_b } else { &c.file_a };
-                        if !seen_set.contains(other.as_str()) && c.score >= 0.1 {
-                            complementary_files.push((other.clone(), c.score));
+                for seen_file in &previously_seen_files {
+                    if let Ok(coupled) = comp_ms.get_coupling(seen_file, 5) {
+                        for c in coupled {
+                            let other = if c.file_a == *seen_file {
+                                &c.file_b
+                            } else {
+                                &c.file_a
+                            };
+                            if !seen_set.contains(other.as_str()) && c.score >= 0.1 {
+                                complementary_files.push((other.clone(), c.score));
+                            }
                         }
                     }
                 }
-            }
             } // end if let Some(comp_ms)
 
             // Deduplicate by path, then sort and truncate — see the helper for why
@@ -3511,7 +3966,10 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
                 use std::fmt::Write as FmtWrite;
                 let mut comp_context = String::new();
                 let _ = writeln!(comp_context, "## Complementary Files");
-                let _ = writeln!(comp_context, "You've been working with files that are coupled to these (not yet viewed):\n");
+                let _ = writeln!(
+                    comp_context,
+                    "You've been working with files that are coupled to these (not yet viewed):\n"
+                );
                 for (file, score) in &complementary_files {
                     let _ = writeln!(comp_context, "- `{}` (coupling: {:.2})", file, score);
                 }
@@ -3526,51 +3984,69 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
                 println!("{}", response);
 
                 // Record complementary files in ledger (as pseudo-entries to avoid re-suggesting)
-                let comp_keys: Vec<String> = complementary_files.iter()
+                let comp_keys: Vec<String> = complementary_files
+                    .iter()
                     .map(|(f, _)| chunk_key(f, 0, 0)) // marker entries
                     .collect();
                 ledger.record(&comp_keys, &injection_id);
 
-                crate::metrics::emit(&repo_root, &crate::metrics::event(
+                crate::metrics::emit(
+                    &repo_root,
+                    &crate::metrics::event(
+                        &metrics_source,
+                        "hook_complementary_expansion",
+                        "hook inject-context",
+                        hook_start.elapsed().as_millis() as u64,
+                        serde_json::json!({
+                            "query": prompt,
+                            "total_chunks": total_chunks_before,
+                            "previously_injected": reduced_count,
+                            "complementary_files": complementary_files.len(),
+                        }),
+                    ),
+                );
+                return Ok(());
+            }
+
+            eprintln!(
+                "bobbin: skipped (all {} chunks previously injected, no complementary files)",
+                reduced_count
+            );
+            crate::metrics::emit(
+                &repo_root,
+                &crate::metrics::event(
                     &metrics_source,
-                    "hook_complementary_expansion",
+                    "hook_reducing_skip",
                     "hook inject-context",
                     hook_start.elapsed().as_millis() as u64,
                     serde_json::json!({
                         "query": prompt,
                         "total_chunks": total_chunks_before,
                         "previously_injected": reduced_count,
-                        "complementary_files": complementary_files.len(),
                     }),
-                ));
-                return Ok(());
-            }
-
-            eprintln!("bobbin: skipped (all {} chunks previously injected, no complementary files)", reduced_count);
-            crate::metrics::emit(&repo_root, &crate::metrics::event(
-                &metrics_source,
-                "hook_reducing_skip",
-                "hook inject-context",
-                hook_start.elapsed().as_millis() as u64,
-                serde_json::json!({
-                    "query": prompt,
-                    "total_chunks": total_chunks_before,
-                    "previously_injected": reduced_count,
-                }),
-            ));
+                ),
+            );
         }
         return Ok(());
     }
 
     let show_docs = args.show_docs.unwrap_or(hooks_cfg.show_docs);
     let injection_id = generate_context_injection_id(prompt);
-    let context_text = format_context_for_injection(&bundle, threshold, show_docs, Some(&injection_id), format_mode);
+    let context_text = format_context_for_injection(
+        &bundle,
+        threshold,
+        show_docs,
+        Some(&injection_id),
+        format_mode,
+    );
 
     // If reducing is active and we filtered some chunks, show delta stats
     if reducing_enabled && reduced_count > 0 {
         eprintln!(
             "bobbin: injecting {} new chunks ({} previously injected, turn {})",
-            new_chunks, reduced_count, ledger.turn + 1
+            new_chunks,
+            reduced_count,
+            ledger.turn + 1
         );
     }
 
@@ -3580,7 +4056,11 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let feedback_db_path = Config::feedback_db_path(&repo_root);
     if let Ok(fb_store) = crate::storage::feedback::FeedbackStore::open(&feedback_db_path) {
         let files_json: Vec<String> = bundle.files.iter().map(|f| f.path.clone()).collect();
-        let session_id = if input.session_id.is_empty() { None } else { Some(input.session_id.as_str()) };
+        let session_id = if input.session_id.is_empty() {
+            None
+        } else {
+            Some(input.session_id.as_str())
+        };
         let _ = fb_store.store_injection_with_output(
             &injection_id,
             session_id,
@@ -3591,7 +4071,6 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
             bundle.budget.max_lines,
             Some(&context_text),
         );
-
     }
 
     // 10. Update hook state + session ledger
@@ -3607,11 +4086,14 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         })
         .map(|(path, c)| {
             let key = chunk_key(&path, c.start_line, c.end_line);
-            let freq = state.chunk_frequencies.entry(key.clone()).or_insert(ChunkFrequency {
-                count: 0,
-                file: path.clone(),
-                name: c.name.clone(),
-            });
+            let freq = state
+                .chunk_frequencies
+                .entry(key.clone())
+                .or_insert(ChunkFrequency {
+                    count: 0,
+                    file: path.clone(),
+                    name: c.name.clone(),
+                });
             freq.count += 1;
             *state.file_frequencies.entry(path).or_insert(0) += 1;
             key
@@ -3631,7 +4113,10 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
 
     // 10b. Feedback prompt: periodically remind about unrated injections
     let prompt_interval = hooks_cfg.feedback_prompt_interval;
-    if prompt_interval > 0 && state.injection_count % prompt_interval == 0 && !input.session_id.is_empty() {
+    if prompt_interval > 0
+        && state.injection_count % prompt_interval == 0
+        && !input.session_id.is_empty()
+    {
         if let Ok(fb_store) = crate::storage::feedback::FeedbackStore::open(&feedback_db_path) {
             if let Ok(unrated) = fb_store.unrated_injections_for_session(&input.session_id) {
                 if !unrated.is_empty() {
@@ -3648,42 +4133,46 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
 
     // 10c. Emit hook_injection metric (with reducing stats)
     let injected_files: Vec<&str> = bundle.files.iter().map(|f| f.path.as_str()).collect();
-    crate::metrics::emit(&repo_root, &crate::metrics::event(
-        &metrics_source,
-        "hook_injection",
-        "hook inject-context",
-        hook_start.elapsed().as_millis() as u64,
-        serde_json::json!({
-            "query": prompt,
-            "files_returned": injected_files,
-            "chunks_returned": new_chunks,
-            "top_score": bundle.summary.top_semantic_score,
-            "budget_lines_used": bundle.budget.used_lines,
-            "source_files": bundle.summary.source_files,
-            "doc_files": bundle.summary.doc_files,
-            "bridged_additions": bundle.summary.bridged_additions,
-            "reducing": {
-                "enabled": reducing_enabled,
-                "total_before": total_chunks_before,
-                "new_chunks": new_chunks,
-                "previously_injected": reduced_count,
-                "ledger_size": ledger.len(),
-                "turn": ledger.turn,
-            },
-        }),
-    ));
+    crate::metrics::emit(
+        &repo_root,
+        &crate::metrics::event(
+            &metrics_source,
+            "hook_injection",
+            "hook inject-context",
+            hook_start.elapsed().as_millis() as u64,
+            serde_json::json!({
+                "query": prompt,
+                "files_returned": injected_files,
+                "chunks_returned": new_chunks,
+                "top_score": bundle.summary.top_semantic_score,
+                "budget_lines_used": bundle.budget.used_lines,
+                "source_files": bundle.summary.source_files,
+                "doc_files": bundle.summary.doc_files,
+                "bridged_additions": bundle.summary.bridged_additions,
+                "reducing": {
+                    "enabled": reducing_enabled,
+                    "total_before": total_chunks_before,
+                    "new_chunks": new_chunks,
+                    "previously_injected": reduced_count,
+                    "ledger_size": ledger.len(),
+                    "turn": ledger.turn,
+                },
+            }),
+        ),
+    );
 
     // 11. Auto-generate hot topics every 10 injections
-    if state.injection_count % 10 == 0
-        && state.injection_count > state.hot_topics_generated_at
-    {
+    if state.injection_count % 10 == 0 && state.injection_count > state.hot_topics_generated_at {
         let hot_topics_path = repo_root.join(".bobbin").join("hot-topics.md");
         if generate_hot_topics(&state, &hot_topics_path).is_ok() {
             // Update the generation marker (re-load to avoid stale writes)
             let mut updated = load_hook_state(&repo_root);
             updated.hot_topics_generated_at = state.injection_count;
             save_hook_state(&repo_root, &updated);
-            eprintln!("bobbin: regenerated hot-topics.md ({} injections)", state.injection_count);
+            eprintln!(
+                "bobbin: regenerated hot-topics.md ({} injections)",
+                state.injection_count
+            );
         }
     }
 
@@ -3705,8 +4194,7 @@ async fn run_prime_context_inner() -> Result<()> {
     let hook_start = std::time::Instant::now();
 
     // 1. Read stdin JSON (may be empty for some Claude Code versions)
-    let input_str = std::io::read_to_string(std::io::stdin())
-        .context("Failed to read stdin")?;
+    let input_str = std::io::read_to_string(std::io::stdin()).context("Failed to read stdin")?;
 
     let session_id = if input_str.trim().is_empty() {
         String::new()
@@ -3726,7 +4214,11 @@ async fn run_prime_context_inner() -> Result<()> {
 
     let metrics_source = crate::metrics::resolve_source(
         None,
-        if session_id.is_empty() { None } else { Some(&session_id) },
+        if session_id.is_empty() {
+            None
+        } else {
+            Some(&session_id)
+        },
     );
 
     // 3. Build primer text (brief version + live stats)
@@ -3737,11 +4229,14 @@ async fn run_prime_context_inner() -> Result<()> {
     let lance_path = Config::lance_path(&repo_root);
     let stats_text = if let Ok(store) = VectorStore::open(&lance_path).await {
         if let Ok(stats) = store.get_stats(None).await {
-            let mut lines = vec![
-                format!("- {} files, {} chunks indexed", stats.total_files, stats.total_chunks),
-            ];
+            let mut lines = vec![format!(
+                "- {} files, {} chunks indexed",
+                stats.total_files, stats.total_chunks
+            )];
             if !stats.languages.is_empty() {
-                let langs: Vec<String> = stats.languages.iter()
+                let langs: Vec<String> = stats
+                    .languages
+                    .iter()
                     .map(|l| format!("{} ({} files)", l.language, l.file_count))
                     .collect();
                 lines.push(format!("- Languages: {}", langs.join(", ")));
@@ -3778,13 +4273,16 @@ async fn run_prime_context_inner() -> Result<()> {
     println!("{}", serde_json::to_string(&response)?);
 
     // 7. Emit metric
-    crate::metrics::emit(&repo_root, &crate::metrics::event(
-        &metrics_source,
-        "hook_prime_context",
-        "hook prime-context",
-        hook_start.elapsed().as_millis() as u64,
-        serde_json::Value::Null,
-    ));
+    crate::metrics::emit(
+        &repo_root,
+        &crate::metrics::event(
+            &metrics_source,
+            "hook_prime_context",
+            "hook prime-context",
+            hook_start.elapsed().as_millis() as u64,
+            serde_json::Value::Null,
+        ),
+    );
 
     Ok(())
 }
@@ -3847,7 +4345,11 @@ fn extract_search_query_from_bash(command: &str) -> Option<String> {
 
     // Match: find . -name "pattern" — extract the name pattern
     if let Some(pos) = cmd.find("find") {
-        if pos == 0 || cmd[..pos].chars().last().map_or(true, |c| c.is_whitespace() || c == '|' || c == ';' || c == '&') {
+        if pos == 0
+            || cmd[..pos].chars().last().map_or(true, |c| {
+                c.is_whitespace() || c == '|' || c == ';' || c == '&'
+            })
+        {
             let after_cmd = &cmd[pos + 4..];
             if let Some(pattern) = extract_find_pattern(after_cmd) {
                 return Some(pattern);
@@ -3900,10 +4402,28 @@ fn extract_pattern_from_args(args: &str) -> Option<String> {
     let mut explicit_pattern: Option<String> = None;
     // Flags that take a value argument (next token is NOT the pattern)
     let flags_with_value = [
-        "-f", "--file", "-A", "-B", "-C", "--context",
-        "--color", "--colours", "-m", "--max-count", "--include", "--exclude",
-        "--type", "-t", "--type-add", "--glob", "-g", "--max-depth",
-        "--threads", "-j", "--after-context", "--before-context",
+        "-f",
+        "--file",
+        "-A",
+        "-B",
+        "-C",
+        "--context",
+        "--color",
+        "--colours",
+        "-m",
+        "--max-count",
+        "--include",
+        "--exclude",
+        "--type",
+        "-t",
+        "--type-add",
+        "--glob",
+        "-g",
+        "--max-depth",
+        "--threads",
+        "-j",
+        "--after-context",
+        "--before-context",
     ];
     while i < tokens.len() {
         let tok = &tokens[i];
@@ -3962,7 +4482,11 @@ fn extract_find_pattern(args: &str) -> Option<String> {
     let parts: Vec<&str> = args.split_whitespace().collect();
 
     for i in 0..parts.len().saturating_sub(1) {
-        if parts[i] == "-name" || parts[i] == "-iname" || parts[i] == "-path" || parts[i] == "-ipath" {
+        if parts[i] == "-name"
+            || parts[i] == "-iname"
+            || parts[i] == "-path"
+            || parts[i] == "-ipath"
+        {
             let pattern = parts[i + 1].trim_matches('"').trim_matches('\'');
             // Strip glob wildcards for semantic search
             let cleaned = pattern
@@ -4016,11 +4540,10 @@ fn is_meaningful_search_query(query: &str) -> bool {
     if tokens.len() == 1 {
         let lower = tokens[0].to_lowercase();
         let noise_words = [
-            "fn", "let", "var", "const", "use", "import", "from", "return",
-            "if", "else", "for", "while", "match", "type", "struct", "enum",
-            "class", "def", "func", "pub", "mod", "crate", "self", "super",
-            "rs", "go", "py", "ts", "js", "tsx", "jsx", "md", "toml", "yaml",
-            "yml", "json", "html", "css", "sh", "bash", "txt",
+            "fn", "let", "var", "const", "use", "import", "from", "return", "if", "else", "for",
+            "while", "match", "type", "struct", "enum", "class", "def", "func", "pub", "mod",
+            "crate", "self", "super", "rs", "go", "py", "ts", "js", "tsx", "jsx", "md", "toml",
+            "yaml", "yml", "json", "html", "css", "sh", "bash", "txt",
         ];
         if noise_words.contains(&lower.as_str()) {
             return false;
@@ -4037,9 +4560,32 @@ fn is_source_code_file(path: &str) -> bool {
         .unwrap_or("");
     matches!(
         ext,
-        "rs" | "go" | "py" | "ts" | "tsx" | "js" | "jsx" | "java" | "c" | "cpp"
-            | "h" | "hpp" | "cs" | "rb" | "swift" | "kt" | "scala" | "zig" | "lua"
-            | "ex" | "exs" | "erl" | "hs" | "ml" | "mli" | "fs" | "fsi"
+        "rs" | "go"
+            | "py"
+            | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "java"
+            | "c"
+            | "cpp"
+            | "h"
+            | "hpp"
+            | "cs"
+            | "rb"
+            | "swift"
+            | "kt"
+            | "scala"
+            | "zig"
+            | "lua"
+            | "ex"
+            | "exs"
+            | "erl"
+            | "hs"
+            | "ml"
+            | "mli"
+            | "fs"
+            | "fsi"
     )
 }
 
@@ -4057,8 +4603,8 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     let hook_start = std::time::Instant::now();
 
     // 1. Read stdin JSON
-    let input: PostToolUseInput = serde_json::from_reader(std::io::stdin().lock())
-        .context("Failed to parse stdin JSON")?;
+    let input: PostToolUseInput =
+        serde_json::from_reader(std::io::stdin().lock()).context("Failed to parse stdin JSON")?;
 
     // 2. Dispatch based on tool type
     enum DispatchMode {
@@ -4089,12 +4635,10 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             match extract_search_query_from_bash(command) {
-                Some(query) if is_meaningful_search_query(&query) => {
-                    DispatchMode::SearchQuery {
-                        query,
-                        original_cmd: command.to_string(),
-                    }
-                }
+                Some(query) if is_meaningful_search_query(&query) => DispatchMode::SearchQuery {
+                    query,
+                    original_cmd: command.to_string(),
+                },
                 _ => DispatchMode::ReactionsOnly,
             }
         }
@@ -4187,7 +4731,11 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
 
     let metrics_source = crate::metrics::resolve_source(
         None,
-        if input.session_id.is_empty() { None } else { Some(&input.session_id) },
+        if input.session_id.is_empty() {
+            None
+        } else {
+            Some(&input.session_id)
+        },
     );
 
     // 3b. Resolve role for reaction filtering
@@ -4199,10 +4747,12 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         .reactions
         .into_iter()
         .filter_map(|r| {
-            CompiledRule::compile(r).map_err(|e| {
-                eprintln!("bobbin: skipping reaction rule: {}", e);
-                e
-            }).ok()
+            CompiledRule::compile(r)
+                .map_err(|e| {
+                    eprintln!("bobbin: skipping reaction rule: {}", e);
+                    e
+                })
+                .ok()
         })
         .collect();
     let has_reactions = !compiled_rules.is_empty();
@@ -4231,9 +4781,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             let q = format!("files related to {}", rel);
             (q, Some(rel), true, false, false)
         }
-        DispatchMode::SearchQuery { query, .. } => {
-            (query.clone(), None, false, false, false)
-        }
+        DispatchMode::SearchQuery { query, .. } => (query.clone(), None, false, false, false),
         DispatchMode::RefsOnly { file_path } => {
             let abs_path = if Path::new(file_path.as_str()).is_absolute() {
                 PathBuf::from(file_path)
@@ -4247,9 +4795,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 .to_string();
             ("".to_string(), Some(rel), false, true, false)
         }
-        DispatchMode::ReactionsOnly => {
-            ("".to_string(), None, false, false, true)
-        }
+        DispatchMode::ReactionsOnly => ("".to_string(), None, false, false, true),
     };
 
     // 5. Open stores
@@ -4299,173 +4845,197 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 Err(_) => break 'builtin None,
             };
 
-        // 6. Query coupled files (only for Edit mode — coupling is file-based)
-        let coupled: Vec<(String, f32)> = if let Some(ref rp) = rel_path {
-            let coupled_raw = metadata_store.get_coupling(rp, 5).unwrap_or_default();
-            coupled_raw
-                .iter()
-                .filter(|c| c.score >= 0.1)
-                .map(|c| {
-                    let other = if c.file_a == *rp {
-                        c.file_b.clone()
-                    } else {
-                        c.file_a.clone()
-                    };
-                    (other, c.score)
-                })
-                .collect()
-        } else {
-            vec![]
-        };
+            // 6. Query coupled files (only for Edit mode — coupling is file-based)
+            let coupled: Vec<(String, f32)> = if let Some(ref rp) = rel_path {
+                let coupled_raw = metadata_store.get_coupling(rp, 5).unwrap_or_default();
+                coupled_raw
+                    .iter()
+                    .filter(|c| c.score >= 0.1)
+                    .map(|c| {
+                        let other = if c.file_a == *rp {
+                            c.file_b.clone()
+                        } else {
+                            c.file_a.clone()
+                        };
+                        (other, c.score)
+                    })
+                    .collect()
+            } else {
+                vec![]
+            };
 
-        // 7. Hybrid search — uses calibrated config for search quality.
-        let calibration = crate::cli::calibrate::load_calibration(&repo_root);
-        let cal_sw = calibration.as_ref().map(|c| c.best_config.semantic_weight);
-        let cal_dd = calibration.as_ref().map(|c| c.best_config.doc_demotion);
-        let cal_rrf = calibration.as_ref().map(|c| c.best_config.rrf_k);
-        let cal_hl = calibration.as_ref().and_then(|c| c.best_config.recency_half_life_days);
-        let cal_rw = calibration.as_ref().and_then(|c| c.best_config.recency_weight);
-        let cal_sl = calibration.as_ref().and_then(|c| c.best_config.search_limit);
+            // 7. Hybrid search — uses calibrated config for search quality.
+            let calibration = crate::cli::calibrate::load_calibration(&repo_root);
+            let cal_sw = calibration.as_ref().map(|c| c.best_config.semantic_weight);
+            let cal_dd = calibration.as_ref().map(|c| c.best_config.doc_demotion);
+            let cal_rrf = calibration.as_ref().map(|c| c.best_config.rrf_k);
+            let cal_hl = calibration
+                .as_ref()
+                .and_then(|c| c.best_config.recency_half_life_days);
+            let cal_rw = calibration
+                .as_ref()
+                .and_then(|c| c.best_config.recency_weight);
+            let cal_sl = calibration
+                .as_ref()
+                .and_then(|c| c.best_config.search_limit);
 
-        let context_config = ContextConfig {
-            budget_lines: budget,
-            depth: 0, // No recursive expansion for post-tool
-            max_coupled: 0, // We handle coupling separately above
-            coupling_threshold: 0.1,
-            semantic_weight: cal_sw.unwrap_or(config.search.semantic_weight),
-            content_mode: ContentMode::None, // File list only, no content
-            search_limit: cal_sl.unwrap_or(10), // Smaller default for speed
-            doc_demotion: cal_dd.unwrap_or(config.search.doc_demotion),
-            recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
-            recency_weight: cal_rw.unwrap_or(config.search.recency_weight),
-            rrf_k: cal_rrf.unwrap_or(config.search.rrf_k),
-            bridge_mode: BridgeMode::Off, // No bridging for post-tool
-            bridge_boost_factor: 0.0,
-            extra_filter: None,
-            tags_config: None,
-            role: None,
-            file_type_rules: config.file_types.clone(),
-            repo_affinity: detect_repo_name(&cwd),
-            repo_affinity_boost: config.hooks.repo_affinity_boost,
-            max_bridged_files: 3,
-            max_bridged_chunks_per_file: 2,
-            repo_path_prefix: config.server.repo_path_prefix.clone(),
-            ..ContextConfig::default()
-        };
+            let context_config = ContextConfig {
+                budget_lines: budget,
+                depth: 0,       // No recursive expansion for post-tool
+                max_coupled: 0, // We handle coupling separately above
+                coupling_threshold: 0.1,
+                semantic_weight: cal_sw.unwrap_or(config.search.semantic_weight),
+                content_mode: ContentMode::None, // File list only, no content
+                search_limit: cal_sl.unwrap_or(10), // Smaller default for speed
+                doc_demotion: cal_dd.unwrap_or(config.search.doc_demotion),
+                recency_half_life_days: cal_hl.unwrap_or(config.search.recency_half_life_days),
+                recency_weight: cal_rw.unwrap_or(config.search.recency_weight),
+                rrf_k: cal_rrf.unwrap_or(config.search.rrf_k),
+                bridge_mode: BridgeMode::Off, // No bridging for post-tool
+                bridge_boost_factor: 0.0,
+                extra_filter: None,
+                tags_config: None,
+                role: None,
+                file_type_rules: config.file_types.clone(),
+                repo_affinity: detect_repo_name(&cwd),
+                repo_affinity_boost: config.hooks.repo_affinity_boost,
+                max_bridged_files: 3,
+                max_bridged_chunks_per_file: 2,
+                repo_path_prefix: config.server.repo_path_prefix.clone(),
+                ..ContextConfig::default()
+            };
 
-        let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
-        if let Ok(git) = crate::index::git::GitAnalyzer::new(&repo_root) {
-            assembler = assembler.with_git_analyzer(git);
-        }
-
-        let bundle = match assembler.assemble(&query, None).await {
-            Ok(b) => b,
-            Err(_) => {
-                // Search failed — still report coupling if available
-                if coupled.is_empty() {
-                    return Ok(());
-                }
-                crate::search::context::ContextBundle {
-                    query: query.clone(),
-                    files: vec![],
-                    budget: crate::search::context::BudgetInfo { max_lines: budget, used_lines: 0, pinned_lines: 0 },
-                    summary: crate::search::context::ContextSummary {
-                        total_files: 0, total_chunks: 0, direct_hits: 0,
-                        coupled_additions: 0, bridged_additions: 0,
-                        source_files: 0, doc_files: 0, top_semantic_score: 0.0,
-                        pinned_chunks: 0, knowledge_additions: 0,
-                    },
-                }
+            let mut assembler =
+                ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+            if let Ok(git) = crate::index::git::GitAnalyzer::new(&repo_root) {
+                assembler = assembler.with_git_analyzer(git);
             }
-        };
 
-        // Filter out the edited file itself and low-score results
-        // For non-edit search modes, apply a stricter score threshold to reduce noise
-        let min_score = if is_edit_mode { 0.0 } else { 0.005 };
-        let search_files: Vec<_> = bundle
-            .files
-            .iter()
-            .filter(|f| {
-                // Score gate: skip low-relevance results (especially for search tools)
-                if f.score < min_score {
-                    return false;
+            let bundle = match assembler.assemble(&query, None).await {
+                Ok(b) => b,
+                Err(_) => {
+                    // Search failed — still report coupling if available
+                    if coupled.is_empty() {
+                        return Ok(());
+                    }
+                    crate::search::context::ContextBundle {
+                        query: query.clone(),
+                        files: vec![],
+                        budget: crate::search::context::BudgetInfo {
+                            max_lines: budget,
+                            used_lines: 0,
+                            pinned_lines: 0,
+                        },
+                        summary: crate::search::context::ContextSummary {
+                            total_files: 0,
+                            total_chunks: 0,
+                            direct_hits: 0,
+                            coupled_additions: 0,
+                            bridged_additions: 0,
+                            source_files: 0,
+                            doc_files: 0,
+                            top_semantic_score: 0.0,
+                            pinned_chunks: 0,
+                            knowledge_additions: 0,
+                        },
+                    }
                 }
-                // Skip the edited file itself (for Edit mode)
-                if let Some(ref rp) = rel_path {
+            };
+
+            // Filter out the edited file itself and low-score results
+            // For non-edit search modes, apply a stricter score threshold to reduce noise
+            let min_score = if is_edit_mode { 0.0 } else { 0.005 };
+            let search_files: Vec<_> = bundle
+                .files
+                .iter()
+                .filter(|f| {
+                    // Score gate: skip low-relevance results (especially for search tools)
+                    if f.score < min_score {
+                        return false;
+                    }
+                    // Skip the edited file itself (for Edit mode)
+                    if let Some(ref rp) = rel_path {
+                        let f_rel = Path::new(&f.path)
+                            .strip_prefix(&repo_root)
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|_| f.path.clone());
+                        f_rel != *rp
+                    } else {
+                        true
+                    }
+                })
+                .collect();
+
+            // bobbin-aa0: drop files already delivered this session before the
+            // headers below decide whether there is anything to say.
+            let search_files: Vec<_> = search_files
+                .into_iter()
+                .filter(|f| turn.claim_file(&f.path))
+                .collect();
+
+            coupled_count = coupled.len();
+            search_file_count = search_files.len();
+
+            // 8. Format output — different framing for Edit vs Search dispatch
+            if is_edit_mode {
+                let rp = rel_path.as_deref().unwrap_or("unknown");
+                let _ = writeln!(context, "## Related Files: {}", rp);
+                let _ = writeln!(
+                    context,
+                    "You just edited this file. Consider reviewing these related files:\n"
+                );
+                lines_used += 3;
+
+                let fresh_coupled: Vec<_> = coupled
+                    .iter()
+                    .filter(|(coupled_file, _)| turn.claim_file(coupled_file))
+                    .collect();
+                if !fresh_coupled.is_empty() {
+                    let _ = writeln!(context, "**Co-changing files** (from git history):");
+                    lines_used += 1;
+                    for (coupled_file, score) in &fresh_coupled {
+                        if lines_used >= budget {
+                            break;
+                        }
+                        let _ = writeln!(context, "- `{}` (coupling: {:.2})", coupled_file, score);
+                        lines_used += 1;
+                    }
+                    let _ = writeln!(context);
+                    lines_used += 1;
+                }
+
+                if !search_files.is_empty() {
+                    let _ = writeln!(context, "**Semantically related** (from bobbin search):");
+                    lines_used += 1;
+                }
+            } else if !search_files.is_empty() {
+                // Only show search results header if we have results above the score gate
+                let original_cmd = match &mode {
+                    DispatchMode::SearchQuery { original_cmd, .. } => original_cmd.as_str(),
+                    _ => "search",
+                };
+                let _ = writeln!(context, "## Bobbin Semantic Matches");
+                let _ = writeln!(
+                    context,
+                    "Your search (`{}`) also matched these files semantically:\n",
+                    original_cmd
+                );
+                lines_used += 3;
+            }
+
+            if !search_files.is_empty() {
+                for f in &search_files {
+                    if lines_used >= budget {
+                        break;
+                    }
                     let f_rel = Path::new(&f.path)
                         .strip_prefix(&repo_root)
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_else(|_| f.path.clone());
-                    f_rel != *rp
-                } else {
-                    true
-                }
-            })
-            .collect();
-
-        // bobbin-aa0: drop files already delivered this session before the
-        // headers below decide whether there is anything to say.
-        let search_files: Vec<_> = search_files
-            .into_iter()
-            .filter(|f| turn.claim_file(&f.path))
-            .collect();
-
-        coupled_count = coupled.len();
-        search_file_count = search_files.len();
-
-        // 8. Format output — different framing for Edit vs Search dispatch
-        if is_edit_mode {
-            let rp = rel_path.as_deref().unwrap_or("unknown");
-            let _ = writeln!(context, "## Related Files: {}", rp);
-            let _ = writeln!(context, "You just edited this file. Consider reviewing these related files:\n");
-            lines_used += 3;
-
-            let fresh_coupled: Vec<_> = coupled
-                .iter()
-                .filter(|(coupled_file, _)| turn.claim_file(coupled_file))
-                .collect();
-            if !fresh_coupled.is_empty() {
-                let _ = writeln!(context, "**Co-changing files** (from git history):");
-                lines_used += 1;
-                for (coupled_file, score) in &fresh_coupled {
-                    if lines_used >= budget {
-                        break;
-                    }
-                    let _ = writeln!(context, "- `{}` (coupling: {:.2})", coupled_file, score);
+                    let _ = writeln!(context, "- `{}`", f_rel);
                     lines_used += 1;
                 }
-                let _ = writeln!(context);
-                lines_used += 1;
             }
-
-            if !search_files.is_empty() {
-                let _ = writeln!(context, "**Semantically related** (from bobbin search):");
-                lines_used += 1;
-            }
-        } else if !search_files.is_empty() {
-            // Only show search results header if we have results above the score gate
-            let original_cmd = match &mode {
-                DispatchMode::SearchQuery { original_cmd, .. } => original_cmd.as_str(),
-                _ => "search",
-            };
-            let _ = writeln!(context, "## Bobbin Semantic Matches");
-            let _ = writeln!(context, "Your search (`{}`) also matched these files semantically:\n", original_cmd);
-            lines_used += 3;
-        }
-
-        if !search_files.is_empty() {
-            for f in &search_files {
-                if lines_used >= budget {
-                    break;
-                }
-                let f_rel = Path::new(&f.path)
-                    .strip_prefix(&repo_root)
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| f.path.clone());
-                let _ = writeln!(context, "- `{}`", f_rel);
-                lines_used += 1;
-            }
-        }
 
             Some(()) // end of labeled block
         }; // end 'builtin block
@@ -4481,152 +5051,168 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             // Scope the refs analysis in a block — if store open fails, skip refs
             // but continue to reactions below
             if let Ok(mut refs_vs) = refs_vs_result {
+                use crate::analysis::refs::RefAnalyzer;
 
-            use crate::analysis::refs::RefAnalyzer;
+                // list_symbols needs the path as stored in the index (absolute)
+                let abs_file = repo_root.join(rp);
+                let abs_file_str = abs_file.to_string_lossy().to_string();
 
-            // list_symbols needs the path as stored in the index (absolute)
-            let abs_file = repo_root.join(rp);
-            let abs_file_str = abs_file.to_string_lossy().to_string();
+                // Pre-fetch file chunks before creating the analyzer (to avoid borrow conflicts)
+                let file_chunks = refs_vs
+                    .get_chunks_for_file(&abs_file_str, None)
+                    .await
+                    .unwrap_or_default();
 
-            // Pre-fetch file chunks before creating the analyzer (to avoid borrow conflicts)
-            let file_chunks = refs_vs
-                .get_chunks_for_file(&abs_file_str, None)
-                .await
-                .unwrap_or_default();
+                let mut analyzer = RefAnalyzer::new(&mut refs_vs);
 
-            let mut analyzer = RefAnalyzer::new(&mut refs_vs);
+                // List symbols in the file
+                let file_symbols = analyzer
+                    .list_symbols(&abs_file_str, None)
+                    .await
+                    .unwrap_or_else(|_| crate::analysis::refs::FileSymbols {
+                        path: abs_file_str.clone(),
+                        symbols: vec![],
+                    });
 
-            // List symbols in the file
-            let file_symbols = analyzer.list_symbols(&abs_file_str, None).await.unwrap_or_else(|_| {
-                crate::analysis::refs::FileSymbols {
-                    path: abs_file_str.clone(),
-                    symbols: vec![],
-                }
-            });
+                if !file_symbols.symbols.is_empty() {
+                    // Limit to top 3 symbols (by line order — most prominent definitions first)
+                    let symbols_to_check: Vec<_> = file_symbols.symbols.iter().take(3).collect();
 
-            if !file_symbols.symbols.is_empty() {
-                // Limit to top 3 symbols (by line order — most prominent definitions first)
-                let symbols_to_check: Vec<_> = file_symbols.symbols.iter().take(3).collect();
-
-                // 9a. Callers: for each symbol, find where it's used (in other files)
-                let mut symbol_refs: Vec<(String, Vec<String>)> = Vec::new();
-                for sym in &symbols_to_check {
-                    let refs = analyzer
-                        .find_refs(&sym.name, None, 10, None)
-                        .await
-                        .unwrap_or_else(|_| crate::analysis::refs::SymbolRefs {
-                            definition: None,
-                            usages: vec![],
-                        });
-
-                    // Collect unique files where this symbol is used (excluding the file itself)
-                    // Usage file_paths are absolute — convert to relative for display and comparison
-                    let mut usage_files: Vec<String> = refs
-                        .usages
-                        .iter()
-                        .map(|u| {
-                            Path::new(&u.file_path)
-                                .strip_prefix(&repo_root)
-                                .map(|p| p.to_string_lossy().to_string())
-                                .unwrap_or_else(|_| u.file_path.clone())
-                        })
-                        .filter(|f| f != rp)
-                        .collect();
-                    usage_files.dedup();
-                    usage_files.truncate(5);
-
-                    if !usage_files.is_empty() {
-                        symbol_refs.push((sym.name.clone(), usage_files));
-                    }
-                }
-
-                if !symbol_refs.is_empty() {
-                    refs_count = symbol_refs.len();
-                    if lines_used > 0 {
-                        let _ = writeln!(context);
-                        lines_used += 1;
-                    }
-
-                    if is_refs_only {
-                        let _ = writeln!(context, "## Symbol References: {}", rp);
-                        let _ = writeln!(context, "Symbols defined in this file are used in:\n");
-                        lines_used += 3;
-                    } else {
-                        let _ = writeln!(context, "**Symbol references** (where symbols from this file are used):");
-                        lines_used += 1;
-                    }
-
-                    for (sym_name, usage_files) in &symbol_refs {
-                        if lines_used >= budget {
-                            break;
-                        }
-                        let _ = writeln!(context, "- `{}` → {}", sym_name,
-                            usage_files.iter().map(|f| format!("`{}`", f)).collect::<Vec<_>>().join(", "));
-                        lines_used += 1;
-                    }
-                }
-
-                // 9b. Callees: for each symbol, find what functions it calls
-                if lines_used < budget {
-                    let mut symbol_callees: Vec<(String, Vec<(String, String)>)> = Vec::new();
+                    // 9a. Callers: for each symbol, find where it's used (in other files)
+                    let mut symbol_refs: Vec<(String, Vec<String>)> = Vec::new();
                     for sym in &symbols_to_check {
-                        // Find the chunk content for this symbol
-                        let chunk = file_chunks.iter().find(|c| {
-                            c.name.as_deref() == Some(&sym.name)
-                        });
-                        if let Some(chunk) = chunk {
-                            let callees = analyzer
-                                .find_callees(&chunk.content, Some(&sym.name), 5, None)
-                                .await
-                                .unwrap_or_default();
+                        let refs = analyzer
+                            .find_refs(&sym.name, None, 10, None)
+                            .await
+                            .unwrap_or_else(|_| crate::analysis::refs::SymbolRefs {
+                                definition: None,
+                                usages: vec![],
+                            });
 
-                            let callee_info: Vec<(String, String)> = callees
-                                .into_iter()
-                                .filter_map(|c| {
-                                    let def = c.definition?;
-                                    let rel_file = Path::new(&def.file_path)
-                                        .strip_prefix(&repo_root)
-                                        .map(|p| p.to_string_lossy().to_string())
-                                        .unwrap_or_else(|_| def.file_path);
-                                    Some((c.name, rel_file))
-                                })
-                                .collect();
+                        // Collect unique files where this symbol is used (excluding the file itself)
+                        // Usage file_paths are absolute — convert to relative for display and comparison
+                        let mut usage_files: Vec<String> = refs
+                            .usages
+                            .iter()
+                            .map(|u| {
+                                Path::new(&u.file_path)
+                                    .strip_prefix(&repo_root)
+                                    .map(|p| p.to_string_lossy().to_string())
+                                    .unwrap_or_else(|_| u.file_path.clone())
+                            })
+                            .filter(|f| f != rp)
+                            .collect();
+                        usage_files.dedup();
+                        usage_files.truncate(5);
 
-                            if !callee_info.is_empty() {
-                                symbol_callees.push((sym.name.clone(), callee_info));
-                            }
+                        if !usage_files.is_empty() {
+                            symbol_refs.push((sym.name.clone(), usage_files));
                         }
                     }
 
-                    if !symbol_callees.is_empty() {
-                        callees_count = symbol_callees.len();
+                    if !symbol_refs.is_empty() {
+                        refs_count = symbol_refs.len();
                         if lines_used > 0 {
                             let _ = writeln!(context);
                             lines_used += 1;
                         }
 
                         if is_refs_only {
-                            let _ = writeln!(context, "**Dependency chain** (functions called by symbols in this file):");
+                            let _ = writeln!(context, "## Symbol References: {}", rp);
+                            let _ =
+                                writeln!(context, "Symbols defined in this file are used in:\n");
+                            lines_used += 3;
                         } else {
-                            let _ = writeln!(context, "**Callees** (functions called by this file's symbols):");
+                            let _ = writeln!(
+                                context,
+                                "**Symbol references** (where symbols from this file are used):"
+                            );
+                            lines_used += 1;
                         }
-                        lines_used += 1;
 
-                        for (sym_name, callee_info) in &symbol_callees {
+                        for (sym_name, usage_files) in &symbol_refs {
                             if lines_used >= budget {
                                 break;
                             }
-                            let callees_str = callee_info
-                                .iter()
-                                .map(|(name, file)| format!("`{}` ({})", name, file))
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            let _ = writeln!(context, "- `{}` calls → {}", sym_name, callees_str);
+                            let _ = writeln!(
+                                context,
+                                "- `{}` → {}",
+                                sym_name,
+                                usage_files
+                                    .iter()
+                                    .map(|f| format!("`{}`", f))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            );
                             lines_used += 1;
                         }
                     }
+
+                    // 9b. Callees: for each symbol, find what functions it calls
+                    if lines_used < budget {
+                        let mut symbol_callees: Vec<(String, Vec<(String, String)>)> = Vec::new();
+                        for sym in &symbols_to_check {
+                            // Find the chunk content for this symbol
+                            let chunk = file_chunks
+                                .iter()
+                                .find(|c| c.name.as_deref() == Some(&sym.name));
+                            if let Some(chunk) = chunk {
+                                let callees = analyzer
+                                    .find_callees(&chunk.content, Some(&sym.name), 5, None)
+                                    .await
+                                    .unwrap_or_default();
+
+                                let callee_info: Vec<(String, String)> = callees
+                                    .into_iter()
+                                    .filter_map(|c| {
+                                        let def = c.definition?;
+                                        let rel_file = Path::new(&def.file_path)
+                                            .strip_prefix(&repo_root)
+                                            .map(|p| p.to_string_lossy().to_string())
+                                            .unwrap_or_else(|_| def.file_path);
+                                        Some((c.name, rel_file))
+                                    })
+                                    .collect();
+
+                                if !callee_info.is_empty() {
+                                    symbol_callees.push((sym.name.clone(), callee_info));
+                                }
+                            }
+                        }
+
+                        if !symbol_callees.is_empty() {
+                            callees_count = symbol_callees.len();
+                            if lines_used > 0 {
+                                let _ = writeln!(context);
+                                lines_used += 1;
+                            }
+
+                            if is_refs_only {
+                                let _ = writeln!(context, "**Dependency chain** (functions called by symbols in this file):");
+                            } else {
+                                let _ = writeln!(
+                                    context,
+                                    "**Callees** (functions called by this file's symbols):"
+                                );
+                            }
+                            lines_used += 1;
+
+                            for (sym_name, callee_info) in &symbol_callees {
+                                if lines_used >= budget {
+                                    break;
+                                }
+                                let callees_str = callee_info
+                                    .iter()
+                                    .map(|(name, file)| format!("`{}` ({})", name, file))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                let _ =
+                                    writeln!(context, "- `{}` calls → {}", sym_name, callees_str);
+                                lines_used += 1;
+                            }
+                        }
+                    }
                 }
-            }
             } // end if let Ok(refs_vs)
         }
     }
@@ -4664,7 +5250,11 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         rules_deduped = eval_result.rules_deduped;
 
         // Emit per-rule metrics with injection_ids
-        for (rule_name, inj_id) in eval_result.rules_fired.iter().zip(&eval_result.injection_ids) {
+        for (rule_name, inj_id) in eval_result
+            .rules_fired
+            .iter()
+            .zip(&eval_result.injection_ids)
+        {
             crate::metrics::emit(
                 &repo_root,
                 &crate::metrics::event(
@@ -4797,8 +5387,8 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
     let hook_start = std::time::Instant::now();
 
     // 1. Read stdin JSON
-    let input: PostToolUseFailureInput = serde_json::from_reader(std::io::stdin().lock())
-        .context("Failed to parse stdin JSON")?;
+    let input: PostToolUseFailureInput =
+        serde_json::from_reader(std::io::stdin().lock()).context("Failed to parse stdin JSON")?;
 
     // Skip if no error message to search with
     if input.error.trim().is_empty() {
@@ -4837,7 +5427,11 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
 
     let metrics_source = crate::metrics::resolve_source(
         None,
-        if input.session_id.is_empty() { None } else { Some(&input.session_id) },
+        if input.session_id.is_empty() {
+            None
+        } else {
+            Some(&input.session_id)
+        },
     );
 
     // 3. Extract command hint and error excerpt
@@ -4920,7 +5514,9 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
             }
 
             // Fetch chunks for this file from the index
-            let chunks = vector_store.get_chunks_for_file(&error_ref.path, repo_name.as_deref()).await;
+            let chunks = vector_store
+                .get_chunks_for_file(&error_ref.path, repo_name.as_deref())
+                .await;
             let chunks = match chunks {
                 Ok(c) if !c.is_empty() => c,
                 _ => continue,
@@ -4930,12 +5526,14 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
 
             // If we have a specific line number, find the chunk containing it
             let relevant_chunks: Vec<_> = if let Some(line) = error_ref.line {
-                let mut matching: Vec<_> = chunks.iter()
+                let mut matching: Vec<_> = chunks
+                    .iter()
                     .filter(|c| c.start_line <= line && c.end_line >= line)
                     .collect();
                 // If no chunk spans the exact line, take the nearest chunk
                 if matching.is_empty() {
-                    matching = chunks.iter()
+                    matching = chunks
+                        .iter()
                         .min_by_key(|c| {
                             let mid = (c.start_line + c.end_line) / 2;
                             (mid as i64 - line as i64).unsigned_abs()
@@ -4965,7 +5563,9 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
                 } else {
                     String::new()
                 };
-                let symbol_info = error_ref.symbol.as_ref()
+                let symbol_info = error_ref
+                    .symbol
+                    .as_ref()
                     .map(|s| format!(" — symbol: `{}`", s))
                     .unwrap_or_default();
 
@@ -4985,12 +5585,9 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
 
             // Include coupled files for this error file (co-changing files)
             if lines_used < budget {
-                if let Ok(coupling) = crate::reactions::query_coupling(
-                    &metadata_store,
-                    &error_ref.path,
-                    0.3,
-                    3,
-                ) {
+                if let Ok(coupling) =
+                    crate::reactions::query_coupling(&metadata_store, &error_ref.path, 0.3, 3)
+                {
                     for coupled in &coupling.coupled_files {
                         if lines_used >= budget {
                             break;
@@ -5037,10 +5634,7 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         (format!("{}{}", header, direct_injection_output), "direct")
     } else {
         // Semantic search fallback (original behavior)
-        let query = format!(
-            "{} {} error: {}",
-            input.tool_name, file_hint, error_excerpt
-        );
+        let query = format!("{} {} error: {}", input.tool_name, file_hint, error_excerpt);
         let embedder = Embedder::from_config(&config.embedding, &model_dir)
             .context("Failed to load embedding model")?;
 
@@ -5070,7 +5664,8 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
             ..ContextConfig::default()
         };
 
-        let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+        let mut assembler =
+            ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
         let mut bundle = assembler.assemble(&query, None).await?;
 
         if bundle.files.is_empty() || bundle.summary.top_semantic_score < 0.3 {
@@ -5204,8 +5799,8 @@ async fn run_post_tool_use_failure_remote(
     let hook_start = std::time::Instant::now();
 
     // 1. Read stdin JSON
-    let input: PostToolUseFailureInput = serde_json::from_reader(std::io::stdin().lock())
-        .context("Failed to parse stdin JSON")?;
+    let input: PostToolUseFailureInput =
+        serde_json::from_reader(std::io::stdin().lock()).context("Failed to parse stdin JSON")?;
 
     if input.error.trim().is_empty() {
         return Ok(());
@@ -5264,7 +5859,10 @@ async fn run_post_tool_use_failure_remote(
     // Resolve relative paths to server paths.
     // Server stores files as /var/lib/bobbin/repos/<repo>/<path>.
     // Use config repo_path_prefix if set, otherwise default to /var/lib/bobbin/repos/.
-    let repo_prefix = config.server.repo_path_prefix.as_deref()
+    let repo_prefix = config
+        .server
+        .repo_path_prefix
+        .as_deref()
         .unwrap_or("/var/lib/bobbin/repos");
 
     // Detect the actual repo name for server path resolution.
@@ -5302,10 +5900,13 @@ async fn run_post_tool_use_failure_remote(
             if let Ok(chunk) = client.read_chunk(&server_path, start, end, Some(5)).await {
                 let chunk_lines = chunk.content.lines().count();
                 if lines_used + chunk_lines + 3 <= budget {
-                    let line_info = error_ref.line
+                    let line_info = error_ref
+                        .line
                         .map(|l| format!(" (error at line {})", l))
                         .unwrap_or_default();
-                    let symbol_info = error_ref.symbol.as_ref()
+                    let symbol_info = error_ref
+                        .symbol
+                        .as_ref()
                         .map(|s| format!(" — symbol: `{}`", s))
                         .unwrap_or_default();
 
@@ -5368,17 +5969,20 @@ async fn run_post_tool_use_failure_remote(
             command,
             &error_excerpt[..error_excerpt.len().min(200)],
         );
-        match client.context(
-            &query,
-            Some(budget),
-            Some(0),      // depth
-            Some(0),      // max_coupled
-            Some(10),     // limit
-            None,         // coupling_threshold
-            None,         // repo
-            if role.is_empty() { None } else { Some(role) },
-            repo_affinity.as_deref(),
-        ).await {
+        match client
+            .context(
+                &query,
+                Some(budget),
+                Some(0),  // depth
+                Some(0),  // max_coupled
+                Some(10), // limit
+                None,     // coupling_threshold
+                None,     // repo
+                if role.is_empty() { None } else { Some(role) },
+                repo_affinity.as_deref(),
+            )
+            .await
+        {
             Ok(ctx) if !ctx.files.is_empty() => {
                 let mut text = format!(
                     "Bobbin found {} relevant files for this error (via semantic search):\n\n",
@@ -5414,7 +6018,11 @@ async fn run_post_tool_use_failure_remote(
     if let Some(ref root) = repo_root {
         let metrics_source = crate::metrics::resolve_source(
             None,
-            if input.session_id.is_empty() { None } else { Some(&input.session_id) },
+            if input.session_id.is_empty() {
+                None
+            } else {
+                Some(&input.session_id)
+            },
         );
         crate::metrics::emit(
             root,
@@ -5446,20 +6054,32 @@ fn try_directory_navigation(input: &PostToolUseFailureInput) -> Option<String> {
     let error = &input.error;
 
     // Skip paths in /tmp or other irrelevant locations
-    if file_path.starts_with("/tmp") || file_path.starts_with("/proc") || file_path.starts_with("/sys") {
+    if file_path.starts_with("/tmp")
+        || file_path.starts_with("/proc")
+        || file_path.starts_with("/sys")
+    {
         return None;
     }
 
     let (tree_path, header) = if error.contains("EISDIR") || error.contains("Is a directory") {
         // Read on directory: show its contents
-        (file_path.to_string(), format!("{} is a directory. Contents:", file_path))
-    } else if error.contains("does not exist") || error.contains("ENOENT") || error.contains("No such file") {
+        (
+            file_path.to_string(),
+            format!("{} is a directory. Contents:", file_path),
+        )
+    } else if error.contains("does not exist")
+        || error.contains("ENOENT")
+        || error.contains("No such file")
+    {
         // File not found: show parent directory
         let parent = std::path::Path::new(file_path).parent()?;
         if !parent.exists() {
             return None;
         }
-        (parent.to_string_lossy().to_string(), format!("File not found. Nearby files in {}:", parent.display()))
+        (
+            parent.to_string_lossy().to_string(),
+            format!("File not found. Nearby files in {}:", parent.display()),
+        )
     } else {
         return None;
     };
@@ -5480,7 +6100,11 @@ fn try_directory_navigation(input: &PostToolUseFailureInput) -> Option<String> {
     // Cap at 20 lines
     let truncated = if lines.len() > 20 {
         let shown: Vec<&str> = lines[..20].to_vec();
-        format!("{}\n... and {} more entries", shown.join("\n"), lines.len() - 20)
+        format!(
+            "{}\n... and {} more entries",
+            shown.join("\n"),
+            lines.len() - 20
+        )
     } else {
         lines.join("\n")
     };
@@ -5537,8 +6161,7 @@ struct SymbolInfo {
 
 async fn run_session_context_inner(args: SessionContextArgs) -> Result<()> {
     // 1. Read stdin JSON
-    let input_str = std::io::read_to_string(std::io::stdin())
-        .context("Failed to read stdin")?;
+    let input_str = std::io::read_to_string(std::io::stdin()).context("Failed to read stdin")?;
 
     // If stdin is empty, nothing to do
     if input_str.trim().is_empty() {
@@ -5648,11 +6271,7 @@ async fn run_session_context_inner(args: SessionContextArgs) -> Result<()> {
                         };
                         if !all_files.contains(other) && !seen_coupled.contains(other) {
                             seen_coupled.insert(other.clone());
-                            coupled_files.push((
-                                other.clone(),
-                                file_path.clone(),
-                                c.score,
-                            ));
+                            coupled_files.push((other.clone(), file_path.clone(), c.score));
                         }
                     }
                 }
@@ -5739,11 +6358,7 @@ fn git_recent_commits(cwd: &std::path::Path, count: usize) -> Result<Vec<String>
 /// Get files changed in recent commits
 fn git_recently_changed_files(cwd: &std::path::Path, depth: usize) -> Result<Vec<String>> {
     let output = Command::new("git")
-        .args([
-            "diff",
-            "--name-only",
-            &format!("HEAD~{}..HEAD", depth),
-        ])
+        .args(["diff", "--name-only", &format!("HEAD~{}..HEAD", depth)])
         .current_dir(cwd)
         .output()
         .context("Failed to run git diff")?;
@@ -5787,12 +6402,8 @@ fn format_session_context(
                 .iter()
                 .find(|fs| fs.path == *file)
                 .map(|fs| {
-                    let names: Vec<String> = fs
-                        .symbols
-                        .iter()
-                        .take(5)
-                        .map(|s| s.name.clone())
-                        .collect();
+                    let names: Vec<String> =
+                        fs.symbols.iter().take(5).map(|s| s.name.clone()).collect();
                     if names.is_empty() {
                         String::new()
                     } else {
@@ -5830,12 +6441,7 @@ fn format_session_context(
     if !other_symbols.is_empty() {
         lines.push("### Recently changed files".to_string());
         for fs in &other_symbols {
-            let names: Vec<String> = fs
-                .symbols
-                .iter()
-                .take(5)
-                .map(|s| s.name.clone())
-                .collect();
+            let names: Vec<String> = fs.symbols.iter().take(5).map(|s| s.name.clone()).collect();
             let symbols_str = if names.is_empty() {
                 String::new()
             } else {
@@ -5962,12 +6568,12 @@ async fn run_install_git_hook(_args: InstallGitHookArgs, output: OutputConfig) -
         });
         println!("{}", serde_json::to_string_pretty(&result)?);
     } else if !output.quiet {
-        println!(
-            "{} Git post-commit hook installed",
-            "✓".green(),
-        );
+        println!("{} Git post-commit hook installed", "✓".green(),);
         println!("  Location: {}", hook_path.display().to_string().dimmed());
-        println!("  Action:   {} after each commit", "bobbin index --quiet".cyan());
+        println!(
+            "  Action:   {} after each commit",
+            "bobbin index --quiet".cyan()
+        );
     }
 
     Ok(())
@@ -6054,10 +6660,7 @@ async fn run_uninstall_git_hook(_args: UninstallGitHookArgs, output: OutputConfi
         });
         println!("{}", serde_json::to_string_pretty(&result)?);
     } else if !output.quiet {
-        println!(
-            "{} Bobbin post-commit hook removed",
-            "✓".green(),
-        );
+        println!("{} Bobbin post-commit hook removed", "✓".green(),);
     }
 
     Ok(())
@@ -6132,8 +6735,14 @@ mod tests {
         // hold five DISTINCT files. Pre-fix this returned a.rs four times and
         // one other, so four real suggestions were lost.
         let input = comp(&[
-            ("a.rs", 0.99), ("a.rs", 0.98), ("a.rs", 0.97), ("a.rs", 0.96),
-            ("b.rs", 0.50), ("c.rs", 0.40), ("d.rs", 0.30), ("e.rs", 0.20),
+            ("a.rs", 0.99),
+            ("a.rs", 0.98),
+            ("a.rs", 0.97),
+            ("a.rs", 0.96),
+            ("b.rs", 0.50),
+            ("c.rs", 0.40),
+            ("d.rs", 0.30),
+            ("e.rs", 0.20),
         ]);
         let out = dedupe_complementary(input, 5);
 
@@ -6160,7 +6769,7 @@ mod tests {
         assert!(dedupe_complementary(comp(&[("a.rs", 0.9)]), 0).is_empty());
     }
     use crate::search::context::*;
-    use crate::types::{ChunkType, MatchType, classify_file};
+    use crate::types::{classify_file, ChunkType, MatchType};
 
     #[test]
     fn test_command_invokes_bobbin_hook_bare() {
@@ -6173,8 +6782,12 @@ mod tests {
         assert!(command_invokes_bobbin_hook(
             "BOBBIN_SERVER=http://search.example /home/user/.local/bin/bobbin hook inject-context || true"
         ));
-        assert!(command_invokes_bobbin_hook("/usr/bin/bobbin hook session-context"));
-        assert!(command_invokes_bobbin_hook("FOO=bar bobbin hook post-tool-use"));
+        assert!(command_invokes_bobbin_hook(
+            "/usr/bin/bobbin hook session-context"
+        ));
+        assert!(command_invokes_bobbin_hook(
+            "FOO=bar bobbin hook post-tool-use"
+        ));
     }
 
     #[test]
@@ -6439,7 +7052,8 @@ mod tests {
         };
 
         // With injection_id
-        let result = format_context_for_injection(&bundle, 0.0, true, Some("inj-abc12345"), "standard");
+        let result =
+            format_context_for_injection(&bundle, 0.0, true, Some("inj-abc12345"), "standard");
         assert!(result.contains("[injection_id: inj-abc12345]"));
         assert!(result.contains("1 relevant files"));
 
@@ -6560,11 +7174,9 @@ mod tests {
             symbols: vec![
                 SymbolInfo {
                     name: "validate_token".to_string(),
-
                 },
                 SymbolInfo {
                     name: "refresh_session".to_string(),
-
                 },
             ],
         }];
@@ -6607,9 +7219,7 @@ mod tests {
 
     #[test]
     fn test_format_session_context_budget_enforcement() {
-        let modified: Vec<String> = (0..100)
-            .map(|i| format!("src/file_{}.rs", i))
-            .collect();
+        let modified: Vec<String> = (0..100).map(|i| format!("src/file_{}.rs", i)).collect();
         let commits: Vec<String> = vec![];
         let symbols: Vec<FileSymbolInfo> = vec![];
         let coupled: Vec<(String, String, f32)> = vec![];
@@ -6630,7 +7240,6 @@ mod tests {
             symbols: (0..8)
                 .map(|i| SymbolInfo {
                     name: format!("fn_{}", i),
-
                 })
                 .collect(),
         }];
@@ -6651,14 +7260,12 @@ mod tests {
                 path: "src/modified.rs".to_string(),
                 symbols: vec![SymbolInfo {
                     name: "mod_fn".to_string(),
-
                 }],
             },
             FileSymbolInfo {
                 path: "src/recent.rs".to_string(),
                 symbols: vec![SymbolInfo {
                     name: "recent_fn".to_string(),
-
                 }],
             },
         ];
@@ -6690,37 +7297,38 @@ mod tests {
         // Build a bundle with many chunks that would exceed a small budget
         let bundle = ContextBundle {
             query: "auth".to_string(),
-            files: vec![
-                ContextFile {
-                    path: "src/a.rs".to_string(),
-                    language: "rust".to_string(),
-                    relevance: FileRelevance::Direct,
-                    category: classify_file("src/a.rs"),
-                    score: 0.9,
-                    coupled_to: vec![],
-                    repo: None,
-                    chunks: vec![
-                        ContextChunk {
-                            name: Some("fn_a".to_string()),
-                            chunk_type: ChunkType::Function,
-                            start_line: 1,
-                            end_line: 10,
-                            score: 0.9,
-                            match_type: Some(MatchType::Hybrid),
-                            content: Some("line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10".to_string()),
-                        },
-                        ContextChunk {
-                            name: Some("fn_b".to_string()),
-                            chunk_type: ChunkType::Function,
-                            start_line: 20,
-                            end_line: 30,
-                            score: 0.8,
-                            match_type: Some(MatchType::Hybrid),
-                            content: Some("b1\nb2\nb3\nb4\nb5\nb6\nb7\nb8\nb9\nb10\nb11".to_string()),
-                        },
-                    ],
-                },
-            ],
+            files: vec![ContextFile {
+                path: "src/a.rs".to_string(),
+                language: "rust".to_string(),
+                relevance: FileRelevance::Direct,
+                category: classify_file("src/a.rs"),
+                score: 0.9,
+                coupled_to: vec![],
+                repo: None,
+                chunks: vec![
+                    ContextChunk {
+                        name: Some("fn_a".to_string()),
+                        chunk_type: ChunkType::Function,
+                        start_line: 1,
+                        end_line: 10,
+                        score: 0.9,
+                        match_type: Some(MatchType::Hybrid),
+                        content: Some(
+                            "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10"
+                                .to_string(),
+                        ),
+                    },
+                    ContextChunk {
+                        name: Some("fn_b".to_string()),
+                        chunk_type: ChunkType::Function,
+                        start_line: 20,
+                        end_line: 30,
+                        score: 0.8,
+                        match_type: Some(MatchType::Hybrid),
+                        content: Some("b1\nb2\nb3\nb4\nb5\nb6\nb7\nb8\nb9\nb10\nb11".to_string()),
+                    },
+                ],
+            }],
             budget: BudgetInfo {
                 max_lines: 15,
                 used_lines: 21,
@@ -6794,7 +7402,11 @@ mod tests {
         };
         let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
         // Score should be 2 decimal places
-        assert!(result.contains("score 0.86"), "Expected 2-decimal score in: {}", result);
+        assert!(
+            result.contains("score 0.86"),
+            "Expected 2-decimal score in: {}",
+            result
+        );
     }
 
     #[test]
@@ -6860,16 +7472,34 @@ mod tests {
 
         // show_docs=true should include both
         let with_docs = format_context_for_injection(&bundle, 0.0, true, None, "standard");
-        assert!(with_docs.contains("Source Files"), "Should have source section");
-        assert!(with_docs.contains("Documentation"), "Should have doc section");
+        assert!(
+            with_docs.contains("Source Files"),
+            "Should have source section"
+        );
+        assert!(
+            with_docs.contains("Documentation"),
+            "Should have doc section"
+        );
         assert!(with_docs.contains("README.md"));
 
         // show_docs=false should exclude documentation
         let without_docs = format_context_for_injection(&bundle, 0.0, false, None, "standard");
-        assert!(without_docs.contains("Source Files"), "Should have source section");
-        assert!(!without_docs.contains("Documentation"), "Should not have doc section");
-        assert!(!without_docs.contains("README.md"), "Doc file should be excluded");
-        assert!(without_docs.contains("src/main.rs"), "Source file should remain");
+        assert!(
+            without_docs.contains("Source Files"),
+            "Should have source section"
+        );
+        assert!(
+            !without_docs.contains("Documentation"),
+            "Should not have doc section"
+        );
+        assert!(
+            !without_docs.contains("README.md"),
+            "Doc file should be excluded"
+        );
+        assert!(
+            without_docs.contains("src/main.rs"),
+            "Source file should remain"
+        );
     }
 
     #[test]
@@ -6914,7 +7544,10 @@ mod tests {
         };
         // Budget 0 — should not panic and should produce empty or minimal output
         let result = format_context_for_injection(&bundle, 0.0, true, None, "standard");
-        assert!(result.lines().count() <= 1, "Budget 0 should produce at most the header");
+        assert!(
+            result.lines().count() <= 1,
+            "Budget 0 should produce at most the header"
+        );
     }
 
     #[test]
@@ -7009,7 +7642,8 @@ mod tests {
     #[test]
     fn test_format_mode_standard() {
         let bundle = make_format_test_bundle();
-        let result = format_context_for_injection(&bundle, 0.0, true, Some("inj-test1"), "standard");
+        let result =
+            format_context_for_injection(&bundle, 0.0, true, Some("inj-test1"), "standard");
         assert!(result.contains("Bobbin found 1 relevant files"));
         assert!(result.contains("[injection_id: inj-test1]"));
         assert!(result.contains("=== Source Files ==="));
@@ -7063,14 +7697,44 @@ mod tests {
     #[test]
     fn test_format_search_chunk_all_modes() {
         let content = "fn main() {}\n";
-        let standard = format_search_chunk("src/main.rs", 1, 5, " main", "function", 0.9, content, "", "standard");
+        let standard = format_search_chunk(
+            "src/main.rs",
+            1,
+            5,
+            " main",
+            "function",
+            0.9,
+            content,
+            "",
+            "standard",
+        );
         assert!(standard.contains("--- src/main.rs:1-5 main (function, score 0.90) ---"));
 
-        let minimal = format_search_chunk("src/main.rs", 1, 5, " main", "function", 0.9, content, "", "minimal");
+        let minimal = format_search_chunk(
+            "src/main.rs",
+            1,
+            5,
+            " main",
+            "function",
+            0.9,
+            content,
+            "",
+            "minimal",
+        );
         assert!(minimal.contains("# src/main.rs (lines 1-5)"));
         assert!(!minimal.contains("score"));
 
-        let xml = format_search_chunk("src/main.rs", 1, 5, " main", "function", 0.9, content, "", "xml");
+        let xml = format_search_chunk(
+            "src/main.rs",
+            1,
+            5,
+            " main",
+            "function",
+            0.9,
+            content,
+            "",
+            "xml",
+        );
         assert!(xml.contains("<file path=\"src/main.rs\""));
         assert!(xml.contains("name=\"main\""));
         assert!(xml.contains("</file>"));
@@ -7086,7 +7750,12 @@ mod tests {
         // Budget of 3 — header + blank + 1 content line at most
         let result = format_session_context(&modified, &commits, &symbols, &coupled, 3);
         let line_count = result.lines().count();
-        assert!(line_count <= 3, "Expected <= 3 lines, got {}:\n{}", line_count, result);
+        assert!(
+            line_count <= 3,
+            "Expected <= 3 lines, got {}:\n{}",
+            line_count,
+            result
+        );
     }
 
     #[test]
@@ -7422,7 +8091,9 @@ mod tests {
         let hooks = &settings["hooks"];
         assert_eq!(hooks["PreToolUse"].as_array().unwrap().len(), 1);
         assert_eq!(
-            hooks["PreToolUse"][0]["hooks"][0]["command"].as_str().unwrap(),
+            hooks["PreToolUse"][0]["hooks"][0]["command"]
+                .as_str()
+                .unwrap(),
             "gt tap guard pr-workflow"
         );
         assert_eq!(hooks["Stop"].as_array().unwrap().len(), 1);
@@ -7430,7 +8101,9 @@ mod tests {
         // PostToolUseFailure: original dp hook + new bobbin hook
         assert_eq!(hooks["PostToolUseFailure"].as_array().unwrap().len(), 2);
         assert_eq!(
-            hooks["PostToolUseFailure"][0]["hooks"][0]["command"].as_str().unwrap(),
+            hooks["PostToolUseFailure"][0]["hooks"][0]["command"]
+                .as_str()
+                .unwrap(),
             "dp record --source claude-code"
         );
 
@@ -7516,13 +8189,25 @@ mod tests {
         // Gas Town hooks in shared events preserved alongside bobbin
         let ups = hooks["UserPromptSubmit"].as_array().unwrap();
         assert_eq!(ups.len(), 2);
-        assert_eq!(ups[0]["hooks"][0]["command"].as_str().unwrap(), "gt mail check --inject");
-        assert_eq!(ups[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook inject-context || true");
+        assert_eq!(
+            ups[0]["hooks"][0]["command"].as_str().unwrap(),
+            "gt mail check --inject"
+        );
+        assert_eq!(
+            ups[1]["hooks"][0]["command"].as_str().unwrap(),
+            "bobbin hook inject-context || true"
+        );
 
         let ss = hooks["SessionStart"].as_array().unwrap();
         assert_eq!(ss.len(), 2);
-        assert_eq!(ss[0]["hooks"][0]["command"].as_str().unwrap(), "gt prime --hook");
-        assert_eq!(ss[1]["hooks"][0]["command"].as_str().unwrap(), "bobbin hook session-context || true");
+        assert_eq!(
+            ss[0]["hooks"][0]["command"].as_str().unwrap(),
+            "gt prime --hook"
+        );
+        assert_eq!(
+            ss[1]["hooks"][0]["command"].as_str().unwrap(),
+            "bobbin hook session-context || true"
+        );
 
         // Events bobbin doesn't touch are untouched
         assert_eq!(hooks["PreCompact"].as_array().unwrap().len(), 1);
@@ -7576,7 +8261,10 @@ mod tests {
         // PostToolUse
         let ptu = hooks["PostToolUse"].as_array().unwrap();
         assert_eq!(ptu.len(), 1);
-        assert_eq!(ptu[0]["matcher"].as_str().unwrap(), "Write|Edit|Bash|Grep|Glob|Read");
+        assert_eq!(
+            ptu[0]["matcher"].as_str().unwrap(),
+            "Write|Edit|Bash|Grep|Glob|Read"
+        );
         assert_eq!(
             ptu[0]["hooks"][0]["command"].as_str().unwrap(),
             "bobbin hook post-tool-use || true"
@@ -7613,10 +8301,7 @@ mod tests {
         assert_eq!(input.tool_name, "Bash");
         assert_eq!(input.error, "Command exited with non-zero status code 1");
         assert_eq!(input.cwd, "/home/user/project");
-        assert_eq!(
-            input.tool_input["command"].as_str().unwrap(),
-            "cargo test"
-        );
+        assert_eq!(input.tool_input["command"].as_str().unwrap(), "cargo test");
     }
 
     #[test]
@@ -8103,7 +8788,10 @@ mod tests {
         let mut ledger = SessionLedger::load(tmp.path(), "test-session-4");
 
         // Turn 1
-        ledger.record(&["src/a.rs:1:10".to_string(), "src/b.rs:1:10".to_string()], "inj-001");
+        ledger.record(
+            &["src/a.rs:1:10".to_string(), "src/b.rs:1:10".to_string()],
+            "inj-001",
+        );
         assert_eq!(ledger.turn, 1);
         assert_eq!(ledger.len(), 2);
 
@@ -8154,7 +8842,10 @@ mod tests {
     #[test]
     fn test_chunk_key_format() {
         assert_eq!(chunk_key("src/foo.rs", 10, 20), "src/foo.rs:10:20");
-        assert_eq!(chunk_key("/var/lib/repos/x/main.go", 1, 100), "/var/lib/repos/x/main.go:1:100");
+        assert_eq!(
+            chunk_key("/var/lib/repos/x/main.go", 1, 100),
+            "/var/lib/repos/x/main.go:1:100"
+        );
     }
 
     // --- Hot topics tests ---
@@ -8230,7 +8921,10 @@ mod tests {
         // Chunks should be ranked by count descending
         let hook_pos = content.find("InjectContextArgs").unwrap();
         let config_pos = content.find("HooksConfig").unwrap();
-        assert!(hook_pos < config_pos, "Higher-count chunk should appear first");
+        assert!(
+            hook_pos < config_pos,
+            "Higher-count chunk should appear first"
+        );
 
         // File table present and ranked
         assert!(content.contains("| src/cli/hook.rs | 15 |"));
@@ -8276,7 +8970,9 @@ mod tests {
             .unwrap();
         let rank_rows: Vec<&str> = chunk_section
             .lines()
-            .filter(|l| l.starts_with("| ") && l.chars().nth(2).map_or(false, |c| c.is_ascii_digit()))
+            .filter(|l| {
+                l.starts_with("| ") && l.chars().nth(2).map_or(false, |c| c.is_ascii_digit())
+            })
             .collect();
         assert_eq!(rank_rows.len(), 20);
     }
@@ -8302,7 +8998,10 @@ mod tests {
         let content = std::fs::read_to_string(&output_path).unwrap();
         // Count table rows in the file section
         let file_section = content.split("## Most Referenced Files").nth(1).unwrap();
-        let row_count = file_section.lines().filter(|l| l.starts_with("| src/")).count();
+        let row_count = file_section
+            .lines()
+            .filter(|l| l.starts_with("| src/"))
+            .count();
         assert_eq!(row_count, 10);
     }
 
@@ -8366,10 +9065,7 @@ mod tests {
         );
 
         // find without -name
-        assert_eq!(
-            extract_search_query_from_bash("find . -type f"),
-            None
-        );
+        assert_eq!(extract_search_query_from_bash("find . -type f"), None);
     }
 
     #[test]
@@ -8440,25 +9136,43 @@ mod tests {
     #[test]
     fn test_is_automated_message() {
         // Patrol nudges
-        assert!(is_automated_message("Auto-patrol: pick up aegis-abc123 (Some task). Run: bd show aegis-abc123"));
-        assert!(is_automated_message("PATROL LOOP — you must keep working until context is below 20%."));
-        assert!(is_automated_message("RANGER PATROL: You are a ranger. Patrol your domain."));
-        assert!(is_automated_message("PATROL: Run gt hook, gt mail inbox, bd ready."));
+        assert!(is_automated_message(
+            "Auto-patrol: pick up aegis-abc123 (Some task). Run: bd show aegis-abc123"
+        ));
+        assert!(is_automated_message(
+            "PATROL LOOP — you must keep working until context is below 20%."
+        ));
+        assert!(is_automated_message(
+            "RANGER PATROL: You are a ranger. Patrol your domain."
+        ));
+        assert!(is_automated_message(
+            "PATROL: Run gt hook, gt mail inbox, bd ready."
+        ));
 
         // Reactor alerts
-        assert!(is_automated_message("[reactor] ⚠️ ESCALATION: E2ESmokeTestFailing — node-5 | Paging: aegis/crew/wu"));
-        assert!(is_automated_message("[reactor] 🟠 P1 bead: aegis-sc86f0 Skills Framework Phase 1"));
-        assert!(is_automated_message("[reactor] 🟠 P0 bead: aegis-thmbt2 Claude token expires"));
+        assert!(is_automated_message(
+            "[reactor] ⚠️ ESCALATION: E2ESmokeTestFailing — node-5 | Paging: aegis/crew/wu"
+        ));
+        assert!(is_automated_message(
+            "[reactor] 🟠 P1 bead: aegis-sc86f0 Skills Framework Phase 1"
+        ));
+        assert!(is_automated_message(
+            "[reactor] 🟠 P0 bead: aegis-thmbt2 Claude token expires"
+        ));
 
         // Repeated work nudges
         assert!(is_automated_message("WORK: You are stryder (Bobbin Ranger). Check gt hook and gt mail inbox. Keep working until context below 25%, then /handoff."));
 
         // Startup/handoff messages
         assert!(is_automated_message("╔══════╗\n║  ✅ HANDOFF COMPLETE - You are the NEW session  ║\n╚══════╝\nYour predecessor handed off to you."));
-        assert!(is_automated_message("**STARTUP PROTOCOL**: Please:\n1. Run `gt hook` — What's hooked?"));
+        assert!(is_automated_message(
+            "**STARTUP PROTOCOL**: Please:\n1. Run `gt hook` — What's hooked?"
+        ));
 
         // Marshal/dog checks
-        assert!(is_automated_message("[from dog] Marshal check: You appear idle (7+ days no commits). Check bd ready."));
+        assert!(is_automated_message(
+            "[from dog] Marshal check: You appear idle (7+ days no commits). Check bd ready."
+        ));
 
         // Queued nudge wrappers
         assert!(is_automated_message("QUEUED NUDGE (1 message(s)):\n\n  [from dog] check status\n\nThis is a background notification. Continue current work."));
@@ -8468,22 +9182,34 @@ mod tests {
         assert!(is_automated_message("\naegis Crew mel, checking in.\n"));
 
         // System reminder blocks
-        assert!(is_automated_message("<system-reminder>\nUserPromptSubmit hook success\n</system-reminder>"));
-        assert!(is_automated_message("[GAS TOWN] crew ian (rig: aegis) <- self"));
+        assert!(is_automated_message(
+            "<system-reminder>\nUserPromptSubmit hook success\n</system-reminder>"
+        ));
+        assert!(is_automated_message(
+            "[GAS TOWN] crew ian (rig: aegis) <- self"
+        ));
 
         // Handoff mail directives
-        assert!(is_automated_message("Check your hook and mail, then act on the hook if present:\n1. `gt hook`"));
+        assert!(is_automated_message(
+            "Check your hook and mail, then act on the hook if present:\n1. `gt hook`"
+        ));
 
         // Normal messages should NOT be filtered
         assert!(!is_automated_message("Fix the bug in bobbin search"));
         assert!(!is_automated_message("How do I deploy bobbin to node-4?"));
         assert!(!is_automated_message("bd show aegis-abc123"));
-        assert!(!is_automated_message("Run the tests and check for failures"));
+        assert!(!is_automated_message(
+            "Run the tests and check for failures"
+        ));
         assert!(!is_automated_message("")); // Empty string
 
         // Whitespace-trimmed patterns should still match
-        assert!(is_automated_message("  \n<system-reminder>\nhook output\n</system-reminder>"));
-        assert!(is_automated_message("\n[GAS TOWN] crew ian (rig: aegis) <- self"));
+        assert!(is_automated_message(
+            "  \n<system-reminder>\nhook output\n</system-reminder>"
+        ));
+        assert!(is_automated_message(
+            "\n[GAS TOWN] crew ian (rig: aegis) <- self"
+        ));
     }
 
     #[test]
@@ -8502,7 +9228,9 @@ mod tests {
         assert!(!is_bead_command("How do I deploy bobbin to node-4?"));
         assert!(!is_bead_command("Run the tests and check for failures"));
         assert!(!is_bead_command("")); // Empty string
-        assert!(!is_bead_command("what is the architecture of the system and how does deployment work across all rigs"));
+        assert!(!is_bead_command(
+            "what is the architecture of the system and how does deployment work across all rigs"
+        ));
         // Too short suffix (< 3 chars)
         assert!(!is_bead_command("show x-ab"));
         // Not lowercase prefix
@@ -8554,8 +9282,14 @@ mod tests {
     fn test_prompt_history_trajectory_with_history() {
         let history = PromptHistory {
             entries: vec![
-                PromptEntry { prompt: "how does auth work".to_string(), timestamp: 100 },
-                PromptEntry { prompt: "show me the middleware".to_string(), timestamp: 200 },
+                PromptEntry {
+                    prompt: "how does auth work".to_string(),
+                    timestamp: 100,
+                },
+                PromptEntry {
+                    prompt: "show me the middleware".to_string(),
+                    timestamp: 200,
+                },
             ],
             path: None,
             max_entries: 5,
@@ -8571,9 +9305,10 @@ mod tests {
     #[test]
     fn test_prompt_history_trajectory_dedup_current() {
         let history = PromptHistory {
-            entries: vec![
-                PromptEntry { prompt: "same prompt".to_string(), timestamp: 100 },
-            ],
+            entries: vec![PromptEntry {
+                prompt: "same prompt".to_string(),
+                timestamp: 100,
+            }],
             path: None,
             max_entries: 5,
         };
@@ -8585,9 +9320,10 @@ mod tests {
     #[test]
     fn test_prompt_history_trajectory_respects_max_chars() {
         let history = PromptHistory {
-            entries: vec![
-                PromptEntry { prompt: "a".repeat(500), timestamp: 100 },
-            ],
+            entries: vec![PromptEntry {
+                prompt: "a".repeat(500),
+                timestamp: 100,
+            }],
             path: None,
             max_entries: 5,
         };
@@ -8658,7 +9394,11 @@ mod tests {
     /// A budget that loses work silently is not a budget.
     #[test]
     fn a_budget_cut_reports_the_files_it_never_rendered() {
-        let files = vec![file_of("a.rs", 40), file_of("b.rs", 40), file_of("c.rs", 40)];
+        let files = vec![
+            file_of("a.rs", 40),
+            file_of("b.rs", 40),
+            file_of("c.rs", 40),
+        ];
         let refs: Vec<&crate::http::client::ContextFileOutput> = files.iter().collect();
         let mut out = String::new();
         let mut line_count = 0usize;
@@ -8682,7 +9422,6 @@ mod tests {
         assert_eq!(cut, 0, "everything fit; nothing was held back");
         assert!(!out.is_empty(), "and it actually rendered something");
     }
-
 
     // --- hook expand: redeeming an injection_id --------------------------
 
@@ -8713,7 +9452,6 @@ mod tests {
         let rendered = "// src/a.rs\n// src/b.rs\n";
         assert!(withheld_of(&files, rendered).is_empty());
     }
-
 }
 
 #[cfg(test)]

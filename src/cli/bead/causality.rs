@@ -12,9 +12,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
 
-use crate::storage::sqlite::{
-    MetadataStore, NewBugCausality, PriorTouch,
-};
+use crate::storage::sqlite::{MetadataStore, NewBugCausality, PriorTouch};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct CausalityCandidate {
@@ -132,8 +130,7 @@ pub(super) fn run_reconstruct_causality(
                 bug_id: bug_id.clone(),
                 culprit_sha: Some(c.culprit_sha.clone()),
                 // Blame-derived culprits know only the sha, not a bead.
-                culprit_bead_id: Some(c.culprit_bead_id.clone())
-                    .filter(|b| !b.is_empty()),
+                culprit_bead_id: Some(c.culprit_bead_id.clone()).filter(|b| !b.is_empty()),
                 file: Some(c.file.clone()),
                 confidence: Some(c.confidence),
             })?;
@@ -197,7 +194,10 @@ fn is_bug_bead(bead_id: &str, lineage_type: Option<&str>) -> bool {
 /// confidence by the fraction of the fix's files that commit also touched
 /// (concentrated blame ⇒ higher confidence). Deterministic ordering: confidence
 /// desc, then file asc.
-pub(super) fn reconstruct_culprits(fix_files: &[String], prior: &[PriorTouch]) -> Vec<CausalityCandidate> {
+pub(super) fn reconstruct_culprits(
+    fix_files: &[String],
+    prior: &[PriorTouch],
+) -> Vec<CausalityCandidate> {
     use std::collections::{HashMap, HashSet};
     let fix_set: HashSet<&str> = fix_files.iter().map(|s| s.as_str()).collect();
 

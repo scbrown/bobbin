@@ -7,7 +7,9 @@ use predicates::prelude::*;
 
 #[test]
 fn inject_context_returns_relevant_context() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let stdin_json = serde_json::json!({
         "prompt": "how does the calculator work",
@@ -28,7 +30,9 @@ fn inject_context_returns_relevant_context() {
 
 #[test]
 fn inject_context_includes_file_and_score() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let stdin_json = serde_json::json!({
         "prompt": "calculator addition and multiplication",
@@ -188,7 +192,9 @@ fn inject_context_gate_threshold_skips_low_similarity() {
 
 #[test]
 fn inject_context_gate_threshold_zero_allows_all() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let stdin_json = serde_json::json!({
         "prompt": "how does the calculator work",
@@ -375,7 +381,9 @@ fn session_context_budget_limits_output() {
 
 #[test]
 fn end_to_end_install_inject_uninstall() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     // 1. Install hooks
     TestProject::bobbin_cmd()
@@ -487,7 +495,9 @@ fn end_to_end_install_inject_uninstall() {
 
 #[test]
 fn inject_context_dedup_skips_identical_prompt() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let stdin_json = serde_json::json!({
         "prompt": "how does the calculator work with addition",
@@ -524,7 +534,9 @@ fn inject_context_dedup_skips_identical_prompt() {
 
 #[test]
 fn inject_context_no_dedup_forces_output() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let stdin_json = serde_json::json!({
         "prompt": "how does the calculator work with multiplication",
@@ -542,7 +554,13 @@ fn inject_context_no_dedup_forces_output() {
 
     // Second call with --no-dedup: should still produce output
     let second = TestProject::bobbin_cmd()
-        .args(["hook", "inject-context", "--gate-threshold", "0.0", "--no-dedup"])
+        .args([
+            "hook",
+            "inject-context",
+            "--gate-threshold",
+            "0.0",
+            "--no-dedup",
+        ])
         .current_dir(project.path())
         .write_stdin(stdin_str)
         .assert()
@@ -560,7 +578,9 @@ fn inject_context_no_dedup_forces_output() {
 
 #[test]
 fn inject_context_updates_hook_state() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     let stdin_json = serde_json::json!({
         "prompt": "calculator struct and its methods",
@@ -576,7 +596,10 @@ fn inject_context_updates_hook_state() {
 
     // Verify hook_state.json was created and has expected fields
     let state_path = project.path().join(".bobbin").join("hook_state.json");
-    assert!(state_path.exists(), "hook_state.json should be created after injection");
+    assert!(
+        state_path.exists(),
+        "hook_state.json should be created after injection"
+    );
 
     let state_content = std::fs::read_to_string(&state_path).unwrap();
     let state: serde_json::Value = serde_json::from_str(&state_content).unwrap();
@@ -640,7 +663,9 @@ fn hot_topics_force_generates_without_data() {
 
 #[test]
 fn hot_topics_generates_after_injections() {
-    let Some(project) = try_indexed_project() else { return };
+    let Some(project) = try_indexed_project() else {
+        return;
+    };
 
     // Run a few injections to build frequency data
     for prompt in &[
@@ -654,7 +679,13 @@ fn hot_topics_generates_after_injections() {
         });
 
         TestProject::bobbin_cmd()
-            .args(["hook", "inject-context", "--gate-threshold", "0.0", "--no-dedup"])
+            .args([
+                "hook",
+                "inject-context",
+                "--gate-threshold",
+                "0.0",
+                "--no-dedup",
+            ])
             .current_dir(project.path())
             .write_stdin(serde_json::to_string(&stdin_json).unwrap())
             .assert()
@@ -668,8 +699,7 @@ fn hot_topics_generates_after_injections() {
         .assert()
         .success()
         .stdout(
-            predicate::str::contains("Generated")
-                .and(predicate::str::contains("3 injections")),
+            predicate::str::contains("Generated").and(predicate::str::contains("3 injections")),
         );
 
     // Verify content has actual data (not "No injection data")

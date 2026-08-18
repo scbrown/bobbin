@@ -165,9 +165,8 @@ pub async fn run(args: GrepArgs, output: OutputConfig) -> Result<()> {
     // Apply role-based access filtering
     let config = Config::load(&config_path).unwrap_or_default();
     let access_filter = RepoFilter::from_config(&config.access, &output.role);
-    let results = access_filter.filter_vec(results, |r| {
-        RepoFilter::repo_from_path(&r.chunk.file_path)
-    });
+    let results =
+        access_filter.filter_vec(results, |r| RepoFilter::repo_from_path(&r.chunk.file_path));
 
     // Apply filters
     let filtered_results: Vec<SearchResult> = results

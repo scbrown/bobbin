@@ -544,7 +544,21 @@ impl Client {
         role: Option<&str>,
         repo_affinity: Option<&str>,
     ) -> Result<ContextResponse> {
-        self.context_with_weights(query, budget, depth, max_coupled, limit, coupling_threshold, repo, role, repo_affinity, None, None, None).await
+        self.context_with_weights(
+            query,
+            budget,
+            depth,
+            max_coupled,
+            limit,
+            coupling_threshold,
+            repo,
+            role,
+            repo_affinity,
+            None,
+            None,
+            None,
+        )
+        .await
     }
 
     /// Assemble context with per-request scoring weight overrides.
@@ -629,10 +643,8 @@ impl Client {
         threshold: Option<f32>,
     ) -> Result<RelatedResponse> {
         let url = format!("{}/related", self.base_url);
-        let mut params: Vec<(&str, String)> = vec![
-            ("file", file.to_string()),
-            ("limit", limit.to_string()),
-        ];
+        let mut params: Vec<(&str, String)> =
+            vec![("file", file.to_string()), ("limit", limit.to_string())];
         if let Some(t) = threshold {
             params.push(("threshold", t.to_string()));
         }
@@ -648,10 +660,8 @@ impl Client {
         repo: Option<&str>,
     ) -> Result<FindRefsResponse> {
         let url = format!("{}/refs", self.base_url);
-        let mut params: Vec<(&str, String)> = vec![
-            ("symbol", symbol.to_string()),
-            ("limit", limit.to_string()),
-        ];
+        let mut params: Vec<(&str, String)> =
+            vec![("symbol", symbol.to_string()), ("limit", limit.to_string())];
         if let Some(t) = symbol_type {
             params.push(("type", t.to_string()));
         }
@@ -704,10 +714,8 @@ impl Client {
         repo: Option<&str>,
     ) -> Result<ImpactResponse> {
         let url = format!("{}/impact", self.base_url);
-        let mut params: Vec<(&str, String)> = vec![
-            ("target", target.to_string()),
-            ("limit", limit.to_string()),
-        ];
+        let mut params: Vec<(&str, String)> =
+            vec![("target", target.to_string()), ("limit", limit.to_string())];
         if let Some(d) = depth {
             params.push(("depth", d.to_string()));
         }
@@ -779,11 +787,7 @@ impl Client {
     }
 
     /// Get project primer via the remote server.
-    pub async fn prime(
-        &self,
-        section: Option<&str>,
-        brief: bool,
-    ) -> Result<PrimeResponse> {
+    pub async fn prime(&self, section: Option<&str>, brief: bool) -> Result<PrimeResponse> {
         let url = format!("{}/prime", self.base_url);
         let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(s) = section {
@@ -811,10 +815,8 @@ impl Client {
         compact: Option<bool>,
     ) -> Result<SearchBeadsResponse> {
         let url = format!("{}/beads", self.base_url);
-        let mut params: Vec<(&str, String)> = vec![
-            ("q", query.to_string()),
-            ("limit", limit.to_string()),
-        ];
+        let mut params: Vec<(&str, String)> =
+            vec![("q", query.to_string()), ("limit", limit.to_string())];
         if let Some(p) = priority {
             params.push(("priority", p.to_string()));
         }
@@ -854,7 +856,17 @@ impl Client {
         total_chunks: usize,
         budget_lines: usize,
     ) -> Result<()> {
-        self.store_injection_with_output(injection_id, session_id, agent, query, files, total_chunks, budget_lines, None).await
+        self.store_injection_with_output(
+            injection_id,
+            session_id,
+            agent,
+            query,
+            files,
+            total_chunks,
+            budget_lines,
+            None,
+        )
+        .await
     }
 
     pub async fn store_injection_with_output(
@@ -941,7 +953,9 @@ impl Client {
             });
             anyhow::bail!("Server error ({}): {}", status, body.error);
         }
-        resp.json().await.context("Failed to parse feedback response")
+        resp.json()
+            .await
+            .context("Failed to parse feedback response")
     }
 
     /// List feedback records via the remote server.
@@ -978,7 +992,8 @@ impl Client {
     /// Get feedback statistics grouped by bundle or bead via the remote server.
     pub async fn feedback_stats_grouped(&self, group_by: &str) -> Result<Vec<GroupedStatsEntry>> {
         let url = format!("{}/feedback/stats", self.base_url);
-        self.get_json::<Vec<GroupedStatsEntry>>(&url, &[("group_by", group_by.to_string())]).await
+        self.get_json::<Vec<GroupedStatsEntry>>(&url, &[("group_by", group_by.to_string())])
+            .await
     }
 
     /// Store a lineage record via the remote server.
@@ -1014,7 +1029,9 @@ impl Client {
             });
             anyhow::bail!("Server error ({}): {}", status, body.error);
         }
-        resp.json().await.context("Failed to parse lineage response")
+        resp.json()
+            .await
+            .context("Failed to parse lineage response")
     }
 
     /// List lineage records via the remote server.

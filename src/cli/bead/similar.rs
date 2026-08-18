@@ -176,7 +176,12 @@ pub(super) async fn run_similar(
     // Over-fetch: the status filter is applied in process (status is content,
     // not a column), so the pre-filter limit has to leave room.
     let raw = search
-        .search_filtered(&query, (limit * 5).max(20), None, Some("language = 'beads'"))
+        .search_filtered(
+            &query,
+            (limit * 5).max(20),
+            None,
+            Some("language = 'beads'"),
+        )
         .await
         .context("Similarity search failed")?;
 

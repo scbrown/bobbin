@@ -41,7 +41,10 @@ fn test_parse_numstat_empty() {
 #[test]
 fn test_find_bead_id_basic() {
     assert_eq!(find_bead_id("fix bo-5em9 now"), Some("bo-5em9".to_string()));
-    assert_eq!(find_bead_id("aegis-abc123"), Some("aegis-abc123".to_string()));
+    assert_eq!(
+        find_bead_id("aegis-abc123"),
+        Some("aegis-abc123".to_string())
+    );
     // Suffix must be >= 3 chars.
     assert_eq!(find_bead_id("a-bc"), None);
     // No dash → not a bead id.
@@ -144,7 +147,12 @@ fn test_reconstruct_culprits_confidence_scales_with_overlap() {
     let prior = vec![
         touch("bo-wide", "sha_wide", "src/a.rs", "2026-06-10T00:00:00Z"),
         touch("bo-wide", "sha_wide", "src/b.rs", "2026-06-10T00:00:00Z"),
-        touch("bo-narrow", "sha_narrow", "src/c.rs", "2026-06-09T00:00:00Z"),
+        touch(
+            "bo-narrow",
+            "sha_narrow",
+            "src/c.rs",
+            "2026-06-09T00:00:00Z",
+        ),
     ];
     let got = reconstruct_culprits(&fix_files, &prior);
     // a.rs and b.rs → sha_wide (2/4 = 0.5); c.rs → sha_narrow (1/4 = 0.25).

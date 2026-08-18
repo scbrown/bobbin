@@ -30,10 +30,7 @@ fn metrics_path(repo_root: &Path) -> std::path::PathBuf {
 /// Resolve the metrics source identity.
 ///
 /// Priority: CLI flag > BOBBIN_METRICS_SOURCE env var > hook session_id > "unknown"
-pub fn resolve_source(
-    cli_flag: Option<&str>,
-    hook_session_id: Option<&str>,
-) -> String {
+pub fn resolve_source(cli_flag: Option<&str>, hook_session_id: Option<&str>) -> String {
     resolve_source_with_env(
         cli_flag,
         std::env::var("BOBBIN_METRICS_SOURCE").ok().as_deref(),
@@ -137,7 +134,13 @@ mod tests {
     #[test]
     fn test_emit_and_read() {
         let dir = setup();
-        let ev = event("test-source", "command", "search", 42, serde_json::json!({"query": "hello"}));
+        let ev = event(
+            "test-source",
+            "command",
+            "search",
+            42,
+            serde_json::json!({"query": "hello"}),
+        );
         emit(dir.path(), &ev);
 
         let events = read_all(dir.path());
@@ -152,9 +155,24 @@ mod tests {
     #[test]
     fn test_multiple_events() {
         let dir = setup();
-        emit(dir.path(), &event("s1", "command", "search", 10, serde_json::Value::Null));
-        emit(dir.path(), &event("s2", "command", "context", 20, serde_json::Value::Null));
-        emit(dir.path(), &event("s1", "hook_injection", "hook inject-context", 5, serde_json::Value::Null));
+        emit(
+            dir.path(),
+            &event("s1", "command", "search", 10, serde_json::Value::Null),
+        );
+        emit(
+            dir.path(),
+            &event("s2", "command", "context", 20, serde_json::Value::Null),
+        );
+        emit(
+            dir.path(),
+            &event(
+                "s1",
+                "hook_injection",
+                "hook inject-context",
+                5,
+                serde_json::Value::Null,
+            ),
+        );
 
         let all = read_all(dir.path());
         assert_eq!(all.len(), 3);
@@ -169,7 +187,10 @@ mod tests {
     #[test]
     fn test_clear() {
         let dir = setup();
-        emit(dir.path(), &event("s", "command", "search", 10, serde_json::Value::Null));
+        emit(
+            dir.path(),
+            &event("s", "command", "search", 10, serde_json::Value::Null),
+        );
         assert_eq!(read_all(dir.path()).len(), 1);
 
         clear(dir.path());
@@ -190,17 +211,26 @@ mod tests {
 
     #[test]
     fn test_resolve_source_cli_flag() {
-        assert_eq!(resolve_source_with_env(Some("cli-val"), Some("env-val"), Some("session-val")), "cli-val");
+        assert_eq!(
+            resolve_source_with_env(Some("cli-val"), Some("env-val"), Some("session-val")),
+            "cli-val"
+        );
     }
 
     #[test]
     fn test_resolve_source_env_var() {
-        assert_eq!(resolve_source_with_env(None, Some("env-val"), Some("session-val")), "env-val");
+        assert_eq!(
+            resolve_source_with_env(None, Some("env-val"), Some("session-val")),
+            "env-val"
+        );
     }
 
     #[test]
     fn test_resolve_source_session_id() {
-        assert_eq!(resolve_source_with_env(None, None, Some("session-123")), "session-123");
+        assert_eq!(
+            resolve_source_with_env(None, None, Some("session-123")),
+            "session-123"
+        );
     }
 
     #[test]
@@ -210,7 +240,10 @@ mod tests {
 
     #[test]
     fn test_resolve_source_empty_values_skipped() {
-        assert_eq!(resolve_source_with_env(Some(""), Some(""), Some("session")), "session");
+        assert_eq!(
+            resolve_source_with_env(Some(""), Some(""), Some("session")),
+            "session"
+        );
         assert_eq!(resolve_source_with_env(Some(""), None, None), "unknown");
     }
 

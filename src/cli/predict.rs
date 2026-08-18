@@ -188,7 +188,10 @@ pub fn build_prediction(
         union_changes.extend(beads);
     }
 
-    let overall_buggy = union_changes.iter().filter(|b| culprits.contains(*b)).count();
+    let overall_buggy = union_changes
+        .iter()
+        .filter(|b| culprits.contains(*b))
+        .count();
     let overall_risk = if union_changes.is_empty() {
         0.0
     } else {
@@ -224,8 +227,10 @@ fn rank_cofiles(input: &HashSet<&str>, couplings: &[FileCoupling], limit: usize)
     let mut agg: BTreeMap<String, (f32, u32)> = BTreeMap::new();
     for c in couplings {
         // The neighbour is whichever endpoint is not an input file.
-        let neighbour = match (input.contains(c.file_a.as_str()), input.contains(c.file_b.as_str()))
-        {
+        let neighbour = match (
+            input.contains(c.file_a.as_str()),
+            input.contains(c.file_b.as_str()),
+        ) {
             (true, false) => &c.file_b,
             (false, true) => &c.file_a,
             // Both-in (internal edge) or neither-in (spurious) → not a neighbour.
@@ -335,7 +340,11 @@ fn print_report(p: &Prediction) {
         println!("  {}", "(none)".dimmed());
     } else {
         for b in &p.predicted_bundles {
-            println!("  {:<30} {}", b.slug.magenta(), format!("×{}", b.count).dimmed());
+            println!(
+                "  {:<30} {}",
+                b.slug.magenta(),
+                format!("×{}", b.count).dimmed()
+            );
         }
     }
 }

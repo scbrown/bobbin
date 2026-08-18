@@ -248,9 +248,20 @@ fn sample_commits(
 fn is_noise_commit(message: &str) -> bool {
     let lower = message.to_lowercase();
     let noise_prefixes = [
-        "chore:", "chore(", "ci:", "ci(", "docs:", "docs(",
-        "style:", "style(", "build:", "build(", "release:",
-        "bump ", "auto-merge", "update dependency",
+        "chore:",
+        "chore(",
+        "ci:",
+        "ci(",
+        "docs:",
+        "docs(",
+        "style:",
+        "style(",
+        "build:",
+        "build(",
+        "release:",
+        "bump ",
+        "auto-merge",
+        "update dependency",
     ];
     noise_prefixes.iter().any(|p| lower.starts_with(p))
 }
@@ -390,7 +401,14 @@ struct GridPoint {
 /// Build the core parameter grid (sw × dd × k × sl × b points).
 /// Core grid uses Inject mode only. Bridge modes are swept in --full.
 fn build_grid(budgets: &[usize], search_limits: &[usize]) -> Vec<GridPoint> {
-    build_grid_with_recency(&[], &[], budgets, search_limits, &[BridgeMode::Inject], &[0.3])
+    build_grid_with_recency(
+        &[],
+        &[],
+        budgets,
+        search_limits,
+        &[BridgeMode::Inject],
+        &[0.3],
+    )
 }
 
 /// Build grid with optional recency and bridge parameter sweep.
@@ -431,7 +449,9 @@ fn build_grid_with_recency(
                                     // Only sweep boost factors for modes that use them
                                     let factors: &[f32] = match bm {
                                         BridgeMode::Off | BridgeMode::Inject => &[0.0],
-                                        BridgeMode::Boost | BridgeMode::BoostInject => bridge_boost_factors,
+                                        BridgeMode::Boost | BridgeMode::BoostInject => {
+                                            bridge_boost_factors
+                                        }
                                     };
                                     for &bbf in factors {
                                         grid.push(GridPoint {
@@ -484,7 +504,7 @@ async fn capture_snapshot(
 
     Ok(ProjectSnapshot {
         chunk_count,
-        file_count: 0, // TODO: add count_files to VectorStore
+        file_count: 0,                           // TODO: add count_files to VectorStore
         primary_language: "unknown".to_string(), // TODO: add language stats
         language_distribution: vec![],
         repo_age_days,
@@ -567,7 +587,8 @@ struct SweepCache {
 fn save_cache(repo_root: &std::path::Path, cache: &SweepCache) -> Result<()> {
     let path = cache_path(repo_root);
     let json = serde_json::to_string_pretty(cache)?;
-    std::fs::write(&path, json).with_context(|| format!("Failed to write cache {}", path.display()))?;
+    std::fs::write(&path, json)
+        .with_context(|| format!("Failed to write cache {}", path.display()))?;
     Ok(())
 }
 
@@ -626,12 +647,12 @@ async fn run_probes(
         tags_config: None,
         role: None,
         file_type_rules: vec![],
-            repo_affinity: None,
-            repo_affinity_boost: 2.0,
-            max_bridged_files: 3,
-            max_bridged_chunks_per_file: 2,
-            repo_path_prefix: config.server.repo_path_prefix.clone(),
-            ..ContextConfig::default()
+        repo_affinity: None,
+        repo_affinity_boost: 2.0,
+        max_bridged_files: 3,
+        max_bridged_chunks_per_file: 2,
+        repo_path_prefix: config.server.repo_path_prefix.clone(),
+        ..ContextConfig::default()
     };
     let mut assembler = ContextAssembler::new(embedder, vs, ms, initial_config);
 
@@ -652,9 +673,7 @@ async fn run_probes(
             recency_half_life_days: point
                 .recency_half_life_days
                 .unwrap_or(config.search.recency_half_life_days),
-            recency_weight: point
-                .recency_weight
-                .unwrap_or(config.search.recency_weight),
+            recency_weight: point.recency_weight.unwrap_or(config.search.recency_weight),
             rrf_k: point.rrf_k,
             bridge_mode: point.bridge_mode,
             bridge_boost_factor: point.bridge_boost_factor,
@@ -713,7 +732,11 @@ async fn run_probes(
             budget_lines: Some(point.budget_lines),
             search_limit: Some(point.search_limit),
             bridge_mode: Some(point.bridge_mode),
-            bridge_boost_factor: if point.bridge_boost_factor > 0.0 { Some(point.bridge_boost_factor) } else { None },
+            bridge_boost_factor: if point.bridge_boost_factor > 0.0 {
+                Some(point.bridge_boost_factor)
+            } else {
+                None
+            },
             precision: total_precision / n,
             recall: total_recall / n,
             f1: total_f1 / n,
@@ -721,7 +744,11 @@ async fn run_probes(
 
         if let Some(path) = progress_file {
             use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
                 let _ = writeln!(f, "{}", serde_json::to_string(&result).unwrap_or_default());
             }
         }
@@ -860,7 +887,8 @@ fn resolve_git_source(
             } else {
                 eprintln!(
                     "  Warning: stored source for '{}' ({}) no longer exists",
-                    name, path.display()
+                    name,
+                    path.display()
                 );
             }
         } else if sources.len() > 1 {
@@ -931,8 +959,12 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
     // Resolve git source directory for commit sampling.
     // Priority: --source flag > metadata lookup (repo_source:<name>) > repo_root fallback
     let git_source = resolve_git_source(&args, &repo_root, &db_path)?;
-    let git = GitAnalyzer::new(&git_source)
-        .with_context(|| format!("Not a git repository: {}. Use --source to specify the repo path.", git_source.display()))?;
+    let git = GitAnalyzer::new(&git_source).with_context(|| {
+        format!(
+            "Not a git repository: {}. Use --source to specify the repo path.",
+            git_source.display()
+        )
+    })?;
 
     // Phase 1: Sample commits
     if !output.quiet {
@@ -973,24 +1005,44 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
     }
 
     // Validate embedder can be loaded before starting the sweep
-    let _embedder_check =
-        Embedder::from_config(&config.embedding, &model_dir)
-            .context("Failed to load embedding model")?;
+    let _embedder_check = Embedder::from_config(&config.embedding, &model_dir)
+        .context("Failed to load embedding model")?;
 
     // Phase 2: Build grid and run probes
     let grid_results = if args.bridge_sweep {
         run_bridge_sweep(
-            &output, &config, &commits, &lance_path, &db_path, &model_dir, &repo_root,
+            &output,
+            &config,
+            &commits,
+            &lance_path,
+            &db_path,
+            &model_dir,
+            &repo_root,
         )
         .await?
     } else if args.full {
         run_full_sweep(
-            &args, &output, &config, &commits, &git, &lance_path, &db_path, &model_dir, &repo_root,
+            &args,
+            &output,
+            &config,
+            &commits,
+            &git,
+            &lance_path,
+            &db_path,
+            &model_dir,
+            &repo_root,
         )
         .await?
     } else {
         run_core_sweep(
-            &args, &output, &config, &commits, &lance_path, &db_path, &model_dir, &repo_root,
+            &args,
+            &output,
+            &config,
+            &commits,
+            &lance_path,
+            &db_path,
+            &model_dir,
+            &repo_root,
         )
         .await?
     };
@@ -1076,10 +1128,7 @@ pub async fn run(args: CalibrateArgs, output: OutputConfig) -> Result<()> {
             );
         }
     } else if !output.quiet && !output.json {
-        eprintln!(
-            "\n  Run with {} to apply best config.",
-            "--apply".bold()
-        );
+        eprintln!("\n  Run with {} to apply best config.", "--apply".bold());
     }
 
     // Clean up cache on successful completion of --full
@@ -1177,13 +1226,22 @@ async fn run_bridge_sweep(
 
     let budgets = vec![best.budget_lines.unwrap_or(300)];
     let search_limits = vec![best.search_limit.unwrap_or(20)];
-    let bridge_modes = [BridgeMode::Off, BridgeMode::Inject, BridgeMode::Boost, BridgeMode::BoostInject];
+    let bridge_modes = [
+        BridgeMode::Off,
+        BridgeMode::Inject,
+        BridgeMode::Boost,
+        BridgeMode::BoostInject,
+    ];
     let bridge_boost_factors = [0.15, 0.3, 0.5];
 
     // Build grid with fixed core params, sweep only bridge dimensions
     let grid = build_grid_with_recency(
-        &[], &[], &budgets, &search_limits,
-        &bridge_modes, &bridge_boost_factors,
+        &[],
+        &[],
+        &budgets,
+        &search_limits,
+        &bridge_modes,
+        &bridge_boost_factors,
     );
     // Filter to only the calibrated sw/dd/k values
     let sw = best.semantic_weight;
@@ -1297,11 +1355,20 @@ async fn run_full_sweep(
         None => vec![10, 20, 30, 40],
     };
 
-    let bridge_modes = [BridgeMode::Off, BridgeMode::Inject, BridgeMode::Boost, BridgeMode::BoostInject];
+    let bridge_modes = [
+        BridgeMode::Off,
+        BridgeMode::Inject,
+        BridgeMode::Boost,
+        BridgeMode::BoostInject,
+    ];
     let bridge_boost_factors = [0.15, 0.3, 0.5];
     let grid = build_grid_with_recency(
-        &half_lives, &recency_weights, &budgets, &search_limits,
-        &bridge_modes, &bridge_boost_factors,
+        &half_lives,
+        &recency_weights,
+        &budgets,
+        &search_limits,
+        &bridge_modes,
+        &bridge_boost_factors,
     );
     let total_configs = grid.len() * coupling_depths.len();
     let total_probes = total_configs * commits.len();
@@ -1359,7 +1426,11 @@ async fn run_full_sweep(
     // Collect cached results
     for (depth_key, results) in &cache.completed_depths {
         if !output.quiet {
-            eprintln!("  Restored {} results from cache (depth={})", results.len(), depth_key);
+            eprintln!(
+                "  Restored {} results from cache (depth={})",
+                results.len(),
+                depth_key
+            );
         }
         all_results.extend(results.iter().cloned());
     }
@@ -1431,9 +1502,7 @@ async fn run_full_sweep(
         .await?;
 
         all_results.extend(depth_results.iter().cloned());
-        cache
-            .completed_depths
-            .insert(depth_key, depth_results);
+        cache.completed_depths.insert(depth_key, depth_results);
 
         // Save cache after each depth completes
         save_cache(repo_root, &cache)?;
@@ -1597,7 +1666,9 @@ mod tests {
         assert!(is_noise_commit("docs: update readme"));
         assert!(is_noise_commit("Bump version to 1.2.3"));
         assert!(!is_noise_commit("Fix parser to handle nested types"));
-        assert!(!is_noise_commit("Add webhook support for real-time indexing"));
+        assert!(!is_noise_commit(
+            "Add webhook support for real-time indexing"
+        ));
     }
 
     #[test]
@@ -1606,15 +1677,29 @@ mod tests {
         assert!(is_terse_message("update"));
         assert!(is_terse_message("wip"));
         assert!(is_terse_message("short msg"));
-        assert!(!is_terse_message("Fix parser to handle nested generic types correctly"));
+        assert!(!is_terse_message(
+            "Fix parser to handle nested generic types correctly"
+        ));
     }
 
     #[test]
     fn test_detect_terse_majority() {
         let commits = vec![
-            SampledCommit { hash: "a".into(), message: "fix".into(), files: vec![] },
-            SampledCommit { hash: "b".into(), message: "wip".into(), files: vec![] },
-            SampledCommit { hash: "c".into(), message: "This is a proper commit message about fixing auth".into(), files: vec![] },
+            SampledCommit {
+                hash: "a".into(),
+                message: "fix".into(),
+                files: vec![],
+            },
+            SampledCommit {
+                hash: "b".into(),
+                message: "wip".into(),
+                files: vec![],
+            },
+            SampledCommit {
+                hash: "c".into(),
+                message: "This is a proper commit message about fixing auth".into(),
+                files: vec![],
+            },
         ];
         // 2/3 terse > 50%
         assert!(detect_terse_messages(&commits));
@@ -1623,9 +1708,21 @@ mod tests {
     #[test]
     fn test_detect_terse_minority() {
         let commits = vec![
-            SampledCommit { hash: "a".into(), message: "fix".into(), files: vec![] },
-            SampledCommit { hash: "b".into(), message: "Fix parser to handle nested types".into(), files: vec![] },
-            SampledCommit { hash: "c".into(), message: "Add webhook support for real-time reindexing".into(), files: vec![] },
+            SampledCommit {
+                hash: "a".into(),
+                message: "fix".into(),
+                files: vec![],
+            },
+            SampledCommit {
+                hash: "b".into(),
+                message: "Fix parser to handle nested types".into(),
+                files: vec![],
+            },
+            SampledCommit {
+                hash: "c".into(),
+                message: "Add webhook support for real-time reindexing".into(),
+                files: vec![],
+            },
         ];
         // 1/3 terse < 50%
         assert!(!detect_terse_messages(&commits));
@@ -1655,8 +1752,12 @@ mod tests {
         let half_lives = [7.0, 14.0, 30.0, 90.0];
         let recency_weights = [0.0, 0.15, 0.30, 0.50];
         let grid = build_grid_with_recency(
-            &half_lives, &recency_weights, &[300], &[20],
-            &[BridgeMode::Inject], &[0.3],
+            &half_lives,
+            &recency_weights,
+            &[300],
+            &[20],
+            &[BridgeMode::Inject],
+            &[0.3],
         );
         // 5 sw × 3 dd × 1 k × 4 hl × 4 rw × 1 b × 1 sl × 1 bm = 240
         assert_eq!(grid.len(), 240);
@@ -1676,11 +1777,13 @@ mod tests {
     #[test]
     fn test_build_grid_bridge_mode_sweep() {
         // Sweep all 4 bridge modes with 2 boost factors
-        let bridge_modes = [BridgeMode::Off, BridgeMode::Inject, BridgeMode::Boost, BridgeMode::BoostInject];
-        let grid = build_grid_with_recency(
-            &[], &[], &[300], &[20],
-            &bridge_modes, &[0.15, 0.3],
-        );
+        let bridge_modes = [
+            BridgeMode::Off,
+            BridgeMode::Inject,
+            BridgeMode::Boost,
+            BridgeMode::BoostInject,
+        ];
+        let grid = build_grid_with_recency(&[], &[], &[300], &[20], &bridge_modes, &[0.15, 0.3]);
         // 5 sw × 3 dd × 1 k × 1 hl × 1 rw × 1 b × 1 sl × (2 off + 2 inject + 2×2 boost + 2×2 boost_inject) = 15 × 8 = 120
         // Off: factor[0.0] only = 1, Inject: factor[0.0] only = 1, Boost: 2 factors, BoostInject: 2 factors
         // Total per inner = 1 + 1 + 2 + 2 = 6
@@ -1959,7 +2062,11 @@ mod tests {
             .iter()
             .filter(|p| matches!(p.bridge_mode, BridgeMode::Off | BridgeMode::Inject))
             .count();
-        assert_eq!(off_or_inject, 23_040 / 8 * 2, "Off and Inject contribute one point each");
+        assert_eq!(
+            off_or_inject,
+            23_040 / 8 * 2,
+            "Off and Inject contribute one point each"
+        );
 
         // What the sweep then multiplies by, spelled out so the doc comment's
         // headline figures are covered and not just the grid.

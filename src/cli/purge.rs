@@ -56,7 +56,10 @@ pub async fn run(args: PurgeArgs, output: OutputConfig) -> Result<()> {
             };
             println!("{}", serde_json::to_string_pretty(&out)?);
         } else if !output.quiet {
-            println!("No chunks found for repo '{}'. Nothing to purge.", args.repo);
+            println!(
+                "No chunks found for repo '{}'. Nothing to purge.",
+                args.repo
+            );
         }
         return Ok(());
     }

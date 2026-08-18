@@ -126,7 +126,11 @@ pub async fn run(args: DepsArgs, output: OutputConfig) -> Result<()> {
                     println!("  No dependents found");
                 } else {
                     for dep in deps {
-                        println!("  {} (via {})", dep.file_a.green(), dep.import_statement.dimmed());
+                        println!(
+                            "  {} (via {})",
+                            dep.file_a.green(),
+                            dep.import_statement.dimmed()
+                        );
                     }
                 }
             }

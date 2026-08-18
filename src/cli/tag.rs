@@ -73,7 +73,10 @@ async fn run_list(path: PathBuf, args: ListArgs, output: OutputConfig) -> Result
     let lance_path = Config::lance_path(&repo_root);
 
     if !lance_path.exists() {
-        bail!("No index found at {}. Run `bobbin index` first.", lance_path.display());
+        bail!(
+            "No index found at {}. Run `bobbin index` first.",
+            lance_path.display()
+        );
     }
 
     let store = VectorStore::open(&lance_path)
@@ -110,7 +113,11 @@ async fn run_list(path: PathBuf, args: ListArgs, output: OutputConfig) -> Result
         } else if tags.is_empty() {
             println!("{}: no tags", file);
         } else {
-            println!("{}: {}", file, tags.into_iter().collect::<Vec<_>>().join(", "));
+            println!(
+                "{}: {}",
+                file,
+                tags.into_iter().collect::<Vec<_>>().join(", ")
+            );
         }
         return Ok(());
     }
@@ -172,9 +179,10 @@ fn run_add(path: PathBuf, args: AddArgs, output: OutputConfig) -> Result<()> {
     let mut config = TagsConfig::load_or_default(&tags_path);
 
     // Check for duplicate rule (same pattern + repo)
-    let existing = config.rules.iter_mut().find(|r| {
-        r.pattern == args.pattern && r.repo == args.repo
-    });
+    let existing = config
+        .rules
+        .iter_mut()
+        .find(|r| r.pattern == args.pattern && r.repo == args.repo);
 
     if let Some(rule) = existing {
         // Merge tags into existing rule

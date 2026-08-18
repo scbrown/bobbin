@@ -196,7 +196,10 @@ impl BundleRef {
         // Split off tag filter (e.g. "[domain:budget]") — store as modifier
         let (main, modifier) = if let Some(idx) = main.find('[') {
             let tag_filter = main[idx..].trim_end_matches(']').to_string();
-            (&main[..idx], Some(modifier.map_or(tag_filter.clone(), |m| format!("{} {}", m, tag_filter))))
+            (
+                &main[..idx],
+                Some(modifier.map_or(tag_filter.clone(), |m| format!("{} {}", m, tag_filter))),
+            )
         } else {
             (main, modifier)
         };
@@ -250,7 +253,10 @@ impl BundleRef {
 
     /// Format the ref for display at L0 (compact).
     pub fn display_l0(&self) -> String {
-        let prefix = self.repo.as_ref().map_or(String::new(), |r| format!("{}:", r));
+        let prefix = self
+            .repo
+            .as_ref()
+            .map_or(String::new(), |r| format!("{}:", r));
         match &self.target {
             RefTarget::WholeFile => format!("{}{}", prefix, self.file),
             RefTarget::Symbol(s) => format!("{}{}::{}", prefix, self.file, s),
@@ -372,7 +378,10 @@ impl TagsConfig {
             match Self::load(path) {
                 Ok(config) => config,
                 Err(e) => {
-                    eprintln!("warning: failed to parse {}: {e:#}; using defaults", path.display());
+                    eprintln!(
+                        "warning: failed to parse {}: {e:#}; using defaults",
+                        path.display()
+                    );
                     Self::default()
                 }
             }
@@ -383,14 +392,12 @@ impl TagsConfig {
 
     /// Save tags config to a TOML file
     pub fn save(&self, path: &Path) -> Result<()> {
-        let content =
-            toml::to_string_pretty(self).context("serializing tags config")?;
+        let content = toml::to_string_pretty(self).context("serializing tags config")?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating {}", parent.display()))?;
         }
-        std::fs::write(path, content)
-            .with_context(|| format!("writing {}", path.display()))
+        std::fs::write(path, content).with_context(|| format!("writing {}", path.display()))
     }
 
     /// Path to tags.toml relative to a bobbin data root
@@ -455,7 +462,11 @@ impl TagsConfig {
                 }
             }
         }
-        if is_pinned { Some(max_reserve) } else { None }
+        if is_pinned {
+            Some(max_reserve)
+        } else {
+            None
+        }
     }
 
     /// Find a bundle by name or slug.
@@ -481,7 +492,10 @@ impl TagsConfig {
 
         // File path membership
         if !files.is_empty() {
-            let file_list: Vec<String> = files.iter().map(|f| format!("'{}'", f.replace('\'', "''"))).collect();
+            let file_list: Vec<String> = files
+                .iter()
+                .map(|f| format!("'{}'", f.replace('\'', "''")))
+                .collect();
             clauses.push(format!("file_path IN ({})", file_list.join(", ")));
         }
 
@@ -699,11 +713,7 @@ pub fn build_effect_exclude_filter(config: &TagsConfig, role: Option<&str>) -> O
                     .effects_scoped
                     .iter()
                     .filter(|s| s.tag == *tag)
-                    .filter(|s| {
-                        Pattern::new(&s.role)
-                            .map(|p| p.matches(r))
-                            .unwrap_or(false)
-                    })
+                    .filter(|s| Pattern::new(&s.role).map(|p| p.matches(r)).unwrap_or(false))
                     .max_by_key(|s| role_specificity(&s.role));
                 if let Some(s) = scoped_override {
                     if !s.exclude {
@@ -1123,7 +1133,10 @@ mod tests {
         // Source file gets no tags
         assert_eq!(resolve_tags(&config, "src/main.rs", None), "");
         // Test file gets convention tag
-        assert_eq!(resolve_tags(&config, "tests/test_foo.py", None), "auto:test");
+        assert_eq!(
+            resolve_tags(&config, "tests/test_foo.py", None),
+            "auto:test"
+        );
     }
 
     #[test]
@@ -1452,10 +1465,8 @@ boost = -0.8
 
     #[test]
     fn test_build_tag_exclude_filter_multiple() {
-        let filter = build_tag_exclude_filter(&[
-            "auto:test".to_string(),
-            "user:deprecated".to_string(),
-        ]);
+        let filter =
+            build_tag_exclude_filter(&["auto:test".to_string(), "user:deprecated".to_string()]);
         // Multiple excludes are AND'd
         assert!(filter.starts_with('('));
         assert!(filter.contains(" AND "));
@@ -1597,7 +1608,10 @@ exclude = true
         let content = "---\ntitle: Auth Architecture\ntags: [canonical, architecture, security]\n---\n\n# Auth\n";
         let config = FrontmatterConfig::default();
         let tags = extract_frontmatter_tags(content, &config);
-        assert_eq!(tags, vec!["user:canonical", "user:architecture", "user:security"]);
+        assert_eq!(
+            tags,
+            vec!["user:canonical", "user:architecture", "user:security"]
+        );
     }
 
     #[test]
@@ -1691,7 +1705,10 @@ exclude = true
         let tags = extract_comment_tags(content, &config);
         assert_eq!(
             tags.get(&3),
-            Some(&vec!["user:security".to_string(), "user:critical".to_string()])
+            Some(&vec![
+                "user:security".to_string(),
+                "user:critical".to_string()
+            ])
         );
         assert_eq!(tags.len(), 1);
     }
@@ -1701,10 +1718,7 @@ exclude = true
         let content = "import os\n\n# bobbin:tag deprecated\ndef old_handler():\n    pass\n";
         let config = CommentsConfig::default();
         let tags = extract_comment_tags(content, &config);
-        assert_eq!(
-            tags.get(&3),
-            Some(&vec!["user:deprecated".to_string()])
-        );
+        assert_eq!(tags.get(&3), Some(&vec!["user:deprecated".to_string()]));
     }
 
     #[test]
@@ -1712,10 +1726,7 @@ exclude = true
         let content = "/* bobbin:tag internal */\npub(crate) fn helper() {}\n";
         let config = CommentsConfig::default();
         let tags = extract_comment_tags(content, &config);
-        assert_eq!(
-            tags.get(&1),
-            Some(&vec!["user:internal".to_string()])
-        );
+        assert_eq!(tags.get(&1), Some(&vec!["user:internal".to_string()]));
     }
 
     #[test]
@@ -1760,9 +1771,18 @@ exclude = true
 
     #[test]
     fn test_normalize_content_tag() {
-        assert_eq!(normalize_content_tag("canonical"), Some("user:canonical".to_string()));
-        assert_eq!(normalize_content_tag("auto:test"), Some("auto:test".to_string()));
-        assert_eq!(normalize_content_tag("SECURITY"), Some("user:security".to_string()));
+        assert_eq!(
+            normalize_content_tag("canonical"),
+            Some("user:canonical".to_string())
+        );
+        assert_eq!(
+            normalize_content_tag("auto:test"),
+            Some("auto:test".to_string())
+        );
+        assert_eq!(
+            normalize_content_tag("SECURITY"),
+            Some("user:security".to_string())
+        );
         assert_eq!(normalize_content_tag(""), None);
         assert_eq!(normalize_content_tag("  "), None);
     }
@@ -1829,8 +1849,14 @@ tags = ["docs"]
             },
         ];
         resolve_tags_for_chunks(&config, "cmd/main.go", None, "", &mut chunks);
-        assert!(chunks[0].tags.contains("auto:init"), "Go init() should get auto:init tag");
-        assert!(!chunks[1].tags.contains("auto:init"), "Go main() should NOT get auto:init tag");
+        assert!(
+            chunks[0].tags.contains("auto:init"),
+            "Go init() should get auto:init tag"
+        );
+        assert!(
+            !chunks[1].tags.contains("auto:init"),
+            "Go main() should NOT get auto:init tag"
+        );
     }
 
     #[test]
@@ -1849,7 +1875,10 @@ tags = ["docs"]
             tags: String::new(),
         }];
         resolve_tags_for_chunks(&config, "src/lib.rs", None, "", &mut chunks);
-        assert!(!chunks[0].tags.contains("auto:init"), "Rust init() should NOT get auto:init tag");
+        assert!(
+            !chunks[0].tags.contains("auto:init"),
+            "Rust init() should NOT get auto:init tag"
+        );
     }
 
     #[test]
@@ -1857,15 +1886,21 @@ tags = ["docs"]
         let config = TagsConfig {
             effects: {
                 let mut m = std::collections::HashMap::new();
-                m.insert("user:critical".to_string(), TagEffect {
-                    pin: true,
-                    budget_reserve: 50,
-                    ..Default::default()
-                });
-                m.insert("user:boost-only".to_string(), TagEffect {
-                    boost: 0.3,
-                    ..Default::default()
-                });
+                m.insert(
+                    "user:critical".to_string(),
+                    TagEffect {
+                        pin: true,
+                        budget_reserve: 50,
+                        ..Default::default()
+                    },
+                );
+                m.insert(
+                    "user:boost-only".to_string(),
+                    TagEffect {
+                        boost: 0.3,
+                        ..Default::default()
+                    },
+                );
                 m
             },
             ..Default::default()
@@ -1884,7 +1919,10 @@ tags = ["docs"]
         assert_eq!(config.resolve_pin("user:unknown", None), None);
 
         // Mixed tags with one pin → returns max reserve
-        assert_eq!(config.resolve_pin("user:boost-only,user:critical", None), Some(50));
+        assert_eq!(
+            config.resolve_pin("user:boost-only,user:critical", None),
+            Some(50)
+        );
     }
 
     #[test]
@@ -1892,11 +1930,14 @@ tags = ["docs"]
         let config = TagsConfig {
             effects: {
                 let mut m = std::collections::HashMap::new();
-                m.insert("user:guardrails".to_string(), TagEffect {
-                    pin: true,
-                    budget_reserve: 30,
-                    ..Default::default()
-                });
+                m.insert(
+                    "user:guardrails".to_string(),
+                    TagEffect {
+                        pin: true,
+                        budget_reserve: 30,
+                        ..Default::default()
+                    },
+                );
                 m
             },
             effects_scoped: vec![ScopedEffect {
@@ -1909,10 +1950,16 @@ tags = ["docs"]
         };
 
         // Aegis role: falls back to global → pinned
-        assert_eq!(config.resolve_pin("user:guardrails", Some("aegis/crew/ellie")), Some(30));
+        assert_eq!(
+            config.resolve_pin("user:guardrails", Some("aegis/crew/ellie")),
+            Some(30)
+        );
 
         // External role: scoped override → not pinned
-        assert_eq!(config.resolve_pin("user:guardrails", Some("external/user1")), None);
+        assert_eq!(
+            config.resolve_pin("user:guardrails", Some("external/user1")),
+            None
+        );
     }
 
     // ===== Ontology-aware query tests (GH#14) =====

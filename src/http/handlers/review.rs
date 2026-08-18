@@ -134,7 +134,8 @@ pub(super) async fn review(
         ..ContextConfig::default()
     };
 
-    let mut assembler = ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    let mut assembler =
+        ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
     let bundle = assembler
         .assemble_from_seeds(&diff_description, seeds, params.repo.as_deref())
         .await

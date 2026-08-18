@@ -239,7 +239,10 @@ impl RepoFilter {
         let mut best_len = 0;
         for r in roles {
             if let Some(prefix) = r.name.strip_suffix("/*") {
-                if role.starts_with(prefix) && (role.len() == prefix.len() || role.as_bytes().get(prefix.len()) == Some(&b'/')) {
+                if role.starts_with(prefix)
+                    && (role.len() == prefix.len()
+                        || role.as_bytes().get(prefix.len()) == Some(&b'/'))
+                {
                     if prefix.len() > best_len {
                         best_len = prefix.len();
                         best_match = Some(r);
@@ -286,7 +289,12 @@ mod tests {
         }
     }
 
-    fn role_with_paths(name: &str, allow: &[&str], deny: &[&str], deny_paths: &[&str]) -> RoleConfig {
+    fn role_with_paths(
+        name: &str,
+        allow: &[&str],
+        deny: &[&str],
+        deny_paths: &[&str],
+    ) -> RoleConfig {
         RoleConfig {
             name: name.to_string(),
             allow: allow.iter().map(|s| s.to_string()).collect(),
@@ -306,9 +314,10 @@ mod tests {
 
     #[test]
     fn test_default_role_deny() {
-        let config = make_config(true, vec![
-            role("default", &[], &["personal-planning", "cv", "resume"]),
-        ]);
+        let config = make_config(
+            true,
+            vec![role("default", &[], &["personal-planning", "cv", "resume"])],
+        );
         let filter = RepoFilter::from_config(&config, "unknown-agent");
         assert!(filter.is_allowed("aegis"));
         assert!(filter.is_allowed("bobbin"));
@@ -319,10 +328,13 @@ mod tests {
 
     #[test]
     fn test_human_sees_everything() {
-        let config = make_config(true, vec![
-            role("default", &[], &["personal-planning", "cv"]),
-            role("human", &["*"], &[]),
-        ]);
+        let config = make_config(
+            true,
+            vec![
+                role("default", &[], &["personal-planning", "cv"]),
+                role("human", &["*"], &[]),
+            ],
+        );
         let filter = RepoFilter::from_config(&config, "human");
         assert!(filter.is_allowed("personal-planning"));
         assert!(filter.is_allowed("cv"));
@@ -331,9 +343,7 @@ mod tests {
 
     #[test]
     fn test_deny_overrides_allow() {
-        let config = make_config(true, vec![
-            role("test", &["*"], &["secret-repo"]),
-        ]);
+        let config = make_config(true, vec![role("test", &["*"], &["secret-repo"])]);
         let filter = RepoFilter::from_config(&config, "test");
         assert!(filter.is_allowed("aegis"));
         assert!(!filter.is_allowed("secret-repo"));
@@ -341,9 +351,10 @@ mod tests {
 
     #[test]
     fn test_wildcard_role_matching() {
-        let config = make_config(false, vec![
-            role("aegis/*", &["aegis", "bobbin", "gastown"], &[]),
-        ]);
+        let config = make_config(
+            false,
+            vec![role("aegis/*", &["aegis", "bobbin", "gastown"], &[])],
+        );
         let filter = RepoFilter::from_config(&config, "aegis/crew/ian");
         assert!(filter.is_allowed("aegis"));
         assert!(filter.is_allowed("bobbin"));
@@ -352,10 +363,17 @@ mod tests {
 
     #[test]
     fn test_most_specific_wildcard_wins() {
-        let config = make_config(false, vec![
-            role("aegis/*", &["aegis", "bobbin"], &[]),
-            role("aegis/crew/*", &["aegis", "bobbin", "gastown", "homelab-mcp"], &[]),
-        ]);
+        let config = make_config(
+            false,
+            vec![
+                role("aegis/*", &["aegis", "bobbin"], &[]),
+                role(
+                    "aegis/crew/*",
+                    &["aegis", "bobbin", "gastown", "homelab-mcp"],
+                    &[],
+                ),
+            ],
+        );
         // aegis/crew/ian should match aegis/crew/* (more specific) over aegis/*
         let filter = RepoFilter::from_config(&config, "aegis/crew/ian");
         assert!(filter.is_allowed("homelab-mcp"));
@@ -368,19 +386,24 @@ mod tests {
 
     #[test]
     fn test_exact_match_over_wildcard() {
-        let config = make_config(false, vec![
-            role("aegis/*", &["aegis"], &[]),
-            role("aegis/crew/ian", &["aegis", "bobbin", "personal-planning"], &[]),
-        ]);
+        let config = make_config(
+            false,
+            vec![
+                role("aegis/*", &["aegis"], &[]),
+                role(
+                    "aegis/crew/ian",
+                    &["aegis", "bobbin", "personal-planning"],
+                    &[],
+                ),
+            ],
+        );
         let filter = RepoFilter::from_config(&config, "aegis/crew/ian");
         assert!(filter.is_allowed("personal-planning"));
     }
 
     #[test]
     fn test_default_allow_false_no_match() {
-        let config = make_config(false, vec![
-            role("human", &["*"], &[]),
-        ]);
+        let config = make_config(false, vec![role("human", &["*"], &[])]);
         // Unknown role, no default role defined, default_allow=false
         let filter = RepoFilter::from_config(&config, "random-agent");
         assert!(!filter.is_allowed("aegis"));
@@ -388,9 +411,7 @@ mod tests {
 
     #[test]
     fn test_default_allow_true_no_match() {
-        let config = make_config(true, vec![
-            role("human", &["*"], &[]),
-        ]);
+        let config = make_config(true, vec![role("human", &["*"], &[])]);
         // Unknown role, no default role defined, default_allow=true
         let filter = RepoFilter::from_config(&config, "random-agent");
         assert!(filter.is_allowed("aegis"));
@@ -398,9 +419,7 @@ mod tests {
 
     #[test]
     fn test_filter_vec() {
-        let config = make_config(true, vec![
-            role("default", &[], &["secret"]),
-        ]);
+        let config = make_config(true, vec![role("default", &[], &["secret"])]);
         let filter = RepoFilter::from_config(&config, "default");
 
         let items = vec!["aegis/main.rs", "secret/passwords.txt", "bobbin/lib.rs"];
@@ -424,12 +443,12 @@ mod tests {
             RepoFilter::repo_from_path("repos/reckoning/packages/client/src/main.ts"),
             "reckoning"
         );
-        assert_eq!(
-            RepoFilter::repo_from_path("repos/cv/resume.md"),
-            "cv"
-        );
+        assert_eq!(RepoFilter::repo_from_path("repos/cv/resume.md"), "cv");
         // Bead chunks map to their rig (GH#13/bo-y0z access fix).
-        assert_eq!(RepoFilter::repo_from_path("beads:pixelsrc:bo-x"), "pixelsrc");
+        assert_eq!(
+            RepoFilter::repo_from_path("beads:pixelsrc:bo-x"),
+            "pixelsrc"
+        );
         assert_eq!(RepoFilter::repo_from_path("beads:aegis:aegis-h8x"), "aegis");
         assert_eq!(RepoFilter::repo_from_path("beads:hq:hq-9f2"), "hq");
     }
@@ -517,9 +536,15 @@ model = "all-MiniLM-L6-v2"
 
     #[test]
     fn test_deny_paths_filters_files() {
-        let config = make_config(true, vec![
-            role_with_paths("default", &[], &["cv"], &["harnesses/*/CLAUDE.md"]),
-        ]);
+        let config = make_config(
+            true,
+            vec![role_with_paths(
+                "default",
+                &[],
+                &["cv"],
+                &["harnesses/*/CLAUDE.md"],
+            )],
+        );
         let filter = RepoFilter::from_config(&config, "agent");
 
         // Denied repos still denied
@@ -534,9 +559,7 @@ model = "all-MiniLM-L6-v2"
 
     #[test]
     fn test_deny_paths_no_patterns_allows_all() {
-        let config = make_config(true, vec![
-            role("default", &[], &[]),
-        ]);
+        let config = make_config(true, vec![role("default", &[], &[])]);
         let filter = RepoFilter::from_config(&config, "agent");
 
         // Everything allowed when no deny_paths
@@ -546,9 +569,15 @@ model = "all-MiniLM-L6-v2"
 
     #[test]
     fn test_filter_vec_by_path() {
-        let config = make_config(true, vec![
-            role_with_paths("default", &[], &[], &["harnesses/*/CLAUDE.md"]),
-        ]);
+        let config = make_config(
+            true,
+            vec![role_with_paths(
+                "default",
+                &[],
+                &[],
+                &["harnesses/*/CLAUDE.md"],
+            )],
+        );
         let filter = RepoFilter::from_config(&config, "agent");
 
         let items = vec![
@@ -557,10 +586,13 @@ model = "all-MiniLM-L6-v2"
             "/var/lib/bobbin/repos/aegis/docs/design.md",
         ];
         let filtered = filter.filter_vec_by_path(items, |item| item);
-        assert_eq!(filtered, vec![
-            "/var/lib/bobbin/repos/aegis/src/main.rs",
-            "/var/lib/bobbin/repos/aegis/docs/design.md",
-        ]);
+        assert_eq!(
+            filtered,
+            vec![
+                "/var/lib/bobbin/repos/aegis/src/main.rs",
+                "/var/lib/bobbin/repos/aegis/docs/design.md",
+            ]
+        );
     }
 
     #[test]

@@ -46,7 +46,11 @@ pub async fn map_diff_to_chunks(
     }
 
     // Sort by score descending for consistent ordering
-    seeds.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    seeds.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     Ok(seeds)
 }
@@ -106,7 +110,12 @@ mod tests {
     #[test]
     fn test_overlap_score_full_overlap() {
         let chunk = make_chunk("c1", "a.rs", 10, 14); // lines 10-14 (5 lines)
-        let diff = make_diff("a.rs", vec![10, 11, 12, 13, 14], vec![], DiffStatus::Modified);
+        let diff = make_diff(
+            "a.rs",
+            vec![10, 11, 12, 13, 14],
+            vec![],
+            DiffStatus::Modified,
+        );
 
         let score = overlap_score(&chunk, &diff);
         assert!((score - 1.0).abs() < 0.001);

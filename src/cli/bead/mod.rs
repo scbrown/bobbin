@@ -5,9 +5,7 @@ use serde::Serialize;
 
 use crate::cli::OutputConfig;
 use crate::config::Config;
-use crate::storage::sqlite::{
-    BeadLineageRecord, MetadataStore, NewBeadLineage, TouchedSymbol,
-};
+use crate::storage::sqlite::{BeadLineageRecord, MetadataStore, NewBeadLineage, TouchedSymbol};
 
 #[derive(Args)]
 pub struct BeadArgs {
@@ -190,22 +188,25 @@ pub async fn run(args: BeadArgs, output: OutputConfig) -> Result<()> {
         } => {
             // Resolve touched files + line counts: explicit --files wins (no
             // line counts available), else derive from the commit via numstat.
-            let (touched_files, lines_added, lines_deleted): (Vec<String>, Option<i64>, Option<i64>) =
-                if let Some(f) = files {
-                    let parsed = f
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect();
-                    (parsed, None, None)
-                } else if let Some(ref sha) = commit {
-                    match commit_numstat(&repo_root, sha) {
-                        Ok((files, added, deleted)) => (files, Some(added), Some(deleted)),
-                        Err(_) => (Vec::new(), None, None),
-                    }
-                } else {
-                    (Vec::new(), None, None)
-                };
+            let (touched_files, lines_added, lines_deleted): (
+                Vec<String>,
+                Option<i64>,
+                Option<i64>,
+            ) = if let Some(f) = files {
+                let parsed = f
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                (parsed, None, None)
+            } else if let Some(ref sha) = commit {
+                match commit_numstat(&repo_root, sha) {
+                    Ok((files, added, deleted)) => (files, Some(added), Some(deleted)),
+                    Err(_) => (Vec::new(), None, None),
+                }
+            } else {
+                (Vec::new(), None, None)
+            };
 
             // bundle_slugs (edge E2): explicit --bundles wins, else derive from
             // the bead's `b:<slug>` labels.
@@ -271,8 +272,7 @@ pub async fn run(args: BeadArgs, output: OutputConfig) -> Result<()> {
             commit,
             limit,
         } => {
-            let records =
-                store.list_bead_lineage(bead_id.as_deref(), commit.as_deref(), limit)?;
+            let records = store.list_bead_lineage(bead_id.as_deref(), commit.as_deref(), limit)?;
 
             if output.json {
                 let entries: Vec<HistoryEntry> =
@@ -313,7 +313,6 @@ pub async fn run(args: BeadArgs, output: OutputConfig) -> Result<()> {
 /// discards output, so a missing bead, a non-bobbin repo, or a git error must
 /// never break the commit. No bead id found → no row, exit Ok silently.
 /// Idempotent: a re-fired hook (amend / rebase) does not create a duplicate.
-
 mod autolink;
 mod causality;
 mod helpers;
@@ -323,8 +322,8 @@ use causality::commit_numstat;
 use helpers::*;
 
 use autolink::run_auto_link;
-use similar::run_similar;
 use causality::run_reconstruct_causality;
+use similar::run_similar;
 
 #[cfg(test)]
 mod tests;

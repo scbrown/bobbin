@@ -50,16 +50,18 @@ pub(super) async fn injection_store(
         return Err(bad_request("injection_id is required".to_string()));
     }
     let store = open_feedback_store(&state).map_err(internal_error)?;
-    store.store_injection_with_output(
-        &input.injection_id,
-        input.session_id.as_deref(),
-        input.agent.as_deref(),
-        &input.query,
-        &input.files,
-        input.total_chunks,
-        input.budget_lines,
-        input.formatted_output.as_deref(),
-    ).map_err(internal_error)?;
+    store
+        .store_injection_with_output(
+            &input.injection_id,
+            input.session_id.as_deref(),
+            input.agent.as_deref(),
+            &input.query,
+            &input.files,
+            input.total_chunks,
+            input.budget_lines,
+            input.formatted_output.as_deref(),
+        )
+        .map_err(internal_error)?;
     Ok(Json(serde_json::json!({
         "status": "ok",
         "injection_id": input.injection_id
@@ -166,7 +168,10 @@ pub(super) async fn feedback_stats(
 pub(super) async fn lineage_store(
     State(state): State<Arc<AppState>>,
     Json(input): Json<crate::storage::feedback::LineageInput>,
-) -> Result<(StatusCode, Json<crate::storage::feedback::LineageRecord>), (StatusCode, Json<ErrorBody>)> {
+) -> Result<
+    (StatusCode, Json<crate::storage::feedback::LineageRecord>),
+    (StatusCode, Json<ErrorBody>),
+> {
     let store = open_feedback_store(&state).map_err(internal_error)?;
     let id = store.store_lineage(&input).map_err(|e| {
         (

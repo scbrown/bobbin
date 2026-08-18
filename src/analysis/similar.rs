@@ -63,7 +63,10 @@ impl SimilarityAnalyzer {
                 (embedding, Some(chunk.id))
             }
             SimilarTarget::Text(text) => {
-                let embedding = self.embedder.embed(text).await
+                let embedding = self
+                    .embedder
+                    .embed(text)
+                    .await
                     .context("Failed to embed text query")?;
                 (embedding, None)
             }
@@ -71,7 +74,10 @@ impl SimilarityAnalyzer {
 
         // Search with extra headroom for filtering
         let search_limit = limit + 1; // +1 to account for self-exclusion
-        let results = self.vector_store.search(&embedding, search_limit, repo).await
+        let results = self
+            .vector_store
+            .search(&embedding, search_limit, repo)
+            .await
             .context("Failed to search for similar chunks")?;
 
         let mut similar_results = Vec::new();
@@ -116,7 +122,14 @@ impl SimilarityAnalyzer {
         repo: Option<&str>,
         cross_repo: bool,
     ) -> Result<Vec<DuplicateCluster>> {
-        scan_duplicates_impl(&self.vector_store, threshold, max_clusters, repo, cross_repo).await
+        scan_duplicates_impl(
+            &self.vector_store,
+            threshold,
+            max_clusters,
+            repo,
+            cross_repo,
+        )
+        .await
     }
 
     /// Resolve a "file:name" chunk reference to a chunk and its embedding
@@ -127,7 +140,10 @@ impl SimilarityAnalyzer {
     ) -> Result<(Chunk, Vec<f32>)> {
         let (file_path, chunk_name) = parse_chunk_ref(ref_str)?;
 
-        let chunks = self.vector_store.get_chunks_for_file(&file_path, repo).await
+        let chunks = self
+            .vector_store
+            .get_chunks_for_file(&file_path, repo)
+            .await
             .with_context(|| format!("Failed to get chunks for file: {}", file_path))?;
 
         if chunks.is_empty() {
@@ -139,7 +155,10 @@ impl SimilarityAnalyzer {
             .find(|c| c.name.as_deref() == Some(chunk_name))
             .with_context(|| format!("Chunk '{}' not found in file '{}'", chunk_name, file_path))?;
 
-        let embedding = self.vector_store.get_chunk_embedding(&chunk.id).await
+        let embedding = self
+            .vector_store
+            .get_chunk_embedding(&chunk.id)
+            .await
             .with_context(|| format!("Failed to get embedding for chunk: {}", chunk.id))?
             .with_context(|| format!("No embedding found for chunk: {}", chunk.id))?;
 
@@ -149,12 +168,12 @@ impl SimilarityAnalyzer {
 
 /// Parse a "file:name" reference into (file_path, chunk_name)
 fn parse_chunk_ref(ref_str: &str) -> Result<(&str, &str)> {
-    let (file, name) = ref_str
-        .rsplit_once(':')
-        .with_context(|| format!(
+    let (file, name) = ref_str.rsplit_once(':').with_context(|| {
+        format!(
             "Invalid chunk reference '{}': expected 'file:name' syntax",
             ref_str
-        ))?;
+        )
+    })?;
 
     if file.is_empty() || name.is_empty() {
         bail!(
@@ -210,7 +229,10 @@ fn build_explanation_from_chunk(chunk: &Chunk) -> String {
     let type_str = chunk.chunk_type.to_string();
     match &chunk.name {
         Some(name) => format!("{} '{}' in {}", type_str, name, chunk.file_path),
-        None => format!("{} in {} (lines {}-{})", type_str, chunk.file_path, chunk.start_line, chunk.end_line),
+        None => format!(
+            "{} in {} (lines {}-{})",
+            type_str, chunk.file_path, chunk.start_line, chunk.end_line
+        ),
     }
 }
 
@@ -221,7 +243,10 @@ fn build_explanation(result: &SearchResult) -> String {
 
     match &chunk.name {
         Some(name) => format!("{} '{}' in {}", type_str, name, chunk.file_path),
-        None => format!("{} in {} (lines {}-{})", type_str, chunk.file_path, chunk.start_line, chunk.end_line),
+        None => format!(
+            "{} in {} (lines {}-{})",
+            type_str, chunk.file_path, chunk.start_line, chunk.end_line
+        ),
     }
 }
 
@@ -234,7 +259,9 @@ async fn scan_duplicates_impl(
     cross_repo: bool,
 ) -> Result<Vec<DuplicateCluster>> {
     // Step 1: Load all chunks with embeddings
-    let all_chunks = vector_store.get_all_chunks_with_embeddings(repo).await
+    let all_chunks = vector_store
+        .get_all_chunks_with_embeddings(repo)
+        .await
         .context("Failed to load chunks for duplicate scan")?;
 
     if all_chunks.is_empty() {
@@ -260,9 +287,15 @@ async fn scan_duplicates_impl(
 
     for (chunk, embedding, _repo_name) in &all_chunks {
         // When not cross_repo, filter search to same repo
-        let search_repo = if cross_repo { repo } else { Some(id_to_repo[chunk.id.as_str()]) };
+        let search_repo = if cross_repo {
+            repo
+        } else {
+            Some(id_to_repo[chunk.id.as_str()])
+        };
 
-        let results = vector_store.search(embedding, search_k, search_repo).await
+        let results = vector_store
+            .search(embedding, search_k, search_repo)
+            .await
             .with_context(|| format!("Failed to search neighbors for chunk {}", chunk.id))?;
 
         for result in &results {
@@ -318,14 +351,21 @@ async fn scan_duplicates_impl(
         let mut sim_count = 0u32;
         for i in 0..member_idxs.len() {
             for j in (i + 1)..member_idxs.len() {
-                let key = (member_idxs[i].min(member_idxs[j]), member_idxs[i].max(member_idxs[j]));
+                let key = (
+                    member_idxs[i].min(member_idxs[j]),
+                    member_idxs[i].max(member_idxs[j]),
+                );
                 if let Some(&score) = pair_scores.get(&key) {
                     total_sim += score;
                     sim_count += 1;
                 }
             }
         }
-        let avg_similarity = if sim_count > 0 { total_sim / sim_count as f32 } else { 0.0 };
+        let avg_similarity = if sim_count > 0 {
+            total_sim / sim_count as f32
+        } else {
+            0.0
+        };
 
         let rep_idx = member_idxs[0];
         let representative = all_chunks[rep_idx].0.clone();
@@ -355,7 +395,9 @@ async fn scan_duplicates_impl(
     clusters.sort_by(|a, b| {
         let size_cmp = (b.members.len() + 1).cmp(&(a.members.len() + 1));
         if size_cmp == std::cmp::Ordering::Equal {
-            b.avg_similarity.partial_cmp(&a.avg_similarity).unwrap_or(std::cmp::Ordering::Equal)
+            b.avg_similarity
+                .partial_cmp(&a.avg_similarity)
+                .unwrap_or(std::cmp::Ordering::Equal)
         } else {
             size_cmp
         }
@@ -495,16 +537,33 @@ mod tests {
         let embeddings = vec![emb_target.clone(), emb_similar, emb_different];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(3), "default", "abc", "100")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(3),
+                "default",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
 
         // Manually resolve chunk ref (what SimilarityAnalyzer.resolve_chunk_ref does)
-        let file_chunks = store.get_chunks_for_file("src/main.rs", None).await.unwrap();
-        let target_chunk = file_chunks.iter().find(|c| c.name.as_deref() == Some("process_data")).unwrap();
+        let file_chunks = store
+            .get_chunks_for_file("src/main.rs", None)
+            .await
+            .unwrap();
+        let target_chunk = file_chunks
+            .iter()
+            .find(|c| c.name.as_deref() == Some("process_data"))
+            .unwrap();
 
         // Get stored embedding
-        let stored_emb = store.get_chunk_embedding(&target_chunk.id).await.unwrap().unwrap();
+        let stored_emb = store
+            .get_chunk_embedding(&target_chunk.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(stored_emb.len(), 384);
 
         // Search with the stored embedding
@@ -546,7 +605,14 @@ mod tests {
         ];
 
         store
-            .insert(&chunks, &[emb_target.clone(), emb_close, emb_far], &no_contexts(3), "default", "abc", "100")
+            .insert(
+                &chunks,
+                &[emb_target.clone(), emb_close, emb_far],
+                &no_contexts(3),
+                "default",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
 
@@ -574,12 +640,25 @@ mod tests {
         // Insert several chunks with the same embedding
         let emb = make_embedding(0.0);
         let chunks: Vec<Chunk> = (0..5)
-            .map(|i| sample_chunk(&format!("c{}", i), &format!("func_{}", i), &format!("src/f{}.rs", i)))
+            .map(|i| {
+                sample_chunk(
+                    &format!("c{}", i),
+                    &format!("func_{}", i),
+                    &format!("src/f{}.rs", i),
+                )
+            })
             .collect();
         let embeddings: Vec<Vec<f32>> = (0..5).map(|_| emb.clone()).collect();
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(5), "default", "abc", "100")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(5),
+                "default",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
 
@@ -609,14 +688,24 @@ mod tests {
         let embeddings = vec![make_embedding(0.0), make_embedding(100.0)];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(2), "default", "abc", "100")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(2),
+                "default",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
 
         // Manually test the chunk resolution logic
         let (file_path, chunk_name) = parse_chunk_ref("src/auth.rs:verify_token").unwrap();
         let file_chunks = store.get_chunks_for_file(file_path, None).await.unwrap();
-        let chunk = file_chunks.into_iter().find(|c| c.name.as_deref() == Some(chunk_name)).unwrap();
+        let chunk = file_chunks
+            .into_iter()
+            .find(|c| c.name.as_deref() == Some(chunk_name))
+            .unwrap();
 
         assert_eq!(chunk.id, "c2");
         assert_eq!(chunk.name, Some("verify_token".to_string()));
@@ -632,7 +721,10 @@ mod tests {
         let store = VectorStore::open(&path).await.unwrap();
 
         // Empty store -- no chunks for any file
-        let chunks = store.get_chunks_for_file("nonexistent.rs", None).await.unwrap();
+        let chunks = store
+            .get_chunks_for_file("nonexistent.rs", None)
+            .await
+            .unwrap();
         assert!(chunks.is_empty());
     }
 
@@ -646,12 +738,24 @@ mod tests {
         let embeddings = vec![make_embedding(0.0)];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(1), "default", "abc", "100")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(1),
+                "default",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
 
-        let file_chunks = store.get_chunks_for_file("src/auth.rs", None).await.unwrap();
-        let found = file_chunks.iter().find(|c| c.name.as_deref() == Some("nonexistent"));
+        let file_chunks = store
+            .get_chunks_for_file("src/auth.rs", None)
+            .await
+            .unwrap();
+        let found = file_chunks
+            .iter()
+            .find(|c| c.name.as_deref() == Some("nonexistent"));
         assert!(found.is_none());
     }
 
@@ -668,7 +772,14 @@ mod tests {
         ];
 
         store
-            .insert(&chunks, &[emb.clone(), emb.clone()], &no_contexts(2), "default", "abc", "100")
+            .insert(
+                &chunks,
+                &[emb.clone(), emb.clone()],
+                &no_contexts(2),
+                "default",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
 
@@ -716,7 +827,10 @@ mod tests {
             .unwrap();
 
         let results = store.search(&emb_target, 10, None).await.unwrap();
-        let filtered: Vec<_> = results.into_iter().filter(|r| r.chunk.id != "target").collect();
+        let filtered: Vec<_> = results
+            .into_iter()
+            .filter(|r| r.chunk.id != "target")
+            .collect();
 
         // Results should be ordered by score descending
         for w in filtered.windows(2) {
@@ -776,7 +890,14 @@ mod tests {
         let embeddings = vec![emb_group1, emb_group1b, emb_group2, emb_group2b];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(4), "default", "abc", "100")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(4),
+                "default",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
 
@@ -786,7 +907,10 @@ mod tests {
             .unwrap();
 
         // Should find at least one cluster
-        assert!(!clusters.is_empty(), "Expected at least one duplicate cluster");
+        assert!(
+            !clusters.is_empty(),
+            "Expected at least one duplicate cluster"
+        );
 
         // Each cluster should have at least 2 members (rep + members)
         for cluster in &clusters {
@@ -811,7 +935,14 @@ mod tests {
         let embeddings = vec![make_embedding(0.0), make_embedding(1000.0)];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(2), "default", "abc", "100")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(2),
+                "default",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
 
@@ -819,7 +950,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(clusters.is_empty(), "Expected no clusters with very high threshold");
+        assert!(
+            clusters.is_empty(),
+            "Expected no clusters with very high threshold"
+        );
     }
 
     #[tokio::test]
@@ -849,7 +983,14 @@ mod tests {
         ];
 
         store
-            .insert(&chunks, &[emb.clone(), emb.clone()], &no_contexts(2), "default", "abc", "100")
+            .insert(
+                &chunks,
+                &[emb.clone(), emb.clone()],
+                &no_contexts(2),
+                "default",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
 
@@ -859,7 +1000,11 @@ mod tests {
 
         // Should produce exactly one cluster with 2 chunks
         assert_eq!(clusters.len(), 1, "Expected exactly one cluster");
-        assert_eq!(clusters[0].members.len(), 1, "Cluster should have 1 member + representative");
+        assert_eq!(
+            clusters[0].members.len(),
+            1,
+            "Cluster should have 1 member + representative"
+        );
     }
 
     #[tokio::test]
@@ -888,7 +1033,14 @@ mod tests {
         }
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(6), "default", "abc", "100")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(6),
+                "default",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
 
@@ -912,11 +1064,25 @@ mod tests {
         let c2 = sample_chunk("r2c1", "func_a", "src/a.rs");
 
         store
-            .insert(&[c1], &[emb.clone()], &no_contexts(1), "repo1", "abc", "100")
+            .insert(
+                &[c1],
+                &[emb.clone()],
+                &no_contexts(1),
+                "repo1",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
         store
-            .insert(&[c2], &[emb.clone()], &no_contexts(1), "repo2", "def", "100")
+            .insert(
+                &[c2],
+                &[emb.clone()],
+                &no_contexts(1),
+                "repo2",
+                "def",
+                "100",
+            )
             .await
             .unwrap();
 
@@ -980,7 +1146,14 @@ mod tests {
         ];
 
         store
-            .insert(&chunks, &embeddings, &no_contexts(5), "default", "abc", "100")
+            .insert(
+                &chunks,
+                &embeddings,
+                &no_contexts(5),
+                "default",
+                "abc",
+                "100",
+            )
             .await
             .unwrap();
 
@@ -988,7 +1161,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(clusters.len() >= 2, "Expected at least 2 clusters, got {}", clusters.len());
+        assert!(
+            clusters.len() >= 2,
+            "Expected at least 2 clusters, got {}",
+            clusters.len()
+        );
 
         // First cluster should be the bigger one (3 members total)
         let first_size = clusters[0].members.len() + 1;

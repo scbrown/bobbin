@@ -147,7 +147,11 @@ impl<'a> ImpactAnalyzer<'a> {
         results.retain(|r| r.score >= config.threshold);
 
         // Sort by score descending
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Limit
         results.truncate(config.limit);
@@ -177,7 +181,11 @@ impl<'a> ImpactAnalyzer<'a> {
 
         let mut results = merge_signals(signal_map, config.mode);
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok(results)
     }
@@ -195,10 +203,7 @@ impl<'a> ImpactAnalyzer<'a> {
         }
 
         // Find max score for normalization
-        let max_score = couplings
-            .iter()
-            .map(|c| c.score)
-            .fold(0.0f32, f32::max);
+        let max_score = couplings.iter().map(|c| c.score).fold(0.0f32, f32::max);
 
         for coupling in &couplings {
             // The "other" file in the coupling pair
@@ -219,16 +224,13 @@ impl<'a> ImpactAnalyzer<'a> {
                 coupling.co_changes, coupling.score
             );
 
-            signal_map
-                .entry(other.clone())
-                .or_default()
-                .push((
-                    ImpactSignal::Coupling {
-                        co_changes: coupling.co_changes,
-                    },
-                    normalized,
-                    reason,
-                ));
+            signal_map.entry(other.clone()).or_default().push((
+                ImpactSignal::Coupling {
+                    co_changes: coupling.co_changes,
+                },
+                normalized,
+                reason,
+            ));
         }
 
         Ok(())
@@ -243,7 +245,10 @@ impl<'a> ImpactAnalyzer<'a> {
         repo: Option<&str>,
     ) -> Result<()> {
         // Get chunks for the target file to find the right content to embed
-        let chunks = self.vector_store.get_chunks_for_file(file_path, repo).await?;
+        let chunks = self
+            .vector_store
+            .get_chunks_for_file(file_path, repo)
+            .await?;
 
         if chunks.is_empty() {
             return Ok(());
@@ -268,7 +273,10 @@ impl<'a> ImpactAnalyzer<'a> {
         // Search for similar chunks, requesting more than limit to account for
         // filtering out same-file results
         let search_limit = config.limit * 3;
-        let results = self.vector_store.search(&embedding, search_limit, repo).await?;
+        let results = self
+            .vector_store
+            .search(&embedding, search_limit, repo)
+            .await?;
 
         for result in &results {
             // Skip results from the same file
@@ -279,7 +287,11 @@ impl<'a> ImpactAnalyzer<'a> {
             let reason = format!(
                 "Semantically similar (score {:.3}, chunk: {})",
                 result.score,
-                result.chunk.name.as_deref().unwrap_or(&result.chunk.chunk_type.to_string())
+                result
+                    .chunk
+                    .name
+                    .as_deref()
+                    .unwrap_or(&result.chunk.chunk_type.to_string())
             );
 
             signal_map
@@ -450,7 +462,10 @@ mod tests {
         ];
 
         let threshold = 0.1;
-        let filtered: Vec<_> = results.into_iter().filter(|r| r.score >= threshold).collect();
+        let filtered: Vec<_> = results
+            .into_iter()
+            .filter(|r| r.score >= threshold)
+            .collect();
         assert_eq!(filtered.len(), 2);
         assert_eq!(filtered[0].path, "a.rs");
         assert_eq!(filtered[1].path, "c.rs");

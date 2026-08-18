@@ -18,8 +18,8 @@ use crate::analysis::impact::{ImpactConfig, ImpactMode, ImpactSignal};
 use crate::index::GitAnalyzer;
 
 use super::super::{
-    bad_request, detect_language, internal_error, open_metadata_store, open_vector_store,
-    AppState, ErrorBody,
+    bad_request, detect_language, internal_error, open_metadata_store, open_vector_store, AppState,
+    ErrorBody,
 };
 
 // ---------------------------------------------------------------------------
@@ -113,8 +113,11 @@ pub(crate) async fn hotspots(
 
     let access = super::super::resolve_filter(&state, params.role.as_deref());
     hotspot_items.retain(|h| access.is_path_allowed(&h.file));
-    hotspot_items
-        .sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    hotspot_items.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     hotspot_items.truncate(limit);
 
     Ok(Json(HotspotsResponse {
@@ -198,7 +201,12 @@ pub(crate) async fn impact(
     let mut backend =
         IndexBackend::with_impact(&mut vector_store, &mut metadata_store, &mut embedder);
     let results = backend
-        .impact(&params.target, &impact_config, depth, params.repo.as_deref())
+        .impact(
+            &params.target,
+            &impact_config,
+            depth,
+            params.repo.as_deref(),
+        )
         .await
         .map_err(internal_error)?;
 

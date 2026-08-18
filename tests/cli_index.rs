@@ -23,7 +23,9 @@ fn index_rust_files() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() { return };
+    if !project.bobbin_index() {
+        return;
+    };
 
     // Verify via status
     let output = TestProject::bobbin_cmd()
@@ -39,8 +41,14 @@ fn index_rust_files() {
     let total_files = json["stats"]["total_files"].as_u64().unwrap();
     let total_chunks = json["stats"]["total_chunks"].as_u64().unwrap();
 
-    assert!(total_files >= 2, "expected at least 2 indexed files, got {total_files}");
-    assert!(total_chunks >= 4, "expected at least 4 chunks, got {total_chunks}");
+    assert!(
+        total_files >= 2,
+        "expected at least 2 indexed files, got {total_files}"
+    );
+    assert!(
+        total_chunks >= 4,
+        "expected at least 4 chunks, got {total_chunks}"
+    );
 }
 
 #[test]
@@ -51,7 +59,9 @@ fn index_json_output() {
     project.bobbin_init();
 
     // Check if ONNX runtime is available via plain index first
-    if !project.bobbin_index() { return };
+    if !project.bobbin_index() {
+        return;
+    };
 
     let output = TestProject::bobbin_cmd()
         .args(["--json", "index", "--force"])
@@ -66,8 +76,14 @@ fn index_json_output() {
     assert_eq!(json["status"], "indexed");
     assert!(json["files_indexed"].as_u64().unwrap() >= 2);
     let chunks_created = json["chunks_created"].as_u64().unwrap();
-    assert!(chunks_created >= 4, "expected at least 4 chunks_created, got {chunks_created}");
-    assert!(json["total_chunks"].as_u64().unwrap() >= 4, "expected at least 4 total chunks in store");
+    assert!(
+        chunks_created >= 4,
+        "expected at least 4 chunks_created, got {chunks_created}"
+    );
+    assert!(
+        json["total_chunks"].as_u64().unwrap() >= 4,
+        "expected at least 4 total chunks in store"
+    );
 }
 
 #[test]
@@ -77,7 +93,9 @@ fn index_incremental_skips_unchanged_files() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() { return };
+    if !project.bobbin_index() {
+        return;
+    };
 
     // Re-index without changes — should skip everything (0 files indexed)
     let output = TestProject::bobbin_cmd()
@@ -90,7 +108,10 @@ fn index_incremental_skips_unchanged_files() {
         .clone();
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
-    assert_eq!(json["status"], "up_to_date", "unchanged files should be skipped");
+    assert_eq!(
+        json["status"], "up_to_date",
+        "unchanged files should be skipped"
+    );
     assert_eq!(json["files_indexed"], 0, "no files should be re-indexed");
 }
 
@@ -107,12 +128,17 @@ fn index_zero_files_still_indexes_commits() {
     project.bobbin_init();
 
     // First index establishes file hashes (skip if ONNX runtime unavailable).
-    if !project.bobbin_index() { return };
+    if !project.bobbin_index() {
+        return;
+    };
 
     // Enable commit indexing in the project config (generated config disables it).
     let config_path = project.path().join(".bobbin/config.toml");
     let cfg = std::fs::read_to_string(&config_path).unwrap();
-    assert!(cfg.contains("commits_enabled = false"), "expected commits disabled in generated config");
+    assert!(
+        cfg.contains("commits_enabled = false"),
+        "expected commits disabled in generated config"
+    );
     let cfg = cfg.replace("commits_enabled = false", "commits_enabled = true");
     std::fs::write(&config_path, cfg).unwrap();
 
@@ -147,10 +173,15 @@ fn index_incremental_reindexes_modified_file() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() { return };
+    if !project.bobbin_index() {
+        return;
+    };
 
     // Modify one file
-    project.write_file("src/lib.rs", "pub fn modified() -> bool { true }\npub fn another() -> i32 { 42 }\n");
+    project.write_file(
+        "src/lib.rs",
+        "pub fn modified() -> bool { true }\npub fn another() -> i32 { 42 }\n",
+    );
 
     // Re-index — should pick up the changed file
     let output = TestProject::bobbin_cmd()
@@ -165,7 +196,10 @@ fn index_incremental_reindexes_modified_file() {
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(json["status"], "indexed");
     let files_indexed = json["files_indexed"].as_u64().unwrap();
-    assert_eq!(files_indexed, 1, "only the modified file should be re-indexed");
+    assert_eq!(
+        files_indexed, 1,
+        "only the modified file should be re-indexed"
+    );
 }
 
 #[test]
@@ -175,7 +209,9 @@ fn index_incremental_flag_backwards_compat() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() { return };
+    if !project.bobbin_index() {
+        return;
+    };
 
     // --incremental flag should still work (now a no-op since it's the default)
     let output = TestProject::bobbin_cmd()
@@ -198,7 +234,9 @@ fn index_force_reindexes_all() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() { return };
+    if !project.bobbin_index() {
+        return;
+    };
 
     // Force reindex
     let output = TestProject::bobbin_cmd()
@@ -212,7 +250,10 @@ fn index_force_reindexes_all() {
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     let files_indexed = json["files_indexed"].as_u64().unwrap();
-    assert!(files_indexed >= 2, "force should reindex all files, got {files_indexed}");
+    assert!(
+        files_indexed >= 2,
+        "force should reindex all files, got {files_indexed}"
+    );
 }
 
 #[test]
@@ -225,7 +266,9 @@ fn index_multi_language() {
     project.bobbin_init();
 
     // Check ONNX runtime available, then get JSON output via force reindex
-    if !project.bobbin_index() { return };
+    if !project.bobbin_index() {
+        return;
+    };
 
     let output = TestProject::bobbin_cmd()
         .args(["--json", "index", "--force"])
@@ -261,5 +304,8 @@ fn index_multi_language() {
         .map(|l| l["language"].as_str().unwrap())
         .collect();
 
-    assert!(lang_names.contains(&"rust"), "expected rust in languages, got {lang_names:?}");
+    assert!(
+        lang_names.contains(&"rust"),
+        "expected rust in languages, got {lang_names:?}"
+    );
 }

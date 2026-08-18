@@ -325,7 +325,11 @@ impl Default for SearchConfig {
             // Feature-gated: knowledge builds default to a provisional non-zero PPR
             // weight so the opt-in integration re-ranks; non-knowledge builds keep
             // 0.0 (a non-zero weight bail!s without the feature). Tune from GH#56.
-            ppr_weight: if cfg!(feature = "knowledge") { 0.3 } else { 0.0 },
+            ppr_weight: if cfg!(feature = "knowledge") {
+                0.3
+            } else {
+                0.0
+            },
         }
     }
 }
@@ -386,7 +390,6 @@ impl Default for GitConfig {
         }
     }
 }
-
 
 /// Tuning knobs for context assembly — the bridging + knowledge-expansion
 /// pipeline that is Bobbin's core differentiator. These were previously
@@ -585,7 +588,11 @@ impl HooksConfig {
         let query_lower = query.to_lowercase();
         let mut repos: Vec<String> = Vec::new();
         for rule in &self.keyword_repos {
-            if rule.keywords.iter().any(|kw| query_lower.contains(&kw.to_lowercase())) {
+            if rule
+                .keywords
+                .iter()
+                .any(|kw| query_lower.contains(&kw.to_lowercase()))
+            {
                 for repo in &rule.repos {
                     if !repos.contains(repo) {
                         repos.push(repo.clone());
@@ -960,11 +967,13 @@ impl Config {
 
     /// Save this config as the global config at ~/.config/bobbin/config.toml.
     pub fn save_global(&self) -> Result<()> {
-        let path = Self::global_config_path()
-            .context("Failed to determine global config path")?;
+        let path = Self::global_config_path().context("Failed to determine global config path")?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).with_context(|| {
-                format!("Failed to create global config directory: {}", parent.display())
+                format!(
+                    "Failed to create global config directory: {}",
+                    parent.display()
+                )
             })?;
         }
         let content = toml::to_string_pretty(self).context("Failed to serialize global config")?;
@@ -998,7 +1007,8 @@ impl Config {
             let global_table = toml::Value::try_from(&global)
                 .context("Failed to serialize global config for merge")?;
             let merged = deep_merge_toml(global_table, repo_table);
-            merged.try_into()
+            merged
+                .try_into()
                 .context("Failed to deserialize merged config")
         } else {
             Ok(global)
@@ -1054,7 +1064,10 @@ mod tests {
             "**/*.rs",
             "**/*.py",
         ] {
-            assert!(include.contains(&pat.to_string()), "default include missing {pat}");
+            assert!(
+                include.contains(&pat.to_string()),
+                "default include missing {pat}"
+            );
         }
     }
 
@@ -1066,7 +1079,10 @@ mod tests {
         // searches answered from markdown/commit-messages only, confidently.
         let include = IndexConfig::default().include;
         for pat in ["**/*.yml", "**/*.yaml", "**/*.j2", "**/*.tf", "**/*.sh"] {
-            assert!(include.contains(&pat.to_string()), "default include missing {pat}");
+            assert!(
+                include.contains(&pat.to_string()),
+                "default include missing {pat}"
+            );
         }
     }
 
@@ -1280,7 +1296,10 @@ coupling_depth = 500
         assert!((c.context.coupling_threshold - 0.1).abs() < f32::EPSILON);
         assert!((c.context.knowledge_budget_pct - 15.0).abs() < f32::EPSILON);
         assert_eq!(c.context.knowledge_max_hops, 2);
-        assert_eq!(c.context.budget_unit, crate::search::context::BudgetUnit::Line);
+        assert_eq!(
+            c.context.budget_unit,
+            crate::search::context::BudgetUnit::Line
+        );
         assert!((c.feedback.boost_max - 0.3).abs() < f32::EPSILON);
         assert!((c.feedback.boost_weight - 0.2).abs() < f32::EPSILON);
     }
@@ -1308,7 +1327,10 @@ boost_weight = 0.15
         assert!((config.context.coupling_threshold - 0.25).abs() < f32::EPSILON);
         assert!((config.context.knowledge_budget_pct - 20.0).abs() < f32::EPSILON);
         assert_eq!(config.context.knowledge_max_hops, 3);
-        assert_eq!(config.context.budget_unit, crate::search::context::BudgetUnit::Token);
+        assert_eq!(
+            config.context.budget_unit,
+            crate::search::context::BudgetUnit::Token
+        );
         assert!((config.feedback.boost_max - 0.4).abs() < f32::EPSILON);
         assert!((config.feedback.boost_weight - 0.15).abs() < f32::EPSILON);
     }
@@ -1533,7 +1555,10 @@ repos = ["reckoning", "tapestry"]
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.groups.len(), 2);
         assert_eq!(config.groups[0].name, "infra");
-        assert_eq!(config.groups[0].repos, vec!["goldblum", "homelab-mcp", "aegis"]);
+        assert_eq!(
+            config.groups[0].repos,
+            vec!["goldblum", "homelab-mcp", "aegis"]
+        );
         assert_eq!(config.groups[1].name, "apps");
         assert_eq!(config.groups[1].repos, vec!["reckoning", "tapestry"]);
     }
@@ -1562,7 +1587,10 @@ name = "infra"
 repos = ["goldblum", "aegis"]
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.resolve_group("infra"), Some(&["goldblum".to_string(), "aegis".to_string()][..]));
+        assert_eq!(
+            config.resolve_group("infra"),
+            Some(&["goldblum".to_string(), "aegis".to_string()][..])
+        );
         assert_eq!(config.resolve_group("nonexistent"), None);
     }
 
@@ -1607,7 +1635,10 @@ repos = ["beads"]
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.hooks.keyword_repos.len(), 2);
-        assert_eq!(config.hooks.keyword_repos[0].keywords, vec!["ansible", "playbook"]);
+        assert_eq!(
+            config.hooks.keyword_repos[0].keywords,
+            vec!["ansible", "playbook"]
+        );
         assert_eq!(config.hooks.keyword_repos[0].repos, vec!["goldblum"]);
     }
 
@@ -1625,7 +1656,9 @@ keywords = ["beads", "bd "]
 repos = ["beads"]
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
-        let repos = config.hooks.resolve_keyword_repos("deploy the ansible playbook");
+        let repos = config
+            .hooks
+            .resolve_keyword_repos("deploy the ansible playbook");
         assert_eq!(repos, vec!["goldblum"]);
     }
 
@@ -1643,7 +1676,9 @@ keywords = ["beads"]
 repos = ["beads"]
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
-        let repos = config.hooks.resolve_keyword_repos("check ansible and beads status");
+        let repos = config
+            .hooks
+            .resolve_keyword_repos("check ansible and beads status");
         assert_eq!(repos, vec!["goldblum", "beads"]);
     }
 
@@ -1729,7 +1764,10 @@ patterns = ["vendor/**"]
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.file_types.len(), 3);
         assert_eq!(config.file_types[0].name, "generated");
-        assert_eq!(config.file_types[0].patterns, vec!["*.pb.go", "*.generated.ts"]);
+        assert_eq!(
+            config.file_types[0].patterns,
+            vec!["*.pb.go", "*.generated.ts"]
+        );
         assert_eq!(config.file_types[1].name, "config");
         assert_eq!(config.file_types[2].name, "vendor");
     }
@@ -1752,15 +1790,21 @@ model = "all-MiniLM-L6-v2"
 
     #[test]
     fn test_deep_merge_toml_overlay_scalar() {
-        let base: toml::Value = toml::from_str(r#"
+        let base: toml::Value = toml::from_str(
+            r#"
 [search]
 semantic_weight = 0.9
 doc_demotion = 0.3
-"#).unwrap();
-        let overlay: toml::Value = toml::from_str(r#"
+"#,
+        )
+        .unwrap();
+        let overlay: toml::Value = toml::from_str(
+            r#"
 [search]
 semantic_weight = 0.7
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         let merged = deep_merge_toml(base, overlay);
         let config: Config = merged.try_into().unwrap();
         assert!((config.search.semantic_weight - 0.7).abs() < f32::EPSILON);
@@ -1770,14 +1814,20 @@ semantic_weight = 0.7
 
     #[test]
     fn test_deep_merge_toml_overlay_adds_section() {
-        let base: toml::Value = toml::from_str(r#"
+        let base: toml::Value = toml::from_str(
+            r#"
 [search]
 semantic_weight = 0.9
-"#).unwrap();
-        let overlay: toml::Value = toml::from_str(r#"
+"#,
+        )
+        .unwrap();
+        let overlay: toml::Value = toml::from_str(
+            r#"
 [server]
 url = "http://search.example"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         let merged = deep_merge_toml(base, overlay);
         let config: Config = merged.try_into().unwrap();
         assert_eq!(config.server.url.as_deref(), Some("http://search.example"));
@@ -1787,14 +1837,20 @@ url = "http://search.example"
 
     #[test]
     fn test_deep_merge_toml_array_replaces() {
-        let base: toml::Value = toml::from_str(r#"
+        let base: toml::Value = toml::from_str(
+            r#"
 [index]
 include = ["**/*.rs"]
-"#).unwrap();
-        let overlay: toml::Value = toml::from_str(r#"
+"#,
+        )
+        .unwrap();
+        let overlay: toml::Value = toml::from_str(
+            r#"
 [index]
 include = ["**/*.py", "**/*.go"]
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         let merged = deep_merge_toml(base, overlay);
         let config: Config = merged.try_into().unwrap();
         // Arrays are replaced wholesale, not merged

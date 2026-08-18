@@ -14,12 +14,12 @@ mod hook;
 mod hotspots;
 mod impact;
 mod index;
+mod init;
 mod log;
 mod ontology;
 mod predict;
 mod prime;
 mod purge;
-mod init;
 mod reconcile;
 mod refs;
 mod related;
@@ -278,10 +278,7 @@ impl Cli {
         // Best-effort metrics emission (don't skip hooks — they emit their own events)
         if command_name != "hook" {
             if let Some(repo_root) = find_bobbin_root() {
-                let source = crate::metrics::resolve_source(
-                    metrics_source.as_deref(),
-                    None,
-                );
+                let source = crate::metrics::resolve_source(metrics_source.as_deref(), None);
                 let ev = crate::metrics::event(
                     &source,
                     "command",
@@ -301,7 +298,6 @@ impl Cli {
 
 mod dispatch;
 use dispatch::{dispatch_command, dispatch_external, resolve_server_url};
-
 
 /// Walk up from cwd to find a directory containing `.bobbin/`.
 /// Returns None if not found (bobbin not initialized).
@@ -327,7 +323,7 @@ pub fn not_initialized_error(dir: &std::path::Path) -> String {
     if std::env::var("BOBBIN_SERVER").is_err() {
         msg.push_str(
             "\n\nHint: If a bobbin server is running elsewhere, set BOBBIN_SERVER=<url> \
-             or use --server <url> to connect without local initialization."
+             or use --server <url> to connect without local initialization.",
         );
     }
     msg

@@ -14,7 +14,6 @@ mod tests;
 use infer::run_infer;
 use query::{run_expand, run_list, run_path, run_show, run_tree};
 
-
 #[derive(Args)]
 pub struct OntologyArgs {
     #[command(subcommand)]

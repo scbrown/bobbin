@@ -18,7 +18,6 @@ use crate::types::SearchResult;
 
 use super::super::{internal_error, open_vector_store, AppState, ErrorBody};
 
-
 use super::helpers::*;
 
 // ---------------------------------------------------------------------------
@@ -88,8 +87,7 @@ pub(crate) async fn search_beads(
 
     let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
 
-    let mut search =
-        HybridSearch::new(embedder, vector_store, state.config.search.semantic_weight);
+    let mut search = HybridSearch::new(embedder, vector_store, state.config.search.semantic_weight);
 
     // Push the Issue filter INTO the LanceDB query instead of over-fetching the
     // whole corpus and keeping Issue chunks in Rust. Issue chunks are ~0.1% of the
@@ -135,8 +133,11 @@ pub(crate) async fn search_beads(
     };
 
     // Apply all filters
-    let has_filters = params.status.is_some() || params.priority.is_some()
-        || params.assignee.is_some() || params.issue_type.is_some() || params.label.is_some();
+    let has_filters = params.status.is_some()
+        || params.priority.is_some()
+        || params.assignee.is_some()
+        || params.issue_type.is_some()
+        || params.label.is_some();
     if has_filters {
         filtered.retain(|r| {
             let bead_id = r.chunk.file_path.split(':').nth(2).unwrap_or("");
@@ -199,7 +200,8 @@ pub(crate) async fn search_beads(
         // Title match boost
         if let Some(ref name) = result.chunk.name {
             let title_lower = name.to_lowercase();
-            let matching_terms = query_terms.iter()
+            let matching_terms = query_terms
+                .iter()
                 .filter(|t| title_lower.contains(**t))
                 .count();
             if matching_terms > 0 {
@@ -222,7 +224,11 @@ pub(crate) async fn search_beads(
     }
 
     // Re-sort by boosted score
-    filtered.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    filtered.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     filtered.truncate(limit);
 
     let results: Vec<BeadResultItem> = filtered
@@ -230,9 +236,15 @@ pub(crate) async fn search_beads(
         .map(|r| {
             let parts: Vec<&str> = r.chunk.file_path.splitn(3, ':').collect();
             let rig = if parts.len() >= 2 { parts[1] } else { "" };
-            let bead_id = if parts.len() == 3 { parts[2] } else { &r.chunk.file_path };
+            let bead_id = if parts.len() == 3 {
+                parts[2]
+            } else {
+                &r.chunk.file_path
+            };
 
-            let match_type = r.match_type.as_ref()
+            let match_type = r
+                .match_type
+                .as_ref()
                 .map(|mt| format!("{:?}", mt).to_lowercase())
                 .unwrap_or_else(|| "hybrid".to_string());
 
@@ -249,7 +261,10 @@ pub(crate) async fn search_beads(
                     priority: format!("P{}", meta.priority),
                     status: meta.status.clone(),
                     issue_type: meta.issue_type.clone(),
-                    assignee: meta.assignee.clone().unwrap_or_else(|| "unassigned".to_string()),
+                    assignee: meta
+                        .assignee
+                        .clone()
+                        .unwrap_or_else(|| "unassigned".to_string()),
                     owner: meta.owner.clone(),
                     rig: rig.to_string(),
                     labels: meta.labels.clone(),

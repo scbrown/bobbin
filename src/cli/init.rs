@@ -156,7 +156,10 @@ pub async fn run(args: InitArgs, output: OutputConfig) -> Result<()> {
         println!("\nNext steps:");
         println!("  {} to build the index", "bobbin index".cyan());
         println!("  {} to search code", "bobbin search <query>".cyan());
-        println!("  {} to see available shortcuts", "bobbin run --list".cyan());
+        println!(
+            "  {} to see available shortcuts",
+            "bobbin run --list".cyan()
+        );
     }
 
     Ok(())
