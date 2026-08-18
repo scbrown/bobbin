@@ -1,9 +1,12 @@
 # Significance and power for the ablation arms — bobbin-55
 
-> **Status (2026-08-17):** computed. Every figure below is derived from the
-> means, standard deviations and run counts already reported in
-> `docs/paper-context-injection.md` Table 4. Regenerate with
-> `scripts/paper_stats.py`.
+> **Status (2026-08-18):** computed, and the ablation figures are now
+> **verified against the per-run artifacts** — all ten rows of Table 7
+> reproduce exactly (N, mean, SD). Every figure in §1-3 and §5 below is
+> derived from the means, standard deviations and run counts reported in
+> `docs/paper-context-injection.md` Table 7; regenerate with
+> `scripts/paper_stats.py`. §4's aggregate is derived from the raw runs;
+> regenerate with `scripts/paper_census.py`.
 
 `bobbin-55` asked for confidence intervals or appropriate tests on every
 reported ablation effect, and for an explicit statement of which conditions are
@@ -78,10 +81,68 @@ For completeness, ruff-001 `with-bobbin` (0.636 ± 0.347, N=7) vs `no-bobbin`
 p = 0.055, interval touching zero. This is the *strongest* task-level injection
 effect in the study.
 
-The 66-run aggregate (F1 0.695 → 0.722) cannot be tested at all: **Table 1
-reports no standard deviations and no per-run values.** That is a reporting
-defect independent of sample size, and it must be fixed before submission — an
-aggregate mean with no dispersion is not a result a reviewer can evaluate.
+**Resolved 2026-08-18.** The 66-run aggregate (F1 0.695 → 0.722) was reported
+without standard deviations or per-run values, and so could not be tested. It
+can now: `scripts/paper_census.py` recomputes it from the per-run artifacts,
+which carry everything the test needs. Two things came out of that recount.
+
+The aggregate was **contaminated with the withdrawn Flask tasks** — 25 of the
+66 — despite §4.2 claiming Flask was excluded everywhere. On the 41 reported
+runs:
+
+```text
+with-bobbin 0.743 ± 0.270 (N=21) vs no-bobbin 0.671 ± 0.263 (N=20)
+Δ = +0.072, t = 0.86, df = 39.0, p = 0.395, 95% CI [−0.097, +0.240]
+```
+
+The effect roughly doubles once the broken fixtures come out, and is still
+comfortably inside the noise. The conclusion this section reached — the
+aggregate is not defensible — survives; only the reason changes, from "cannot
+be tested" to "tested, p = 0.395". Note also that pooling across tasks leaves
+task difficulty as a between-arm confound, since the arms are not balanced per
+task.
+
+## 4b. The baseline is not model-matched — found 2026-08-18
+
+Every figure in §2-4 above compares an ablation arm against the 7-run
+`with-bobbin` baseline. **That baseline is model-mixed and the arms are not.**
+From `model_usage` in the per-run artifacts (`scripts/paper_census.py` §6):
+
+- All 19 ablation runs: `claude-sonnet-4-5-20250929`, confirmed.
+- The 7-run `with-bobbin` baseline: 4 confirmed Sonnet 4.5, **1 confirmed
+  `claude-opus-4-6`** (which scored F1 = 1.000, tied highest in the arm), 1
+  declared Sonnet with no usage record, 1 with no model record at all.
+
+Restricting the baseline to its 4 model-matched runs gives 0.530 ± 0.327
+rather than 0.636 ± 0.347, and every arm moves:
+
+| Arm | Δ published | Δ model-matched | p published | p matched |
+|-----|---:|---:|---:|---:|
+| `semantic_weight=0.0` | −0.384 | **−0.278** | 0.030 | **0.191** |
+| `blame_bridging=false` | −0.303 | **−0.196** | 0.060 | 0.315 |
+| `coupling_depth=0` | −0.247 | **−0.141** | 0.123 | 0.464 |
+| `doc_demotion=0.0` | −0.080 | **+0.026** | 0.774 | 0.930 |
+| `recency_weight=0.0` | −0.025 | **+0.081** | 0.922 | 0.768 |
+| `gate_threshold=1.0` | −0.025 | **+0.081** | 0.922 | 0.768 |
+
+**Three of six flip sign, and §2's one nominally significant arm loses its
+nominal significance** — `semantic_weight=0.0` goes from p = 0.030 to 0.191,
+failing at α = 0.05 *before* any correction. §3's conclusion (no arm survives
+correction) is unchanged and now over-determined. The ruff-001 headline in §4
+also halves: +0.312 (p = 0.055) becomes +0.212 (p = 0.285) model-matched.
+
+**What survives is §6's recommended framing, strengthened.** The
+retrieval/filtering grouping separates *by sign* on the matched baseline —
+retrieval −0.141 to −0.278, filtering +0.026 to +0.081 — where on the
+published baseline the groups shared a sign and differed only in magnitude.
+The grouping is the claim to lead with; this is the sharpest test it has had.
+
+**Neither set of magnitudes is established.** The matched baseline is N=4 and
+is more underpowered than the thing it corrects. The difference between the
+two columns is a lower bound on how much the model mixture moves the results,
+not a corrected measurement. Any re-run must record the serving model per run
+and refuse cross-model comparisons; 45 of the study's 85 runs cannot be
+attributed to a model from their own artifact.
 
 ## 5. Power — what the study would have needed
 
@@ -136,8 +197,9 @@ time, and is not evidence that all six contribute.
   that the study cannot measure effects of this size and give the required N.
   Bead 55 put this exactly right — three solid rows and an honest gap beat six
   rows of which half are noise.
-- **Demote**: the aggregate +0.027 F1, which cannot be tested for lack of SDs
-  and would not survive if it could.
+- **Demote**: the aggregate effect, now +0.072 F1 on the reported tasks after
+  the Flask contamination was removed, at p = 0.395 with an interval that
+  admits harm.
 
 ## 7. Interaction with bobbin-54
 

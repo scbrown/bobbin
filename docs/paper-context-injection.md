@@ -10,13 +10,13 @@ Draft v0.2 -- August 2026
 
 AI coding agents operate with limited awareness of the codebases they modify, and a growing number of systems address this by injecting retrieved context into the agent's loop. Such systems are typically evaluated end-to-end, which establishes that injection helps without establishing *what is doing the work*. We argue the useful unit of evaluation is the **decomposition**: a context injection engine is a composition of separable retrieval, expansion, ranking and filtering methods, and each can be removed and measured. We present Bobbin, a local-first injection engine that composes six such methods, and a removal-based evaluation harness that runs headless coding agents against real open-source repositories and scores their file-level edits against ground truth.
 
-We report a pilot decomposition on 85 runs. The three *retrieval-expansion* methods separate clearly from the three *filtering* methods: disabling semantic search costs 0.384 F1 (95% CI [-0.721, -0.047]), git blame bridging 0.303 ([-0.624, +0.018]) and temporal coupling expansion 0.247 ([-0.578, +0.084]), while recency boosting, quality gating and doc demotion have point estimates at or below 0.080 with intervals spanning most of the metric's range.
+We report a pilot decomposition on 19 ablation runs, drawn from a study of 85 completed runs in total. The three *retrieval-expansion* methods separate clearly from the three *filtering* methods. Against the baseline as originally run, disabling semantic search costs 0.384 F1 (95% CI [-0.721, -0.047]), git blame bridging 0.303 ([-0.624, +0.018]) and temporal coupling expansion 0.247 ([-0.578, +0.084]), while recency boosting, quality gating and doc demotion have point estimates at or below 0.080 with intervals spanning most of the metric's range.
 
-**These are directional results, not established magnitudes, and we state the limits up front rather than in the discussion.** With 3-4 runs per arm and a baseline standard deviation of 0.347 — driven by the run-to-run non-determinism of the agents themselves — no arm survives Holm-Bonferroni correction across the six comparisons, and the separately measured aggregate injection effect (F1 0.695 to 0.722 over 66 runs) is smaller than the noise.
+**These are directional results, not established magnitudes, and we state the limits up front rather than in the discussion.** With 3-4 runs per arm and a baseline standard deviation of 0.347 — driven by the run-to-run non-determinism of the agents themselves — no arm survives Holm-Bonferroni correction across the six comparisons. Worse, the baseline every arm is compared against turned out **not to be model-matched**: the arms are uniformly one model, the baseline mixes in a stronger one. Re-testing against a model-matched baseline shrinks every effect, flips the sign of three, and costs the semantic-search arm its nominal significance (p = 0.030 to 0.191). What survives is the *grouping* — retrieval-expansion and filtering separate by sign rather than merely by magnitude — which is the claim we lead with. The separately measured aggregate injection effect (F1 0.671 to 0.743 over 41 runs, p = 0.395) is likewise smaller than the noise.
 
 We also report a confound that our own design cannot resolve and that we believe generalises to this class of evaluation. One ablation arm turned out to disable injection entirely while still leaving the agent a search tool it was prompted to use. Comparing it against the two baselines decomposes the total effect: +0.287 F1 is present as soon as the agent has a retrieval tool and is told to use it, and only +0.025 is added by automatic injection on top. **On these point estimates, roughly 92% of what looks like an injection effect is a tool-availability effect.** Both figures are far from significant, which is precisely the problem: the study cannot separate the mechanism it is about from the mechanism it accidentally controls for.
 
-We therefore report the decomposition as a ranking with intervals, decline to claim the three filtering effects at all, and give the power analysis: 14, 22 and 32 runs per arm would establish the three retrieval-expansion effects at 80% power, while the filtering effects would need 300-3,000. Our contribution is the removal-based methodology, an open harness that implements it, a preliminary ranking honest about which of its rows are load-bearing, and a worked account of how an agent evaluation of apparently reasonable size fails to support its own conclusions.
+We therefore report the decomposition as a ranking with intervals, decline to claim the three filtering effects at all, and give the power analysis: 14, 22 and 32 runs per arm would establish the three retrieval-expansion effects at 80% power at the effects as published, or roughly 22, 44 and 85 at the model-matched effects, while the filtering effects would need hundreds to thousands. Our contribution is the removal-based methodology, an open harness that implements it, a preliminary ranking honest about which of its rows are load-bearing, and a worked account of how an agent evaluation of apparently reasonable size fails to support its own conclusions.
 
 ---
 
@@ -30,7 +30,7 @@ We propose automated context injection: intercepting the agent's lifecycle to in
 
 ### 1.1 Why decomposition rather than aggregate improvement
 
-The obvious way to evaluate such a system is end-to-end: run agents with and without injection and compare. We did this, and it illustrates why it is the wrong primary question. Across 66 runs the aggregate file-level F1 moves from 0.695 to 0.722 — a +0.027 difference against a per-run standard deviation of 0.347. An aggregate of that shape can be reported, but it cannot be *defended*: the first question a reader should ask is whether it is distinguishable from noise, and the honest answer is no.
+The obvious way to evaluate such a system is end-to-end: run agents with and without injection and compare. We did this, and it illustrates why it is the wrong primary question. Across 41 runs the aggregate file-level F1 moves from 0.671 to 0.743 — a +0.072 difference against a per-run standard deviation of 0.347. An aggregate of that shape can be reported, but it cannot be *defended*: the first question a reader should ask is whether it is distinguishable from noise, and the honest answer is no.
 
 More importantly, the aggregate answers a question nobody building these systems actually has. "Injection helps" is already the premise of every system in this space. The open question is **which of the composed methods carries the weight** — because that is what determines where engineering effort goes, what a smaller implementation can safely omit, and which mechanisms deserve theoretical attention.
 
@@ -158,7 +158,7 @@ We built a custom evaluation framework that spawns headless Claude Code agents a
 
 1. Clones a bare mirror of the target repository (cached in `~/.cache/bobbin-eval/repos/`).
 2. Checks out the specified commit, creating a clean working copy.
-3. Launches a Claude Code agent (model: claude-sonnet-4-5-20250929) with the task prompt.
+3. Launches a Claude Code agent with the task prompt. The intended model throughout was `claude-sonnet-4-5-20250929`; **the runs are not in fact single-model**, and §5.1.1 gives the attribution and what it costs. The harness recorded the serving model only in its later runs, which is itself the defect.
 4. Records all agent actions, tool uses, files touched, and timing.
 5. Compares the agent's file modifications against ground truth.
 
@@ -177,9 +177,9 @@ Each task specifies a commit, a natural-language prompt describing the change, a
 
 Two additional tasks (django-001, pandas-001) were planned but produced no completed runs due to infrastructure issues.
 
-**The five Flask tasks are withdrawn and are not used in any claim in this paper.** Across 47 runs they returned a 0% test pass rate on *both* the with-bobbin and no-bobbin arms. A 0% pass rate that is invariant to the treatment is a property of the harness, not of the system under test: the root cause was in the tasks' own `setup_command` and `test_command` definitions, so no agent could have passed regardless of what context it received. They were quarantined on 2026-02-15.
+**The five Flask tasks are withdrawn and are not used in any claim in this paper.** Across every run of them they returned a 0% test pass rate on *both* the with-bobbin and no-bobbin arms — 25 runs in the per-run artifact store, plus the search-only calibration sweep, which is where the frequently quoted figure of 47 comes from. A 0% pass rate that is invariant to the treatment is a property of the harness, not of the system under test: the root cause was in the tasks' own `setup_command` and `test_command` definitions, so no agent could have passed regardless of what context it received. They were quarantined on 2026-02-15.
 
-We report this at length because an earlier draft of this paper did not. That draft included the Flask tasks in its aggregate, built its configuration-calibration sweep entirely on them, and interpreted their flat F1 deltas as evidence that "Flask's well-organized codebase and clear naming conventions make agent exploration already effective" — an affirmative conclusion drawn from a broken fixture. The failure mode is worth naming for others building agent evaluations: **a task whose pass rate is invariant across arms should be treated as a suspected harness fault until proven otherwise**, because a genuinely null result and a broken fixture look identical in the aggregate and only the former is a finding. We now excluded Flask everywhere, which withdraws the calibration sweep entirely (§5.5).
+We report this at length because an earlier draft of this paper did not. That draft included the Flask tasks in its aggregate, built its configuration-calibration sweep entirely on them, and interpreted their flat F1 deltas as evidence that "Flask's well-organized codebase and clear naming conventions make agent exploration already effective" — an affirmative conclusion drawn from a broken fixture. The failure mode is worth naming for others building agent evaluations: **a task whose pass rate is invariant across arms should be treated as a suspected harness fault until proven otherwise**, because a genuinely null result and a broken fixture look identical in the aggregate and only the former is a finding. We now exclude Flask everywhere, which withdraws the calibration sweep entirely (§5.7). An earlier revision of *this* draft did not manage that either: its Table 6 aggregate was taken over 66 runs, of which 25 were Flask. The correction is in §5.4, and the mechanism by which it went unnoticed is worth stating — a contaminated aggregate looks exactly like a clean one until someone recounts the artifacts.
 
 ### 4.3 Metrics
 
@@ -245,6 +245,35 @@ Two observations survive as directional signals rather than measured quantities:
 
 We do **not** claim the three filtering effects. Their confidence intervals span most of the achievable range of the metric; the study contains essentially no information about them. §5.3 gives the runs required to change that.
 
+#### 5.1.1 The baseline is not model-matched, and three of the six effects flip sign when it is
+
+**Every arm in Table 1 is compared against a baseline that was not run on the same model.** All 19 ablation runs bill to `claude-sonnet-4-5-20250929`. The 7-run `with-bobbin` baseline does not: four runs are confirmed Sonnet 4.5, **one is confirmed Claude Opus 4.6**, one declares Sonnet 4.5 in its manifest but records no usage, and one carries no model record at all. The Opus run scored F1 = 1.000, tied for the highest in the arm — though so did one of the Sonnet runs, and **we are not claiming that the Opus run scored well because it was Opus.** One run cannot support that, and the removal of it is not what does most of the work below; dropping the two unattributable runs matters as much. The claim is narrower and does not need a causal story: **the baseline and the arms were not drawn from the same population, so the comparison is not the one Table 1 says it is.**
+
+Restricting the baseline to its four confirmed model-matched runs gives F1 0.530 ± 0.327 rather than 0.636 ± 0.347, and re-running the same tests:
+
+**Table 2: Removal effects against a model-matched baseline (with-bobbin, Sonnet 4.5 only, N=4, F1 0.530 ± 0.327)**
+
+| Method disabled | Ablated F1 | Δ as published | Δ model-matched | 95% CI of Δ | p |
+|-----------------|:----------:|:--------------:|:---------------:|-------------|--:|
+| Semantic search | 0.252 | −0.384 | **−0.278** | [−0.769, +0.213] | 0.191 |
+| Blame bridging | 0.333 | −0.303 | **−0.196** | [−0.716, +0.323] | 0.315 |
+| Coupling expansion | 0.389 | −0.247 | **−0.141** | [−0.638, +0.356] | 0.464 |
+| Doc demotion | 0.556 | −0.080 | **+0.026** | [−0.742, +0.794] | 0.930 |
+| Recency signal | 0.611 | −0.025 | **+0.081** | [−0.618, +0.781] | 0.768 |
+| Quality gate † | 0.611 | −0.025 | **+0.081** | [−0.618, +0.781] | 0.768 |
+
+† Injection disabled entirely; see §5.2.
+
+Three consequences, in descending order of how much they cost the paper:
+
+1. **Three of six effects change sign.** Doc demotion, recency and the quality gate all move from "removing it hurts" to "removing it helps". Both readings were always inside their confidence intervals (§5.3), so this is not new information so much as a demonstration that the sign of those three rows was never determined by the data. It does retire the last trace of the original draft's "all six methods contribute positively".
+2. **The one nominally significant arm stops being nominally significant.** `semantic_weight=0.0` goes from p = 0.030 to **p = 0.191** — it now fails at α = 0.05 uncorrected, having previously failed only after Holm–Bonferroni. The study's single strongest result does not survive matching its own baseline.
+3. **The headline task-level injection effect halves.** ruff-001 with-bobbin vs no-bobbin, both restricted to confirmed Sonnet 4.5, is +0.212 (t = 1.29, df ≈ 3.5, p = 0.285) against the +0.312 (p = 0.055) reported in §5.3.
+
+**What survives, and it is the claim the paper leads with.** The retrieval/filtering grouping does not merely survive the correction — it sharpens. On the published baseline the two groups separate by magnitude but share a sign (−0.247 to −0.384 against −0.025 to −0.080). On the model-matched baseline they separate *by sign*: all three retrieval-expansion effects remain negative (−0.141 to −0.278), all three filtering effects are non-negative (+0.026 to +0.081). §6.1 argues the grouping is this study's most robust structural claim on the grounds that it does not depend on any individual arm being significant. This is the sharpest available test of that argument, and the grouping passes it while every individual magnitude in Table 1 moves.
+
+**Why we report Table 1 at all, given Table 2.** Table 2 rests on a 4-run baseline and is more underpowered than the thing it corrects; presenting it as the true numbers would repeat the error it identifies. The honest statement is that **neither table's magnitudes are established**, and the difference between them measures how much a defensible change to the comparison set moves the answer — which, at three sign flips and the loss of the study's only nominally significant result, is more than the study can absorb. The methodological point is the durable one: an ablation harness must record the serving model per run and refuse to compare arms across models, and ours did neither. We found this by recounting artifacts for an unrelated reason (§5.4.1), which is the only reason it is in the paper rather than in a reviewer's report.
+
 ### 5.2 An arm that disabled injection entirely, and what it reveals
 
 `gate_threshold=1.0` was intended as "disable quality gating". It does not do that. Per §3.7 a gate threshold of 1.0 means the relevance bar can never be cleared, so **injection is skipped entirely**. The run artifacts confirm it: all three runs of this arm record an injection invocation that returned no chunks, while every other arm records 17-20 chunks.
@@ -253,7 +282,7 @@ This is a design error, and it produced the most informative comparison in the s
 
 That is exactly the control the study otherwise lacks, and it splits the headline effect in two:
 
-**Table 2: Decomposing the injection effect**
+**Table 3: Decomposing the injection effect**
 
 | Contrast | What differs | Δ F1 | p | 95% CI |
 |----------|--------------|-----:|---:|--------|
@@ -269,7 +298,7 @@ The remedy is a fourth arm, run at the N given in §5.3: Bobbin installed and pr
 
 ### 5.3 Statistical power: what the study can and cannot support
 
-**Table 3: Multiple-comparison correction across the six arms (Holm-Bonferroni, α = 0.05)**
+**Table 4: Multiple-comparison correction across the six arms (Holm-Bonferroni, α = 0.05)**
 
 | Arm | p | Holm threshold | Outcome |
 |-----|---:|---:|---|
@@ -284,7 +313,7 @@ The remedy is a fourth arm, run at the N given in §5.3: Bobbin installed and pr
 
 Correction is mandatory here rather than conservative. The paper's framing *is* a six-way comparison: asking which of six methods carries the weight and then reporting the winner of six uncorrected tests is the exact error the correction exists to prevent. Five of the six confidence intervals in Table 1 cross zero.
 
-**Table 4: Runs per arm required for 80% power at the observed effect (α = 0.05)**
+**Table 5: Runs per arm required for 80% power at the observed effect (α = 0.05)**
 
 | Arm | Observed \|Δ\| | Cohen's *d* | N needed | N had |
 |-----|---:|---:|---:|---:|
@@ -300,51 +329,67 @@ Both halves of this table are actionable:
 - The three retrieval-expansion effects are **within reach**. Roughly 70 runs total, at ~$1.50 and ~5 minutes each, is about $105 and a day of wall-clock. That is a fundable follow-up, not an aspiration, and it is the experiment we recommend.
 - The three filtering effects are **not worth powering**. Detecting a 0.025 F1 effect needs ~3,000 runs per arm, on the order of $9,000. The correct response is not to run them but to stop claiming them.
 
-These N are **lower bounds**. Powering a study on the effect size observed in an underpowered pilot is optimistic, because pilots that reach significance systematically overestimate effect size.
+These N are **lower bounds**, for two reasons that compound.
+
+First, powering a study on the effect size observed in an underpowered pilot is optimistic, because pilots that reach significance systematically overestimate effect size.
+
+Second, and concretely: **recomputing this table on the model-matched effects of §5.1.1 roughly doubles the three tractable rows** — 22, 44 and 85 runs per arm rather than 14, 22 and 32, since each effect shrinks while the baseline SD barely moves (0.347 to 0.327). The retrieval-expansion follow-up is then about 150 runs, ~$225, and two or three days rather than one. Still fundable, and still the experiment we recommend; roughly twice the price the uncorrected table quotes. (The two filtering rows that flip sign under matching also change their required N, in one case downward, but a required N computed from an effect whose sign is undetermined is not a meaningful quantity and we do not report it.)
 
 The dominant cost is variance, and the variance is intrinsic: with-bobbin has a standard deviation of 0.347 on a metric bounded in [0, 1], from identical configuration and identical prompts. Any evaluation of LLM agents on end-task metrics inherits this, and it is why 3-run conditions — a design that looks reasonable and that we ran — cannot support method-level conclusions.
 
 ### 5.4 Aggregate Comparison
 
-The aggregate comparison is reported second and deliberately not as a headline. It is the weaker measurement, for the reasons §5.3 gives.
+The aggregate comparison is reported second and deliberately not as a headline. It is the weaker measurement, for the reasons §5.3 gives. Every figure in this section is regenerated from the per-run artifacts by `scripts/paper_census.py`; the numbers an earlier revision reported here were not, and did not survive the recount (§5.4.1).
 
-**Table 5: Aggregate comparison across all tasks (66 runs)**
+**Two inclusion rules are stated rather than assumed**, because applying them differently is what produced the earlier figures. A run that terminated in `bobbin_setup_error` produced no measurement and is excluded — it is not an F1 of 0.0, and scoring it as one manufactures a regression out of a harness failure. The five Flask tasks are withdrawn (§4.2) and are excluded from every arm.
 
-| Metric | no-bobbin (N=29) | with-bobbin (N=36) |
+**Table 6: Aggregate comparison across the eight reported tasks (41 runs)**
+
+| Metric | no-bobbin (N=20) | with-bobbin (N=21) |
 |--------|:----------------:|:------------------:|
-| Avg File Precision | 86.8% | 91.2% |
-| Avg File Recall | 61.1% | 64.2% |
-| Avg F1 | 69.5% | 72.2% |
-| Test Pass Rate | 65.5% | 47.2% |
-| Avg Duration (s) | 252.3 | 209.1 |
-| Avg Cost (USD) | $1.18 | $1.42 |
-| Avg Input Tokens | 96 | 136 |
-| Avg Output Tokens | 8,065 | 8,608 |
+| Avg File Precision | 77.6% ± 32.0 | 83.1% ± 28.4 |
+| Avg File Recall | 62.3% ± 26.8 | 72.4% ± 31.0 |
+| Avg F1 | 67.1% ± 26.3 | 74.3% ± 27.0 |
+| Test Pass Rate | 100% | 100% |
+| Avg Duration (s) | 306.8 ± 108.1 | 267.3 ± 84.3 |
 
-Aggregate file-level F1 differs by +2.7 percentage points, with precision +4.4pp and recall +3.1pp. Average task duration is 43 seconds (17%) lower, consistent with agents spending less time exploring when context arrives upfront. Cost is 20% higher, reflecting the additional input tokens.
+Aggregate file-level F1 differs by +7.2 percentage points, with precision +5.5pp and recall +10.1pp. Average task duration is 39 seconds (13%) lower, consistent with agents spending less time exploring when context arrives upfront.
 
-**None of these differences can be tested, and we do not claim any of them.** Table 5 reports means without standard deviations or per-run values — a reporting defect in the original study design, independent of sample size. Given that the *same* configuration produces a per-run F1 standard deviation of 0.347 at task level (§5.3), a +0.027 aggregate difference is well inside the noise, and we report it only to show its magnitude relative to the removal effects in Table 1, which are up to fourteen times larger.
+**Unlike the earlier revision of this table, this one can be tested, and it is not significant.** Welch's t-test on the per-run F1 values gives Δ = +0.072, t = 0.86, df = 39.0, **p = 0.395**, 95% CI [−0.097, +0.240]. The interval is roughly symmetric about zero and comfortably admits injection making things worse. This is the same conclusion the earlier revision reached by declaring the aggregate untestable, now reached by testing it — which is the better position to be in, since "we did not report dispersion" and "the effect is inside the noise" are different statements and only the second is a finding.
 
-The test pass rate moves the *opposite* way, 65.5% to 47.2%. Most of this is polars-004, whose with-bobbin run recorded F1 = 0.0 and duration = 0.0s — an infrastructure failure, not a regression. We flag rather than explain it: a study that cannot distinguish an infrastructure failure from a quality regression in its own aggregate should not be reporting that aggregate as a result, which is precisely why §5.1 leads.
+One caveat the test does not carry: runs are pooled across tasks, and the arms are not balanced per task (Table 7). Task difficulty is therefore a between-arm confound in this pooled comparison, on top of the sample-size problem. A per-task paired analysis is the right design and this study does not have the per-task N to support one.
 
-**Table 6: Per-task baseline comparison**
+#### 5.4.1 What the recount changed
 
-| Task | no-bobbin F1 | with-bobbin F1 | Delta |
-|------|:------------:|:--------------:|:-----:|
-| ruff-001 | 0.321 | 0.667 | +0.346 |
-| ruff-002 | 0.571 | 0.571 | 0.000 |
-| ruff-003 | 0.900 | 0.867 | −0.033 |
-| ruff-004 | 0.542 | 0.708 | +0.166 |
-| ruff-005 | 1.000 | 1.000 | 0.000 |
-| cargo-001 | 1.000 | — | — |
-| polars-004 | 0.800 | 0.000 | −0.800 |
-| polars-005 | 0.794 | — | — |
+The earlier revision reported this table over **66 runs (N=29 / N=36)** with F1 69.5% → 72.2% and a test pass rate falling from 65.5% to 47.2%. The recount from artifacts contradicts it on four points, and each is worth naming because each is a distinct failure mode:
 
-Flask tasks are excluded (§4.2). Cells marked "—" have no completed runs in that arm, and the per-task with-bobbin counts are N=1 for ruff-003, ruff-004 and ruff-005 — single runs of a process whose standard deviation is 0.347. **Individual rows of this table should not be interpreted.** In particular the +0.346 on ruff-001 and +0.166 on ruff-004 are single-run and 7-run figures respectively against the same noise floor, and the apparent ceiling effect on ruff-005 and cargo-001 is equally consistent with those tasks being too easy to discriminate between arms.
+1. **The arms did not sum.** 29 + 36 = 65, against a stated total of 66. The correct no-bobbin count is 30.
+2. **The 66-run aggregate contained the withdrawn Flask tasks** — 25 of the 66 — despite §4.2 stating Flask was excluded from every claim. Recomputed honestly over all 66 the effect is +0.036 (p = 0.518); over the 41 reported runs it is +0.072 (p = 0.395). The withdrawn subset on its own runs the other way, −0.021.
+3. **The test pass rate had no injection signal in it at all.** Every non-Flask run passes, in both arms; every Flask run fails, in both arms. The published 65.5% → 47.2% gap is entirely an artifact of arm-imbalanced contamination: 15 of the 36 with-bobbin runs were Flask against 10 of the 30 no-bobbin runs, so the arm with proportionally more broken fixtures scored lower. The earlier revision attributed the drop to polars-004; that explanation was wrong.
+4. **polars-004 had no with-bobbin measurement to attribute it to.** All three of its with-bobbin runs terminated in `bobbin_setup_error`. Its published F1 of 0.000 was a failed run scored as a zero.
+
+The direction of the correction is *favourable* to the system — the effect roughly doubles once the broken fixtures come out — which is precisely why it needed to be found by recount rather than trusted. We report it at length for the same reason §4.2 exists: the aggregate was contaminated for two drafts and looked entirely normal throughout.
+
+**Table 7: Per-task baseline comparison**
+
+| Task | no-bobbin F1 (N) | with-bobbin F1 (N) | Delta |
+|------|:----------------:|:------------------:|:-----:|
+| ruff-001 | 0.324 ± 0.021 (5) | 0.636 ± 0.347 (7) | +0.312 |
+| ruff-002 | 0.571 ± 0.000 (2) | 0.571 ± 0.000 (3) | 0.000 |
+| ruff-003 | 0.900 ± 0.141 (2) | 0.867 ± 0.115 (3) | −0.033 |
+| ruff-004 | 0.542 ± 0.295 (2) | 0.708 ± 0.276 (4) | +0.166 |
+| ruff-005 | 1.000 ± 0.000 (2) | 1.000 ± 0.000 (3) | 0.000 |
+| cargo-001 | 1.000 ± 0.000 (1) | 1.000 ± 0.000 (1) | 0.000 |
+| polars-004 | 0.800 ± 0.000 (3) | — (0 of 3 measured) | — |
+| polars-005 | 0.794 ± 0.110 (3) | — (0 runs) | — |
+
+Flask tasks are excluded (§4.2). Two kinds of "—" appear and they are not the same: polars-005 has no with-bobbin runs, while polars-004 has three that failed to measure.
+
+**Individual rows of this table should not be interpreted.** Every with-bobbin cell except ruff-001's rests on one to four runs against a standard deviation of 0.347, and five of the eight tasks have N ≤ 3 in both arms. The apparent ceiling on ruff-005 and cargo-001 is equally consistent with those tasks being too easy to discriminate between arms, and the two rows with a visible positive delta — ruff-001 and ruff-004 — are also the two with the most runs, which is the pattern one expects from noise as much as from signal.
 
 ### 5.5 Underlying per-condition data
 
-**Table 7: Per-condition breakdown with standard deviations**
+**Table 8: Per-condition breakdown with standard deviations**
 
 | Task | Approach | N | F1 (mean ± sd) | Test Pass% | Avg Cost |
 |------|----------|:-:|:--------------:|:----------:|:--------:|
@@ -361,13 +406,15 @@ Flask tasks are excluded (§4.2). Cells marked "—" have no completed runs in t
 
 † Not an ablation — injection is disabled entirely in this arm. See §5.2.
 
+**Every cell of this table reproduces exactly from the per-run artifacts** — N, mean and standard deviation, to three decimal places, for all ten rows (`scripts/paper_census.py` §4). That matters given §5.4.1: the table that carries this paper's argument survives the recount unchanged, and the one that did not is the aggregate the paper already declines to lead with.
+
 The `with-bobbin` standard deviation of 0.347 is the number that governs everything else in this paper. It is produced by identical configuration, identical prompts and identical repository state, so it is not measurement error to be reduced by better instrumentation — it is the intrinsic run-to-run variance of the agent. Every power calculation in §5.3 follows from it.
 
-Note also that the test pass rate is 100% in every ruff-001 condition, including the ones with the worst F1. The tasks' own test suites do not discriminate between these arms at all, which is why file-level F1 rather than test outcome is the primary metric here — and a limitation, since file-level overlap with ground truth is a proxy for correctness rather than correctness itself.
+Note also that the test pass rate is 100% in every ruff-001 condition, including the ones with the worst F1. This is not local to ruff-001: across the whole study every run of a reported task passes and every run of a withdrawn Flask task fails, in both arms (§5.4.1). The test-outcome metric therefore carries **no** information about injection anywhere in this study — it separates working fixtures from broken ones and nothing else. That is why file-level F1 rather than test outcome is the primary metric here, and it is a limitation, since file-level overlap with ground truth is a proxy for correctness rather than correctness itself.
 
 ### 5.6 Injection precision and recall
 
-**Table 8: How well injected files predict agent-touched files**
+**Table 9: How well injected files predict agent-touched files**
 
 | Task | Approach | Injection Precision | Injection Recall | Injection F1 |
 |------|----------|:-------------------:|:----------------:|:------------:|
@@ -383,7 +430,7 @@ Injection precision is low across all conditions — Bobbin injects many more fi
 
 The most interesting row is `semantic_weight=0.0`, which has the **highest** injection precision (0.181) and the **lowest** task F1 (0.252). If overlap between injected and edited files measured usefulness, that combination would be impossible. We read it as evidence that **injection-overlap metrics are a poor proxy for injection value**: semantic search appears to help the agent *reason its way to* the right files, and the files that support that reasoning are not the files it edits. This undercuts the obvious cheap evaluation for context systems — measuring what fraction of injected context gets used — and is an argument for end-task evaluation despite its cost and variance.
 
-Given the N in Table 7, these are observations to be tested, not results.
+Given the N in Table 8, these are observations to be tested, not results.
 
 ### 5.7 Withdrawn: calibration sweep
 
@@ -397,27 +444,29 @@ We make no configuration recommendation. Establishing one requires re-running th
 
 ### 6.1 What the decomposition suggests
 
-**Retrieval beats filtering, and the gap is large.** The three retrieval-expansion methods (0.247-0.384) separate from the three filtering methods (0.025-0.080) by roughly an order of magnitude. This is the study's most robust structural claim — robust in the sense that it does not depend on any individual arm being significant, only on the grouping being real, and the grouping is what survives when the individual magnitudes do not. For a practitioner the implication is direct: **spend engineering effort on getting more of the right things into the candidate set, not on filtering the candidate set afterwards.**
+**Retrieval beats filtering, and the gap is large.** The three retrieval-expansion methods (0.247-0.384) separate from the three filtering methods (0.025-0.080) by roughly an order of magnitude. This is the study's most robust structural claim — robust in the sense that it does not depend on any individual arm being significant, only on the grouping being real, and the grouping is what survives when the individual magnitudes do not. §5.1.1 is the strongest available test of that: re-basing every arm on a model-matched baseline moves all six magnitudes, flips three signs, and destroys the significance of the strongest arm, yet the grouping comes through *sharper* — retrieval −0.141 to −0.278 against filtering +0.026 to +0.081, now separated by sign rather than only by magnitude. A claim that survives the correction that breaks everything around it is the one worth carrying. For a practitioner the implication is direct: **spend engineering effort on getting more of the right things into the candidate set, not on filtering the candidate set afterwards.**
 
 **Structural signals appear to complement semantic ones.** Blame bridging (−0.303) and coupling expansion (−0.247) surface files that are related to the query through *repository history* rather than through text or embedding similarity. Nothing in the query resembles those files; they are reached because the commit record connects them to something that does. If this holds at proper N it is the more interesting half of the result, because it is the half a purely embedding-based system cannot replicate.
 
-**Keyword-only injection may be worse than none.** With semantic search disabled, F1 (0.252) falls below no injection at all (0.324). The obvious reading is that lexical matching injects code that *looks* relevant and is not, and misleading context is worse than absent context. This is a claim about the *risk* profile of injection systems that we think deserves direct study — a badly-retrieving injector is not merely a weak one.
+**Keyword-only injection may be worse than none.** With semantic search disabled, F1 (0.252) falls below no injection at all (0.324) — and this particular comparison is unaffected by §5.1.1, since both the ablation arm and the `no-bobbin` figure it is compared against rest on confirmed Sonnet 4.5 runs (0.252 against 0.317 model-matched). The obvious reading is that lexical matching injects code that *looks* relevant and is not, and misleading context is worse than absent context. This is a claim about the *risk* profile of injection systems that we think deserves direct study — a badly-retrieving injector is not merely a weak one.
 
 ### 6.2 What we cannot claim, and why that matters
 
-**Nothing here is statistically established.** After correction for six comparisons, no arm is significant (§5.3). We restate this in the discussion because it is easy for a reader to carry Table 1's bolded numbers forward and forget the intervals attached to them.
+**Nothing here is statistically established.** After correction for six comparisons, no arm is significant (§5.3), and against a model-matched baseline not even the strongest arm is significant before correction (§5.1.1). We restate this in the discussion because it is easy for a reader to carry Table 1's bolded numbers forward and forget the intervals attached to them.
 
 **The tool-availability confound is the deepest problem.** As §5.2 shows, our own data attribute ~92% of the measured benefit to the agent having and using a search tool, and ~8% to automatic injection. We do not believe this is specific to Bobbin. Any evaluation that compares "agent with context system" against "agent without" changes two things simultaneously — the injection mechanism *and* the agent's awareness that retrieval tooling exists — unless it deliberately holds the second fixed. We did not, and we suspect it is easy not to.
 
 **Injection-overlap metrics do not measure injection value.** The condition with the best injected-vs-edited overlap (`semantic_weight=0.0`, precision 0.181) is the condition with the worst task performance (§5.6). Whatever useful injection does, it is not well captured by counting how much injected context ends up edited. This closes off the cheap evaluation and is part of why the expensive one is noisy.
 
-**A study can be substantially larger than ours and still be underpowered.** The 108-run design the original protocol called for would not have been sufficient for the filtering arms, which need hundreds to thousands of runs each. Scaling a noisy design is not the same as fixing it; the effects have to be big enough to see.
+**A study can be substantially larger than ours and still be underpowered.** The 96-run ablation the original protocol called for — four tasks, eight conditions, three attempts, of which only the 19 runs on ruff-001 were executed (Appendix A) — would not have been sufficient for the filtering arms either, which need hundreds to thousands of runs each. Scaling a noisy design is not the same as fixing it; the effects have to be big enough to see.
 
 ### 6.3 Limitations
 
-**Small sample sizes.** N=3-7 per condition against a per-run standard deviation of 0.347. Table 4 gives the required N per arm. Stated in the abstract as well as here, because a limitation discovered late in a paper reads as concealment.
+**Small sample sizes.** N=3-7 per condition against a per-run standard deviation of 0.347. Table 5 gives the required N per arm. Stated in the abstract as well as here, because a limitation discovered late in a paper reads as concealment.
 
 **Single-task ablation.** All ablation data come from ruff-001. The method ranking may not transfer across repositories, languages, or task types, and we have no evidence that it does. Cargo-001 scores 1.000 in both arms and provides no signal.
+
+**The runs are not model-matched, and the harness cannot fully say which were.** §5.1.1 gives the damage. Two lessons generalise beyond this study, and both are cheap to act on: an ablation harness must **record the serving model in every run artifact** — 45 of our 85 runs cannot be attributed from their own record, which is how this survived to a late draft — and it must **refuse to compare arms that were not served by the same model**, rather than trusting that a configuration file said so. A model upgrade landing mid-study is not an exotic failure; it is the expected case for anyone evaluating against a hosted frontier model over a period of weeks.
 
 **Withdrawn and missing tasks.** The five Flask tasks are withdrawn as broken fixtures (§4.2), which also withdraws the calibration sweep (§5.7). Django-001 and pandas-001 produced no completed runs; polars-005 has no with-bobbin runs. Cross-repository generalisation is correspondingly weak: the reported evidence rests on Ruff plus two isolated tasks.
 
@@ -494,7 +543,7 @@ We set out to measure which of six context-injection methods carries the weight 
 
 **The decomposition.** Removing a method and re-measuring produces effects up to fourteen times larger than the aggregate with-versus-without comparison, which is the case for making removal the primary experiment. The six methods separate into two groups: retrieval-expansion (semantic search −0.384, blame bridging −0.303, coupling expansion −0.247) and filtering (doc demotion −0.080, recency −0.025, gating −0.025). We regard the *grouping* as the transferable result and the individual magnitudes as provisional. The practical reading is that effort belongs in what enters the candidate set rather than in what is filtered from it, and that repository history is a retrieval signal distinct from — not a proxy for — semantic similarity.
 
-**Why it is not settled.** After correcting for six comparisons, no arm is significant. Five of six confidence intervals cross zero. The aggregate effect the original study led with (+0.027 F1) is an order of magnitude below the per-run standard deviation of 0.347, and cannot be tested at all because the aggregate was reported without dispersion. Most seriously, one arm turned out to disable injection entirely while leaving the agent a search tool it was told to use, and comparing it against both baselines attributes roughly 92% of the apparent benefit to tool availability rather than to injection. That is a confound in the design, not a defect in the implementation, and we expect it to recur in any evaluation that compares an agent with a context system against an agent without one.
+**Why it is not settled.** After correcting for six comparisons, no arm is significant. Five of six confidence intervals cross zero. The aggregate effect the original study led with is inside the noise: recomputed from artifacts it is +0.072 F1 against a per-run standard deviation of 0.347, p = 0.395, with a confidence interval that admits injection making things worse. Most seriously, one arm turned out to disable injection entirely while leaving the agent a search tool it was told to use, and comparing it against both baselines attributes roughly 92% of the apparent benefit to tool availability rather than to injection. That is a confound in the design, not a defect in the implementation, and we expect it to recur in any evaluation that compares an agent with a context system against an agent without one.
 
 **What we would tell someone repeating this.** Three things, in order of how much they cost to get wrong. First, hold tool availability fixed — the control arm is "system installed and advertised, injection disabled", not "system absent". Second, power the study on the effects you intend to claim: 14, 22 and 32 runs per arm for the retrieval-expansion effects here, and simply do not claim effects that would need thousands. Third, treat the harness as part of the system under test — a task whose pass rate is invariant across arms is a suspected broken fixture, and prompt scaffolding added for one purpose can silently drive a mechanism measured for another. Each of these cost us a result.
 
@@ -504,15 +553,64 @@ Automated context injection remains a promising direction and we continue to bui
 
 ## Appendix A: Raw Data Sources
 
-- Baseline comparison: 66 runs across 13 tasks (`eval/results/fresh-report.md`)
-- Ablation study: 85 runs, 8 conditions on ruff-001 (`eval/results/ablation-report-final.md`)
-- Calibration sweep: **withdrawn** — 6 configurations across 4 Flask tasks (§5.7)
+**Run census, recounted from the per-run artifacts.** Regenerate with
+`python3 scripts/paper_census.py`, which reads
+`eval/results/runs/<run-id>/<task>_<approach>_<n>.json` and reproduces every
+table in §5.4-5.5.
+
+| | Runs |
+|---|---:|
+| Result files in the artifact store | 89 |
+| — terminated in `bobbin_setup_error`, no measurement | 4 |
+| **Completed runs** | **85** |
+| — ablation arms (6 conditions, all on ruff-001) | 19 |
+| — primary arms (`no-bobbin` / `with-bobbin`) | 66 |
+| — — withdrawn Flask tasks (§4.2) | 25 |
+| — — **reported tasks, the basis of Table 6** | **41** |
+
+**The discrepancy flagged in earlier drafts is resolved, and none of the three
+numbers was right.** The draft reported "85 ablation runs", the study script
+comments describe "4 tasks × 8 conditions × 3 attempts" (96), and the cost
+estimate was quoted for 108. In fact:
+
+- **85** is the total completed runs in the *whole study*, ablation and
+  baseline together. It was a correct number with the wrong label.
+- **96** is the protocol's design intent, never executed. The ablation ran six
+  conditions on one task, not eight conditions on four.
+- **108** does not correspond to anything in the artifact store and appears to
+  have been an estimate that outlived its plan.
+- **19** is the ablation study, which is the figure §5.1-5.3 actually rest on.
+
+Other sources:
+
 - Per-run artifacts: `eval/results/runs/<run-id>/`, including `*_metrics.jsonl`, which is what establishes injection actually occurred in a given arm (§5.2)
-- Evaluation framework: headless Claude Code agents, `claude-sonnet-4-5-20250929`
-- Statistics: `scripts/paper_stats.py` regenerates every figure in §5.1-5.3
+- Calibration sweep: **withdrawn** — 6 configurations across 4 Flask tasks (§5.7)
+- Evaluation framework: headless Claude Code agents — **not single-model**, see below and §5.1.1
+- Statistics: `scripts/paper_stats.py` regenerates §5.1-5.3 from the reported means; `scripts/paper_census.py` regenerates §5.4-5.5 and the model attribution below from the raw runs
 - Measurement-validity audit: `docs/plans/paper-measurement-validity.md`
 
-**Discrepancy to resolve before submission.** The run counts are not mutually consistent: the abstract of the original draft reported 85 ablation runs, the study script comments describe "4 tasks x 8 conditions x 3 attempts" (96), and the cost estimate below is quoted for 108. These are three numbers for one study and at most one is right. The per-run artifacts are authoritative and should be recounted directly.
+**Serving-model attribution.** The study is not single-model (§5.1.1). Across the 85 completed runs, from `model_usage` in the per-run artifacts:
+
+| Serving model | Runs |
+|---|---:|
+| `claude-sonnet-4-5-20250929`, confirmed in usage records | 29 |
+| `claude-opus-4-6`, confirmed in usage records | 11 |
+| `claude-sonnet-4-5-20250929` declared in manifest, no usage record | 20 |
+| No model record of any kind | 25 |
+
+`claude-haiku-4-5-20251001` also appears in 12 runs as a secondary model alongside a primary one; that is Claude Code's own internal use, not the agent model under test. The two unattributed categories are older artifacts written before the harness recorded usage. **45 of 85 runs cannot be attributed to a serving model from their own artifact**, which is the reporting defect behind §5.1.1 and the first thing a re-run must fix.
+
+**On the two scripts.** They are deliberately not merged. `paper_stats.py`
+works from means transcribed out of the paper, so a reader can check the
+arithmetic of the published claims without the raw runs. `paper_census.py`
+works only from artifacts, so the published claims can be checked *against*
+the runs. Keeping them separate is what surfaced the Table 6 contamination
+(§5.4.1): the two disagreed, and the artifacts won.
+
+The narrative reports `eval/results/fresh-report.md` and
+`ablation-report-final.md` are retained as a record of what the study reported
+at the time. **Where they disagree with the artifacts, the artifacts govern**;
+`fresh-report.md` is the source of the superseded 66-run aggregate.
 
 ## Appendix B: Reproduction
 
@@ -528,7 +626,7 @@ python3 -m runner.cli run-task ruff-001 --approach with-bobbin -C semantic_weigh
 python3 scripts/paper_stats.py
 ```
 
-Estimated cost: ~$1-2 per run, ~5 minutes per run.
+Estimated cost: ~$1-2 per run, ~5 minutes per run. The 85 completed runs reported here therefore cost roughly $85-170 of model time.
 
 **Two caveats for anyone reproducing this.**
 

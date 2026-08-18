@@ -240,7 +240,44 @@ messages until someone with the Dolt remote closes them.
 This is worth fixing at the source: a repo whose tracked JSONL cannot be written
 back to accumulates exactly this kind of shadow state.
 
-## 5. Open and unassessed
+## 5. Found this pass, unfiled — the eval harness does not record its own model
+
+**No bead exists for this yet**; `scripts/beads-jsonl.py` has no `create`
+subcommand, so it is recorded here until one can be filed. Severity: this is
+the defect that cost the paper its strongest result.
+
+**What it is.** The eval runner does not reliably record which model served a
+run. Of the 85 completed runs in `eval/results/runs/`, 29 carry a confirmed
+serving model in `agent_result.model_usage`, 11 confirm a *different* model
+(`claude-opus-4-6`) than the study intended, 20 have a manifest that declares
+`claude-sonnet-4-5-20250929` but no usage record to confirm it, and 25 carry no
+model information of any kind. **45 of 85 runs cannot be attributed to a model
+from their own artifact.**
+
+**What it cost.** The paper's ablation baseline turned out to be model-mixed
+while every ablation arm was uniformly Sonnet 4.5. Re-basing on a model-matched
+baseline moves all six removal effects, flips three signs, and drops the one
+nominally significant arm from p = 0.030 to p = 0.191. See
+`docs/paper-context-injection.md` §5.1.1 and `docs/plans/paper-statistics.md`
+§4b. None of it is recoverable from the existing runs — an unattributed run
+stays unattributed.
+
+**The fix, in two parts.** Both are small and neither is optional before the
+next study:
+
+1. **Record it.** Persist the serving model into every run artifact at write
+   time, from the agent's own usage record rather than from the config that
+   requested it. A manifest field that declares intent is what failed here.
+2. **Refuse to compare across it.** The scorer should treat serving model as
+   part of a run's identity and decline to aggregate arms that do not match,
+   rather than silently pooling them. An unattributed run should be excluded
+   from cross-arm comparison, not assumed to match.
+
+Point 2 is the load-bearing one. Point 1 alone would have surfaced the problem
+in the artifacts, which is where it was eventually found — nine months late,
+by a recount undertaken for an unrelated reason.
+
+## 6. Open and unassessed
 
 `bobbin-aa0`, `bobbin-di7`, `bobbin-bbe`.
 
