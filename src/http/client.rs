@@ -1047,6 +1047,15 @@ impl Client {
         &self.base_url
     }
 
+    /// Fetch one stored injection: its candidate file list and the block that
+    /// was actually rendered. `hook expand` derives the withheld set from those
+    /// two rather than from a second record of what was dropped — one source,
+    /// so there is nothing to disagree with.
+    pub async fn injection_detail(&self, injection_id: &str) -> Result<serde_json::Value> {
+        let url = format!("{}/injections/{}", self.base_url, injection_id);
+        self.get_json(&url, &[]).await
+    }
+
     /// Internal helper: GET with query params, parse JSON response.
     async fn get_json<T: serde::de::DeserializeOwned>(
         &self,

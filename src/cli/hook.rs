@@ -284,6 +284,9 @@ enum HookCommands {
     /// Handle UserPromptSubmit events (internal, called by Claude Code)
     InjectContext(InjectContextArgs),
 
+    /// Redeem an injection_id: show the files an injection HELD BACK.
+    Expand(ExpandArgs),
+
     /// Handle SessionStart compact events (internal, called by Claude Code)
     SessionContext(SessionContextArgs),
 
@@ -333,6 +336,112 @@ struct StatusArgs {
     /// Directory to check (defaults to current directory)
     #[arg(default_value = ".")]
     path: PathBuf,
+}
+
+/// The files an injection stored as candidates but never rendered.
+///
+/// A file counts as SHOWN when its path appears in the rendered block. That is
+/// a substring test over output we generated ourselves, not a heuristic over
+/// arbitrary text — the renderer writes the path verbatim.
+///
+/// Free-standing rather than inline so the arithmetic — which is the part that
+/// can be wrong — is testable without a live injection store.
+fn withheld_of<'a>(files: &'a [String], rendered: &str) -> Vec<&'a String> {
+    files.iter().filter(|f| !rendered.contains(*f)).collect()
+}
+
+#[derive(Args)]
+struct ExpandArgs {
+    /// The injection_id printed in the context header.
+    #[arg(long)]
+    injection: String,
+
+    /// Maximum files to return.
+    #[arg(long, default_value_t = 20)]
+    limit: usize,
+}
+
+/// `bobbin hook expand --injection <id>` — the pull half of progressive
+/// disclosure for CODE context.
+///
+/// An injection header already carries `injection_id` and, since the omission
+/// counters landed, an honest `omitted` count. A count with no way to redeem it
+/// is a signpost pointing at a door nobody can open, so this is the door: the
+/// stored injection record holds the full candidate list (`files`) and exactly
+/// what was rendered (`formatted_output`), and the difference is what the
+/// budget held back.
+///
+/// NO SCHEMA CHANGE, deliberately. The two fields were already stored for the
+/// feedback path; deriving the withheld set from them means an injection made
+/// before this command existed is still expandable, and there is no second
+/// record of what was dropped that could disagree with the first.
+async fn run_expand(args: ExpandArgs, output: OutputConfig) -> Result<()> {
+    let Some(server_url) = output.server.clone().or_else(|| {
+        super::find_bobbin_root()
+            .and_then(|root| Config::load(&Config::config_path(&root)).ok())
+            .and_then(|c| c.server.url)
+    }) else {
+        // COULD NOT LOOK, not "nothing was held back". A caller that cannot
+        // distinguish them would read an unreachable server as a complete
+        // injection, which is the exact misreading the omission counters exist
+        // to prevent.
+        anyhow::bail!("no bobbin server configured (BOBBIN_SERVER) — cannot expand");
+    };
+    let client = crate::http::client::Client::new(&server_url);
+    let detail: serde_json::Value = client.injection_detail(&args.injection).await?;
+
+    let rendered = detail
+        .get("formatted_output")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let files: Vec<String> = detail
+        .get("files")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let withheld = withheld_of(&files, rendered);
+
+    if withheld.is_empty() {
+        // Say so rather than printing nothing. Silence here is
+        // indistinguishable from a failed lookup, and the whole point of this
+        // command is to make "there is more" and "that was everything"
+        // different observable states.
+        if !output.quiet {
+            println!(
+                "Injection {} held nothing back: all {} candidate file(s) were shown.",
+                args.injection,
+                files.len()
+            );
+        }
+        return Ok(());
+    }
+
+    let shown = withheld.len().min(args.limit);
+    let mut out = format!(
+        "Injection {} held back {} file(s) of {} candidates",
+        args.injection,
+        withheld.len(),
+        files.len()
+    );
+    if shown < withheld.len() {
+        // The expansion has a budget too, and it says so. A pull surface that
+        // truncated silently would reintroduce, one level down, the defect it
+        // exists to fix.
+        out.push_str(&format!(" (showing {shown}; raise --limit for the rest)"));
+    }
+    out.push_str(":\n");
+    for f in withheld.iter().take(shown) {
+        out.push_str(&format!("- {f}\n"));
+    }
+    if !output.quiet {
+        print!("{out}");
+    }
+    Ok(())
 }
 
 #[derive(Args)]
@@ -437,6 +546,7 @@ pub async fn run(args: HookArgs, output: OutputConfig) -> Result<()> {
         HookCommands::Uninstall(a) => run_uninstall(a, output).await,
         HookCommands::Status(a) => run_status(a, output).await,
         HookCommands::InjectContext(a) => run_inject_context(a, output).await,
+        HookCommands::Expand(a) => run_expand(a, output).await,
         HookCommands::SessionContext(a) => run_session_context(a, output).await,
         HookCommands::PrimeContext(a) => run_prime_context(a, output).await,
         HookCommands::PostToolUse(a) => run_post_tool_use(a, output).await,
@@ -8571,6 +8681,37 @@ mod tests {
         let cut = format_remote_file_chunks(&mut out, &refs, 10_000, &mut line_count, "xml");
         assert_eq!(cut, 0, "everything fit; nothing was held back");
         assert!(!out.is_empty(), "and it actually rendered something");
+    }
+
+
+    // --- hook expand: redeeming an injection_id --------------------------
+
+    // `withheld_of` is the SHIPPED helper (super::), not a copy — a test
+    // against a reimplementation would pass while the real one was wrong.
+
+    #[test]
+    fn expand_returns_exactly_the_files_the_render_left_out() {
+        let files = vec![
+            "src/a.rs".to_string(),
+            "src/b.rs".to_string(),
+            "src/c.rs".to_string(),
+        ];
+        let rendered = "<bobbin-context ...>\n// src/a.rs\ncode\n";
+        let withheld = withheld_of(&files, rendered);
+        assert_eq!(withheld.len(), 2);
+        assert!(withheld.iter().any(|f| *f == "src/b.rs"));
+        assert!(withheld.iter().any(|f| *f == "src/c.rs"));
+    }
+
+    /// The control. A render that showed everything must yield an EMPTY
+    /// withheld set — without this the test above would pass against a helper
+    /// that always claimed everything was held back, which is the same
+    /// misinformation pointing the other way.
+    #[test]
+    fn expand_reports_nothing_withheld_when_everything_was_shown() {
+        let files = vec!["src/a.rs".to_string(), "src/b.rs".to_string()];
+        let rendered = "// src/a.rs\n// src/b.rs\n";
+        assert!(withheld_of(&files, rendered).is_empty());
     }
 
 }
