@@ -18,6 +18,35 @@ Read these before every session:
 3. `crew/strider/charter.md` — who you are, what you do, what you value
 4. `crew/strider/escalation.md` — how and when to escalate
 
+## Git Workflow — trunk-based, straight to `main`
+
+**Work on `main` and push to `main`.** Do not create feature branches, and do
+not open pull requests, unless you are explicitly asked for one. Stated by
+Stiwi, 2026-08-18.
+
+```bash
+git pull --rebase origin main     # before starting, and again before pushing
+# ... work, with `just check` and `just test` green ...
+git add -A && git commit && git push origin main
+```
+
+**What this costs, stated plainly, because the cost is the reason the rules
+below exist.** There is no review step between a commit and the history
+everyone else pulls, so **the quality gates are the only gate**. A red `main`
+is immediately everyone's problem and there is no pull request standing
+between you and it.
+
+- **Run the gates before every push, not once at session end.** `just check` and `just test`.
+  The pre-push gate this file specifies is not advisory here; it is the
+  entire safety net.
+- **Never force-push `main`.** If a push is rejected the remote has work you do
+  not have; `git pull --rebase` and resolve it. A force-push discards someone
+  else's commits silently, which is exactly the failure that has no undo.
+- **Prefer small complete commits to one large end-of-session commit.** Each
+  one lands live, so each one has to stand on its own.
+- **Work that cannot pass the gates does not get pushed.** There is no branch
+  to park it on — finish it, or leave it uncommitted and say so at handoff.
+
 ## Beads: this repo is JSONL-only, no Dolt
 
 **Do not run `bd init` here, and do not create a Dolt database.**
