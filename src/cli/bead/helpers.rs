@@ -122,4 +122,3 @@ pub(super) fn extract_touched_symbols(repo_root: &Path, sha: &str, files: &[Stri
     }
     out
 }
-

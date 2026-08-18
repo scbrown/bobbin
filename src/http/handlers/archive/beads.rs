@@ -291,4 +291,3 @@ pub(crate) async fn search_beads(
         results,
     }))
 }
-

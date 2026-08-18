@@ -241,4 +241,3 @@ pub(super) fn find_bead_id(text: &str) -> Option<String> {
     }
     None
 }
-

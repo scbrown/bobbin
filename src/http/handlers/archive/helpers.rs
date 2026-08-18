@@ -208,4 +208,3 @@ pub(super) fn clean_bead_snippet(content: &str, max_len: usize) -> String {
         format!("{}...", &trimmed[..end])
     }
 }
-

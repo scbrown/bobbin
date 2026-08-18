@@ -349,4 +349,3 @@ pub(super) fn parse_numstat(stdout: &str) -> (Vec<String>, i64, i64) {
     }
     (files, total_added, total_deleted)
 }
-

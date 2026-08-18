@@ -161,4 +161,3 @@ pub(super) fn run_infer(
     }
     Ok(())
 }
-
