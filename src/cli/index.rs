@@ -156,6 +156,8 @@ struct IndexOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     beads_indexed: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    sql_indexed: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     elapsed_ms: Option<u128>,
     #[serde(skip_serializing_if = "Option::is_none")]
     errors: Option<usize>,
@@ -438,6 +440,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 imports_unresolved: None,
                 commits_indexed: None,
                 beads_indexed: None,
+                sql_indexed: None,
                 elapsed_ms: None,
                 errors: None,
                 // This early return never reaches the maintenance step.
@@ -1124,131 +1127,103 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         let mut beads_config = config.beads.clone();
         beads_config.enabled = true;
 
-        match crate::index::beads::fetch_beads(&beads_config).await {
-            Ok(bead_chunks) if !bead_chunks.is_empty() => {
-                let now = chrono::Utc::now().timestamp().to_string();
+        // Beads run through the shared ChunkSource seam: content-hash
+        // incremental with a removal sweep (the pattern this source
+        // originated, now generalized in index::source).
+        struct BeadsSource(crate::config::BeadsConfig);
+        impl crate::index::source::ChunkSource for BeadsSource {
+            fn name(&self) -> &str {
+                "beads"
+            }
+            fn repo_key(&self) -> &str {
+                BEADS_HASH_REPO
+            }
+            fn source_label(&self) -> &str {
+                "beads"
+            }
+            async fn fetch(&self) -> Result<Vec<Chunk>> {
+                crate::index::beads::fetch_beads(&self.0).await
+            }
+        }
 
-                // --force: drop all previously-tracked bead hashes so every bead
-                // re-embeds from scratch.
-                if args.force {
-                    metadata_store.clear_file_hashes(BEADS_HASH_REPO).ok();
-                }
-
-                // Incremental: only (re)embed beads whose assembled content hash
-                // changed since the last index. Bead hashes live under their own
-                // repo key (matching the LanceDB rows), so the bead corpus is
-                // shared across source-repo index runs without touching any
-                // source repo's incremental state.
-                let mut to_index = Vec::new();
-                let mut current_paths: std::collections::HashSet<String> =
-                    std::collections::HashSet::new();
-                let mut new_hashes: Vec<(String, String)> = Vec::new();
-                for c in &bead_chunks {
-                    current_paths.insert(c.file_path.clone());
-                    let h = crate::index::beads::content_hash(&c.content);
-                    let unchanged = metadata_store
-                        .get_file_hash(BEADS_HASH_REPO, &c.file_path)
-                        .ok()
-                        .flatten()
-                        .as_deref()
-                        == Some(h.as_str());
-                    if !unchanged {
-                        to_index.push(c.clone());
-                    }
-                    new_hashes.push((c.file_path.clone(), h));
-                }
-
-                // Remove beads that no longer appear (closed / aged-out / deleted).
-                let removed: Vec<String> = metadata_store
-                    .get_all_indexed_files(BEADS_HASH_REPO)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter(|p| !current_paths.contains(p))
-                    .collect();
-                if !removed.is_empty() {
-                    vector_store
-                        .delete_by_file(&removed, Some(BEADS_HASH_REPO))
-                        .await
-                        .ok();
-                    metadata_store
-                        .delete_file_hashes(Some(BEADS_HASH_REPO), &removed)
-                        .ok();
-                }
-
-                if to_index.is_empty() {
-                    if output.verbose && !output.quiet && !output.json {
+        match crate::index::source::index_hashed_source(
+            &BeadsSource(beads_config),
+            &mut vector_store,
+            &metadata_store,
+            &embed,
+            args.force,
+        )
+        .await
+        {
+            Ok(report) => {
+                beads_indexed = report.indexed;
+                if output.verbose && !output.quiet && !output.json {
+                    if report.indexed == 0 && report.unchanged == 0 && report.removed == 0 {
+                        println!("  No beads to index");
+                    } else if report.indexed == 0 {
                         println!(
                             "  Beads up to date ({} unchanged, {} removed)",
-                            bead_chunks.len(),
-                            removed.len()
+                            report.unchanged, report.removed
+                        );
+                    } else {
+                        println!(
+                            "  Indexed {} beads ({} unchanged, {} removed)",
+                            report.indexed, report.unchanged, report.removed
                         );
                     }
-                } else {
-                    let embed_texts: Vec<String> =
-                        to_index.iter().map(|c| c.content.clone()).collect();
-                    let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
-
-                    match embed.embed_batch(&embed_refs).await {
-                        Ok(embeddings) => {
-                            let contexts = vec![None; to_index.len()];
-
-                            // Replace just the changed bead chunks.
-                            let bead_ids: Vec<String> =
-                                to_index.iter().map(|c| c.id.clone()).collect();
-                            vector_store.delete(&bead_ids).await.ok();
-
-                            // Distinct repo name so bead issues don't collide with
-                            // source repos that happen to be named "beads".
-                            if let Err(e) = vector_store
-                                .insert(
-                                    &to_index,
-                                    &embeddings,
-                                    &contexts,
-                                    BEADS_HASH_REPO,
-                                    "beads",
-                                    &now,
-                                )
-                                .await
-                            {
-                                if !output.quiet && !output.json {
-                                    println!("{} Failed to store bead chunks: {}", "!".yellow(), e);
-                                }
-                            } else {
-                                beads_indexed = to_index.len();
-                                // Persist hashes only after a successful insert.
-                                let hash_refs: Vec<(&str, &str)> = new_hashes
-                                    .iter()
-                                    .map(|(p, h)| (p.as_str(), h.as_str()))
-                                    .collect();
-                                metadata_store
-                                    .set_file_hashes_bulk(BEADS_HASH_REPO, &hash_refs)
-                                    .ok();
-                                if output.verbose && !output.quiet && !output.json {
-                                    println!(
-                                        "  Indexed {} beads ({} unchanged, {} removed)",
-                                        beads_indexed,
-                                        bead_chunks.len() - beads_indexed,
-                                        removed.len()
-                                    );
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            if !output.quiet && !output.json {
-                                println!("{} Failed to embed beads: {}", "!".yellow(), e);
-                            }
-                        }
-                    }
-                }
-            }
-            Ok(_) => {
-                if output.verbose && !output.quiet && !output.json {
-                    println!("  No beads to index");
                 }
             }
             Err(e) => {
                 if !output.quiet && !output.json {
-                    println!("{} Failed to fetch beads: {}", "!".yellow(), e);
+                    println!("{} Failed to index beads: {}", "!".yellow(), e);
+                }
+            }
+        }
+    }
+
+    // Index configured SQL sources (roadmap W4.P2) through the same seam.
+    let mut sql_indexed: usize = 0;
+    if config.sql.enabled && !config.sql.sources.is_empty() {
+        for source_config in &config.sql.sources {
+            if !output.quiet && !output.json {
+                println!("  Indexing SQL source '{}'...", source_config.name);
+            }
+            let source = match crate::index::sql::SqlSource::new(source_config) {
+                Ok(s) => s,
+                Err(e) => {
+                    if !output.quiet && !output.json {
+                        println!("{} {}", "!".yellow(), e);
+                    }
+                    continue;
+                }
+            };
+            match crate::index::source::index_hashed_source(
+                &source,
+                &mut vector_store,
+                &metadata_store,
+                &embed,
+                args.force,
+            )
+            .await
+            {
+                Ok(report) => {
+                    sql_indexed += report.indexed;
+                    if output.verbose && !output.quiet && !output.json {
+                        println!(
+                            "  SQL '{}': {} indexed, {} unchanged, {} removed",
+                            source_config.name, report.indexed, report.unchanged, report.removed
+                        );
+                    }
+                }
+                Err(e) => {
+                    if !output.quiet && !output.json {
+                        println!(
+                            "{} SQL source '{}' failed: {}",
+                            "!".yellow(),
+                            source_config.name,
+                            e
+                        );
+                    }
                 }
             }
         }
@@ -1425,6 +1400,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             } else {
                 None
             },
+            sql_indexed: if sql_indexed > 0 {
+                Some(sql_indexed)
+            } else {
+                None
+            },
             beads_indexed: if beads_indexed > 0 {
                 Some(beads_indexed)
             } else {
@@ -1450,6 +1430,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
         if beads_indexed > 0 {
             println!("  Beads: {} indexed from Dolt", beads_indexed);
+        }
+        if sql_indexed > 0 {
+            println!("  SQL: {} rows indexed", sql_indexed);
         }
 
         if dep_count > 0 {

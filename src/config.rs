@@ -17,6 +17,9 @@ pub struct Config {
     pub hooks: HooksConfig,
     pub beads: BeadsConfig,
     pub archive: ArchiveConfig,
+    /// SQL database sources (`[[sql.sources]]`)
+    #[serde(default)]
+    pub sql: SqlConfig,
     pub access: AccessConfig,
     pub sources: SourcesConfig,
     pub groups: Vec<GroupConfig>,
@@ -711,6 +714,56 @@ impl Default for ArchiveConfig {
             webhook_secret: String::new(),
         }
     }
+}
+
+/// Configuration for SQL database sources (roadmap W4.P2).
+///
+/// Each source runs a configured query against a MySQL-protocol database
+/// and indexes every row as one searchable chunk with a stable identity.
+/// Credentials never live in config: `url_env` names an environment
+/// variable holding the connection URL.
+///
+/// Example config:
+/// ```toml
+/// [sql]
+/// enabled = true
+///
+/// [[sql.sources]]
+/// name = "tickets"
+/// url_env = "BOBBIN_SQL_TICKETS_URL"
+/// query = "SELECT id, title, body, status FROM tickets"
+/// id_column = "id"
+/// text_columns = ["title", "body"]
+/// tag_columns = ["status"]
+/// ```
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SqlConfig {
+    /// Enable SQL source indexing
+    pub enabled: bool,
+    /// SQL sources to index
+    pub sources: Vec<SqlSourceConfig>,
+}
+
+/// A single SQL source definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SqlSourceConfig {
+    /// Label for this source; rows index under repo key `sql-{name}` and
+    /// chunk paths `sql:{name}:{id}`.
+    pub name: String,
+    /// Environment variable holding the `mysql://user:pass@host:port/db`
+    /// connection URL. Never put credentials in this file.
+    pub url_env: String,
+    /// Query producing the rows to index. Must include `id_column`.
+    pub query: String,
+    /// Column holding each row's stable primary key.
+    pub id_column: String,
+    /// Columns whose values go into the embedded content. Empty = all.
+    #[serde(default)]
+    pub text_columns: Vec<String>,
+    /// Columns rendered as `column:value` tags for search filtering.
+    #[serde(default)]
+    pub tag_columns: Vec<String>,
 }
 
 /// Configuration for role-based repository access filtering (§69)

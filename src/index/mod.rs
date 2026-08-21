@@ -7,6 +7,8 @@ pub mod git;
 pub mod multimodal;
 pub mod parser;
 pub mod resolver;
+pub mod source;
+pub mod sql;
 pub mod structural;
 pub mod test_edges;
 

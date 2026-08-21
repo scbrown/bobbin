@@ -200,6 +200,24 @@ max_age_days = 90
 # beads out of the index entirely (e.g. ["security", "escalation"])
 exclude_labels = []
 
+[sql]
+# Index rows from MySQL-protocol databases as searchable chunks
+enabled = false
+
+# SQL sources to index. None by default; uncomment to add:
+# [[sql.sources]]
+# # Label — rows index under repo key "sql-{name}" and paths "sql:{name}:{id}"
+# name = "tickets"
+# # Environment variable holding the mysql://user:pass@host:port/db URL.
+# # Credentials never live in this file.
+# url_env = "BOBBIN_SQL_TICKETS_URL"
+# # Query producing the rows to index; must include id_column
+# query = "SELECT id, title, body, status FROM tickets"
+# id_column = "id"
+# # Columns embedded as content (empty = all) and rendered as tags
+# text_columns = ["title", "body"]
+# tag_columns = ["status"]
+
 [archive]
 # Index archive sources (directories of markdown files with YAML frontmatter)
 enabled = false
