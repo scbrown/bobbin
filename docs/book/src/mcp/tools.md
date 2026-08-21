@@ -25,7 +25,9 @@ Search for code using natural language. Finds functions, classes, and other code
 | `mode` | string | no | `hybrid` | Search mode: `hybrid`, `semantic`, or `keyword` |
 | `repo` | string | no | all | Filter to a specific repository |
 
-**Response fields:** `query`, `mode`, `count`, `results[]` (each with `file_path`, `name`, `chunk_type`, `start_line`, `end_line`, `score`, `match_type`, `language`, `content_preview`)
+**Response fields:** `query`, `mode`, `count`, `results[]` (each with `id`, `file_path`, `name`, `chunk_type`, `start_line`, `end_line`, `score`, `match_type`, `language`, `content_preview`)
+
+The `id` field is the chunk's stable identifier — pass it to `chunk_neighbors` to follow relationship edges from a result.
 
 ## grep
 
@@ -122,6 +124,28 @@ List all symbols (functions, structs, traits, etc.) defined in a file.
 | `repo` | string | no | all | Filter to a specific repository |
 
 **Response fields:** `file`, `count`, `symbols[]` (each with `name`, `chunk_type`, `start_line`, `end_line`, `signature`)
+
+## chunk_neighbors
+
+Follow relationship edges from a chunk. Deterministic structural edges (`next_chunk`, `part_of`) are emitted for every indexed file; AST edges (`implements`, `impl_for`, `extends`) come from tree-sitter.
+
+**Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `id` | string | no* | — | Chunk ID from search results (preferred anchor) |
+| `file` | string | no* | — | File path relative to repo root, used with `line` |
+| `line` | integer | no* | — | Line within `file`; smallest containing chunk becomes the anchor |
+| `repo` | string | no | all | Disambiguates `file` in multi-repo stores |
+| `edge_type` | string | no | all | Filter: `next_chunk`, `part_of`, `implements`, `impl_for`, `extends`, `tests` |
+| `direction` | string | no | `both` | `out` (anchor is edge source), `in` (anchor is target) |
+| `limit` | integer | no | 20 | Maximum neighbors returned |
+
+*Provide either `id`, or both `file` and `line`.
+
+Direction semantics: for `next_chunk`, `out` is the following chunk and `in` the preceding one; for `part_of`, `out` is the containing parent and `in` lists children.
+
+**Response fields:** `chunk` (resolved anchor: `id`, `file_path`, `name`, `chunk_type`, `start_line`, `end_line`), `count`, `neighbors[]` (each with `edge_type`, `direction`, the same chunk fields, `content_preview`), `dangling[]` (edge endpoints whose chunk ID no longer resolves — present only after edits shifted line ranges; re-index the file to refresh)
 
 ## read_chunk
 

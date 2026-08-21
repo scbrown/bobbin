@@ -366,6 +366,7 @@ impl BobbinMcpServer {
 
     fn to_search_result_item(result: &SearchResult) -> SearchResultItem {
         SearchResultItem {
+            id: result.chunk.id.clone(),
             file_path: result.chunk.file_path.clone(),
             name: result.chunk.name.clone(),
             chunk_type: result.chunk.chunk_type.to_string(),
@@ -1244,6 +1245,142 @@ impl BobbinMcpServer {
                     signature: s.signature.clone(),
                 })
                 .collect(),
+        };
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Follow relationship edges from a chunk
+    #[tool(
+        description = "Follow relationship edges from a chunk: next_chunk (adjacent chunks in document order), part_of (containment: fn in impl, section under parent heading, table in section), implements, impl_for, extends. Anchor by chunk `id` (from search results) or by file+line. Direction 'out'+next_chunk = the following chunk, 'in' = preceding; part_of 'out' = containing parent, 'in' = children. Best for: reading the surrounding document of a search hit, walking a doc section by section, finding a section's parent or children. Requires dependency tracking (on by default); an empty result on a fresh index means the file has no edges, not a failure."
+    )]
+    async fn chunk_neighbors(
+        &self,
+        Parameters(req): Parameters<ChunkNeighborsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let vector_store = self
+            .open_vector_store()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Resolve the anchor chunk: by ID, or by file+line (smallest
+        // containing span — not first match, which would return the
+        // outermost container for nested code).
+        let anchor = if let Some(id) = &req.id {
+            vector_store
+                .get_chunk_by_id(id)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
+                .ok_or_else(|| {
+                    McpError::invalid_params(format!("No chunk with id '{}'", id), None)
+                })?
+        } else if let (Some(file), Some(line)) = (&req.file, req.line) {
+            let chunks = vector_store
+                .get_chunks_for_file(file, req.repo.as_deref())
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            chunks
+                .into_iter()
+                .filter(|c| c.start_line <= line && line <= c.end_line)
+                .min_by_key(|c| c.end_line - c.start_line)
+                .ok_or_else(|| {
+                    McpError::invalid_params(
+                        format!("No indexed chunk contains {}:{}", file, line),
+                        None,
+                    )
+                })?
+        } else {
+            return Err(McpError::invalid_params(
+                "Provide either `id` or both `file` and `line`",
+                None,
+            ));
+        };
+
+        let edge_type_filter = match req.edge_type.as_deref() {
+            None => None,
+            Some(s) => Some(
+                crate::types::ChunkEdgeType::ALL
+                    .iter()
+                    .find(|t| t.to_string() == s)
+                    .copied()
+                    .ok_or_else(|| {
+                        McpError::invalid_params(
+                            format!(
+                                "Unknown edge_type '{}'. One of: next_chunk, part_of, implements, impl_for, extends, tests",
+                                s
+                            ),
+                            None,
+                        )
+                    })?,
+            ),
+        };
+        let direction = req.direction.as_deref().unwrap_or("both");
+        if !matches!(direction, "out" | "in" | "both") {
+            return Err(McpError::invalid_params(
+                "direction must be \"out\", \"in\", or \"both\"",
+                None,
+            ));
+        }
+        let limit = req.limit.unwrap_or(20);
+
+        let edges = vector_store
+            .get_edges_for_chunk(&anchor.id)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let chunk_ref = |c: &crate::types::Chunk| ChunkRef {
+            id: c.id.clone(),
+            file_path: c.file_path.clone(),
+            name: c.name.clone(),
+            chunk_type: c.chunk_type.to_string(),
+            start_line: c.start_line,
+            end_line: c.end_line,
+        };
+
+        let mut neighbors = Vec::new();
+        let mut dangling = Vec::new();
+        for edge in &edges {
+            if let Some(t) = edge_type_filter {
+                if edge.edge_type != t {
+                    continue;
+                }
+            }
+            let (edge_dir, neighbor_id) = if edge.source_chunk == anchor.id {
+                ("out", &edge.target_chunk)
+            } else {
+                ("in", &edge.source_chunk)
+            };
+            if direction != "both" && edge_dir != direction {
+                continue;
+            }
+            if neighbors.len() >= limit {
+                break;
+            }
+            // Hydrate the neighbor; a stale ID (chunk re-hashed after an
+            // edit) is reported in `dangling` rather than silently skipped.
+            match vector_store
+                .get_chunk_by_id(neighbor_id)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            {
+                Some(chunk) => neighbors.push(NeighborItem {
+                    edge_type: edge.edge_type.to_string(),
+                    direction: edge_dir.to_string(),
+                    chunk: chunk_ref(&chunk),
+                    content_preview: Self::truncate_content(&chunk.content, 300),
+                }),
+                None => dangling.push(neighbor_id.clone()),
+            }
+        }
+
+        let response = ChunkNeighborsResponse {
+            chunk: chunk_ref(&anchor),
+            count: neighbors.len(),
+            neighbors,
+            dangling,
         };
 
         let json = serde_json::to_string_pretty(&response)

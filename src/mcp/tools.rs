@@ -66,6 +66,8 @@ pub struct SearchResponse {
 /// A single search result item
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct SearchResultItem {
+    /// Stable chunk ID — pass to chunk_neighbors to follow relationships
+    pub id: String,
     pub file_path: String,
     pub name: Option<String>,
     pub chunk_type: String,
@@ -1236,4 +1238,84 @@ pub struct KnowledgeQueryRequest {
     /// Transaction ID for as-of queries
     #[schemars(description = "Transaction ID for point-in-time query")]
     pub tx: Option<i64>,
+}
+
+/// Request for chunk_neighbors: follow relationship edges from a chunk
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ChunkNeighborsRequest {
+    /// Chunk ID from search results (preferred anchor)
+    #[schemars(
+        description = "Chunk ID (the `id` field on search results). Preferred way to identify the anchor chunk. Either this or file+line is required."
+    )]
+    pub id: Option<String>,
+
+    /// File path, used with `line` to resolve the anchor chunk
+    #[schemars(
+        description = "Repo-relative file path — used with `line` to resolve the anchor chunk when no `id` is given"
+    )]
+    pub file: Option<String>,
+
+    /// Line number within `file`
+    #[schemars(
+        description = "Line number within `file`; the smallest chunk containing this line becomes the anchor"
+    )]
+    pub line: Option<u32>,
+
+    /// Repository name, to disambiguate `file` in multi-repo stores
+    #[schemars(
+        description = "Repository name — disambiguates `file` when several indexed repos contain the same relative path"
+    )]
+    pub repo: Option<String>,
+
+    /// Filter to one edge type
+    #[schemars(
+        description = "Filter edges by type: next_chunk, part_of, implements, impl_for, extends, tests. Omit for all types."
+    )]
+    pub edge_type: Option<String>,
+
+    /// Edge direction relative to the anchor
+    #[schemars(
+        description = "Direction relative to the anchor: \"out\" (anchor is edge source), \"in\" (anchor is edge target), or \"both\" (default). For next_chunk: out = following chunk, in = preceding. For part_of: out = containing parent, in = children."
+    )]
+    pub direction: Option<String>,
+
+    /// Maximum neighbors to return (default: 20)
+    #[schemars(description = "Maximum number of neighbors to return (default: 20)")]
+    pub limit: Option<usize>,
+}
+
+/// A lightweight reference to a chunk (no embedding, truncated content)
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ChunkRef {
+    pub id: String,
+    pub file_path: String,
+    pub name: Option<String>,
+    pub chunk_type: String,
+    pub start_line: u32,
+    pub end_line: u32,
+}
+
+/// One neighbor reached over an edge
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct NeighborItem {
+    /// Edge type connecting anchor and neighbor
+    pub edge_type: String,
+    /// "out" = anchor is the edge source; "in" = anchor is the edge target
+    pub direction: String,
+    #[serde(flatten)]
+    pub chunk: ChunkRef,
+    pub content_preview: String,
+}
+
+/// Response for chunk_neighbors
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ChunkNeighborsResponse {
+    /// The resolved anchor chunk
+    pub chunk: ChunkRef,
+    pub count: usize,
+    pub neighbors: Vec<NeighborItem>,
+    /// Edge endpoints whose chunk no longer exists (stale IDs after edits).
+    /// Non-empty output means the index needs a re-run for this file.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub dangling: Vec<String>,
 }

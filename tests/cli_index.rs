@@ -309,3 +309,94 @@ fn index_multi_language() {
         "expected rust in languages, got {lang_names:?}"
     );
 }
+
+/// Read the `chunk_edges` breakdown from `--json status` as (type, count) pairs.
+fn chunk_edge_counts(project: &TestProject) -> std::collections::HashMap<String, u64> {
+    let output = TestProject::bobbin_cmd()
+        .args(["--json", "status"])
+        .arg(project.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    json["chunk_edges"]
+        .as_array()
+        .map(|pairs| {
+            pairs
+                .iter()
+                .map(|p| (p[0].as_str().unwrap().to_string(), p[1].as_u64().unwrap()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+const NESTED_DOC: &str = "# Guide
+
+intro
+
+## Setup
+
+setup body
+
+### Details
+
+detail body
+
+## Usage
+
+usage body
+";
+
+#[test]
+fn index_emits_structural_chunk_edges() {
+    let project = TestProject::new();
+    project.write_rust_fixtures();
+    project.write_file("docs/guide.md", NESTED_DOC);
+    project.git_commit("initial");
+    project.bobbin_init();
+
+    if !project.bobbin_index() {
+        return;
+    };
+
+    let counts = chunk_edge_counts(&project);
+    assert!(
+        counts.get("next_chunk").copied().unwrap_or(0) > 0,
+        "expected next_chunk edges, got {counts:?}"
+    );
+    assert!(
+        counts.get("part_of").copied().unwrap_or(0) > 0,
+        "expected part_of edges (markdown hierarchy + impl nesting), got {counts:?}"
+    );
+}
+
+#[test]
+fn reindex_after_delete_clears_chunk_edges() {
+    let project = TestProject::new();
+    project.write_rust_fixtures();
+    project.write_file("docs/guide.md", NESTED_DOC);
+    project.git_commit("initial");
+    project.bobbin_init();
+
+    if !project.bobbin_index() {
+        return;
+    };
+
+    let before = chunk_edge_counts(&project);
+    let before_total: u64 = before.values().sum();
+    assert!(before_total > 0, "expected edges before delete: {before:?}");
+
+    // Delete the markdown doc and re-index — its edges must disappear
+    std::fs::remove_file(project.path().join("docs/guide.md")).unwrap();
+    project.git_commit("remove guide");
+    assert!(project.bobbin_index(), "re-index failed");
+
+    let after = chunk_edge_counts(&project);
+    let after_total: u64 = after.values().sum();
+    assert!(
+        after_total < before_total,
+        "expected fewer edges after deleting the doc: before {before:?}, after {after:?}"
+    );
+}

@@ -44,6 +44,9 @@ struct StatusOutput {
     git: Option<GitStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     freshness: Option<Freshness>,
+    /// Chunk-edge counts by type (next_chunk, part_of, implements, ...)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    chunk_edges: Vec<(String, u64)>,
 }
 
 /// Index freshness relative to git HEAD (bobbin #44).
@@ -117,6 +120,7 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
                 calibration: None,
                 git: None,
                 freshness: None,
+                chunk_edges: vec![],
             };
             println!("{}", serde_json::to_string_pretty(&json_output)?);
         } else if !output.quiet {
@@ -163,6 +167,10 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
             calibration: Some(cal_status),
             git: git_status,
             freshness,
+            chunk_edges: vector_store
+                .get_chunk_edge_stats()
+                .await
+                .unwrap_or_default(),
         };
         println!("{}", serde_json::to_string_pretty(&json_output)?);
     } else if !output.quiet {
@@ -517,9 +525,10 @@ async fn run_remote(args: StatusArgs, output: OutputConfig, server_url: &str) ->
             status: resp.status,
             path: server_url.to_string(),
             repos: vec![],
-            calibration: None, // Not available via remote
-            git: None,         // Not available via remote
-            freshness: None,   // Not available via remote
+            calibration: None,   // Not available via remote
+            git: None,           // Not available via remote
+            freshness: None,     // Not available via remote
+            chunk_edges: vec![], // Not available via remote
             stats: Some(IndexStats {
                 total_files: resp.index.total_files,
                 total_chunks: resp.index.total_chunks,
