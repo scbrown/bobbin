@@ -179,6 +179,7 @@ pub(super) async fn context(
         max_bridged_files: state.config.context.max_bridged_files,
         max_bridged_chunks_per_file: state.config.context.max_bridged_chunks_per_file,
         knowledge_budget_pct: state.config.context.knowledge_budget_pct,
+        neighbor_budget_pct: state.config.context.neighbor_budget_pct,
         knowledge_max_hops: state.config.context.knowledge_max_hops,
         feedback_boost_max: state.config.feedback.boost_max,
         feedback_boost_weight: state.config.feedback.boost_weight,

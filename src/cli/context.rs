@@ -219,6 +219,7 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
         max_bridged_files: config.context.max_bridged_files,
         max_bridged_chunks_per_file: config.context.max_bridged_chunks_per_file,
         knowledge_budget_pct: config.context.knowledge_budget_pct,
+        neighbor_budget_pct: config.context.neighbor_budget_pct,
         knowledge_max_hops: config.context.knowledge_max_hops,
         feedback_boost_max: config.feedback.boost_max,
         feedback_boost_weight: config.feedback.boost_weight,
@@ -330,6 +331,13 @@ fn print_human_output(bundle: &ContextBundle) {
             FileRelevance::Knowledge => {
                 format!(
                     "knowledge via {}, score: {:.4}",
+                    file.coupled_to.join(", "),
+                    file.score
+                )
+            }
+            FileRelevance::Structural => {
+                format!(
+                    "structural neighbor ({}), score: {:.4}",
                     file.coupled_to.join(", "),
                     file.score
                 )

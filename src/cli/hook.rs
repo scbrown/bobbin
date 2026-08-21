@@ -2279,7 +2279,9 @@ fn format_remote_file_chunks(
         };
 
         // Show coupling info if present
-        let relevance_info = if !file.coupled_to.is_empty() {
+        let relevance_info = if file.relevance == "structural" {
+            format!(" [{}]", file.coupled_to.join(", "))
+        } else if !file.coupled_to.is_empty() {
             format!(" [coupled via {}]", file.coupled_to.join(", "))
         } else if file.relevance == "bridged" {
             " [bridged from docs]".to_string()
@@ -3587,6 +3589,7 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
         max_bridged_files: config.context.max_bridged_files,
         max_bridged_chunks_per_file: config.context.max_bridged_chunks_per_file,
         knowledge_budget_pct: config.context.knowledge_budget_pct,
+        neighbor_budget_pct: config.context.neighbor_budget_pct,
         knowledge_max_hops: config.context.knowledge_max_hops,
         feedback_boost_max: config.feedback.boost_max,
         feedback_boost_weight: config.feedback.boost_weight,
@@ -4937,6 +4940,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                             top_semantic_score: 0.0,
                             pinned_chunks: 0,
                             knowledge_additions: 0,
+                            structural_additions: 0,
                         },
                     }
                 }
@@ -6947,6 +6951,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 0,
                 total_chunks: 0,
                 direct_hits: 0,
@@ -6976,6 +6981,7 @@ mod tests {
                 coupled_to: vec![],
                 repo: None,
                 chunks: vec![ContextChunk {
+                    id: String::new(),
                     name: Some("authenticate".to_string()),
                     chunk_type: ChunkType::Function,
                     start_line: 10,
@@ -6991,6 +6997,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 1,
                 direct_hits: 1,
@@ -7023,6 +7030,7 @@ mod tests {
                 coupled_to: vec![],
                 repo: None,
                 chunks: vec![ContextChunk {
+                    id: String::new(),
                     name: Some("authenticate".to_string()),
                     chunk_type: ChunkType::Function,
                     start_line: 10,
@@ -7038,6 +7046,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 1,
                 direct_hits: 1,
@@ -7088,6 +7097,7 @@ mod tests {
                 coupled_to: vec![],
                 repo: None,
                 chunks: vec![ContextChunk {
+                    id: String::new(),
                     name: Some("low_score_fn".to_string()),
                     chunk_type: ChunkType::Function,
                     start_line: 1,
@@ -7103,6 +7113,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 1,
                 direct_hits: 1,
@@ -7307,6 +7318,7 @@ mod tests {
                 repo: None,
                 chunks: vec![
                     ContextChunk {
+                        id: String::new(),
                         name: Some("fn_a".to_string()),
                         chunk_type: ChunkType::Function,
                         start_line: 1,
@@ -7319,6 +7331,7 @@ mod tests {
                         ),
                     },
                     ContextChunk {
+                        id: String::new(),
                         name: Some("fn_b".to_string()),
                         chunk_type: ChunkType::Function,
                         start_line: 20,
@@ -7335,6 +7348,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 2,
                 direct_hits: 2,
@@ -7373,6 +7387,7 @@ mod tests {
                 coupled_to: vec![],
                 repo: None,
                 chunks: vec![ContextChunk {
+                    id: String::new(),
                     name: Some("fn_x".to_string()),
                     chunk_type: ChunkType::Function,
                     start_line: 1,
@@ -7388,6 +7403,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 1,
                 direct_hits: 1,
@@ -7423,6 +7439,7 @@ mod tests {
                     coupled_to: vec![],
                     repo: None,
                     chunks: vec![ContextChunk {
+                        id: String::new(),
                         name: Some("main".to_string()),
                         chunk_type: ChunkType::Function,
                         start_line: 1,
@@ -7441,6 +7458,7 @@ mod tests {
                     coupled_to: vec![],
                     repo: None,
                     chunks: vec![ContextChunk {
+                        id: String::new(),
                         name: None,
                         chunk_type: ChunkType::Module,
                         start_line: 1,
@@ -7457,6 +7475,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 2,
                 total_chunks: 2,
                 direct_hits: 2,
@@ -7515,6 +7534,7 @@ mod tests {
                 coupled_to: vec![],
                 repo: None,
                 chunks: vec![ContextChunk {
+                    id: String::new(),
                     name: Some("fn_a".to_string()),
                     chunk_type: ChunkType::Function,
                     start_line: 1,
@@ -7530,6 +7550,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 1,
                 direct_hits: 1,
@@ -7564,6 +7585,7 @@ mod tests {
                 coupled_to: vec![],
                 repo: None,
                 chunks: vec![ContextChunk {
+                    id: String::new(),
                     name: Some("fn_a".to_string()),
                     chunk_type: ChunkType::Function,
                     start_line: 1,
@@ -7579,6 +7601,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 1,
                 direct_hits: 1,
@@ -7610,6 +7633,7 @@ mod tests {
                 coupled_to: vec![],
                 repo: None,
                 chunks: vec![ContextChunk {
+                    id: String::new(),
                     name: Some("authenticate".to_string()),
                     chunk_type: ChunkType::Function,
                     start_line: 10,
@@ -7625,6 +7649,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 1,
                 direct_hits: 1,
@@ -8457,6 +8482,7 @@ mod tests {
                 repo: None,
                 chunks: vec![
                     ContextChunk {
+                        id: String::new(),
                         name: Some("fn_a".to_string()),
                         chunk_type: ChunkType::Function,
                         start_line: 10,
@@ -8466,6 +8492,7 @@ mod tests {
                         content: None,
                     },
                     ContextChunk {
+                        id: String::new(),
                         name: Some("fn_b".to_string()),
                         chunk_type: ChunkType::Function,
                         start_line: 30,
@@ -8482,6 +8509,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 2,
                 direct_hits: 2,
@@ -8514,6 +8542,7 @@ mod tests {
                 coupled_to: vec![],
                 repo: None,
                 chunks: vec![ContextChunk {
+                    id: String::new(),
                     name: None,
                     chunk_type: ChunkType::Function,
                     start_line: start,
@@ -8529,6 +8558,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 1,
                 direct_hits: 1,
@@ -8561,6 +8591,7 @@ mod tests {
                 repo: None,
                 chunks: vec![
                     ContextChunk {
+                        id: String::new(),
                         name: None,
                         chunk_type: ChunkType::Function,
                         start_line: 1,
@@ -8570,6 +8601,7 @@ mod tests {
                         content: None,
                     },
                     ContextChunk {
+                        id: String::new(),
                         name: None,
                         chunk_type: ChunkType::Function,
                         start_line: 20,
@@ -8586,6 +8618,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 2,
                 direct_hits: 2,
@@ -8617,6 +8650,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 0,
                 total_chunks: 0,
                 direct_hits: 0,
@@ -8639,6 +8673,7 @@ mod tests {
         // Create 15 chunks — only first 10 (sorted alphabetically by key) should matter
         let chunks: Vec<ContextChunk> = (0..15)
             .map(|i| ContextChunk {
+                id: String::new(),
                 name: None,
                 chunk_type: ChunkType::Function,
                 start_line: i * 10,
@@ -8667,6 +8702,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 15,
                 direct_hits: 15,
@@ -8715,6 +8751,7 @@ mod tests {
                 pinned_lines: 0,
             },
             summary: ContextSummary {
+                structural_additions: 0,
                 total_files: 1,
                 total_chunks: 10,
                 direct_hits: 10,

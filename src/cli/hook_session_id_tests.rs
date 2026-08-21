@@ -25,6 +25,7 @@ fn bundle_of(files: &[(&str, f32)]) -> ContextBundle {
                 coupled_to: vec![],
                 repo: None,
                 chunks: vec![ContextChunk {
+                    id: String::new(),
                     name: None,
                     chunk_type: ChunkType::Function,
                     start_line: 1,
@@ -41,6 +42,7 @@ fn bundle_of(files: &[(&str, f32)]) -> ContextBundle {
             pinned_lines: 0,
         },
         summary: ContextSummary {
+            structural_additions: 0,
             total_files: files.len(),
             total_chunks: files.len(),
             direct_hits: files.len(),

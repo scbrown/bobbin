@@ -24,6 +24,7 @@ OVERRIDE_MAP: dict[str, tuple[str, str, type]] = {
     "recency_weight": ("search", "recency_weight", float),
     "blame_bridging": ("hooks", "show_docs", bool),
     "format_mode": ("hooks", "format_mode", str),
+    "neighbor_budget_pct": ("context", "neighbor_budget_pct", float),
 }
 
 ALLOWED_OVERRIDE_KEYS = frozenset(OVERRIDE_MAP.keys())

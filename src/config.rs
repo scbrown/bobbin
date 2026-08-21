@@ -416,6 +416,10 @@ pub struct ContextTuning {
     pub knowledge_budget_pct: f32,
     /// Maximum graph-traversal hops for knowledge expansion. Default: 2.
     pub knowledge_max_hops: u32,
+    /// Percentage of the line budget reserved for structural neighbors of
+    /// documentation hits (parent section + adjacent chunks via the
+    /// next_chunk/part_of edge graph). 0 disables the leg. Default: 10.0.
+    pub neighbor_budget_pct: f32,
     /// Unit the context budget is enforced in: `"line"` (count source lines) or
     /// `"token"` (estimate tokens per chunk, ~chars/4). Token mode makes injection
     /// size predictable against the model window. Default: `"line"`.
@@ -431,6 +435,7 @@ impl Default for ContextTuning {
             coupling_threshold: 0.1,
             knowledge_budget_pct: 15.0,
             knowledge_max_hops: 2,
+            neighbor_budget_pct: 10.0,
             budget_unit: crate::search::context::BudgetUnit::Line,
         }
     }

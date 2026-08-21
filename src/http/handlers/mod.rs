@@ -340,6 +340,7 @@ fn to_context_file(f: &crate::search::context::ContextFile) -> ContextFileOutput
             FileRelevance::Bridged => "bridged".to_string(),
             FileRelevance::Pinned => "pinned".to_string(),
             FileRelevance::Knowledge => "knowledge".to_string(),
+            FileRelevance::Structural => "structural".to_string(),
         },
         score: f.score,
         coupled_to: f.coupled_to.clone(),

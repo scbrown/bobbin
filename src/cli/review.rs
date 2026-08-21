@@ -282,6 +282,9 @@ fn print_human_output(bundle: &ContextBundle, diff_files: &[DiffFile], descripti
                 FileRelevance::Knowledge => {
                     format!("knowledge, score: {:.4}", file.score)
                 }
+                FileRelevance::Structural => {
+                    format!("structural neighbor, score: {:.4}", file.score)
+                }
             }
         };
 

@@ -146,6 +146,7 @@ coupling_threshold = 0.1
 # Percent of the line budget reserved for knowledge-graph expansion
 # (requires the `knowledge` feature build)
 knowledge_budget_pct = 15.0
+neighbor_budget_pct = 10.0
 
 # Max graph-traversal hops for knowledge expansion
 knowledge_max_hops = 2
@@ -344,6 +345,7 @@ Tunes context assembly — the bridging + knowledge-expansion pipeline that is B
 | `max_bridged_chunks_per_file` | int | `1` | Max chunks kept per bridged file (first N by start line). |
 | `coupling_threshold` | float | `0.1` | Minimum coupling **score** (0.0–1.0) for a coupled file to enter context. Distinct from `[git].coupling_threshold`, which is an integer co-change **count** applied during indexing. |
 | `knowledge_budget_pct` | float | `15.0` | Percent of the line budget reserved for knowledge-graph expansion (requires the `knowledge` feature). |
+| `neighbor_budget_pct` | float | `10.0` | Percent of the line budget reserved for structural neighbors of documentation hits (parent section + adjacent chunks via chunk edges). `0` disables the leg. |
 | `knowledge_max_hops` | int | `2` | Max graph-traversal hops for knowledge expansion. |
 | `budget_unit` | string | `"line"` | Unit the context budget is enforced in: `"line"` (count source lines) or `"token"` (estimate tokens per chunk, ~chars/4). Token mode makes injection size predictable against the model window; the budget value is then interpreted in tokens. |
 
