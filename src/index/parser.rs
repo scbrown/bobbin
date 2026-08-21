@@ -197,13 +197,16 @@ impl Parser {
         content: &str,
         chunks: &[Chunk],
     ) -> Vec<ChunkEdge> {
+        let file_path = path.to_string_lossy().to_string();
+
+        // Structural edges (next_chunk / part_of) are language-agnostic —
+        // derived from the chunk list alone, for every file type.
+        let mut structural = crate::index::structural::extract_structural_edges(&file_path, chunks);
+
         let language = detect_language(path);
         let Some(lang) = language.as_deref() else {
-            return Vec::new();
+            return structural;
         };
-        if lang == "markdown" {
-            return Vec::new();
-        }
 
         let parser = match lang {
             "rust" => &mut self.rust_parser,
@@ -212,14 +215,12 @@ impl Parser {
             "go" => &mut self.go_parser,
             "java" => &mut self.java_parser,
             "cpp" => &mut self.cpp_parser,
-            _ => return Vec::new(),
+            _ => return structural,
         };
 
         let Some(tree) = parser.parse(content, None) else {
-            return Vec::new();
+            return structural;
         };
-
-        let file_path = path.to_string_lossy().to_string();
 
         // Build a lookup from chunk name → chunk (for resolving targets)
         let chunk_by_name: std::collections::HashMap<&str, &Chunk> = chunks
@@ -238,7 +239,8 @@ impl Parser {
             &chunk_by_name,
             &mut edges,
         );
-        edges
+        structural.extend(edges);
+        structural
     }
 
     /// Extract markdown chunks using pulldown-cmark for semantic parsing.

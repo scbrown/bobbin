@@ -366,10 +366,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .delete_by_file(&deleted_files, Some(repo_name))
             .await?;
         metadata_store.delete_file_hashes(Some(repo_name), &deleted_files)?;
-        // Also clear import dependencies for deleted files
+        // Also clear import dependencies and chunk edges for deleted files
         if config.dependencies.enabled {
             for file in &deleted_files {
                 vector_store.clear_file_dependencies(file).await?;
+                vector_store.clear_file_chunk_edges(file).await?;
             }
         }
     }
@@ -492,6 +493,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let mut pending_results: Vec<FileIndexResult> = Vec::new();
     let mut all_imports: Vec<ImportEdge> = Vec::new();
     let mut all_chunk_edges: Vec<crate::types::ChunkEdge> = Vec::new();
+    // Every re-parsed file gets its stored edges cleared, whether or not it
+    // emits edges this run — a file whose edges all disappeared must not
+    // keep its stale rows (keyed off emitted edges, it would).
+    let mut edge_clear_files: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for file_path in &files_needing_index {
         let rel_path = file_path
@@ -588,10 +593,15 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             }
         }
 
-        // Extract chunk-level relationship edges (implements, extends, etc.)
+        // Extract chunk-level relationship edges (implements, extends,
+        // next_chunk, part_of). Under the REPO-RELATIVE path, for the same
+        // reason parse_file above is: edges join against chunk IDs and
+        // file_path values that are rel-path based; the absolute walk path
+        // stored edges no read ever matched.
         if config.dependencies.enabled {
-            let file_edges = parser.extract_chunk_edges(file_path, &content, &chunks);
+            let file_edges = parser.extract_chunk_edges(Path::new(&rel_path), &content, &chunks);
             all_chunk_edges.extend(file_edges);
+            edge_clear_files.insert(rel_path.clone());
         }
 
         // Compute contextual embeddings for enabled languages
@@ -878,16 +888,16 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
-    // Store chunk-level relationship edges
+    // Store chunk-level relationship edges. One-time hygiene first: edges
+    // were historically stored under the absolute walk path (never matching
+    // the rel-path chunk rows), so sweep any legacy absolute-keyed rows.
+    vector_store.clear_absolute_path_chunk_edges().await?;
+    // Clear before insert for every re-parsed file — including files that
+    // emitted zero edges this run.
+    for file in &edge_clear_files {
+        vector_store.clear_file_chunk_edges(file).await?;
+    }
     if !all_chunk_edges.is_empty() {
-        // Clear edges for re-indexed files
-        let edge_files: std::collections::HashSet<String> = all_chunk_edges
-            .iter()
-            .map(|e| e.file_path.clone())
-            .collect();
-        for file in &edge_files {
-            vector_store.clear_file_chunk_edges(file).await?;
-        }
         let edge_count = all_chunk_edges.len();
         vector_store.upsert_chunk_edges(&all_chunk_edges).await?;
 
