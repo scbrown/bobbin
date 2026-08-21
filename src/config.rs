@@ -82,6 +82,11 @@ pub struct IndexConfig {
     /// extractor, and chunks it like a plain-text document (language = "pdf").
     /// Default: false — opt-in so the default behavior/dep profile is unchanged.
     pub multimodal: bool,
+    /// Derive semantic entities (CodeModule/CodeSymbol/Document/Section) from
+    /// parsed chunks into the local entities table on every index run —
+    /// deterministic extraction, live-lane IRIs. Opt-in: each entity's short
+    /// text is embedded, adding a second (small) embed pass per run.
+    pub entities: bool,
 }
 
 impl Default for IndexConfig {
@@ -135,6 +140,7 @@ impl Default for IndexConfig {
             chunk_size: 50,
             chunk_overlap: 10,
             multimodal: false,
+            entities: false,
         }
     }
 }

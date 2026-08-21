@@ -498,8 +498,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let mut pending_results: Vec<FileIndexResult> = Vec::new();
     let mut all_imports: Vec<ImportEdge> = Vec::new();
     let mut all_chunk_edges: Vec<crate::types::ChunkEdge> = Vec::new();
-    #[cfg(feature = "knowledge")]
-    let mut all_graph_chunks: Vec<Chunk> = Vec::new();
+    // Content-free chunk copies for graph/entity derivation (identity
+    // coordinates only — never bytes).
+    let mut all_slim_chunks: Vec<Chunk> = Vec::new();
+    let collect_slim_chunks =
+        config.index.entities || (cfg!(feature = "knowledge") && config.quipu_push_chunks);
     // Every re-parsed file gets its stored edges cleared, whether or not it
     // emits edges this run — a file whose edges all disappeared must not
     // keep its stale rows (keyed off emitted edges, it would).
@@ -611,13 +614,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             edge_clear_files.insert(rel_path.clone());
         }
 
-        // When the chunk graph is pushed to quipu, keep a content-free copy
-        // of every chunk this run parsed (the turtle needs only identity
-        // coordinates, never bytes — the graph is the index, not the
-        // warehouse).
-        #[cfg(feature = "knowledge")]
-        if config.quipu_push_chunks {
-            all_graph_chunks.extend(chunks.iter().map(|c| {
+        if collect_slim_chunks {
+            all_slim_chunks.extend(chunks.iter().map(|c| {
                 let mut slim = c.clone();
                 slim.content = String::new();
                 slim
@@ -930,11 +928,37 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
+    // Derive deterministic entities from this run's chunks (opt-in, W3.A).
+    // Stale entities for files deleted between runs linger until a --force
+    // pass; the table is a semantic index over identities, not a ledger.
+    if config.index.entities && !all_slim_chunks.is_empty() {
+        let entities = crate::index::entities::build_entities(&all_slim_chunks, repo_name);
+        if !entities.is_empty() {
+            let texts: Vec<&str> = entities.iter().map(|e| e.text.as_str()).collect();
+            match embed.embed_batch(&texts).await {
+                Ok(embeddings) => {
+                    if let Err(e) = vector_store.upsert_entities(&entities, &embeddings).await {
+                        if !output.quiet && !output.json {
+                            println!("{} Failed to store entities: {}", "!".yellow(), e);
+                        }
+                    } else if output.verbose && !output.quiet && !output.json {
+                        println!("  Stored {} entities", entities.len());
+                    }
+                }
+                Err(e) => {
+                    if !output.quiet && !output.json {
+                        println!("{} Failed to embed entities: {}", "!".yellow(), e);
+                    }
+                }
+            }
+        }
+    }
+
     // Push the chunk graph to quipu as a diffed snapshot (opt-in, W2.P4).
     #[cfg(feature = "knowledge")]
-    if config.quipu_push_chunks && !all_graph_chunks.is_empty() {
+    if config.quipu_push_chunks && !all_slim_chunks.is_empty() {
         match crate::knowledge::chunks::push_chunks_to_quipu(
-            &all_graph_chunks,
+            &all_slim_chunks,
             &all_chunk_edges,
             repo_name,
             &source_root,

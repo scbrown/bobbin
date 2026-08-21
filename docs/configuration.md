@@ -298,6 +298,7 @@ Controls which files are indexed.
 | `exclude` | string[] | See above | Additional exclusion patterns (on top of `.gitignore`) |
 | `use_gitignore` | bool | `true` | Whether to respect `.gitignore` files |
 | `chunk_size` | int | `50` | Lines per chunk for the line-based (unknown-language) chunker. |
+| `entities` | bool | `false` | Derive semantic entities (CodeModule/CodeSymbol/Document/Section, live-lane IRIs) from parsed chunks into the local entities table on each index run. Adds a second, small embed pass. |
 | `chunk_overlap` | int | `10` | Overlapping lines between consecutive line-based chunks. Capped below `chunk_size`. |
 
 Line-based chunks are additionally clamped to the embedding model's token window (`max_seq`) so a dense chunk never silently overflows and gets truncated at embed time — chunks are split to fit. The default model (`all-MiniLM-L6-v2`) has a 256-token window; `bge-small-en-v1.5` and `gte-small` allow 512.

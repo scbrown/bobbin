@@ -9,6 +9,7 @@ pub mod config;
 mod errors;
 mod http;
 mod index;
+mod iri;
 #[cfg(feature = "knowledge")]
 mod knowledge;
 mod mcp;

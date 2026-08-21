@@ -3,6 +3,7 @@ pub mod beads;
 pub mod coverage;
 pub mod cross_repo;
 pub mod embedder;
+pub mod entities;
 pub mod git;
 pub mod multimodal;
 pub mod parser;

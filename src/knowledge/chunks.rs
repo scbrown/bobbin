@@ -22,17 +22,11 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use super::coupling::ONTOLOGY_NS;
+use crate::iri::ONTOLOGY_NS;
 use crate::types::{Chunk, ChunkEdge, ChunkEdgeType};
 
 /// Build the durable IRI for a chunk from stable coordinates.
-pub(crate) fn chunk_iri(repo: &str, path: &str, start_line: u32) -> String {
-    format!(
-        "{}/C{}",
-        super::coupling::code_module_iri(repo, path),
-        start_line
-    )
-}
+pub(crate) use crate::iri::chunk_iri;
 
 /// Generate Turtle for the chunk graph of one repo. Pure, unit-testable.
 ///
@@ -63,7 +57,7 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
             prev_file = Some(chunk.file_path.as_str());
         }
         let iri = chunk_iri(repo, &chunk.file_path, chunk.start_line);
-        let module = super::coupling::code_module_iri(repo, &chunk.file_path);
+        let module = crate::iri::code_module_iri(repo, &chunk.file_path);
         let label = chunk
             .name
             .clone()

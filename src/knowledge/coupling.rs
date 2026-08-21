@@ -19,8 +19,7 @@ use crate::types::FileCoupling;
 // edges join the live code-entity graph instead of a parallel namespace.
 // (Coupling triples previously pushed under https://bobbin.dev/ are stale
 // but harmless; the next `bobbin index` re-pushes under the live scheme.)
-pub(crate) const ONTOLOGY_NS: &str = "http://aegis.gastown.local/ontology/";
-pub(crate) const CODE_BASE: &str = "http://aegis.gastown.local/code/";
+pub(crate) use crate::iri::ONTOLOGY_NS;
 
 /// Full IRI of the `co_changed_with` coupling predicate.
 pub(crate) fn co_changed_with_iri() -> String {
@@ -119,9 +118,7 @@ fn generate_coupling_turtle(couplings: &[FileCoupling], repo_name: &str) -> Stri
 /// Matches the live ingest lane's shape exactly: `CODE_BASE` + encoded repo
 /// + "/" + the relative path as ONE percent-encoded segment (`/` → `%2F`),
 /// so coupling edges attach to the same nodes the repo ingest mints.
-pub(crate) fn code_module_iri(repo: &str, path: &str) -> String {
-    format!("{CODE_BASE}{}/{}", iri_encode(repo), iri_encode(path))
-}
+pub(crate) use crate::iri::code_module_iri;
 
 /// Build a deterministic IRI for a coupling node (enables idempotent upsert).
 fn coupling_node_iri(repo: &str, file_a: &str, file_b: &str) -> String {
@@ -133,21 +130,7 @@ fn coupling_node_iri(repo: &str, file_a: &str, file_b: &str) -> String {
     )
 }
 
-/// Percent-encode a path into one opaque IRI segment.
-///
-/// `%` first (never double-encode), then `/` — the live lane treats a
-/// relative path as a single segment — then the characters not valid in
-/// IRI path segments.
-fn iri_encode(s: &str) -> String {
-    s.replace('%', "%25")
-        .replace('/', "%2F")
-        .replace(' ', "%20")
-        .replace('<', "%3C")
-        .replace('>', "%3E")
-        .replace('"', "%22")
-        .replace('{', "%7B")
-        .replace('}', "%7D")
-}
+use crate::iri::iri_encode;
 
 #[cfg(test)]
 mod tests {
