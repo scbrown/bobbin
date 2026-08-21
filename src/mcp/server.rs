@@ -1328,7 +1328,7 @@ impl BobbinMcpServer {
         let limit = req.limit.unwrap_or(20);
 
         let edges = vector_store
-            .get_edges_for_chunk(&anchor.id)
+            .get_edges_for_chunk(&anchor.id, req.repo.as_deref())
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 

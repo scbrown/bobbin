@@ -2655,11 +2655,17 @@ impl VectorStore {
             Field::new("target_name", DataType::Utf8, false),
             Field::new("edge_type", DataType::Utf8, false),
             Field::new("file_path", DataType::Utf8, false),
+            // Scopes rel-path/edge lookups per repo: identical relative paths
+            // in two indexed repos must not cross-contaminate neighbors.
+            // (Adding this field drops any pre-existing 6-column table on
+            // open — cheap for derived data; `bobbin index --force` restores
+            // full edge coverage.)
+            Field::new("repo", DataType::Utf8, false),
         ])
     }
 
     /// Convert ChunkEdge slice to a RecordBatch
-    fn chunk_edges_to_record_batch(edges: &[ChunkEdge]) -> Result<RecordBatch> {
+    fn chunk_edges_to_record_batch(edges: &[ChunkEdge], repo: &str) -> Result<RecordBatch> {
         let schema = Arc::new(Self::chunk_edges_schema());
 
         let source_chunks: Vec<&str> = edges.iter().map(|e| e.source_chunk.as_str()).collect();
@@ -2669,6 +2675,7 @@ impl VectorStore {
         let edge_types: Vec<String> = edges.iter().map(|e| e.edge_type.to_string()).collect();
         let edge_type_refs: Vec<&str> = edge_types.iter().map(|s| s.as_str()).collect();
         let file_paths: Vec<&str> = edges.iter().map(|e| e.file_path.as_str()).collect();
+        let repos: Vec<&str> = edges.iter().map(|_| repo).collect();
 
         let columns: Vec<ArrayRef> = vec![
             Arc::new(StringArray::from(source_chunks)),
@@ -2677,19 +2684,20 @@ impl VectorStore {
             Arc::new(StringArray::from(target_names)),
             Arc::new(StringArray::from(edge_type_refs)),
             Arc::new(StringArray::from(file_paths)),
+            Arc::new(StringArray::from(repos)),
         ];
 
         RecordBatch::try_new(schema, columns).context("Failed to create chunk_edges record batch")
     }
 
     /// Insert chunk edges (batch)
-    pub async fn upsert_chunk_edges(&mut self, edges: &[ChunkEdge]) -> Result<()> {
+    pub async fn upsert_chunk_edges(&mut self, edges: &[ChunkEdge], repo: &str) -> Result<()> {
         if edges.is_empty() {
             return Ok(());
         }
 
         let schema = Arc::new(Self::chunk_edges_schema());
-        let batch = Self::chunk_edges_to_record_batch(edges)?;
+        let batch = Self::chunk_edges_to_record_batch(edges, repo)?;
 
         match &self.chunk_edges_table {
             Some(table) => {
@@ -2715,14 +2723,21 @@ impl VectorStore {
         Ok(())
     }
 
-    /// Get chunk edges from a file
-    pub async fn get_chunk_edges(&self, file_path: &str) -> Result<Vec<ChunkEdge>> {
+    /// Get chunk edges from a file, optionally scoped to one repo
+    pub async fn get_chunk_edges(
+        &self,
+        file_path: &str,
+        repo: Option<&str>,
+    ) -> Result<Vec<ChunkEdge>> {
         let table = match &self.chunk_edges_table {
             Some(t) => t,
             None => return Ok(Vec::new()),
         };
 
-        let filter = format!("file_path = '{}'", file_path.replace('\'', "''"));
+        let mut filter = format!("file_path = '{}'", file_path.replace('\'', "''"));
+        if let Some(r) = repo {
+            filter.push_str(&format!(" AND repo = '{}'", r.replace('\'', "''")));
+        }
         let results = table
             .query()
             .only_if(filter)
@@ -2784,14 +2799,17 @@ impl VectorStore {
         Ok(())
     }
 
-    /// Clear chunk edges for a specific file
-    pub async fn clear_file_chunk_edges(&self, file_path: &str) -> Result<()> {
+    /// Clear chunk edges for a specific file, optionally scoped to one repo
+    pub async fn clear_file_chunk_edges(&self, file_path: &str, repo: Option<&str>) -> Result<()> {
         let table = match &self.chunk_edges_table {
             Some(t) => t,
             None => return Ok(()),
         };
 
-        let filter = format!("file_path = '{}'", file_path.replace('\'', "''"));
+        let mut filter = format!("file_path = '{}'", file_path.replace('\'', "''"));
+        if let Some(r) = repo {
+            filter.push_str(&format!(" AND repo = '{}'", r.replace('\'', "''")));
+        }
         retry_on_conflict!(table, table.delete(&filter))
             .context("Failed to clear file chunk edges")?;
 
@@ -2821,17 +2839,24 @@ impl VectorStore {
     /// By-id (rather than by-file) is the read shape the MCP tool needs:
     /// callers hold a chunk ID from search results, and the query stays
     /// correct once cross-file edges exist.
-    pub async fn get_edges_for_chunk(&self, chunk_id: &str) -> Result<Vec<ChunkEdge>> {
+    pub async fn get_edges_for_chunk(
+        &self,
+        chunk_id: &str,
+        repo: Option<&str>,
+    ) -> Result<Vec<ChunkEdge>> {
         let table = match &self.chunk_edges_table {
             Some(t) => t,
             None => return Ok(Vec::new()),
         };
 
         let escaped = chunk_id.replace('\'', "''");
-        let filter = format!(
-            "source_chunk = '{}' OR target_chunk = '{}'",
+        let mut filter = format!(
+            "(source_chunk = '{}' OR target_chunk = '{}')",
             escaped, escaped
         );
+        if let Some(r) = repo {
+            filter.push_str(&format!(" AND repo = '{}'", r.replace('\'', "''")));
+        }
         let results = table
             .query()
             .only_if(filter)
@@ -3309,10 +3334,10 @@ mod tests {
             structural_edge("bbb", "aaa", ChunkEdgeType::PartOf, "docs/x.md"),
             structural_edge("ddd", "eee", ChunkEdgeType::Implements, "src/y.rs"),
         ];
-        store.upsert_chunk_edges(&edges).await.unwrap();
+        store.upsert_chunk_edges(&edges, "default").await.unwrap();
 
         // Roundtrip by file preserves the new edge types
-        let by_file = store.get_chunk_edges("docs/x.md").await.unwrap();
+        let by_file = store.get_chunk_edges("docs/x.md", None).await.unwrap();
         assert_eq!(by_file.len(), 3);
         assert!(by_file
             .iter()
@@ -3320,11 +3345,30 @@ mod tests {
         assert!(by_file.iter().any(|e| e.edge_type == ChunkEdgeType::PartOf));
 
         // By-chunk lookup sees the chunk as source and as target
-        let for_bbb = store.get_edges_for_chunk("bbb").await.unwrap();
+        let for_bbb = store.get_edges_for_chunk("bbb", None).await.unwrap();
         assert_eq!(for_bbb.len(), 3);
-        let for_ddd = store.get_edges_for_chunk("ddd").await.unwrap();
+        let for_ddd = store.get_edges_for_chunk("ddd", None).await.unwrap();
         assert_eq!(for_ddd.len(), 1);
-        assert!(store.get_edges_for_chunk("zzz").await.unwrap().is_empty());
+        assert!(store
+            .get_edges_for_chunk("zzz", None)
+            .await
+            .unwrap()
+            .is_empty());
+
+        // Repo scoping: filtering by the wrong repo returns nothing
+        assert!(store
+            .get_edges_for_chunk("bbb", Some("other-repo"))
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            store
+                .get_edges_for_chunk("bbb", Some("default"))
+                .await
+                .unwrap()
+                .len(),
+            3
+        );
 
         // Stats include the new types
         let stats = store.get_chunk_edge_stats().await.unwrap();

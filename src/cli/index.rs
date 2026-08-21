@@ -370,7 +370,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         if config.dependencies.enabled {
             for file in &deleted_files {
                 vector_store.clear_file_dependencies(file).await?;
-                vector_store.clear_file_chunk_edges(file).await?;
+                vector_store
+                    .clear_file_chunk_edges(file, Some(repo_name))
+                    .await?;
             }
         }
     }
@@ -895,11 +897,15 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     // Clear before insert for every re-parsed file — including files that
     // emitted zero edges this run.
     for file in &edge_clear_files {
-        vector_store.clear_file_chunk_edges(file).await?;
+        vector_store
+            .clear_file_chunk_edges(file, Some(repo_name))
+            .await?;
     }
     if !all_chunk_edges.is_empty() {
         let edge_count = all_chunk_edges.len();
-        vector_store.upsert_chunk_edges(&all_chunk_edges).await?;
+        vector_store
+            .upsert_chunk_edges(&all_chunk_edges, repo_name)
+            .await?;
 
         if output.verbose && !output.quiet && !output.json {
             println!("  Stored {} chunk edges", edge_count);

@@ -655,7 +655,7 @@ impl ContextAssembler {
         let knowledge_chunks: Vec<KnowledgeChunkInfo> = vec![];
 
         // Phase 2f: Structural neighbors of documentation hits via chunk edges
-        let neighbor_chunks = self.expand_chunk_edges(&seed_results).await?;
+        let neighbor_chunks = self.expand_chunk_edges(&seed_results, repo).await?;
 
         // Phase 3: Assemble with budget
         assemble_bundle(
@@ -677,6 +677,7 @@ impl ContextAssembler {
     async fn expand_chunk_edges(
         &mut self,
         seed_results: &[SeedResult],
+        repo: Option<&str>,
     ) -> Result<Vec<NeighborChunkInfo>> {
         if self.config.neighbor_budget_pct <= 0.0 {
             return Ok(vec![]);
@@ -701,7 +702,7 @@ impl ContextAssembler {
         for seed in doc_seeds {
             let edges = self
                 .vector_store
-                .get_edges_for_chunk(&seed.chunk_id)
+                .get_edges_for_chunk(&seed.chunk_id, repo)
                 .await
                 .unwrap_or_default();
             let anchor_name = seed.name.clone().unwrap_or_else(|| seed.file_path.clone());
