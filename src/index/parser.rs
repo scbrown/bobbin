@@ -199,9 +199,13 @@ impl Parser {
     ) -> Vec<ChunkEdge> {
         let file_path = path.to_string_lossy().to_string();
 
-        // Structural edges (next_chunk / part_of) are language-agnostic —
-        // derived from the chunk list alone, for every file type.
+        // Structural edges (next_chunk / part_of) and name-convention Tests
+        // edges are language-agnostic — derived from the chunk list alone,
+        // for every file type.
         let mut structural = crate::index::structural::extract_structural_edges(&file_path, chunks);
+        structural.extend(crate::index::test_edges::extract_test_edges(
+            &file_path, chunks,
+        ));
 
         let language = detect_language(path);
         let Some(lang) = language.as_deref() else {

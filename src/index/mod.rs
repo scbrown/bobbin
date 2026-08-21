@@ -8,6 +8,7 @@ pub mod multimodal;
 pub mod parser;
 pub mod resolver;
 pub mod structural;
+pub mod test_edges;
 
 pub use embedder::Embedder;
 pub use git::GitAnalyzer;
