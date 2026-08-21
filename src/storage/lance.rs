@@ -2766,6 +2766,24 @@ impl VectorStore {
         Self::batches_to_chunk_edges(&batches)
     }
 
+    /// One-time hygiene: delete edge rows keyed by an absolute file path.
+    ///
+    /// Edges were historically extracted under the absolute walk path while
+    /// chunks were parsed under repo-relative paths, so absolute-keyed rows
+    /// can never join against the chunks table. Idempotent and cheap; called
+    /// on every index run.
+    pub async fn clear_absolute_path_chunk_edges(&self) -> Result<()> {
+        let table = match &self.chunk_edges_table {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        retry_on_conflict!(table, table.delete("file_path LIKE '/%'"))
+            .context("Failed to sweep absolute-path chunk edges")?;
+
+        Ok(())
+    }
+
     /// Clear chunk edges for a specific file
     pub async fn clear_file_chunk_edges(&self, file_path: &str) -> Result<()> {
         let table = match &self.chunk_edges_table {
@@ -2788,7 +2806,7 @@ impl VectorStore {
         };
 
         let mut stats = Vec::new();
-        for edge_type in &["implements", "impl_for", "tests", "extends"] {
+        for edge_type in ChunkEdgeType::ALL {
             let filter = format!("edge_type = '{}'", edge_type);
             let count = table.count_rows(Some(filter)).await.unwrap_or(0) as u64;
             if count > 0 {
@@ -2796,6 +2814,38 @@ impl VectorStore {
             }
         }
         Ok(stats)
+    }
+
+    /// Get all edges where the given chunk is source or target.
+    ///
+    /// By-id (rather than by-file) is the read shape the MCP tool needs:
+    /// callers hold a chunk ID from search results, and the query stays
+    /// correct once cross-file edges exist.
+    pub async fn get_edges_for_chunk(&self, chunk_id: &str) -> Result<Vec<ChunkEdge>> {
+        let table = match &self.chunk_edges_table {
+            Some(t) => t,
+            None => return Ok(Vec::new()),
+        };
+
+        let escaped = chunk_id.replace('\'', "''");
+        let filter = format!(
+            "source_chunk = '{}' OR target_chunk = '{}'",
+            escaped, escaped
+        );
+        let results = table
+            .query()
+            .only_if(filter)
+            .limit(SCAN_ALL_LIMIT)
+            .execute()
+            .await
+            .context("Failed to query edges for chunk")?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
+            .context("Failed to collect edges for chunk")?;
+
+        Self::batches_to_chunk_edges(&batches)
     }
 
     /// Convert RecordBatches to ChunkEdge structs
@@ -2816,6 +2866,8 @@ impl VectorStore {
                     "impl_for" => ChunkEdgeType::ImplFor,
                     "tests" => ChunkEdgeType::Tests,
                     "extends" => ChunkEdgeType::Extends,
+                    "next_chunk" => ChunkEdgeType::NextChunk,
+                    "part_of" => ChunkEdgeType::PartOf,
                     other => {
                         eprintln!("Unknown chunk edge type: {}", other);
                         continue;
@@ -3227,6 +3279,65 @@ mod tests {
 
         let store = VectorStore::open(&path).await.unwrap();
         assert_eq!(store.count().await.unwrap(), 0);
+    }
+
+    fn structural_edge(
+        source: &str,
+        target: &str,
+        edge_type: ChunkEdgeType,
+        file_path: &str,
+    ) -> ChunkEdge {
+        ChunkEdge {
+            source_chunk: source.to_string(),
+            target_chunk: target.to_string(),
+            source_name: format!("{}-name", source),
+            target_name: format!("{}-name", target),
+            edge_type,
+            file_path: file_path.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_structural_edge_roundtrip_and_stats() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vectors");
+        let mut store = VectorStore::open(&path).await.unwrap();
+
+        let edges = vec![
+            structural_edge("aaa", "bbb", ChunkEdgeType::NextChunk, "docs/x.md"),
+            structural_edge("bbb", "ccc", ChunkEdgeType::NextChunk, "docs/x.md"),
+            structural_edge("bbb", "aaa", ChunkEdgeType::PartOf, "docs/x.md"),
+            structural_edge("ddd", "eee", ChunkEdgeType::Implements, "src/y.rs"),
+        ];
+        store.upsert_chunk_edges(&edges).await.unwrap();
+
+        // Roundtrip by file preserves the new edge types
+        let by_file = store.get_chunk_edges("docs/x.md").await.unwrap();
+        assert_eq!(by_file.len(), 3);
+        assert!(by_file
+            .iter()
+            .any(|e| e.edge_type == ChunkEdgeType::NextChunk));
+        assert!(by_file.iter().any(|e| e.edge_type == ChunkEdgeType::PartOf));
+
+        // By-chunk lookup sees the chunk as source and as target
+        let for_bbb = store.get_edges_for_chunk("bbb").await.unwrap();
+        assert_eq!(for_bbb.len(), 3);
+        let for_ddd = store.get_edges_for_chunk("ddd").await.unwrap();
+        assert_eq!(for_ddd.len(), 1);
+        assert!(store.get_edges_for_chunk("zzz").await.unwrap().is_empty());
+
+        // Stats include the new types
+        let stats = store.get_chunk_edge_stats().await.unwrap();
+        let get = |name: &str| {
+            stats
+                .iter()
+                .find(|(t, _)| t == name)
+                .map(|(_, c)| *c)
+                .unwrap_or(0)
+        };
+        assert_eq!(get("next_chunk"), 2);
+        assert_eq!(get("part_of"), 1);
+        assert_eq!(get("implements"), 1);
     }
 
     #[tokio::test]

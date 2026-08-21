@@ -178,9 +178,10 @@ pub struct ImportDependency {
 ///
 /// Unlike `ImportDependency` (file-to-file), chunk edges link specific symbols:
 /// impl→trait, test→function, method→containing impl, etc.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChunkEdge {
-    /// Source chunk ID (format: "file:start_line:end_line")
+    /// Source chunk ID (`hex(sha256("path:start_line:end_line"))[..16]`,
+    /// as produced by the parser's chunk ID generator)
     pub source_chunk: String,
     /// Target chunk ID
     pub target_chunk: String,
@@ -194,8 +195,12 @@ pub struct ChunkEdge {
     pub file_path: String,
 }
 
-/// Types of chunk-level relationships extracted by tree-sitter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Types of chunk-level relationships.
+///
+/// `Implements`/`ImplFor`/`Tests`/`Extends` are extracted by tree-sitter;
+/// `NextChunk`/`PartOf` are deterministic structural edges derived from
+/// chunk positions and markdown heading hierarchy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChunkEdgeType {
     /// impl block implements a trait (Rust: `impl Trait for Struct`)
@@ -206,6 +211,23 @@ pub enum ChunkEdgeType {
     Tests,
     /// Class/struct extends another (Java/TS extends, Python inheritance)
     Extends,
+    /// Source chunk is immediately followed by target chunk in document order
+    NextChunk,
+    /// Source chunk (child) is contained in target chunk (parent):
+    /// fn in impl, section under parent heading, table/code block in section
+    PartOf,
+}
+
+impl ChunkEdgeType {
+    /// Every variant, for storage sites that enumerate edge types.
+    pub const ALL: [ChunkEdgeType; 6] = [
+        ChunkEdgeType::Implements,
+        ChunkEdgeType::ImplFor,
+        ChunkEdgeType::Tests,
+        ChunkEdgeType::Extends,
+        ChunkEdgeType::NextChunk,
+        ChunkEdgeType::PartOf,
+    ];
 }
 
 impl std::fmt::Display for ChunkEdgeType {
@@ -215,6 +237,8 @@ impl std::fmt::Display for ChunkEdgeType {
             ChunkEdgeType::ImplFor => write!(f, "impl_for"),
             ChunkEdgeType::Tests => write!(f, "tests"),
             ChunkEdgeType::Extends => write!(f, "extends"),
+            ChunkEdgeType::NextChunk => write!(f, "next_chunk"),
+            ChunkEdgeType::PartOf => write!(f, "part_of"),
         }
     }
 }
@@ -497,6 +521,16 @@ pub struct LanguageStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_chunk_edge_type_display_matches_serde() {
+        // Storage writes Display, JSON writes serde(snake_case); they must agree.
+        for edge_type in ChunkEdgeType::ALL {
+            let display = edge_type.to_string();
+            let json = serde_json::to_string(&edge_type).unwrap();
+            assert_eq!(format!("\"{}\"", display), json);
+        }
+    }
 
     #[test]
     fn test_classify_source_files() {
