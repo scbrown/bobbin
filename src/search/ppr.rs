@@ -133,9 +133,10 @@ mod tests {
         let seed = code_module_iri(repo, "src/seed.rs");
         let coupled = code_module_iri(repo, "src/coupled.rs");
         let turtle = format!(
-            "@prefix bobbin: <https://bobbin.dev/> .\n\
+            "@prefix bobbin: <{}> .\n\
              <{seed}> bobbin:co_changed_with <{coupled}> .\n\
-             <{coupled}> bobbin:co_changed_with <{seed}> .\n"
+             <{coupled}> bobbin:co_changed_with <{seed}> .\n",
+            crate::knowledge::coupling::ONTOLOGY_NS
         );
         quipu::tool_knot(
             &mut store,

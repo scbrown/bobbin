@@ -114,6 +114,33 @@ fn chunk_cost(unit: BudgetUnit, content: &str, start_line: u32, end_line: u32) -
     }
 }
 
+/// Recover a repo-relative file path from a live knowledge-graph entity IRI.
+///
+/// Live entities are minted as `http://aegis.gastown.local/code/{repo}/{path}`
+/// with the relative path percent-encoded into ONE segment (`/` → `%2F`);
+/// symbols and sections append a further `/{name}-L{line}` or `/S{line}`
+/// segment, which is dropped here — the file is what the vector store keys
+/// chunks by. Returns `None` for IRIs outside the code base (the previous
+/// implementation matched `bobbin:code/` CURIEs, which no writer ever
+/// produced, so this leg silently returned nothing — bobbin-jdlkh's silent-
+/// miss class).
+#[cfg_attr(not(feature = "knowledge"), allow(dead_code))]
+fn file_path_from_entity_iri(iri: &str) -> Option<String> {
+    let rest = iri.strip_prefix("http://aegis.gastown.local/code/")?;
+    let (_repo, encoded_path_and_suffix) = rest.split_once('/')?;
+    let encoded_path = encoded_path_and_suffix
+        .split('/')
+        .next()
+        .filter(|s| !s.is_empty())?;
+    Some(
+        encoded_path
+            .replace("%2F", "/")
+            .replace("%2f", "/")
+            .replace("%20", " ")
+            .replace("%25", "%"),
+    )
+}
+
 /// Configuration for context assembly
 pub struct ContextConfig {
     pub budget_lines: usize,
@@ -881,15 +908,11 @@ impl ContextAssembler {
                 None => continue,
             };
 
-            // Extract file path from bobbin:code/{repo}/{path} IRI format
-            let file_path = if let Some(path) = iri.strip_prefix("bobbin:code/") {
-                // Skip the repo segment: bobbin:code/{repo}/{path}
-                path.find('/').map(|i| &path[i + 1..]).unwrap_or(path)
-            } else if let Some(path) = iri.strip_prefix("bobbin:doc/") {
-                path.find('/').map(|i| &path[i + 1..]).unwrap_or(path)
-            } else {
-                continue;
+            let file_path = match file_path_from_entity_iri(iri) {
+                Some(p) => p,
+                None => continue,
             };
+            let file_path = file_path.as_str();
 
             // Skip files already in seeds
             if seed_files.contains(file_path) {
@@ -2109,6 +2132,36 @@ fn apply_tag_effects(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_file_path_from_entity_iri_live_shapes() {
+        // Module: path is one percent-encoded segment.
+        assert_eq!(
+            file_path_from_entity_iri("http://aegis.gastown.local/code/quipu/src%2Fnamespace.rs"),
+            Some("src/namespace.rs".to_string())
+        );
+        // Symbol: trailing name-L{line} segment is dropped.
+        assert_eq!(
+            file_path_from_entity_iri(
+                "http://aegis.gastown.local/code/quipu/src%2Fstore%2Fops.rs/transact-L139"
+            ),
+            Some("src/store/ops.rs".to_string())
+        );
+        // Section: trailing S{line} segment is dropped.
+        assert_eq!(
+            file_path_from_entity_iri("http://aegis.gastown.local/code/quipu/README.md/S42"),
+            Some("README.md".to_string())
+        );
+        // Outside the code base — including the old CURIE form — is None.
+        assert_eq!(
+            file_path_from_entity_iri("bobbin:code/repo/src/lib.rs"),
+            None
+        );
+        assert_eq!(
+            file_path_from_entity_iri("http://aegis.gastown.local/ontology/CodeModule"),
+            None
+        );
+    }
 
     #[test]
     fn test_content_mode_full() {

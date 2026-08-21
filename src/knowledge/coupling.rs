@@ -13,11 +13,18 @@ use anyhow::{Context, Result};
 
 use crate::types::FileCoupling;
 
-pub(crate) const BOBBIN_NS: &str = "https://bobbin.dev/";
+// `bobbin:` ≡ `aegis:` — decided 2026-08-21 (bobbin×quipu roadmap). Vocabulary
+// lives under the aegis ontology namespace and entity IRIs under the aegis
+// code base, matching what camayoc's repo ingest lane mints, so coupling
+// edges join the live code-entity graph instead of a parallel namespace.
+// (Coupling triples previously pushed under https://bobbin.dev/ are stale
+// but harmless; the next `bobbin index` re-pushes under the live scheme.)
+pub(crate) const ONTOLOGY_NS: &str = "http://aegis.gastown.local/ontology/";
+pub(crate) const CODE_BASE: &str = "http://aegis.gastown.local/code/";
 
 /// Full IRI of the `co_changed_with` coupling predicate.
 pub(crate) fn co_changed_with_iri() -> String {
-    format!("{BOBBIN_NS}co_changed_with")
+    format!("{ONTOLOGY_NS}co_changed_with")
 }
 
 /// Push coupling scores to the Quipu knowledge graph as weighted edges.
@@ -74,7 +81,7 @@ fn generate_coupling_turtle(couplings: &[FileCoupling], repo_name: &str) -> Stri
     let mut turtle = String::with_capacity(couplings.len() * 512);
 
     // Prefixes
-    writeln!(turtle, "@prefix bobbin: <{BOBBIN_NS}> .").unwrap();
+    writeln!(turtle, "@prefix bobbin: <{ONTOLOGY_NS}> .").unwrap();
     writeln!(turtle, "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .").unwrap();
     writeln!(turtle).unwrap();
 
@@ -108,23 +115,33 @@ fn generate_coupling_turtle(couplings: &[FileCoupling], repo_name: &str) -> Stri
 }
 
 /// Build the IRI for a code module entity.
+///
+/// Matches the live ingest lane's shape exactly: `CODE_BASE` + encoded repo
+/// + "/" + the relative path as ONE percent-encoded segment (`/` → `%2F`),
+/// so coupling edges attach to the same nodes the repo ingest mints.
 pub(crate) fn code_module_iri(repo: &str, path: &str) -> String {
-    format!("{BOBBIN_NS}code/{}/{}", iri_encode(repo), iri_encode(path))
+    format!("{CODE_BASE}{}/{}", iri_encode(repo), iri_encode(path))
 }
 
 /// Build a deterministic IRI for a coupling node (enables idempotent upsert).
 fn coupling_node_iri(repo: &str, file_a: &str, file_b: &str) -> String {
     format!(
-        "{BOBBIN_NS}coupling/{}/{}::{}",
+        "http://aegis.gastown.local/coupling/{}/{}::{}",
         iri_encode(repo),
         iri_encode(file_a),
         iri_encode(file_b)
     )
 }
 
-/// Minimal IRI encoding — encode characters not valid in IRI path segments.
+/// Percent-encode a path into one opaque IRI segment.
+///
+/// `%` first (never double-encode), then `/` — the live lane treats a
+/// relative path as a single segment — then the characters not valid in
+/// IRI path segments.
 fn iri_encode(s: &str) -> String {
-    s.replace(' ', "%20")
+    s.replace('%', "%25")
+        .replace('/', "%2F")
+        .replace(' ', "%20")
         .replace('<', "%3C")
         .replace('>', "%3E")
         .replace('"', "%22")
@@ -154,15 +171,15 @@ mod tests {
     }
 
     #[test]
-    fn test_code_module_iri() {
+    fn test_code_module_iri_matches_live_ingest_shape() {
         let iri = code_module_iri("myrepo", "src/main.rs");
-        assert_eq!(iri, "https://bobbin.dev/code/myrepo/src/main.rs");
+        assert_eq!(iri, "http://aegis.gastown.local/code/myrepo/src%2Fmain.rs");
     }
 
     #[test]
     fn test_coupling_node_iri() {
         let iri = coupling_node_iri("repo", "a.rs", "b.rs");
-        assert_eq!(iri, "https://bobbin.dev/coupling/repo/a.rs::b.rs");
+        assert_eq!(iri, "http://aegis.gastown.local/coupling/repo/a.rs::b.rs");
     }
 
     #[test]
