@@ -34,6 +34,7 @@ sibling repo, so a future import sees nothing unusual.
 
 ## Usage
 
+    scripts/beads-jsonl.py create "Title" [--description ...] [--priority 3] [--type task] [--label pitch]
     scripts/beads-jsonl.py close <id> --reason "..."
     scripts/beads-jsonl.py note  <id> --text   "..."
     scripts/beads-jsonl.py list [--status open]
@@ -107,6 +108,14 @@ def main() -> int:
     p_list = sub.add_parser("list")
     p_list.add_argument("--status")
 
+    p_create = sub.add_parser("create", help="file a new issue")
+    p_create.add_argument("title")
+    p_create.add_argument("--description", default="")
+    p_create.add_argument("--priority", type=int, default=3)
+    p_create.add_argument("--type", dest="issue_type", default="task")
+    p_create.add_argument("--label", action="append", default=[],
+                          help="repeatable; e.g. --label pitch")
+
     args = ap.parse_args()
     records = load()
     before = json.loads(json.dumps(records))  # deep copy for the loss check
@@ -118,8 +127,43 @@ def main() -> int:
             print(f"{record['id']:<14} {record.get('status', '?'):<11} {record.get('title', '')}")
         return 0
 
-    record = find(records, args.id)
     stamp = now()
+
+    if args.cmd == "create":
+        # Suffix from a hash of title+time, collision-checked — matches the
+        # {prefix}-{short} shape of every existing id. Creation adds a record
+        # and can never lose one, so the save() guard passes trivially.
+        import hashlib
+
+        prefix = records[0]["id"].rsplit("-", 1)[0] if records else "issue"
+        existing = {r["id"] for r in records}
+        digest = hashlib.sha256((args.title + stamp).encode()).hexdigest()
+        for i in range(0, len(digest) - 3):
+            candidate = f"{prefix}-{digest[i:i + 3]}"
+            if candidate not in existing:
+                break
+        else:
+            raise SystemExit("could not derive a fresh id")
+        record = {
+            "id": candidate,
+            "title": args.title,
+            "description": args.description,
+            "status": "open",
+            "priority": args.priority,
+            "issue_type": args.issue_type,
+            "owner": "noreply@anthropic.com",
+            "created_at": stamp,
+            "created_by": "Claude",
+            "updated_at": stamp,
+        }
+        if args.label:
+            record["labels"] = sorted(args.label)
+        records.append(record)
+        save(records, before)
+        print(f"created {candidate}")
+        return 0
+
+    record = find(records, args.id)
 
     if args.cmd == "close":
         if record.get("status") == "closed":

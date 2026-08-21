@@ -14,6 +14,23 @@ entities and relationships from documents into the quipu knowledge graph,
 (3) ingests sources beyond code and docs — SQL databases, logs, metrics — and
 (4) maintains durable mappings from bobbin chunks to quipu graph nodes.
 
+## Execution status (2026-08-21, Stiwi-directed sprint)
+
+One pass executed most of the near-term graph: **W1 complete** (P1 edges +
+neighbors tool; P2 edge-aware context leg with `neighbor_budget_pct`; P3
+repo-scoped edges; P4 Tests edge). **W2 P1–P4 shipped**: camayoc competency
+slice `document-structure-and-chunks`; namespace consolidated to the live
+aegis scheme on both sides (quipu's dead bobbin.dev constructors deleted;
+coupling/PPR/expand_knowledge join the live entity graph); advisory
+`bobbin:Chunk` vocabulary in camayoc shapes; `/knot` chunk emitter opt-in
+(`quipu_push_chunks`) with a snapshot-support probe — real use blocked on
+the quipu pin (bobbin-di7 note). W2.P5 → bead bobbin-c79. **W3.A shipped**
+(`[index] entities` producer, live-lane IRIs); W3.B → bead bobbin-15f (its
+quipu blocker fell: `/knot` now routes to registered committed graphs).
+**W4 P1–P2 shipped** (ChunkSource seam; beads retrofitted; SQL source);
+commits/archives retrofit → bead bobbin-d5e; P3 (logs/metrics +
+`occurred_at` migration batch) remains open.
+
 ## Sequencing at a glance
 
 ```text
@@ -167,11 +184,14 @@ stay in the TSDB).
 
 | Item | Repo | Blocks | Status |
 |---|---|---|---|
-| Competency file: document structure & chunk retrieval | camayoc | W2.P3, W3.A vocabulary | not started |
-| Plane-routed bulk ingress (`/knot` graph key honored) | quipu | W3.B | gap confirmed |
-| Port bobbin IRI constructors to aegis base | quipu | W2.P2 | not started |
-| Retire `https://bobbin.dev/` in coupling.rs / expand_knowledge | bobbin | W2.P2 | not started |
-| Chunk vocabulary shapes (advise-first) | camayoc/quipu | W2.P4 | after emitter |
+| Competency file: document structure & chunk retrieval | camayoc | W2.P3, W3.A vocabulary | ✅ done (competency/document-structure-and-chunks.md) |
+| Plane-routed bulk ingress (`/knot` graph key honored) | quipu | W3.B | ✅ done — strict registered-committed-graph targets (quipu 22b3569) |
+| Consolidate IRIs to the live aegis scheme | quipu | W2.P2 | ✅ done — dead bobbin.dev constructors deleted; reconcile fixed (quipu ee0c5a6) |
+| Retire `https://bobbin.dev/` in coupling.rs / expand_knowledge | bobbin | W2.P2 | ✅ done (242b10e) |
+| Chunk vocabulary shapes (advise-first) | camayoc | W2.P4 | ✅ done — advisory ChunkShape (camayoc 8cd622e) |
+| Quipu dependency pin update (replace_snapshot + shacl) | bobbin | chunk push, W2.P5 | open — bobbin-di7 |
+| SHACL named-graph type-context gap | quipu | W3.B chunked writes | open — quipu-080 |
+| occurred_at chunks-table migration batch | bobbin | W4.P3 | open |
 
 ## Non-goals
 
