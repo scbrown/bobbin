@@ -452,3 +452,7 @@ Custom file-type classification rules. None by default; evaluated in order, firs
 ### `quipu_endpoint`
 
 Top-level key (not a table). Quipu knowledge-graph endpoint (e.g. `"http://quipu.example"`); unset by default. When set, search results are annotated with entity spotlight data. Must appear before the first `[section]` header in the TOML.
+
+### `quipu_push_chunks`
+
+Top-level key (not a table). Default `false`. When `true` (and bobbin is built with the `knowledge` feature), each index run pushes the chunk graph to the embedded quipu store as a diffed snapshot replacement under the producer key `bobbin-chunks:{repo}` — chunk identity, document membership, order, and adjacency, never chunk content. Requires a quipu revision with `replace_snapshot` support; bobbin probes for it and refuses (with a message) rather than letting facts accumulate per run.

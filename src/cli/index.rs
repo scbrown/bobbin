@@ -498,6 +498,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let mut pending_results: Vec<FileIndexResult> = Vec::new();
     let mut all_imports: Vec<ImportEdge> = Vec::new();
     let mut all_chunk_edges: Vec<crate::types::ChunkEdge> = Vec::new();
+    #[cfg(feature = "knowledge")]
+    let mut all_graph_chunks: Vec<Chunk> = Vec::new();
     // Every re-parsed file gets its stored edges cleared, whether or not it
     // emits edges this run — a file whose edges all disappeared must not
     // keep its stale rows (keyed off emitted edges, it would).
@@ -607,6 +609,19 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             let file_edges = parser.extract_chunk_edges(Path::new(&rel_path), &content, &chunks);
             all_chunk_edges.extend(file_edges);
             edge_clear_files.insert(rel_path.clone());
+        }
+
+        // When the chunk graph is pushed to quipu, keep a content-free copy
+        // of every chunk this run parsed (the turtle needs only identity
+        // coordinates, never bytes — the graph is the index, not the
+        // warehouse).
+        #[cfg(feature = "knowledge")]
+        if config.quipu_push_chunks {
+            all_graph_chunks.extend(chunks.iter().map(|c| {
+                let mut slim = c.clone();
+                slim.content = String::new();
+                slim
+            }));
         }
 
         // Compute contextual embeddings for enabled languages
@@ -912,6 +927,28 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
         if output.verbose && !output.quiet && !output.json {
             println!("  Stored {} chunk edges", edge_count);
+        }
+    }
+
+    // Push the chunk graph to quipu as a diffed snapshot (opt-in, W2.P4).
+    #[cfg(feature = "knowledge")]
+    if config.quipu_push_chunks && !all_graph_chunks.is_empty() {
+        match crate::knowledge::chunks::push_chunks_to_quipu(
+            &all_graph_chunks,
+            &all_chunk_edges,
+            repo_name,
+            &source_root,
+        ) {
+            Ok((_tx, count)) => {
+                if output.verbose && !output.quiet && !output.json {
+                    println!("  Pushed {} chunk-graph facts to quipu", count);
+                }
+            }
+            Err(e) => {
+                if !output.quiet && !output.json {
+                    println!("{} Chunk-graph push skipped: {}", "!".yellow(), e);
+                }
+            }
         }
     }
 

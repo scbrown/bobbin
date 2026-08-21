@@ -28,6 +28,12 @@ pub struct Config {
     /// When set, search results are annotated with entity spotlight data.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quipu_endpoint: Option<String>,
+    /// Push the chunk graph (bobbin:Chunk identity, membership, order,
+    /// adjacency) to the embedded quipu store on every index run, as a
+    /// diffed snapshot replacement. Opt-in: requires the `knowledge`
+    /// feature and a quipu revision with `replace_snapshot` support.
+    #[serde(default)]
+    pub quipu_push_chunks: bool,
 }
 
 /// Configuration for remote server (thin-client mode)
