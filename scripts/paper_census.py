@@ -36,8 +36,17 @@ import argparse
 import json
 import math
 import statistics
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+
+# The serving-model extraction lives with the eval scorer so the runner, the
+# scorer, and this census share one implementation (bobbin-daa).
+_EVAL_DIR = Path(__file__).resolve().parent.parent / "eval"
+if str(_EVAL_DIR) not in sys.path:
+    sys.path.insert(0, str(_EVAL_DIR))
+
+from scorer.attribution import record_serving_model  # noqa: E402
 
 try:
     from scipy import stats
@@ -70,17 +79,17 @@ def load(runs_dir: Path) -> list[dict]:
 def serving_model(record: dict) -> str:
     """The model that actually served a run, as its own artifact records it.
 
-    ``model_usage`` is authoritative where it exists.  Haiku appears in it as a
-    secondary model --- Claude Code's own internal use --- and is never the
-    agent under test, so it is skipped when a primary model is present.  Older
-    artifacts predate usage recording entirely and can only offer the model the
-    manifest *declared*, which is a plan rather than an observation and is
-    labelled as such.
+    Extraction is shared with the runner and scorer via
+    ``eval/scorer/attribution.py``: the artifact's write-time
+    ``serving_model`` field is preferred, then the ``model_usage`` record
+    (Haiku is skipped there as Claude Code's own internal helper, never the
+    agent under test).  Older artifacts predate both and can only offer the
+    model the manifest *declared*, which is a plan rather than an observation
+    and is labelled as such.
     """
-    usage = (record.get("agent_result") or {}).get("model_usage") or {}
-    primary = [m for m in usage if "haiku" not in m]
-    if primary:
-        return f"{primary[0]} (confirmed)"
+    confirmed = record_serving_model(record)
+    if confirmed:
+        return f"{confirmed} (confirmed)"
     manifest = MANIFESTS.get(str(Path(record["_path"]).parent), {})
     if manifest.get("model"):
         return f"{manifest['model']} (declared only)"

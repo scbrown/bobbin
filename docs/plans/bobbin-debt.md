@@ -283,6 +283,21 @@ back to accumulates exactly this kind of shadow state.
 > still pools across it (`scripts/paper_census.py::serving_model` is the
 > post-hoc reader, not the fix).
 
+> **Update (2026-08-22, later the same day): fixed and closed as
+> `bobbin-daa`.** Both parts shipped. (1) The runner persists a top-level
+> `serving_model` into every run artifact at write time, extracted from
+> `agent_result.model_usage` — explicit `null` when no usage record exists,
+> never the config's requested model. (2) The scorer treats serving model as
+> run identity: `bobbin-eval score` excludes unattributed runs from cross-arm
+> comparison with a reported count and refuses model-mixed arms (naming
+> models and per-arm counts; `--mixed-models` forces a labeled mixed table),
+> and `aggregate_across_runs` raises `ServingModelMismatch` on a mixed pool.
+> One shared implementation lives in `eval/scorer/attribution.py`;
+> `scripts/paper_census.py::serving_model` now builds on it (census output
+> over the existing 85 runs is unchanged). Tests:
+> `eval/tests/test_attribution.py`. Details in
+> `docs/plans/eval-framework.md` §"Serving-Model Attribution".
+
 **No bead existed for this at the time of writing**; `scripts/beads-jsonl.py`
 had no `create` subcommand, so it was recorded here until one could be filed.
 Severity: this is the defect that cost the paper its strongest result.

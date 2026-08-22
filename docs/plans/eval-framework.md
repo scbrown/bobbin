@@ -82,6 +82,28 @@ For each task, for each approach (no-bobbin / with-bobbin), for each attempt (3x
 
 Key detail: use `--settings` to point to different settings files (one with bobbin hooks configured, one without) rather than installing/uninstalling hooks per run.
 
+### Serving-Model Attribution (bobbin-daa)
+
+Every run artifact carries a top-level `serving_model` field, written at save
+time from the agent's *own* usage record (`modelUsage` in the result stream,
+persisted as `agent_result.model_usage`) — never from the model the config
+requested, because a declared-intent field is what allowed the model-mixed
+ablation baseline in `docs/plans/paper-statistics.md` §4b. A run with no
+usage record gets an explicit `null` and stays **unattributed**.
+
+The scorer treats serving model as part of a run's identity:
+
+- `bobbin-eval score` excludes unattributed runs from cross-arm comparison
+  (reporting the excluded count) and refuses to compare arms served by
+  different models, naming the models and per-arm counts. `--mixed-models`
+  forces the comparison but labels every arm with its model mix.
+- `scorer.aggregator.aggregate_across_runs` raises `ServingModelMismatch` on
+  a model-mixed pool and reports `serving_model` / `unattributed_count`.
+
+The shared extraction lives in `eval/scorer/attribution.py`; the post-hoc
+census (`scripts/paper_census.py::serving_model`) builds on the same
+implementation. Tests: `cd eval && python -m pytest tests/test_attribution.py`.
+
 ### Prompt Template
 
 ```

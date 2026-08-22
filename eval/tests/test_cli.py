@@ -29,12 +29,14 @@ def _make_result(
     recall: float = 0.80,
     f1: float = 0.77,
     duration: float = 120.5,
+    serving_model: str | None = "claude-sonnet-4-5-20250929",
 ) -> dict:
     return {
         "task_id": task_id,
         "approach": approach,
         "attempt": attempt,
         "status": "completed",
+        "serving_model": serving_model,
         "agent_result": {
             "exit_code": 0,
             "duration_seconds": duration,

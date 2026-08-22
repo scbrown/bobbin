@@ -8,6 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from scorer.attribution import (
+    ServingModelMismatch,
+    partition_by_attribution,
+    serving_model_counts,
+)
+
 
 def aggregate(
     test_result: dict[str, Any],
@@ -58,7 +64,16 @@ def aggregate_across_runs(results: list[dict[str, Any]]) -> dict[str, Any]:
 
     Returns a dict with:
         count, test_pass_rate, avg_file_precision, avg_file_recall,
-        avg_f1, avg_duration_seconds, and optional judge_win_rate.
+        avg_f1, avg_duration_seconds, serving_model, unattributed_count,
+        and optional judge_win_rate.
+
+    Serving model is part of a run's identity (bobbin-daa): pooling runs
+    whose artifacts attribute them to *different* serving models raises
+    :class:`ServingModelMismatch` rather than silently averaging across a
+    model mixture.  Runs without attribution are still aggregated here (a
+    single-group aggregate is not a cross-arm comparison) but are counted in
+    ``unattributed_count`` so callers comparing groups can exclude and
+    report them; they are never assumed to match ``serving_model``.
     """
     if not results:
         return {
@@ -68,7 +83,19 @@ def aggregate_across_runs(results: list[dict[str, Any]]) -> dict[str, Any]:
             "avg_file_recall": 0.0,
             "avg_f1": 0.0,
             "avg_duration_seconds": 0.0,
+            "serving_model": None,
+            "unattributed_count": 0,
         }
+
+    attributed, unattributed = partition_by_attribution(results)
+    models = serving_model_counts(attributed)
+    if len(models) > 1:
+        rendered = ", ".join(f"{m}: {c}" for m, c in sorted(models.items()))
+        raise ServingModelMismatch(
+            f"refusing to aggregate runs served by different models ({rendered}); "
+            "serving model is part of a run's identity "
+            "(see docs/plans/paper-statistics.md §4b)"
+        )
 
     n = len(results)
     test_passes = sum(1 for r in results if r.get("test_result", {}).get("passed"))
@@ -85,6 +112,8 @@ def aggregate_across_runs(results: list[dict[str, Any]]) -> dict[str, Any]:
 
     stats: dict[str, Any] = {
         "count": n,
+        "serving_model": next(iter(models), None),
+        "unattributed_count": len(unattributed),
         "test_pass_rate": test_passes / n,
         "avg_file_precision": _avg(["diff_result", "file_precision"]),
         "avg_file_recall": _avg(["diff_result", "file_recall"]),

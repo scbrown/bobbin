@@ -32,6 +32,13 @@ from runner.bobbin_setup import (
     parse_config_override,
 )
 from runner.task_loader import TaskLoadError, load_all_tasks, load_task_by_id
+from scorer.attribution import (
+    ServingModelMismatch,
+    check_comparable,
+    partition_by_attribution,
+    serving_model_counts,
+    serving_model_from_usage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -404,6 +411,7 @@ def _run_single(
                 "approach": approach,
                 "attempt": attempt,
                 "status": "workspace_error",
+                "serving_model": None,
                 "error": str(exc),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
@@ -439,6 +447,7 @@ def _run_single(
                     "approach": approach,
                     "attempt": attempt,
                     "status": "bobbin_setup_error",
+                    "serving_model": None,
                     "error": str(exc),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "config_overrides": config_overrides,
@@ -526,11 +535,20 @@ def _run_single(
                 run_id=run_id,
             )
 
+        # Serving-model attribution (bobbin-daa): recorded from the agent's
+        # own usage record, never from the model the config requested — a
+        # declared-intent field is what allowed the model-mixed study in
+        # docs/plans/paper-statistics.md §4b.  No usage record means an
+        # explicit null: the run is unattributed, not assumed.
+        agent_metrics = _extract_cost_metrics(agent_result)
+        serving_model = serving_model_from_usage(agent_metrics.get("model_usage"))
+
         result = {
             "task_id": task_id,
             "approach": approach,
             "attempt": attempt,
             "status": "completed",
+            "serving_model": serving_model,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "task": {
                 "repo": task["repo"],
@@ -549,7 +567,7 @@ def _run_single(
                 "exit_code": agent_result["exit_code"],
                 "duration_seconds": agent_result["duration_seconds"],
                 "timed_out": agent_result["timed_out"],
-                **_extract_cost_metrics(agent_result),
+                **agent_metrics,
             },
             "token_usage": _extract_token_usage(agent_result.get("result")),
             "agent_output": {
@@ -1069,13 +1087,22 @@ def run_all(
 @click.option("--task", "-t", multiple=True, help="Filter to specific task ID(s). Repeatable.")
 @click.option("--include-quarantined", is_flag=True, default=False,
               help="Include results for quarantined tasks (excluded by default).")
-def score(results_dir: str, task: tuple[str, ...], include_quarantined: bool):
+@click.option("--mixed-models", is_flag=True, default=False,
+              help="Compare arms served by different models anyway; every arm "
+                   "is labeled with its serving-model mix instead of refusing.")
+def score(results_dir: str, task: tuple[str, ...], include_quarantined: bool,
+          mixed_models: bool):
     """Display a summary of existing results.
 
     RESULTS_DIR is the directory containing result JSON files.
 
     By default, results for quarantined tasks (those only in tasks/_quarantined/)
     are excluded. Use --include-quarantined to show them.
+
+    Serving model is part of a run's identity (bobbin-daa): runs whose
+    artifacts carry no serving-model attribution are excluded from the
+    comparison (with a reported count), and arms served by different models
+    are refused unless --mixed-models forces a labeled, model-mixed table.
     """
     rdir = Path(results_dir)
     if not rdir.is_dir():
@@ -1124,11 +1151,57 @@ def score(results_dir: str, task: tuple[str, ...], include_quarantined: bool):
         click.echo(f"No result files found in {rdir}", err=True)
         sys.exit(1)
 
+    # Serving-model identity (bobbin-daa): a run whose own artifact does not
+    # name the model that served it cannot take part in a cross-arm
+    # comparison — it is excluded and counted, never assumed to match.
+    attributed, unattributed = partition_by_attribution(results)
+    if unattributed:
+        click.echo(
+            f"(excluded {len(unattributed)} run(s) without serving-model "
+            f"attribution in their artifacts from the comparison)",
+            err=True,
+        )
+    results = attributed
+    if not results:
+        click.echo(
+            "No attributed results remain to compare. Older artifacts without "
+            "agent usage records cannot be re-attributed.",
+            err=True,
+        )
+        sys.exit(1)
+
     # Group by approach and compute stats.
     by_approach: dict[str, list[dict]] = {}
     for r in results:
         a = r.get("approach", "unknown")
         by_approach.setdefault(a, []).append(r)
+
+    # Refuse to pool arms served by different models unless the caller
+    # explicitly asks for a labeled model-mixed table.
+    arm_models = {a: serving_model_counts(runs) for a, runs in by_approach.items()}
+    is_mixed = False
+    try:
+        check_comparable(by_approach)
+    except ServingModelMismatch as exc:
+        if not mixed_models:
+            click.echo(f"Error: {exc}", err=True)
+            click.echo(
+                "Use --mixed-models to compare anyway; the output will be "
+                "labeled model-mixed per arm.",
+                err=True,
+            )
+            sys.exit(1)
+        is_mixed = True
+        click.echo(
+            "WARNING: MODEL-MIXED COMPARISON — the arms below were served by "
+            "different models; deltas are not attributable to the approach "
+            "alone (docs/plans/paper-statistics.md §4b).",
+            err=True,
+        )
+
+    if not is_mixed:
+        only_model = next(iter({m for c in arm_models.values() for m in c}), "unknown")
+        click.echo(f"Serving model: {only_model} ({len(results)} attributed runs)")
 
     click.echo(f"\n{'Approach':<16} {'Runs':>5} {'Pass':>5} {'Rate':>8} "
                f"{'Prec':>8} {'Recall':>8} {'F1':>8} {'Avg Time':>10}")
@@ -1180,6 +1253,10 @@ def score(results_dir: str, task: tuple[str, ...], include_quarantined: bool):
         if inj_f1s:
             avg_inj_f1 = sum(inj_f1s) / len(inj_f1s)
             line += f"  inj_f1={avg_inj_f1:.3f}"
+
+        if is_mixed:
+            rendered = ", ".join(f"{m}: {c}" for m, c in sorted(arm_models[approach].items()))
+            line += f"  [models: {rendered}]"
 
         click.echo(line)
 
