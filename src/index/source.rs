@@ -2,17 +2,21 @@
 //!
 //! Five source integrations grew as bespoke blocks inside `cli/index.rs`
 //! (files, git commits, beads, archives, PDFs-inside-files), each
-//! re-implementing fetch/hash/delete/insert. This trait plus
-//! [`index_hashed_source`] extracts the strongest of those patterns — the
-//! beads content-hash incremental with removal sweep — so a new
-//! non-filesystem source (SQL, logs, metrics) is one `ChunkSource` impl
-//! and a config block, not another copy of the pipeline.
+//! re-implementing fetch/hash/delete/insert. This module extracts the two
+//! reusable lifecycles so a new non-filesystem source (SQL, logs, metrics)
+//! is one trait impl and a config block, not another copy of the pipeline:
+//!
+//! - [`ChunkSource`] + [`index_hashed_source`] — the beads content-hash
+//!   incremental with removal sweep. Beads, SQL rows, and (since the W4.P1
+//!   follow-up) archive records run through it.
+//! - [`WatermarkSource`] + [`index_watermark_source`] — the append-only
+//!   watermark increment. Git commits run through it: history only grows,
+//!   so one stored watermark replaces per-item hashes and no removal sweep
+//!   applies.
 //!
 //! The file source deliberately stays bespoke: it streams per-file, builds
 //! contextual-embedding windows, and owns the deletion sweep against the
-//! walk — a genuinely different lifecycle. Git commits use a watermark and
-//! archives full-replace; retrofitting those two onto this seam is tracked
-//! in the roadmap (W4.P1 follow-up).
+//! walk — a genuinely different lifecycle.
 
 use anyhow::Result;
 
@@ -146,6 +150,93 @@ pub async fn index_hashed_source<S: ChunkSource>(
         unchanged: chunks.len() - to_index.len(),
         removed: removed.len(),
     })
+}
+
+/// An append-only producer of chunks tracked by a single watermark rather
+/// than per-item hashes.
+///
+/// Git commits are the archetype: history only grows, so "everything newer
+/// than the watermark" is the whole increment, unchanged items never need
+/// re-checking, and no removal sweep applies. A rewritten history is the
+/// `force` path's job — it refetches and replaces the full corpus.
+pub trait WatermarkSource {
+    /// Display name for progress output.
+    fn name(&self) -> &str;
+
+    /// Repo the inserted rows belong to. Unlike hashed sources, a
+    /// watermarked source may live inside an ordinary repo's corpus
+    /// (commit chunks sit alongside their repo's file chunks).
+    fn repo(&self) -> &str;
+
+    /// Source label stamped on inserted rows (e.g. "git-commits").
+    fn source_label(&self) -> &str;
+
+    /// Metadata key the watermark persists under (per-repo — a shared key
+    /// was the original commit-corpus defect).
+    fn watermark_key(&self) -> String;
+
+    /// Fetch chunks strictly newer than `since` (`None` = the full corpus),
+    /// plus the new watermark to persist after a successful insert (`None`
+    /// keeps the stored watermark).
+    fn fetch_since(&self, since: Option<&str>) -> Result<(Vec<Chunk>, Option<String>)>;
+}
+
+/// Watermark incremental indexing — the git-commits pattern, generalized:
+///
+/// 1. read the stored watermark (`force` ignores it and refetches all);
+/// 2. fetch and embed only the increment;
+/// 3. on `force`, delete the refetched ids first so the pass replaces
+///    rather than duplicates;
+/// 4. persist the watermark only after a successful insert, so a failed
+///    run retries the same increment rather than silently skipping it.
+///
+/// Returns the number of chunks indexed.
+pub async fn index_watermark_source<S: WatermarkSource>(
+    source: &S,
+    vector_store: &mut VectorStore,
+    metadata_store: &MetadataStore,
+    embedder: &Embedder,
+    force: bool,
+) -> Result<usize> {
+    let stored = metadata_store.get_meta(&source.watermark_key())?;
+    let since = if force { None } else { stored.as_deref() };
+
+    let (chunks, new_watermark) = source.fetch_since(since)?;
+    if chunks.is_empty() {
+        return Ok(0);
+    }
+
+    // Embed the whole increment in one call; `Embedder::embed_batch` owns
+    // the slicing (under `force` this is the entire corpus, not an
+    // increment — handing it to the model unsliced OOM-killed the nightly).
+    let embed_texts: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
+    let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
+    let embeddings = embedder.embed_batch(&embed_refs).await?;
+    let contexts = vec![None; chunks.len()];
+    let now = chrono::Utc::now().timestamp().to_string();
+
+    // A force pass refetches everything, so replace rather than duplicate.
+    if force {
+        let ids: Vec<String> = chunks.iter().map(|c| c.id.clone()).collect();
+        vector_store.delete(&ids).await.ok();
+    }
+
+    vector_store
+        .insert(
+            &chunks,
+            &embeddings,
+            &contexts,
+            source.repo(),
+            source.source_label(),
+            &now,
+        )
+        .await?;
+
+    if let Some(watermark) = new_watermark {
+        metadata_store.set_meta(&source.watermark_key(), &watermark)?;
+    }
+
+    Ok(chunks.len())
 }
 
 /// Stable content hash for change detection (shared by all hashed sources).

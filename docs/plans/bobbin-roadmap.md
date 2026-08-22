@@ -28,7 +28,9 @@ the quipu pin (bobbin-di7 note). W2.P5 → bead bobbin-c79. **W3.A shipped**
 (`[index] entities` producer, live-lane IRIs); W3.B → bead bobbin-15f (its
 quipu blocker fell: `/knot` now routes to registered committed graphs).
 **W4 P1–P2 shipped** (ChunkSource seam; beads retrofitted; SQL source);
-commits/archives retrofit → bead bobbin-d5e; P3 (logs/metrics +
+commits/archives retrofit shipped (bobbin-d5e closed: commits behind a
+watermark pipeline on the seam, archives upgraded from full-replace to
+content-hash incremental with a removal sweep); P3 (logs/metrics +
 `occurred_at` migration batch) remains open.
 
 ## Sequencing at a glance

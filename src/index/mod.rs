@@ -1,5 +1,6 @@
 pub mod archive;
 pub mod beads;
+pub mod commits;
 pub mod coverage;
 pub mod cross_repo;
 pub mod embedder;

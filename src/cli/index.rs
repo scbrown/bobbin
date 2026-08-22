@@ -13,13 +13,19 @@ use super::OutputConfig;
 use crate::config::{Config, ContextualEmbeddingConfig};
 use crate::index::{embedder, resolver, Embedder, Parser};
 use crate::storage::{LockWait, MaintenanceOutcome, MetadataStore, VectorStore};
-use crate::types::{Chunk, ChunkType, ImportDependency, ImportEdge};
+use crate::types::{Chunk, ImportDependency, ImportEdge};
 
 /// The repo key for bead-issue chunks and their file hashes. Distinct from any
 /// source repo name so bead state never collides with a source repo that
 /// happens to be named "beads"; shared across index runs because the bead
 /// corpus is global, not per source repo.
 const BEADS_HASH_REPO: &str = "beads-issues";
+
+/// The repo key for archive-record chunks and their content hashes. Same
+/// rationale as [`BEADS_HASH_REPO`]: the archive corpus is global (configured
+/// sources, not files of any one source repo), so its rows and hash
+/// bookkeeping must not collide with per-repo incremental state.
+const ARCHIVE_HASH_REPO: &str = "archive-records";
 
 /// How long the reindex waits for the store-wide maintenance lock before giving
 /// up.
@@ -157,6 +163,15 @@ struct IndexOutput {
     beads_indexed: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sql_indexed: Option<usize>,
+    /// Archive seam report (bobbin-d5e): present whenever the archive source
+    /// ran, even at 0, so a consumer can tell "nothing re-embedded" from
+    /// "archives disabled".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    archive_indexed: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    archive_unchanged: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    archive_removed: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     elapsed_ms: Option<u128>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -417,16 +432,19 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     let total_files = files_needing_index.len();
 
-    // Beads/commits indexing can run even with 0 changed source files (a dedicated
-    // `--include-beads` pass, or a no-change incremental). Compute those flags up
-    // front so the up-to-date fast path only fires when there is genuinely nothing
-    // else to do; otherwise fall through (the file-embedding loops below are no-ops
-    // at 0 files) so beads/commits still index. See bo-f61.
+    // Non-file sources (beads, commits, archives, SQL) can have work even with 0
+    // changed source files (a dedicated `--include-beads` pass, or a no-change
+    // incremental). Compute those flags up front so the up-to-date fast path only
+    // fires when there is genuinely nothing else to do; otherwise fall through
+    // (the file-embedding loops below are no-ops at 0 files) so the other sources
+    // still index. See bo-f61; archives/SQL joined the gate with bobbin-d5e.
     let commits_enabled = config.git.commits_enabled;
     let include_beads =
         (args.include_beads || config.beads.enabled) && !config.beads.databases.is_empty();
+    let archive_enabled = config.archive.enabled && !config.archive.sources.is_empty();
+    let sql_enabled = config.sql.enabled && !config.sql.sources.is_empty();
 
-    if total_files == 0 && !commits_enabled && !include_beads {
+    if total_files == 0 && !commits_enabled && !include_beads && !archive_enabled && !sql_enabled {
         if output.json {
             let json_output = IndexOutput {
                 status: "up_to_date".to_string(),
@@ -441,6 +459,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 commits_indexed: None,
                 beads_indexed: None,
                 sql_indexed: None,
+                archive_indexed: None,
+                archive_unchanged: None,
+                archive_removed: None,
                 elapsed_ms: None,
                 errors: None,
                 // This early return never reaches the maintenance step.
@@ -986,193 +1007,71 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             println!("  Indexing git commits...");
         }
 
-        match crate::index::git::GitAnalyzer::new(&source_root) {
-            Ok(analyzer) => {
-                // Check for incremental commit indexing. Per-repo watermark
-                //: the old global key held ONE SHA shared by all
-                // repos, so each was asked for "commits since" a commit from
-                // whichever repo happened to index last.
-                let last_commit =
-                    metadata_store.get_meta(&format!("last_indexed_commit:{repo_name}"))?;
-                let since = if args.force {
-                    None
-                } else {
-                    last_commit.as_deref()
-                };
+        // Commits run through the watermark half of the ChunkSource seam
+        // (bobbin-d5e): append-only fetch since the per-repo watermark
+        // (`last_indexed_commit:{repo}`), no removal sweep, watermark
+        // persisted only after a successful insert. Chunk shape and the
+        // `--force` replace behavior are unchanged from the bespoke block.
+        if let Ok(analyzer) = crate::index::git::GitAnalyzer::new(&source_root) {
+            let source = crate::index::commits::CommitsSource::new(
+                analyzer,
+                repo_name,
+                config.git.commits_depth,
+            );
 
-                match analyzer.get_commit_log(config.git.commits_depth, since) {
-                    Ok(commit_entries) if !commit_entries.is_empty() => {
-                        let commit_chunks: Vec<Chunk> = commit_entries
-                            .iter()
-                            .map(|entry| {
-                                // Build rich content: message + metadata + trailers + files
-                                let files_str = if entry.files.is_empty() {
-                                    String::new()
-                                } else {
-                                    format!("\n\nFiles changed:\n{}", entry.files.join("\n"))
-                                };
-                                let trailers_str = if entry.trailers.is_empty() {
-                                    String::new()
-                                } else {
-                                    let lines: Vec<String> = entry
-                                        .trailers
-                                        .iter()
-                                        .map(|(k, v)| format!("{}: {}", k, v))
-                                        .collect();
-                                    format!("\n\nTrailers:\n{}", lines.join("\n"))
-                                };
-                                let content = format!(
-                                    "{}\n\nAuthor: {}\nDate: {}{}{}",
-                                    entry.message,
-                                    entry.author,
-                                    entry.date,
-                                    trailers_str,
-                                    files_str
-                                );
+            match crate::index::source::index_watermark_source(
+                &source,
+                &mut vector_store,
+                &metadata_store,
+                &embed,
+                args.force,
+            )
+            .await
+            {
+                Ok(0) => {
+                    if output.verbose && !output.quiet && !output.json {
+                        println!("  No new commits to index");
+                    }
+                }
+                Ok(indexed) => {
+                    commits_indexed = indexed;
 
-                                // Store trailer keys as tags for structured filtering
-                                let tags = entry
-                                    .trailers
-                                    .iter()
-                                    .map(|(k, v)| {
-                                        format!("{}={}", k.to_lowercase().replace(' ', "-"), v)
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join(",");
-
-                                Chunk {
-                                    id: format!("commit:{}", entry.hash),
-                                    file_path: format!(
-                                        "git:{}",
-                                        &entry.hash[..7.min(entry.hash.len())]
-                                    ),
-                                    chunk_type: ChunkType::Commit,
-                                    name: Some(truncate_message(&entry.message, 80)),
-                                    start_line: 0,
-                                    end_line: 0,
-                                    content,
-                                    language: "git".to_string(),
-                                    tags,
-                                }
-                            })
-                            .collect();
-
-                        // Embed commit messages. This hands the WHOLE commit set
-                        // to the embedder in one call and relies on
-                        // `Embedder::embed_batch` to slice it — under `--force`
-                        // `since` is None, so this is the entire history, not an
-                        // increment. It used to reach the model unsliced, which
-                        // OOM-killed the nightly reindex on the first repo.
-                        let embed_texts: Vec<String> =
-                            commit_chunks.iter().map(|c| c.content.clone()).collect();
-                        let embed_refs: Vec<&str> =
-                            embed_texts.iter().map(|s| s.as_str()).collect();
-
-                        match embed.embed_batch(&embed_refs).await {
-                            Ok(embeddings) => {
-                                let contexts = vec![None; commit_chunks.len()];
-                                let now = chrono::Utc::now().timestamp().to_string();
-
-                                // Delete old commit chunks if force re-indexing
-                                if args.force {
-                                    let old_ids: Vec<String> =
-                                        commit_chunks.iter().map(|c| c.id.clone()).collect();
-                                    vector_store.delete(&old_ids).await.ok();
-                                }
-
-                                if let Err(e) = vector_store
-                                    .insert(
-                                        &commit_chunks,
-                                        &embeddings,
-                                        &contexts,
-                                        repo_name,
-                                        "git-commits",
-                                        &now,
-                                    )
-                                    .await
-                                {
-                                    if !output.quiet && !output.json {
-                                        println!(
-                                            "{} Failed to store commit chunks: {}",
-                                            "!".yellow(),
-                                            e
-                                        );
-                                    }
-                                } else {
-                                    commits_indexed = commit_chunks.len();
-
-                                    // Auto-associate beads → commits for workflow
-                                    // telemetry (GH#9). Only explicit Bead* trailers
-                                    // are recorded; runs over newly-indexed commits.
-                                    let mut lineage_recorded = 0usize;
-                                    for entry in &commit_entries {
-                                        for bead_id in
-                                            crate::index::git::extract_bead_refs(&entry.trailers)
-                                        {
-                                            if metadata_store
-                                                .record_bead_lineage(
-                                                    &crate::storage::sqlite::NewBeadLineage {
-                                                        bead_id,
-                                                        commit_sha: Some(entry.hash.clone()),
-                                                        touched_files: entry.files.clone(),
-                                                        action_type: Some("commit".to_string()),
-                                                        ..Default::default()
-                                                    },
-                                                )
-                                                .is_ok()
-                                            {
-                                                lineage_recorded += 1;
-                                            }
-                                        }
-                                    }
-                                    if lineage_recorded > 0
-                                        && output.verbose
-                                        && !output.quiet
-                                        && !output.json
-                                    {
-                                        println!(
-                                            "  Recorded {} bead→commit lineage links",
-                                            lineage_recorded
-                                        );
-                                    }
-
-                                    // Track the latest commit for incremental indexing
-                                    if let Some(latest) = commit_entries.first() {
-                                        metadata_store.set_meta(
-                                            &format!("last_indexed_commit:{repo_name}"),
-                                            &latest.hash,
-                                        )?;
-                                    }
-
-                                    if output.verbose && !output.quiet && !output.json {
-                                        println!("  Indexed {} commits", commits_indexed);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                if !output.quiet && !output.json {
-                                    println!(
-                                        "{} Failed to embed commit messages: {}",
-                                        "!".yellow(),
-                                        e
-                                    );
-                                }
+                    // Auto-associate beads → commits for workflow telemetry
+                    // (GH#9). Only explicit Bead* trailers are recorded; runs
+                    // over newly-indexed commits. Git-specific, so it stays
+                    // outside the seam.
+                    let mut lineage_recorded = 0usize;
+                    for entry in source.take_entries() {
+                        for bead_id in crate::index::git::extract_bead_refs(&entry.trailers) {
+                            if metadata_store
+                                .record_bead_lineage(&crate::storage::sqlite::NewBeadLineage {
+                                    bead_id,
+                                    commit_sha: Some(entry.hash.clone()),
+                                    touched_files: entry.files.clone(),
+                                    action_type: Some("commit".to_string()),
+                                    ..Default::default()
+                                })
+                                .is_ok()
+                            {
+                                lineage_recorded += 1;
                             }
                         }
                     }
-                    Ok(_) => {
-                        if output.verbose && !output.quiet && !output.json {
-                            println!("  No new commits to index");
-                        }
+                    if lineage_recorded > 0 && output.verbose && !output.quiet && !output.json {
+                        println!("  Recorded {} bead→commit lineage links", lineage_recorded);
                     }
-                    Err(e) => {
-                        if !output.quiet && !output.json {
-                            println!("{} Failed to get commit log: {}", "!".yellow(), e);
-                        }
+
+                    if output.verbose && !output.quiet && !output.json {
+                        println!("  Indexed {} commits", commits_indexed);
+                    }
+                }
+                Err(e) => {
+                    if !output.quiet && !output.json {
+                        use crate::index::source::WatermarkSource;
+                        println!("{} Failed to index {}: {}", "!".yellow(), source.name(), e);
                     }
                 }
             }
-            Err(_) => {}
         }
     }
 
@@ -1290,69 +1189,74 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
-    // Index archive records if enabled (configured sources)
-    let mut archive_indexed: usize = 0;
-    if config.archive.enabled && !config.archive.sources.is_empty() {
+    // Index archive records if enabled (configured sources).
+    //
+    // Archives run through the shared ChunkSource seam (bobbin-d5e): content-
+    // hash incremental with a removal sweep, replacing the old full-replace
+    // block that re-embedded every record on every run and never deleted a
+    // record that disappeared. Record ids and chunk shape are unchanged, so
+    // the first seam run replaces the legacy rows in place (all hashes are
+    // new under ARCHIVE_HASH_REPO, which re-embeds everything once and
+    // deletes each old row by id before inserting its replacement).
+    let mut archive_report: Option<crate::index::source::SourceIndexReport> = None;
+    if archive_enabled {
         if !output.quiet && !output.json {
             println!("  Indexing archives...");
         }
 
-        match crate::index::archive::fetch_archive(&config.archive) {
-            Ok(archive_chunks) if !archive_chunks.is_empty() => {
-                let embed_texts: Vec<String> =
-                    archive_chunks.iter().map(|c| c.content.clone()).collect();
-                let embed_refs: Vec<&str> = embed_texts.iter().map(|s| s.as_str()).collect();
-
-                match embed.embed_batch(&embed_refs).await {
-                    Ok(embeddings) => {
-                        let contexts = vec![None; archive_chunks.len()];
-                        let now = chrono::Utc::now().timestamp().to_string();
-
-                        // Delete existing archive chunks (re-index all each time)
-                        let archive_ids: Vec<String> =
-                            archive_chunks.iter().map(|c| c.id.clone()).collect();
-                        vector_store.delete(&archive_ids).await.ok();
-
-                        if let Err(e) = vector_store
-                            .insert(
-                                &archive_chunks,
-                                &embeddings,
-                                &contexts,
-                                repo_name,
-                                "archive",
-                                &now,
-                            )
-                            .await
-                        {
-                            if !output.quiet && !output.json {
-                                println!("{} Failed to store archive chunks: {}", "!".yellow(), e);
-                            }
-                        } else {
-                            archive_indexed = archive_chunks.len();
-                            if output.verbose && !output.quiet && !output.json {
-                                println!("  Indexed {} archive records", archive_indexed);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        if !output.quiet && !output.json {
-                            println!("{} Failed to embed archive records: {}", "!".yellow(), e);
-                        }
-                    }
-                }
+        struct ArchiveSource(crate::config::ArchiveConfig);
+        impl crate::index::source::ChunkSource for ArchiveSource {
+            fn name(&self) -> &str {
+                "archive"
             }
-            Ok(_) => {
+            fn repo_key(&self) -> &str {
+                ARCHIVE_HASH_REPO
+            }
+            fn source_label(&self) -> &str {
+                "archive"
+            }
+            async fn fetch(&self) -> Result<Vec<Chunk>> {
+                crate::index::archive::fetch_archive(&self.0)
+            }
+        }
+
+        let source = ArchiveSource(config.archive.clone());
+        match crate::index::source::index_hashed_source(
+            &source,
+            &mut vector_store,
+            &metadata_store,
+            &embed,
+            args.force,
+        )
+        .await
+        {
+            Ok(report) => {
                 if output.verbose && !output.quiet && !output.json {
-                    println!("  No archive records to index");
+                    if report.indexed == 0 && report.unchanged == 0 && report.removed == 0 {
+                        println!("  No archive records to index");
+                    } else if report.indexed == 0 {
+                        println!(
+                            "  Archive up to date ({} unchanged, {} removed)",
+                            report.unchanged, report.removed
+                        );
+                    } else {
+                        println!(
+                            "  Indexed {} archive records ({} unchanged, {} removed)",
+                            report.indexed, report.unchanged, report.removed
+                        );
+                    }
                 }
+                archive_report = Some(report);
             }
             Err(e) => {
                 if !output.quiet && !output.json {
-                    println!("{} Failed to fetch archive: {}", "!".yellow(), e);
+                    use crate::index::source::ChunkSource;
+                    println!("{} Failed to index {}: {}", "!".yellow(), source.name(), e);
                 }
             }
         }
     }
+    let archive_indexed = archive_report.as_ref().map_or(0, |r| r.indexed);
 
     let t_compact = Instant::now();
     // PRUNE FIRST, THEN COMPACT. This order is load-bearing, not stylistic.
@@ -1471,6 +1375,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             } else {
                 None
             },
+            archive_indexed: archive_report.as_ref().map(|r| r.indexed),
+            archive_unchanged: archive_report.as_ref().map(|r| r.unchanged),
+            archive_removed: archive_report.as_ref().map(|r| r.removed),
             elapsed_ms: Some(elapsed.as_millis()),
             errors: Some(errors.len()),
             maintenance: Some(maintenance.json_label()),
@@ -1494,6 +1401,9 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
         if sql_indexed > 0 {
             println!("  SQL: {} rows indexed", sql_indexed);
+        }
+        if archive_indexed > 0 {
+            println!("  Archive: {} records indexed", archive_indexed);
         }
 
         if dep_count > 0 {
@@ -1834,18 +1744,6 @@ pub(crate) fn build_context_windows(
         .collect()
 }
 
-/// Truncate a commit message to max_len, appending "..." if truncated
-fn truncate_message(msg: &str, max_len: usize) -> String {
-    // Take only the first line (subject line)
-    let first_line = msg.lines().next().unwrap_or(msg);
-    if first_line.len() <= max_len {
-        first_line.to_string()
-    } else {
-        let truncated: String = first_line.chars().take(max_len - 3).collect();
-        format!("{}...", truncated.trim_end())
-    }
-}
-
 /// Compute SHA256 hash of content
 fn compute_hash(content: &str) -> String {
     let mut hasher = Sha256::new();
@@ -1868,25 +1766,6 @@ mod tests {
         assert_eq!(hash1, hash2);
         assert_ne!(hash1, hash3);
         assert_eq!(hash1.len(), 64);
-    }
-
-    #[test]
-    fn test_truncate_message_short() {
-        assert_eq!(truncate_message("short msg", 80), "short msg");
-    }
-
-    #[test]
-    fn test_truncate_message_long() {
-        let long_msg = "a".repeat(100);
-        let result = truncate_message(&long_msg, 20);
-        assert_eq!(result.len(), 20); // 17 chars + "..."
-        assert!(result.ends_with("..."));
-    }
-
-    #[test]
-    fn test_truncate_message_multiline() {
-        let msg = "First line subject\n\nLong body with details";
-        assert_eq!(truncate_message(msg, 80), "First line subject");
     }
 
     #[test]
