@@ -1,5 +1,14 @@
 # Bobbin tech debt — measured
 
+> **Status (2026-08-22):** third pass, re-measured on
+> `claude/quipu-bobbin-camayoc-completion-dn3i7z`. What changed since the
+> second pass: §1's ten file-size errors are gone (gate now 0 errors /
+> 11 warnings — see the update in §1); every bead §4 called un-closeable and
+> every bead §6 called open is now **closed**, because `scripts/beads-jsonl.py`
+> made the JSONL tracker writable (the very fix §4 asked for); §5's defect is
+> now filed as **bobbin-daa**. Section-level notes below carry the details;
+> the 2026-08-17 text is kept as the record it is.
+>
 > **Status (2026-08-17):** second pass. Every figure here was measured on
 > `claude/neural-amplifier-progress-sg3ojv` at the date shown, not carried over
 > from a bead. Where a bead and a measurement disagree, the measurement is
@@ -7,10 +16,28 @@
 > rather than re-trust it.
 
 `CLAUDE.md` names this file as a ranger responsibility and it did not exist.
-This is the tracked-debt half; `bobbin-roadmap.md` (strategic direction) is
-still absent.
+This is the tracked-debt half; `bobbin-roadmap.md` (strategic direction)
+exists as of 2026-08-21 and carries the sprint execution status.
 
 ## 1. The file-size ratchet is red — and `bobbin-aoz` had it right
+
+> **Update (2026-08-22): the ratchet is green.** Re-running the gate the way
+> this section insists it be measured:
+>
+> ```console
+> $ scripts/check-file-size.sh --all
+> File size check: 0 error(s), 11 warning(s)
+> ```
+>
+> All ten errors are cleared by real splits, not allowlisting, and
+> `bobbin-aoz` is **closed**: `src/cli/bead.rs` (the 1,179-line worst case)
+> is now the `src/cli/bead/` module, the oversized handlers became
+> subdirectories (`admin/`, `analysis/`, `archive/`), `sqlite/mod.rs` and
+> `cross_repo` were split, and `src/index/beads.rs` dropped from a 518-line
+> error to a 416-line warning. The residual debt this section named — a
+> grandfathered allowlist with no retirement path — **still stands**: the
+> allowlist still holds 34 entries and `src/cli/hook.rs` has grown to 9,500
+> lines inside it; the gate still has no mechanism for shrinking it.
 
 > **Correction (2026-08-17).** An earlier revision of this section claimed the
 > bead understated the problem by 4× — "bobbin-aoz says 10 files over the
@@ -226,6 +253,13 @@ than `sort_by_key`.
 
 ## 4. Verified-implemented but not closeable
 
+> **Update (2026-08-22): closeable, and closed.** The fix-at-the-source this
+> section asked for exists as `scripts/beads-jsonl.py` — a guarded writer that
+> treats `.beads/issues.jsonl` as the tracker itself (this repo has no Dolt
+> store to derive it from) and refuses any information-losing write. All seven
+> yupana-tagged beads below are now closed through it, as are `bobbin-lpp`,
+> `-au4`, `-10d` (§2) and `-zhx` (§3). The shadow-state concern is retired.
+
 Seven yupana-tagged beads were checked against the code this session and are
 already implemented: `bobbin-ha6`, `bobbin-4xj`, `bobbin-052`, `bobbin-bnq`,
 `bobbin-9k3`, `bobbin-fjh`, `bobbin-tvn`. Commit `0245984` closed three of them.
@@ -242,9 +276,16 @@ back to accumulates exactly this kind of shadow state.
 
 ## 5. Found this pass, unfiled — the eval harness does not record its own model
 
-**No bead exists for this yet**; `scripts/beads-jsonl.py` has no `create`
-subcommand, so it is recorded here until one can be filed. Severity: this is
-the defect that cost the paper its strongest result.
+> **Update (2026-08-22): filed as `bobbin-daa`** (P2, pitch).
+> `scripts/beads-jsonl.py` gained the `create` subcommand this section was
+> waiting on. The defect itself is unchanged — the runner still does not
+> persist the serving model from the agent's usage record, and the scorer
+> still pools across it (`scripts/paper_census.py::serving_model` is the
+> post-hoc reader, not the fix).
+
+**No bead existed for this at the time of writing**; `scripts/beads-jsonl.py`
+had no `create` subcommand, so it was recorded here until one could be filed.
+Severity: this is the defect that cost the paper its strongest result.
 
 **What it is.** The eval runner does not reliably record which model served a
 run. Of the 85 completed runs in `eval/results/runs/`, 29 carry a confirmed
@@ -278,6 +319,15 @@ in the artifacts, which is where it was eventually found — nine months late,
 by a recount undertaken for an unrelated reason.
 
 ## 6. Open and unassessed
+
+> **Update (2026-08-22): all three are closed.** `bobbin-aa0` shipped as
+> `InjectionTurn` in `src/cli/hook.rs` (failure and post-tool-use injections
+> now carry IDs and meet the ledger). `bobbin-bbe` shipped reshaped as
+> `bobbin bead similar` (the `bd create` trigger point the bead assumed does
+> not exist here). `bobbin-di7` was specified after all — delivered as the
+> quipu integration epic, finished by the pin bump to 0.3.23 with the SHACL
+> gate compiled in (`bobbin-c58`, commit `4efb900`). The assessments below
+> are kept as the record of what they looked like when open.
 
 `bobbin-aa0`, `bobbin-di7`, `bobbin-bbe`.
 

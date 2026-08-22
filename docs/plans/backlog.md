@@ -4,6 +4,27 @@
 > high-level idea list for Phase 4 (Higher-Order Analysis); its items are tracked/implemented under their own
 > plan docs and issues as they mature. Nothing to assess or label here as implemented/planned — left as the
 > living backlog it is.
+>
+> **Shipped-item audit (2026-08-22, verified against the code):** most of this backlog has since landed.
+>
+> - **§1 Test Coverage Mapping — ✅ shipped**, cheaper than sketched: `src/index/coverage.rs` derives the
+>   test↔source map at query time from the stored coupling table (path-based `classify_file`, no
+>   `ChunkType::Test` variant or index-time schema change needed), surfaced as `bobbin coverage` and the
+>   `test_coverage` MCP tool. Structural `Tests` chunk edges exist separately (`src/index/test_edges.rs`).
+> - **§2 Claude Code Hooks — ✅ shipped** (see `docs/plans/hooks-integration.md`): the `bobbin hook`
+>   family covers all six hook types with `hook install`/`uninstall`/`status` plus a post-commit git
+>   hook installer. Not built: the `bobbin mcp-config` JSON generator.
+> - **§3 Semantic Commit Indexing — ✅ shipped**: `ChunkType::Commit`, `src/index/commits.rs` on the
+>   `ChunkSource` seam with per-repo watermark incremental (`last_indexed_commit:{repo}`), the
+>   `commit_search` MCP tool, and commit→source bridging in context assembly. Note commit chunks are
+>   deliberately filtered *out* of context injection (see calibration-sweep-results.md).
+> - **§4 Cross-Repo Coupling — ✅ shipped, by a different algorithm**: `src/index/cross_repo.rs` links
+>   repos by **bead-reference co-occurrence** in commit trailers within a repo group — the time-window
+>   correlation this entry proposed was explicitly rejected as too noisy (ian ruling, bo-oqny). Served
+>   through `related` on CLI/MCP/HTTP with mandatory role filtering.
+> - **§5 Refactoring Planner — 🟡 foundation only**: `ImpactMode::Deps` is now implemented
+>   (`src/analysis/impact.rs`), no longer stubbed; the planner itself (`bobbin plan`, `RefactoringPlan`,
+>   ordered modification lists) remains unbuilt.
 
 High-level feature ideas for Phase 4: Higher-Order Analysis. These compose
 bobbin's existing signals (embeddings, coupling, complexity, deps, refs, history)
@@ -176,10 +197,12 @@ so plans should include confidence levels.
   compaction. Root cause: missing/stale FTS index (swallowed create error +
   compaction invalidation) → every FTS query 500'd. **Awaiting search.example redeploy**
   (routed to dearing→malcolm/infra) to take effect + live verification; #21 left open.
-- **PPR ranking — final wiring + tuning** — add `ppr_weight` to `ContextConfig`, fold
-  `search::ppr::ppr_multiplier` into the score-adjust chain (`context.rs` ~972-1010),
-  then tune weight/seed-count against the eval harness. Primitive + quipu side already
-  landed. Needs a populated coupling graph. **P2.**
+- **PPR ranking — final wiring + tuning** — WIRED as of the 2026-08-22 audit:
+  `ppr_weight` lives in `ContextConfig` (`src/search/context.rs`) and `SearchConfig`
+  (`src/config.rs`, feature-gated default) with a `--ppr-weight` CLI flag, and
+  `compute_code_ppr` folds into the score-adjust chain (`context.rs` ~1223-1261);
+  `bobbin context` errors honestly when PPR is requested on a build without the
+  `knowledge` feature. Remaining: tune weight/seed-count against the eval harness. **P3.**
 - **#9 telemetry Layer 1.5 — auto-association** — populate `bead_lineage` automatically:
   post-commit hook / commit-message bead-ID detection during indexing (git `CommitEntry`
   already carries trailers + files). Makes Layers 2-5 useful. **P2.**
