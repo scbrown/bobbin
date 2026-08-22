@@ -10,6 +10,13 @@
 > routing real (the quarantine routing probe in `src/knowledge/quarantine.rs` passes). The Phase-1 row
 > and the chrono/"blocked upstream" text below are kept as history but are superseded by this note.
 >
+> On `knowledge_validate` (Phase-3 row): it is still **not shipped**, but the reason changed. The
+> upstream blocker is gone — validation could now be exposed — and in the meantime every write path
+> (`knowledge_knot`, chunk/coupling/quarantine pushes) validates inline and surfaces SHACL refusals as
+> errors, so a standalone validate tool is a convenience, not a gap in enforcement. The live MCP
+> surface is now five tools: `knowledge_context`, `knowledge_query`, `knowledge_knot`,
+> `knowledge_inferred_extract`, `knowledge_reconcile_mentions` (`src/mcp/server.rs`).
+>
 > **Implementation status (2026-08-17, Claude):** 🟡 **Partial — no longer dark. Two phases genuinely incomplete.**
 > Re-measured per phase against the source; supersedes the 2026-07-23 banner below, whose central claim is
 > now stale.

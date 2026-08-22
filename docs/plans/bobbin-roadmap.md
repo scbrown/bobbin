@@ -159,9 +159,12 @@ recording the extractor and parameters, landing in `crew:inferred`
 promotion flow. Never written to the root graph, never masquerading as
 observed.
 
-**BLOCKER for track B (cross-repo):** quipu `/knot` hardcodes the ROOT graph
-and silently drops the `graph` key (quipu `src/rdf.rs`). Plane-routed bulk
-ingress must land in quipu before track B emits anything.
+**Former blocker for track B (resolved 2026-08-22):** quipu `/knot` used to
+hardcode the ROOT graph and silently drop the `graph` key (quipu `src/rdf.rs`).
+Strict registered-committed-graph routing landed upstream (quipu 22b3569) and
+is in the pinned rev (0.3.23); bobbin's quarantine push probes it with an
+unregistered sentinel and the probe passes in-process
+(`src/knowledge/quarantine.rs`).
 
 **Envelope rule (both tracks):** bobbin's knowledge-facing responses must
 carry plane + trust on the response envelope (camayoc bead camayoc-j4s) —
