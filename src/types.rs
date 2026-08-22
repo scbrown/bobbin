@@ -61,6 +61,26 @@ impl std::fmt::Display for ChunkType {
     }
 }
 
+impl ChunkType {
+    /// Whether a named chunk of this type carries a code symbol — the set
+    /// the entity extractor mints `CodeSymbol` entities for and the mention
+    /// emitter treats as symbol-bearing (they must agree, or a chunk can
+    /// mention a name no entity extraction would ever mint).
+    pub fn is_code_symbol(self) -> bool {
+        matches!(
+            self,
+            ChunkType::Function
+                | ChunkType::Method
+                | ChunkType::Class
+                | ChunkType::Struct
+                | ChunkType::Enum
+                | ChunkType::Interface
+                | ChunkType::Trait
+                | ChunkType::Impl
+        )
+    }
+}
+
 /// Metadata about an indexed file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileMetadata {

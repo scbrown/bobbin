@@ -20,7 +20,9 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, S
 
 use super::tools::*;
 #[allow(unused_imports)]
-use super::tools::{KnowledgeContextRequest, KnowledgeKnotRequest, KnowledgeQueryRequest};
+use super::tools::{
+    KnowledgeContextRequest, KnowledgeKnotRequest, KnowledgeQueryRequest, KnowledgeReconcileRequest,
+};
 use crate::analysis::backend::{IndexBackend, StructuralBackend};
 use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::impact::{ImpactConfig, ImpactMode, ImpactSignal};
@@ -3259,6 +3261,57 @@ Pass 'actor' and 'source' whenever you have them: a fact whose origin is unrecor
             let payload = serde_json::json!({
                 "written": result,
                 "shacl_validated": Self::KNOWLEDGE_SHACL_ENABLED,
+                "store": self.knowledge_store_info(),
+            });
+            Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string()),
+            )]))
+        }
+        #[cfg(not(feature = "knowledge"))]
+        {
+            let _ = req;
+            Err(McpError::internal_error(
+                "Knowledge graph tools require the 'knowledge' feature. Rebuild with: cargo build --features knowledge".to_string(),
+                None,
+            ))
+        }
+    }
+
+    /// Resolve chunk mention literals against the live entity graph.
+    #[tool(
+        description = "Run the idempotent chunk→entity mention reconcile pass over bobbin's LOCAL knowledge graph. \
+Resolves weak `bobbin:mentions \"SymbolName\"` literals on Chunk facts into typed Ref edges against the live \
+entity graph, and reports every mention honestly as resolved (exactly one match — edge written), dangling \
+(no match — literal left in place for a later run), or ambiguous (multiple matches — left unresolved, never \
+guessed). Safe to re-run: an unchanged store yields the identical classification with edges_written = 0. \
+Run it after new entities land in the graph to pick up previously dangling mentions."
+    )]
+    async fn knowledge_reconcile_mentions(
+        &self,
+        Parameters(req): Parameters<KnowledgeReconcileRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        #[cfg(feature = "knowledge")]
+        {
+            let mut store = self.open_quipu_store().map_err(|e| {
+                McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None)
+            })?;
+
+            let timestamp = chrono::Utc::now().to_rfc3339();
+            let report = crate::knowledge::mentions::reconcile_mentions(&mut store, &timestamp)
+                .map_err(|e| {
+                    McpError::internal_error(format!("Mention reconcile failed: {e}"), None)
+                })?;
+
+            let max_details = req.max_details.unwrap_or(50);
+            let total_details = report.details.len();
+            let details: Vec<_> = report.details.iter().take(max_details).collect();
+            let payload = serde_json::json!({
+                "resolved": report.resolved,
+                "dangling": report.dangling,
+                "ambiguous": report.ambiguous,
+                "edges_written": report.edges_written,
+                "details": details,
+                "details_truncated": total_details > max_details,
                 "store": self.knowledge_store_info(),
             });
             Ok(CallToolResult::success(vec![Content::text(

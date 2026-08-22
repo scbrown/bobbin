@@ -5,8 +5,11 @@
 //! from bobbin's internal chunk ids, which are content-coordinate hashes
 //! that re-mint on any line shift. The graph is the index, never the
 //! warehouse: no chunk content crosses over, only identity, membership
-//! (`bobbin:inDocument`), order (`bobbin:chunkOrder`), and adjacency
-//! (`bobbin:nextChunk`). Containment (`part_of`) stays in bobbin's own
+//! (`bobbin:inDocument`), order (`bobbin:chunkOrder`), adjacency
+//! (`bobbin:nextChunk`), and weak symbol-mention literals
+//! (`bobbin:mentions "Name"`, W2.P5 — resolved to Ref edges by the
+//! idempotent pass in `knowledge::mentions`). Containment (`part_of`)
+//! stays in bobbin's own
 //! edges table for now — the graph's `inDocument` covers the
 //! chunk→document half the competency questions need.
 //!
@@ -41,6 +44,11 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
     // Map bobbin's volatile chunk ids to durable IRIs for edge emission.
     let mut iri_of: std::collections::HashMap<&str, String> = std::collections::HashMap::new();
 
+    // Weak symbol-mention literals (W2.P5): source-chunk id → mentioned
+    // symbol names, from the parser's symbol-bearing edges. The reconcile
+    // pass (`knowledge::mentions`) later resolves these to Ref edges.
+    let edge_mentions = super::mentions::edge_mention_map(edges);
+
     let mut file_chunks: Vec<&Chunk> = chunks.iter().filter(|c| c.start_line > 0).collect();
     file_chunks.sort_by(|a, b| {
         a.file_path
@@ -72,6 +80,12 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
             "    bobbin:filePath \"{}\" ;\n",
             escape_literal(&chunk.file_path)
         ));
+        for name in super::mentions::chunk_mention_names(chunk, &edge_mentions) {
+            turtle.push_str(&format!(
+                "    bobbin:mentions \"{}\" ;\n",
+                escape_literal(name)
+            ));
+        }
         turtle.push_str(&format!(
             "    rdfs:label \"{}\" .\n\n",
             escape_literal(&label)

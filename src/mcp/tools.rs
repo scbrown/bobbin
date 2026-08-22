@@ -1240,6 +1240,16 @@ pub struct KnowledgeQueryRequest {
     pub tx: Option<i64>,
 }
 
+/// Request to run the chunk→entity mention reconcile pass (W2.P5).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct KnowledgeReconcileRequest {
+    /// Cap on per-mention detail entries in the response (default: 50).
+    #[schemars(
+        description = "Maximum per-mention detail entries to return (default: 50). The three counts are always complete."
+    )]
+    pub max_details: Option<usize>,
+}
+
 /// Request for chunk_neighbors: follow relationship edges from a chunk
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ChunkNeighborsRequest {

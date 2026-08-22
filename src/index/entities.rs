@@ -39,14 +39,7 @@ pub fn build_entities(chunks: &[Chunk], repo: &str) -> Vec<Entity> {
             continue;
         };
         match chunk.chunk_type {
-            ChunkType::Function
-            | ChunkType::Method
-            | ChunkType::Class
-            | ChunkType::Struct
-            | ChunkType::Enum
-            | ChunkType::Interface
-            | ChunkType::Trait
-            | ChunkType::Impl => {
+            t if t.is_code_symbol() => {
                 entities.push(Entity {
                     entity_iri: crate::iri::symbol_iri(
                         repo,

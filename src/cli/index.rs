@@ -988,6 +988,27 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 if output.verbose && !output.quiet && !output.json {
                     println!("  Pushed {} chunk-graph facts to quipu", count);
                 }
+                // Second pass (W2.P5): resolve the just-written mention
+                // literals against the live entity graph. Honest tri-count —
+                // dangling/ambiguous are reported, never guessed at.
+                match crate::knowledge::mentions::reconcile_mentions_at(&source_root) {
+                    Ok(report) => {
+                        if output.verbose && !output.quiet && !output.json {
+                            println!(
+                                "  Mention reconcile: {} resolved ({} new edges), {} dangling, {} ambiguous",
+                                report.resolved,
+                                report.edges_written,
+                                report.dangling,
+                                report.ambiguous
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        if !output.quiet && !output.json {
+                            println!("{} Mention reconcile skipped: {}", "!".yellow(), e);
+                        }
+                    }
+                }
             }
             Err(e) => {
                 if !output.quiet && !output.json {
