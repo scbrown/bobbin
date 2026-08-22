@@ -28,12 +28,14 @@
 //!
 //! The write is `/knot` with the `graph` param (quipu 22b3569): the target
 //! must already be a registered committed graph, unknown IRIs are an error.
-//! Older quipu revisions — including the rev bobbin currently pins
-//! (bobbin-kue26) — silently DROP the `graph` key and write to ROOT, which
+//! Older quipu revisions — including the 0.2.0 rev bobbin pinned before the
+//! 0.3.23 bump — silently DROP the `graph` key and write to ROOT, which
 //! would put inferred facts at observed standing: the one thing this module
 //! exists to prevent. [`push_inferred`] therefore probes first with a
 //! sentinel unregistered graph; a store that *accepts* that write is a store
-//! that ignores routing, and the push refuses.
+//! that ignores routing, and the push refuses. The probe passes against the
+//! pinned quipu now — it stays anyway, because it is a correctness guard on
+//! whatever store is actually opened, not a workaround for one pin.
 //!
 //! ## Promotion is not bobbin's
 //!
@@ -261,9 +263,11 @@ pub fn validate_inferred_turtle(turtle: &str) -> Result<()> {
 /// Probes graph routing FIRST: a `/knot` aimed at a deliberately
 /// unregistered sentinel graph must be REFUSED by the store. A store that
 /// accepts it is silently dropping the `graph` key (quipu predating
-/// 22b3569 — the rev bobbin pins today, bobbin-kue26), and the facts would
+/// 22b3569 — older than the 0.3.23 rev bobbin pins), and the facts would
 /// land in ROOT at observed standing; this function refuses instead of
-/// writing. Returns `(tx_id, fact_count)`.
+/// writing. The pinned quipu enforces routing, so the probe passes there;
+/// it remains as a correctness guard on whatever store is opened.
+/// Returns `(tx_id, fact_count)`.
 pub fn push_inferred(store: &mut quipu::Store, facts: &QuarantinedFacts) -> Result<(i64, usize)> {
     let sentinel = format!("{}probe/unregistered-sentinel", plane_ns());
     let probe = quipu::tool_knot(
@@ -281,7 +285,8 @@ pub fn push_inferred(store: &mut quipu::Store, facts: &QuarantinedFacts) -> Resu
              so it is silently dropping the /knot 'graph' key: inferred facts would land \
              in ROOT at observed standing — the masquerade the camayoc ingress discipline \
              forbids. Refusing to push. Requires a quipu with strict graph routing \
-             (>= 22b3569); the current pin predates it (bobbin-kue26)."
+             (>= 22b3569); the pinned quipu (0.3.23, rev 37bfc06a) has it, so this \
+             store was opened by something older."
         ),
         Err(e) if e.to_string().contains("unknown graph") => {} // routing enforced
         Err(e) => bail!("quipu graph-routing probe failed: {e}"),
@@ -301,6 +306,13 @@ pub fn push_inferred(store: &mut quipu::Store, facts: &QuarantinedFacts) -> Resu
             anyhow::anyhow!("quarantine push failed: {msg}")
         }
     })?;
+
+    // With quipu's shacl feature compiled in (this build), a validation
+    // refusal comes back as Ok with `conforms: false` — refuse, don't
+    // report it as a landed write.
+    if result.get("conforms").and_then(|v| v.as_bool()) == Some(false) {
+        bail!("quarantine push refused by SHACL validation: {result}");
+    }
 
     Ok((
         result["tx_id"].as_i64().unwrap_or(-1),

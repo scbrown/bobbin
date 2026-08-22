@@ -29,7 +29,7 @@ pub fn ppr_multiplier(ppr_score: f32, weight: f32) -> f32 {
 /// is never broken by a graph hiccup.
 #[cfg(feature = "knowledge")]
 pub fn compute_code_ppr(
-    store: &quipu::Store,
+    store: &mut quipu::Store,
     candidates: &[(String, f32)],
     repo: &str,
     seed_k: usize,
@@ -155,7 +155,7 @@ mod tests {
             ("src/unrelated.rs".to_string(), 0.1_f32),
         ];
         // seed_k = 1 → personalize on the top hit (seed.rs).
-        let scores = compute_code_ppr(&store, &candidates, repo, 1, 0.85);
+        let scores = compute_code_ppr(&mut store, &candidates, repo, 1, 0.85);
 
         let coupled_s = scores.get("src/coupled.rs").copied().unwrap_or(0.0);
         let unrelated_s = scores.get("src/unrelated.rs").copied().unwrap_or(0.0);

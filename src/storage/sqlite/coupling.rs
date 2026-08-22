@@ -20,7 +20,8 @@ impl MetadataStore {
                LIMIT ?2"#,
         )?;
         let results = stmt
-            .query_map(rusqlite::params![min_score, limit], |row| {
+            // rusqlite 0.40 dropped ToSql for usize; LIMIT fits i64.
+            .query_map(rusqlite::params![min_score, limit as i64], |row| {
                 Ok(FileCoupling {
                     file_a: row.get(0)?,
                     file_b: row.get(1)?,

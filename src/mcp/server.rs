@@ -3070,20 +3070,22 @@ impl BobbinMcpServer {
 
     /// Whether quipu's write-time SHACL validation is compiled into this build.
     ///
-    /// It is not, and it cannot currently be made so (bobbin-di7). quipu gates
-    /// `tool_knot`'s validation behind its own `shacl` feature, which bobbin
-    /// disables via `default-features = false`; turning it back on pulls
-    /// `rudof_lib -> shapes_converter`, which requires `chrono ^0.4.42`, while
-    /// `lancedb -> arrow-array 53.4.1` requires `chrono >=0.4.34, <0.4.40`.
-    /// Irreconcilable without moving off arrow 53, and it cannot even be
-    /// expressed as an opt-in cargo feature because a `quipu/shacl` edge in a
-    /// feature definition makes the resolver pull that tree regardless.
+    /// It IS, since the quipu bump to 0.3.23 (rev 37bfc06a): Cargo.toml
+    /// declares the quipu dependency with `features = ["shacl"]`, so
+    /// `tool_knot`'s `#[cfg(feature = "shacl")]` validation is compiled in and
+    /// every knowledge write is checked against the stored shapes before
+    /// commit. The chrono clash that used to make this impossible
+    /// (rudof_lib needed `chrono ^0.4.42` while arrow-array 53 capped at
+    /// `<0.4.40` — the old bobbin-di7 gap) was dissolved by the
+    /// lancedb 0.27 / arrow 57 bump that landed with it.
     ///
-    /// So this is a constant rather than a `cfg!`, and it is reported on every
-    /// write. **A gate compiled out is indistinguishable from a gate that
-    /// passed unless something says so.** Flip this in the same change that
-    /// enables the feature; do not flip it on its own.
-    const KNOWLEDGE_SHACL_ENABLED: bool = false;
+    /// It stays a constant rather than a `cfg!` because bobbin cannot inspect
+    /// its dependency's features at compile time; this mirrors the manifest.
+    /// **A gate compiled out is indistinguishable from a gate that passed
+    /// unless something says so** — which is why the field is reported on
+    /// every write. Flip this in the same change that changes the quipu
+    /// dependency's `shacl` feature; never on its own.
+    const KNOWLEDGE_SHACL_ENABLED: bool = true;
 
     /// Query the knowledge graph for entities relevant to a topic
     #[tool(
@@ -3246,12 +3248,23 @@ Pass 'actor' and 'source' whenever you have them: a fact whose origin is unrecor
             }
 
             let result = quipu::tool_knot(&mut store, &input).map_err(|e| {
-                // A SHACL refusal arrives here as an error. Surfacing it as a
-                // tool error rather than a success-with-a-field is deliberate:
-                // a refused write that returns success is the failure mode
-                // this whole subsystem exists to prevent.
                 McpError::internal_error(format!("Knowledge write refused: {e}"), None)
             })?;
+
+            // A SHACL refusal arrives from current quipu as `Ok` with
+            // `conforms: false` (plus violations/issues), NOT as an `Err`.
+            // Surfacing it as a tool error rather than a success-with-a-field
+            // is deliberate: a refused write that returns success is the
+            // failure mode this whole subsystem exists to prevent.
+            if result.get("conforms").and_then(|v| v.as_bool()) == Some(false) {
+                return Err(McpError::internal_error(
+                    format!(
+                        "Knowledge write refused by SHACL validation: {}",
+                        serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string())
+                    ),
+                    None,
+                ));
+            }
 
             // The honesty field. quipu's write-time SHACL check is
             // `#[cfg(feature = "shacl")]` on ITS side, so when bobbin builds

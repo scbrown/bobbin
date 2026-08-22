@@ -65,6 +65,12 @@ pub fn push_coupling_to_quipu(
     let result = quipu::tool_knot(&mut store, &input)
         .map_err(|e| anyhow::anyhow!("Failed to push coupling to quipu: {e}"))?;
 
+    // With quipu's shacl feature compiled in (this build), a validation
+    // refusal comes back as Ok with `conforms: false` — not a write.
+    if result.get("conforms").and_then(|v| v.as_bool()) == Some(false) {
+        anyhow::bail!("coupling push refused by SHACL validation: {result}");
+    }
+
     let tx_id = result["tx_id"].as_i64().unwrap_or(-1);
     let count = result["count"].as_u64().unwrap_or(0) as usize;
 

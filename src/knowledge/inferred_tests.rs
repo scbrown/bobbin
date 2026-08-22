@@ -207,3 +207,99 @@ fn served_facts_are_always_wrapped_in_the_quarantine_envelope() {
     assert!(env["promotion"].as_str().unwrap().contains("promote_plane"));
     assert_eq!(out["facts"]["n"], 1);
 }
+
+// ── what the quipu 0.3.23 pin unlocked, verified in-process ────────
+//
+// These run against `quipu::Store::open_in_memory()` — the same crate the
+// production path links — so they are proof the pinned rev actually has the
+// behavior the probes in `quarantine.rs`/`chunks.rs` demand, not a mock of it.
+
+#[test]
+fn push_inferred_lands_in_the_registered_plane_with_routing_enforced() {
+    let mut store = quipu::Store::open_in_memory().expect("in-memory store");
+    // Register the plane as a committed graph (camayoc's planes.py does this
+    // in production; trust-labelling stays camayoc's and is not needed for
+    // routing). The sentinel probe inside push_inferred must be REFUSED by
+    // the store first — a store that accepted it would fail this test.
+    quipu::tool_graph_create(
+        &store,
+        &serde_json::json!({ "graph": inferred_plane_iri() }),
+    )
+    .expect("register inferred plane");
+
+    let (ex, extraction) = fixture_extraction();
+    let facts = QuarantinedFacts::stamp(&ex, &extraction, "myrepo");
+    let (tx, count) = push_inferred(&mut store, &facts).expect("routed push");
+    assert!(tx > 0, "expected a real transaction, got {tx}");
+    assert!(count > 0, "expected facts written, got {count}");
+
+    // The facts are IN the plane graph, not ROOT: strict routing means the
+    // masquerade (inferred facts at observed standing) is unrepresentable.
+    let g = store
+        .lookup(&inferred_plane_iri())
+        .unwrap()
+        .expect("plane interned");
+    let in_plane = store.current_facts_in_graph(g).unwrap();
+    assert!(!in_plane.is_empty(), "plane graph should hold the facts");
+    let in_root = store.current_facts().unwrap();
+    assert!(
+        in_root.is_empty(),
+        "ROOT must stay empty — {} facts leaked to observed standing",
+        in_root.len()
+    );
+}
+
+#[test]
+fn push_inferred_refuses_an_unregistered_plane_by_name() {
+    let mut store = quipu::Store::open_in_memory().expect("in-memory store");
+    // No graph_create: the plane is unknown. The routing probe passes (the
+    // sentinel is refused), but the real write must fail with the remedy.
+    let (ex, extraction) = fixture_extraction();
+    let facts = QuarantinedFacts::stamp(&ex, &extraction, "myrepo");
+    let err = push_inferred(&mut store, &facts).unwrap_err().to_string();
+    assert!(
+        err.contains("planes.py"),
+        "error must name camayoc's registration flow, got: {err}"
+    );
+}
+
+#[test]
+fn shacl_gate_is_compiled_in_and_refuses_a_violating_write() {
+    // KNOWLEDGE_SHACL_ENABLED (src/mcp/server.rs) reports `true` since the
+    // pin bump; this is the test that keeps that report honest. With quipu's
+    // `shacl` feature compiled OUT, this write would be accepted unvalidated
+    // and the assertion below would fail — a compiled-out gate is
+    // indistinguishable from a passed one, except here.
+    let mut store = quipu::Store::open_in_memory().expect("in-memory store");
+    let shapes = format!(
+        "@prefix sh: <http://www.w3.org/ns/shacl#> .\n\
+         @prefix bobbin: <{ns}> .\n\
+         bobbin:ChunkShape a sh:NodeShape ;\n\
+             sh:targetClass bobbin:Chunk ;\n\
+             sh:property [ sh:path bobbin:filePath ; sh:minCount 1 ] .\n",
+        ns = crate::iri::ONTOLOGY_NS
+    );
+    let violating = format!(
+        "@prefix bobbin: <{ns}> .\n<http://ex/c1> a bobbin:Chunk .\n",
+        ns = crate::iri::ONTOLOGY_NS
+    );
+    let out = quipu::tool_knot(
+        &mut store,
+        &serde_json::json!({
+            "turtle": violating,
+            "shapes": shapes,
+            "timestamp": "2026-08-22T00:00:00Z",
+            "actor": "test",
+            "source": "shacl-gate-test",
+        }),
+    )
+    .expect("refusal surfaces as Ok(conforms:false), not Err");
+    assert_eq!(
+        out["conforms"], false,
+        "SHACL gate must refuse a bobbin:Chunk without filePath: {out}"
+    );
+    assert!(
+        out.get("tx_id").is_none(),
+        "a refused write has no tx: {out}"
+    );
+}

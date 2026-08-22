@@ -290,7 +290,7 @@ impl VectorStore {
                 eprintln!("bobbin: chunks table schema changed — dropping for re-creation");
                 eprintln!("  on-disk fields:  {:?}", on_disk);
                 eprintln!("  expected fields: {:?}", expected_fields);
-                conn.drop_table(TABLE_NAME)
+                conn.drop_table(TABLE_NAME, &[])
                     .await
                     .context("Failed to drop outdated chunks table")?;
                 None
@@ -327,7 +327,7 @@ impl VectorStore {
 
             if on_disk != expected_fields {
                 eprintln!("bobbin: deps table schema changed — dropping for re-creation");
-                conn.drop_table(DEPS_TABLE_NAME)
+                conn.drop_table(DEPS_TABLE_NAME, &[])
                     .await
                     .context("Failed to drop outdated deps table")?;
                 None
@@ -363,7 +363,7 @@ impl VectorStore {
 
             if on_disk != expected_fields {
                 eprintln!("bobbin: chunk_edges table schema changed — dropping for re-creation");
-                conn.drop_table(CHUNK_EDGES_TABLE_NAME)
+                conn.drop_table(CHUNK_EDGES_TABLE_NAME, &[])
                     .await
                     .context("Failed to drop outdated chunk_edges table")?;
                 None
@@ -399,7 +399,7 @@ impl VectorStore {
 
             if on_disk != expected_fields {
                 eprintln!("bobbin: entities table schema changed — dropping for re-creation");
-                conn.drop_table(ENTITIES_TABLE_NAME)
+                conn.drop_table(ENTITIES_TABLE_NAME, &[])
                     .await
                     .context("Failed to drop outdated entities table")?;
                 None
@@ -549,14 +549,16 @@ impl VectorStore {
         RecordBatch::try_new(schema, columns).context("Failed to create record batch")
     }
 
-    /// Create a RecordBatchIterator from a batch
+    /// Create a boxed RecordBatchReader from a batch.
+    ///
+    /// Boxed because lancedb 0.27's `add`/`create_table` take `impl Scannable`,
+    /// which is implemented for `Box<dyn RecordBatchReader + Send>` but not for
+    /// a bare `RecordBatchIterator`.
     fn batch_to_reader(
         batch: RecordBatch,
         schema: SchemaRef,
-    ) -> RecordBatchIterator<
-        impl Iterator<Item = std::result::Result<RecordBatch, arrow::error::ArrowError>>,
-    > {
-        RecordBatchIterator::new(std::iter::once(Ok(batch)), schema)
+    ) -> Box<dyn arrow_array::RecordBatchReader + Send> {
+        Box::new(RecordBatchIterator::new(std::iter::once(Ok(batch)), schema))
     }
 
     /// Insert chunks with their embeddings
@@ -4928,7 +4930,8 @@ mod tests {
         )
         .unwrap();
 
-        let reader = RecordBatchIterator::new(vec![Ok(batch)], old_schema);
+        let reader: Box<dyn arrow_array::RecordBatchReader + Send> =
+            Box::new(RecordBatchIterator::new(vec![Ok(batch)], old_schema));
         conn.create_table(TABLE_NAME, reader)
             .execute()
             .await

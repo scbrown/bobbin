@@ -67,17 +67,26 @@ tree-sitter-java = "0.23"
 tree-sitter-cpp = "0.23"
 
 # Vector database (primary storage)
-lancedb = "0.17"
-lance-index = "0.23"
+# 0.27 (arrow 57) rather than 0.17 (arrow 53): arrow-array 53.4.1 capped
+# chrono at <0.4.40, irreconcilable with quipu's shacl gate (rudof_lib ->
+# shapes_converter needs chrono ^0.4.42), and every lancedb before 0.22.3
+# pins chrono EXACTLY (=0.4.39 / =0.4.41), which conflicts the same way.
+# 0.27 + arrow 57 is the pairing quipu itself builds against, so the two
+# stacks stay on one arrow — this bump is what lets `quipu/shacl` compile
+# into bobbin at all (it closed bobbin-di7's "missing gate").
+lancedb = "0.27"
+lance-index = "=4.0.0"
 # Cross-process advisory lock for lance maintenance (compact/prune) — already
 # in the tree transitively; promoted so the maintenance gate can flock.
 fs4 = "0.8"
-arrow = { version = "53", default-features = false }
-arrow-array = "53"
-arrow-schema = "53"
+arrow = { version = "57", default-features = false }
+arrow-array = "57"
+arrow-schema = "57"
 
 # SQLite (coupling + meta only)
-rusqlite = { version = "0.33", features = ["bundled"] }
+# 0.40 to match quipu's rusqlite: libsqlite3-sys `links = "sqlite3"` allows
+# only ONE version in the whole tree, so bobbin and quipu must agree.
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 # MySQL/Dolt (beads integration)
 mysql_async = { version = "0.34", default-features = false, features = ["default-rustls"] }
@@ -115,43 +124,50 @@ schemars = "1.0"
 
 # Knowledge graph (Quipu subsystem)
 #
-# rev = 7f984b4e is quipu 0.2.0 and is CHOSEN, not inherited. It is 33 commits behind
-# main (dc1724e, 0.3.3) — a full minor release behind what the fleet runs — because
-# 0.2.0 is the NEWEST rev bobbin actually compiles against. 0.3.3 changed the signature
-# to `tool_project(store: &mut Store, ..)`; bobbin passes `&Store` from an immutable
-# borrow (src/search/ppr.rs:68, reached via &self in the assembler), so upgrading is a
-# real migration, not a version bump. Tracked in bobbin-kue26 — do not bump this rev without
-# doing that work; `cargo check --features knowledge` fails immediately if you try.
+# rev = 37bfc06a is quipu 0.3.23, current main as of 2026-08-22. The previous pin
+# (7f984b4e, 0.2.0) was a deliberate hold: 0.3.x moved `tool_project` to
+# `&mut Store` and bobbin passed `&Store` from an immutable borrow. That
+# migration is done — the assembler reaches its store through `&mut self`
+# (src/search/context.rs run_hybrid_search) and src/search/ppr.rs takes
+# `&mut quipu::Store` — so the pin now tracks current main. What the bump
+# buys, all verified by tests against an in-process store:
+#   - `replace_snapshot` handled server-side (the chunk-push probe in
+#     src/knowledge/chunks.rs now passes instead of bailing),
+#   - strict /knot `graph` routing (quipu 22b3569) — the quarantine routing
+#     probe in src/knowledge/quarantine.rs passes,
+#   - graph-scoped SHACL repair context for chunked named-graph writes
+#     (quipu-080 / d0c24b7).
 #
-# Pinned by rev rather than `branch = "main"` because Cargo.lock is gitignored: a fresh
-# CI checkout has no lock, so a branch dep would float to main's tip. With `knowledge`
-# now built by CI (bobbin-jdlkh), that float would have broken the build on the very
-# first run — the API drift above was invisible only because the feature was never
-# compiled.
+# Pinned by rev rather than `branch = "main"` so the compiled quipu can never
+# drift from the rev this code was adapted to, whatever checkout state CI has.
+# With `knowledge` built by CI (bobbin-jdlkh), a floating branch dep would
+# break the build the moment quipu's API moved.
 #
-# `default-features = false` keeps quipu's `onnx` off — verified via
+# LOCKFILE LANDMINE: quipu declares `rudof_lib = "^0.2.8"`, but rudof_lib
+# 0.2.9+ moved `validate_shacl` to a builder API that quipu 37bfc06a does not
+# compile against, and the rudof workspace crates use loose cross-reqs, so a
+# mixed-version rudof family does not compile either. Bobbin's (tracked)
+# Cargo.lock therefore pins the WHOLE family to the versions in quipu's own
+# Cargo.lock: rudof_lib/rudof_rdf/shacl_ir/shacl_validation/shapes_converter/
+# shex_ast/shex_validation/sparql_service/dctap 0.2.8, prefixmap/rudof_generate/
+# shacl_ast/shacl_rdf/shapes_comparator 0.2.6, rbe 0.2.7. A bare
+# `cargo update` floats them to 0.2.20 and breaks the quipu build; re-pin
+# with `cargo update -p <crate> --precise <ver>` per the list above
+# (rudof_lib first, then comparator, then the rest).
+#
+# `default-features = false` keeps quipu's `onnx` OFF — MUST stay off. Verified via
 # `cargo tree -i ort`: only bobbin pulls ort/tokenizers, quipu does not, so quipu's
 # embedder (and its pad-token bug) is not compiled in.
 #
-# IT ALSO KEEPS `shacl` OFF, WHICH IS NOT TIDINESS — IT IS A MISSING GATE
-# (bobbin-di7). `shacl` is one of quipu's DEFAULT features, so turning defaults
-# off turned write-time validation off with it: `tool_knot`'s validation is
-# `#[cfg(feature = "shacl")]` (quipu `src/mcp/mod.rs:452`), so knowledge writes
-# are accepted UNVALIDATED. A gate compiled out is indistinguishable from a gate
-# that passed, which is why `knowledge_knot` reports `shacl_validated` on every
-# write rather than leaving the caller to assume.
-#
-# It cannot simply be switched on today. Measured:
-#
-#   quipu/shacl -> rudof_lib -> shapes_converter  requires chrono ^0.4.42
-#   lancedb     -> arrow-array 53.4.1             requires chrono >=0.4.34, <0.4.40
-#
-# Irreconcilable without moving off arrow 53. Note this cannot even be declared
-# as an opt-in cargo feature: a `quipu/shacl` edge in a feature definition makes
-# the resolver pull that tree into Cargo.lock whether or not the feature is
-# enabled, so the whole crate stops resolving. Hence the constant in
-# `src/mcp/server.rs` rather than a feature flag — see KNOWLEDGE_SHACL_ENABLED.
-quipu = { version = "=0.2.0", git = "https://github.com/scbrown/quipu", rev = "7f984b4e", default-features = false, optional = true }
+# `features = ["shacl"]` turns write-time validation ON (closes the missing gate
+# bobbin-di7): `tool_knot`'s validation is `#[cfg(feature = "shacl")]`, so with
+# it off knowledge writes were accepted UNVALIDATED, and a compiled-out gate is
+# indistinguishable from a passed one — which is why `knowledge_knot` reports
+# `shacl_validated` on every reply. That flag now reports the compiled truth
+# (see KNOWLEDGE_SHACL_ENABLED in src/mcp/server.rs). The chrono clash that
+# used to forbid this (rudof_lib needed ^0.4.42, arrow-array 53.4.1 capped at
+# <0.4.40) was dissolved by the lancedb 0.27 / arrow 57 bump above.
+quipu = { version = "=0.3.23", git = "https://github.com/scbrown/quipu", rev = "37bfc06a33081d26177cd7176de45c7cab3647e8", default-features = false, features = ["shacl"], optional = true }
 
 # HTTP Server
 axum = "0.8"

@@ -1,5 +1,15 @@
 # 🪢 Quipu Integration Plan
 
+> **Update (2026-08-22, strider):** the quipu pin moved to **0.3.23, rev `37bfc06a`** (current main)
+> with `features = ["shacl"]`, `default-features = false` (onnx still off — verified via `cargo tree -i ort`).
+> The upstream SHACL blocker described below is **closed**: the chrono clash was dissolved by bumping
+> lancedb 0.17 → 0.27 (arrow 53 → 57, the pairing quipu itself builds against), so write-time SHACL
+> validation is now compiled in and `knowledge_knot` reports `shacl_validated: true` honestly
+> (`KNOWLEDGE_SHACL_ENABLED`, `src/mcp/server.rs`). The bump also made `replace_snapshot` real on the
+> embedded store (the chunk-push probe in `src/knowledge/chunks.rs` passes) and strict `/knot` graph
+> routing real (the quarantine routing probe in `src/knowledge/quarantine.rs` passes). The Phase-1 row
+> and the chrono/"blocked upstream" text below are kept as history but are superseded by this note.
+>
 > **Implementation status (2026-08-17, Claude):** 🟡 **Partial — no longer dark. Two phases genuinely incomplete.**
 > Re-measured per phase against the source; supersedes the 2026-07-23 banner below, whose central claim is
 > now stale.

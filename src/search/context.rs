@@ -1226,7 +1226,7 @@ impl ContextAssembler {
             #[cfg(feature = "knowledge")]
             {
                 if ppr_weight > 0.0 {
-                    if let Some(ref store) = self.quipu_store {
+                    if let Some(ref mut store) = self.quipu_store {
                         // The coupling exporter takes paths straight from git, so the graph
                         // is keyed by REPO-RELATIVE paths, while search results carry
                         // ABSOLUTE ones. Seed IRIs must be built in the graph's form or

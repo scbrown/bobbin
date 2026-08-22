@@ -389,43 +389,51 @@ impl FeedbackStore {
 
     /// Get aggregated feedback statistics.
     pub fn stats(&self) -> Result<FeedbackStats> {
+        // rusqlite 0.40 dropped FromSql for u64 (SQLite integers are i64);
+        // COUNT(*) is non-negative, so the casts are lossless.
         let total_injections: u64 =
             self.conn
-                .query_row("SELECT COUNT(*) FROM injections", [], |row| row.get(0))?;
+                .query_row("SELECT COUNT(*) FROM injections", [], |row| {
+                    row.get::<_, i64>(0)
+                })? as u64;
 
         let total_feedback: u64 =
             self.conn
-                .query_row("SELECT COUNT(*) FROM feedback", [], |row| row.get(0))?;
+                .query_row("SELECT COUNT(*) FROM feedback", [], |row| {
+                    row.get::<_, i64>(0)
+                })? as u64;
 
         let useful: u64 = self.conn.query_row(
             "SELECT COUNT(*) FROM feedback WHERE rating = 'useful'",
             [],
-            |row| row.get(0),
-        )?;
+            |row| row.get::<_, i64>(0),
+        )? as u64;
         let noise: u64 = self.conn.query_row(
             "SELECT COUNT(*) FROM feedback WHERE rating = 'noise'",
             [],
-            |row| row.get(0),
-        )?;
+            |row| row.get::<_, i64>(0),
+        )? as u64;
         let harmful: u64 = self.conn.query_row(
             "SELECT COUNT(*) FROM feedback WHERE rating = 'harmful'",
             [],
-            |row| row.get(0),
-        )?;
+            |row| row.get::<_, i64>(0),
+        )? as u64;
 
         // Lineage stats
         let lineage_records: u64 = self
             .conn
-            .query_row("SELECT COUNT(*) FROM lineage", [], |row| row.get(0))
-            .unwrap_or(0);
+            .query_row("SELECT COUNT(*) FROM lineage", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap_or(0) as u64;
         let actioned: u64 = self
             .conn
             .query_row(
                 "SELECT COUNT(DISTINCT feedback_id) FROM lineage_feedback",
                 [],
-                |row| row.get(0),
+                |row| row.get::<_, i64>(0),
             )
-            .unwrap_or(0);
+            .unwrap_or(0) as u64;
         let unactioned = total_feedback.saturating_sub(actioned);
 
         Ok(FeedbackStats {
@@ -467,13 +475,15 @@ impl FeedbackStore {
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
+            // rusqlite 0.40 dropped FromSql for u64; the counts are
+            // non-negative, so i64 -> u64 is lossless.
             Ok(GroupedStatsEntry {
                 key: row.get(0)?,
-                injections: row.get(1)?,
-                feedback: row.get(2)?,
-                useful: row.get(3)?,
-                noise: row.get(4)?,
-                harmful: row.get(5)?,
+                injections: row.get::<_, i64>(1)? as u64,
+                feedback: row.get::<_, i64>(2)? as u64,
+                useful: row.get::<_, i64>(3)? as u64,
+                noise: row.get::<_, i64>(4)? as u64,
+                harmful: row.get::<_, i64>(5)? as u64,
             })
         })?;
         let mut entries = Vec::new();

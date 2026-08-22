@@ -19,7 +19,10 @@
 //! for snapshot support before any fact is written — a store that predates
 //! `replace_snapshot` would silently ignore the key and accumulate a copy
 //! of the graph per index run, which is exactly the class of silent misses
-//! this integration keeps finding (bobbin-jdlkh).
+//! this integration keeps finding (bobbin-jdlkh). Since the pin moved to
+//! quipu 0.3.23 (rev 37bfc06a) the probe passes against the embedded store;
+//! it stays because it guards correctness of whatever store is opened, not
+//! a particular pin.
 
 use std::path::Path;
 
@@ -159,7 +162,8 @@ pub fn push_chunks_to_quipu(
         anyhow::bail!(
             "embedded quipu predates snapshot replacement (no 'replaced' in /knot response); \
              refusing to push chunks — they would accumulate per index run. \
-             Update the quipu dependency pin (bobbin-di7)."
+             The pinned quipu (0.3.23, rev 37bfc06a) supports it, so this store \
+             was opened by something older."
         );
     }
 
@@ -176,6 +180,13 @@ pub fn push_chunks_to_quipu(
         }),
     )
     .map_err(|e| anyhow::anyhow!("Failed to push chunks to quipu: {e}"))?;
+
+    // With quipu's shacl feature compiled in (this build), a validation
+    // refusal comes back as Ok with `conforms: false` — never mistake it
+    // for a write.
+    if result.get("conforms").and_then(|v| v.as_bool()) == Some(false) {
+        anyhow::bail!("chunk push refused by SHACL validation: {result}");
+    }
 
     Ok((
         result["tx_id"].as_i64().unwrap_or(-1),
@@ -240,6 +251,40 @@ mod tests {
         let chunks = vec![chunk("c", "beads:rig:x", 0, None)];
         let turtle = generate_chunk_turtle(&chunks, &[], "r");
         assert!(!turtle.contains("beads"));
+    }
+
+    // Proof the pinned quipu (0.3.23) handles `replace_snapshot` server-side:
+    // the probe passes and a re-push DIFFS instead of accumulating — the
+    // failure mode the probe exists to refuse on older stores.
+    #[test]
+    fn snapshot_push_replaces_instead_of_accumulating() {
+        let dir = tempfile::tempdir().unwrap();
+        let two = vec![
+            chunk("h1", "docs/guide.md", 1, Some("Intro")),
+            chunk("h2", "docs/guide.md", 7, Some("Setup")),
+        ];
+        let (tx1, n1) = push_chunks_to_quipu(&two, &[], "r", dir.path()).expect("first push");
+        assert!(tx1 > 0);
+        assert!(n1 > 0);
+
+        // Push again with one chunk vanished: its facts must retract.
+        let one = vec![chunk("h1", "docs/guide.md", 1, Some("Intro"))];
+        push_chunks_to_quipu(&one, &[], "r", dir.path()).expect("second push");
+
+        let store = quipu::Store::open(dir.path().join(".bobbin/quipu/quipu.db").to_str().unwrap())
+            .unwrap();
+        let gone = chunk_iri("r", "docs/guide.md", 7);
+        let facts = store.current_facts().unwrap();
+        if let Some(id) = store.lookup(&gone).unwrap() {
+            assert!(
+                !facts.iter().any(|f| f.entity == id),
+                "vanished chunk C7 must have no live facts after the replace"
+            );
+        }
+        // And the survivor is still live.
+        let kept = store.lookup(&chunk_iri("r", "docs/guide.md", 1)).unwrap();
+        let kept = kept.expect("surviving chunk stays interned");
+        assert!(facts.iter().any(|f| f.entity == kept));
     }
 
     #[test]

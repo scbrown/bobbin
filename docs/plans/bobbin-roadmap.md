@@ -23,17 +23,19 @@ slice `document-structure-and-chunks`; namespace consolidated to the live
 aegis scheme on both sides (quipu's dead bobbin.dev constructors deleted;
 coupling/PPR/expand_knowledge join the live entity graph); advisory
 `bobbin:Chunk` vocabulary in camayoc shapes; `/knot` chunk emitter opt-in
-(`quipu_push_chunks`) with a snapshot-support probe — real use blocked on
-the quipu pin (bobbin-di7 note). W2.P5 → bead bobbin-c79. **W3.A shipped**
+(`quipu_push_chunks`) with a snapshot-support probe — unblocked 2026-08-22:
+the quipu pin moved to 0.3.23 rev 37bfc06a, so `replace_snapshot` is real
+on the embedded store and the probe passes. W2.P5 → bead bobbin-c79. **W3.A shipped**
 (`[index] entities` producer, live-lane IRIs). **W3.B quarantined-track
 discipline shipped** (bobbin-15f closed): `InferredExtractor` seam +
 deterministic `backtick-coderef/v1` baseline (`knowledge/inferred.rs`),
 stamped landing in the camayoc `crew:inferred` plane (rank 0) with
 `quipu:derivedBy` + `aegis:sourceKind=inferred`, masquerade guard, envelope
 rule on the `knowledge_inferred_extract` MCP surface, graph-routing probe
-that refuses stores predating quipu 22b3569; live pushes wait on the quipu
-pin bump (bobbin-kue26), and a model-backed extractor is one more impl of
-the seam.
+that refuses stores predating quipu 22b3569; the quipu pin bump
+(0.3.23, 2026-08-22) makes live pushes real — the routing probe passes
+against the embedded store — and a model-backed extractor is one more impl
+of the seam.
 **W4 P1–P2 shipped** (ChunkSource seam; beads retrofitted; SQL source);
 commits/archives retrofit shipped (bobbin-d5e closed: commits behind a
 watermark pipeline on the seam, archives upgraded from full-replace to
@@ -48,7 +50,7 @@ W1.P1 chunk edges (DONE) ──► W1.P2 edge-aware context ──► W1.P3 edge
 W2.P1 camayoc competency file ──► W2.P3 chunk vocabulary ──► W2.P4 /knot emitter ──► W2.P5 reconcile mapping
         W2.P2 namespace consolidation ──┘
 W3.A deterministic extraction ──► (needs W2.P3 vocabulary)
-W3.B model extraction ──► seam+quarantine DONE; live push gated on quipu pin bump (bobbin-kue26)
+W3.B model extraction ──► seam+quarantine DONE; live push unblocked by quipu pin bump (0.3.23, 2026-08-22)
 W4.P1 ChunkSource trait ──► W4.P2 SQL source ──► W4.P3 logs+metrics (occurred_at migration batch)
 ```
 
@@ -198,8 +200,8 @@ stay in the TSDB).
 | Consolidate IRIs to the live aegis scheme | quipu | W2.P2 | ✅ done — dead bobbin.dev constructors deleted; reconcile fixed (quipu ee0c5a6) |
 | Retire `https://bobbin.dev/` in coupling.rs / expand_knowledge | bobbin | W2.P2 | ✅ done (242b10e) |
 | Chunk vocabulary shapes (advise-first) | camayoc | W2.P4 | ✅ done — advisory ChunkShape (camayoc 8cd622e) |
-| Quipu dependency pin update (replace_snapshot + shacl) | bobbin | chunk push, W2.P5 | open — bobbin-di7 |
-| SHACL named-graph type-context gap | quipu | W3.B chunked writes | open — quipu-080 |
+| Quipu dependency pin update (replace_snapshot + shacl) | bobbin | chunk push, W2.P5 | ✅ done 2026-08-22 — pin 0.3.23 rev 37bfc06a, shacl ON, onnx off; probes pass |
+| SHACL named-graph type-context gap | quipu | W3.B chunked writes | ✅ done upstream — quipu-080 closed (d0c24b7), in the pinned rev |
 | occurred_at chunks-table migration batch | bobbin | W4.P3 | open |
 
 ## Non-goals
