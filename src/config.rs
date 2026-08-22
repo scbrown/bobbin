@@ -34,6 +34,16 @@ pub struct Config {
     /// feature and a quipu revision with `replace_snapshot` support.
     #[serde(default)]
     pub quipu_push_chunks: bool,
+    /// Run the inferred-track extractor (W3.B) over markdown prose during
+    /// indexing and land the candidates in the QUARANTINED camayoc
+    /// crew:inferred plane (trust rank 0), as a diffed snapshot replacement.
+    /// Opt-in: requires the `knowledge` feature, a quipu revision with strict
+    /// /knot graph routing (>= 22b3569 — the push refuses on older stores
+    /// rather than letting facts masquerade in ROOT), and the plane
+    /// registered + trust-labelled by camayoc's `planes.py ensure`. Like
+    /// `quipu_push_chunks`, the snapshot reflects the files indexed this run.
+    #[serde(default)]
+    pub quipu_push_inferred: bool,
 }
 
 /// Configuration for remote server (thin-client mode)

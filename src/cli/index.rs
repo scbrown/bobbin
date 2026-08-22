@@ -524,6 +524,14 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let mut all_slim_chunks: Vec<Chunk> = Vec::new();
     let collect_slim_chunks =
         config.index.entities || (cfg!(feature = "knowledge") && config.quipu_push_chunks);
+    // Inferred-track extraction (W3.B) runs INSIDE the file loop, against
+    // full chunk content — the slim copies above are content-free by design,
+    // and prose extraction needs the prose. Only the small candidate set is
+    // accumulated.
+    #[cfg(feature = "knowledge")]
+    let inferred_extractor = crate::knowledge::inferred::BacktickCoderefExtractor::default();
+    #[cfg(feature = "knowledge")]
+    let mut inferred_extraction = crate::knowledge::inferred::Extraction::default();
     // Every re-parsed file gets its stored edges cleared, whether or not it
     // emits edges this run — a file whose edges all disappeared must not
     // keep its stale rows (keyed off emitted edges, it would).
@@ -641,6 +649,12 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 slim.content = String::new();
                 slim
             }));
+        }
+
+        #[cfg(feature = "knowledge")]
+        if config.quipu_push_inferred {
+            use crate::knowledge::inferred::InferredExtractor;
+            inferred_extraction.merge(inferred_extractor.extract(&chunks, repo_name));
         }
 
         // Compute contextual embeddings for enabled languages
@@ -1013,6 +1027,31 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             Err(e) => {
                 if !output.quiet && !output.json {
                     println!("{} Chunk-graph push skipped: {}", "!".yellow(), e);
+                }
+            }
+        }
+    }
+
+    // Land inferred-track candidates in the QUARANTINED plane (opt-in, W3.B).
+    // The push itself refuses stores that cannot route the write to the
+    // registered crew:inferred graph — a silent ROOT landing would serve
+    // model-track claims at observed standing.
+    #[cfg(feature = "knowledge")]
+    if config.quipu_push_inferred {
+        let stamped = crate::knowledge::quarantine::QuarantinedFacts::stamp(
+            &inferred_extractor,
+            &inferred_extraction,
+            repo_name,
+        );
+        match crate::knowledge::quarantine::push_inferred_to_quipu(&stamped, &source_root) {
+            Ok((_tx, count)) => {
+                if output.verbose && !output.quiet && !output.json {
+                    println!("  Pushed {} inferred facts to quarantine plane", count);
+                }
+            }
+            Err(e) => {
+                if !output.quiet && !output.json {
+                    println!("{} Inferred quarantine push skipped: {:#}", "!".yellow(), e);
                 }
             }
         }

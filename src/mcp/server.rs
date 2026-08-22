@@ -21,7 +21,8 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, S
 use super::tools::*;
 #[allow(unused_imports)]
 use super::tools::{
-    KnowledgeContextRequest, KnowledgeKnotRequest, KnowledgeQueryRequest, KnowledgeReconcileRequest,
+    KnowledgeContextRequest, KnowledgeInferredExtractRequest, KnowledgeKnotRequest,
+    KnowledgeQueryRequest, KnowledgeReconcileRequest,
 };
 use crate::analysis::backend::{IndexBackend, StructuralBackend};
 use crate::analysis::complexity::ComplexityAnalyzer;
@@ -3263,6 +3264,81 @@ Pass 'actor' and 'source' whenever you have them: a fact whose origin is unrecor
                 "shacl_validated": Self::KNOWLEDGE_SHACL_ENABLED,
                 "store": self.knowledge_store_info(),
             });
+            Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string()),
+            )]))
+        }
+        #[cfg(not(feature = "knowledge"))]
+        {
+            let _ = req;
+            Err(McpError::internal_error(
+                "Knowledge graph tools require the 'knowledge' feature. Rebuild with: cargo build --features knowledge".to_string(),
+                None,
+            ))
+        }
+    }
+
+    /// Run the quarantined-track inferred extractor over markdown prose.
+    #[tool(
+        description = "Extract CANDIDATE entities and relationships from markdown prose via bobbin's inferred-track \
+extractor seam (currently the deterministic backtick-coderef heuristic — NOT a language model, and honestly labeled as such). \
+Everything returned is a CLAIM at quarantined standing, never an observation: the response envelope carries the \
+camayoc crew:inferred plane, trust rank 0, and sourceKind=inferred — treat the facts accordingly. \
+With push=true the stamped facts also land in the quarantine plane via a graph-routed /knot write, each fact carrying \
+quipu:derivedBy (extractor+params) and aegis:sourceKind=inferred; the write REFUSES if the embedded quipu cannot \
+enforce graph routing (facts would masquerade in ROOT) or the plane is unregistered. \
+Promotion out of quarantine is camayoc's authority-gated plane-promotion flow, never this tool's."
+    )]
+    async fn knowledge_inferred_extract(
+        &self,
+        Parameters(req): Parameters<KnowledgeInferredExtractRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        #[cfg(feature = "knowledge")]
+        {
+            use crate::knowledge::inferred::{BacktickCoderefExtractor, InferredExtractor};
+            use crate::knowledge::quarantine;
+
+            let repo = req.repo.unwrap_or_else(|| "adhoc".to_string());
+            let file_path = req.file_path.unwrap_or_else(|| "adhoc.md".to_string());
+            let chunk = crate::types::Chunk {
+                id: format!("{file_path}:1"),
+                file_path,
+                chunk_type: crate::types::ChunkType::Section,
+                name: None,
+                start_line: 1,
+                end_line: req.text.lines().count().max(1) as u32,
+                content: req.text,
+                language: "markdown".to_string(),
+                tags: String::new(),
+            };
+            let extractor = BacktickCoderefExtractor::default();
+            let extraction = extractor.extract(std::slice::from_ref(&chunk), &repo);
+            let stamped = quarantine::QuarantinedFacts::stamp(&extractor, &extraction, &repo);
+
+            let mut facts = serde_json::json!({
+                "extractor": { "id": extractor.id(), "params": extractor.params() },
+                "entities": extraction.entities,
+                "relations": extraction.relations,
+                "quarantine": {
+                    "graph": stamped.graph_iri(),
+                    "snapshot": stamped.snapshot_key(),
+                    "turtle": stamped.turtle(),
+                },
+            });
+
+            if req.push.unwrap_or(false) {
+                let mut store = self.open_quipu_store().map_err(|e| {
+                    McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None)
+                })?;
+                let (tx_id, count) =
+                    quarantine::push_inferred(&mut store, &stamped).map_err(|e| {
+                        McpError::internal_error(format!("Quarantine push refused: {e:#}"), None)
+                    })?;
+                facts["pushed"] = serde_json::json!({ "tx_id": tx_id, "count": count });
+            }
+
+            // The envelope rule: inferred facts are NEVER served bare.
+            let payload = quarantine::serve_quarantined(facts);
             Ok(CallToolResult::success(vec![Content::text(
                 serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string()),
             )]))

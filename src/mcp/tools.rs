@@ -1222,6 +1222,34 @@ pub struct KnowledgeKnotRequest {
     pub shapes: Option<String>,
 }
 
+/// Request to run the quarantined-track inferred extractor over prose (W3.B).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct KnowledgeInferredExtractRequest {
+    /// Markdown prose to extract candidate entities/relationships from.
+    #[schemars(
+        description = "Markdown prose to run the inferred-track extractor over. Candidates are CLAIMS, not observations."
+    )]
+    pub text: String,
+
+    /// Repo name used for minted IRIs (default: "adhoc").
+    #[schemars(
+        description = "Repository name the prose belongs to, for IRI minting (default: adhoc)"
+    )]
+    pub repo: Option<String>,
+
+    /// File path used for the source-chunk IRI (default: "adhoc.md").
+    #[schemars(
+        description = "File path the prose came from, for the source-chunk IRI (default: adhoc.md)"
+    )]
+    pub file_path: Option<String>,
+
+    /// Also push the stamped facts into the quarantine plane (default: false).
+    #[schemars(
+        description = "Also land the stamped facts in the quarantined crew:inferred plane via /knot (default: false, preview only). Refused unless the embedded quipu enforces strict graph routing."
+    )]
+    pub push: Option<bool>,
+}
+
 /// Request for SPARQL query against the knowledge graph
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct KnowledgeQueryRequest {
