@@ -1,5 +1,7 @@
 # Knowledge-Aware Bundles: Code Entities in the Knowledge Graph
 
+> **Implementation status (2026-08-22, audit):** 🟡 **Partial — but no longer dark.** The banner below's load-bearing claim — the `knowledge` feature that "no build path enables" — is stale: CI checks, tests and lints both with and without `--features knowledge` (`.github/workflows/ci.yml`) and `release.yml` builds release binaries with it, so `src/knowledge/coupling.rs` (now on the live aegis IRI scheme, not `bobbin.dev`) ships compiled in, and the SHACL write gate is compiled in too since the quipu 0.3.23 pin (2026-08-22). GH #56's un-darking gate is closed. Still *partial* as a design: the full bundle-promotion model below (bundles as named subgraphs, entity lifecycle, temporal versioning) remains unbuilt — the shipped slice is the coupling/entity export plus the chunk-snapshot and mention-reconcile lanes described in `docs/plans/bobbin-roadmap.md`.
+>
 > **Implementation status (2026-07-23, harding):** 🟡 **Partial — in source, dark in every artifact.** The code→Quipu export this designs (code entities pushed as graph edges / dangling references) lives in `src/knowledge/coupling.rs`, but the whole `knowledge` module is gated behind the `knowledge` cargo feature that **no build path enables** — same gate that darks the PPR re-ranker and the Quipu integration plan. Un-darking is scoped in **GH #56**.
 
 > Bundles are curated knowledge, not index data. They belong in Quipu.

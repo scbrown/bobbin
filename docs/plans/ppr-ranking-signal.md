@@ -1,5 +1,18 @@
 # 🧠 Personalized PageRank Ranking Signal
 
+> **Implementation status (2026-08-22, audit):** ✅ **No longer dark — compiled, shipped, and wired.**
+> Every load-bearing claim in the 2026-07-23 banner below has since flipped: the `knowledge` feature is
+> enabled by real build paths — CI checks, tests, and clippy run **with and without** `--features knowledge`
+> (`.github/workflows/ci.yml`), and `release.yml` builds release binaries **with** it (annotated REQUIRED) —
+> so the PPR path is compiled into shipped artifacts, `bobbin-jdlkh` is **closed**, and GH #56's un-darking
+> gate is closed. The wiring survived the quipu 0.3.23 pin bump (`compute_code_ppr` migrated to the
+> `&mut Store` API, applied in `src/search/context.rs` ~1223-1261). `ppr_weight` now lives on
+> `SearchConfig` with a feature-gated default plus a `--ppr-weight` flag on `bobbin context`, which
+> errors honestly when PPR is requested on a build without the feature. Still true: the default weight
+> (a provisional 0.3 on knowledge builds, 0.0 otherwise) is un-tuned — tuning against the eval
+> harness remains open (see backlog.md).
+> The two banners below are kept as the record of the dark period.
+>
 > **Implementation status (2026-07-23, harding):** 🟡 **Partial — built in source, DARK in every artifact.**
 > The signal is fully coded and unit-tested — `src/search/ppr.rs` (4 tests), wired at
 > `src/search/context.rs:1061`, config `ppr_weight` (`src/config.rs:310`). But it is gated behind the
