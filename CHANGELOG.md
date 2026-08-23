@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-23
+
+Release the chunk-graph, generic source, deterministic extraction, and Quipu snapshot
+work that accumulated after v0.6.7. This is a minor release because it adds public CLI,
+MCP, indexing, and knowledge-integration capabilities.
+
+### Added
+
+- chunk adjacency and ownership edges, with edge-aware context expansion
+- chunk-neighbor MCP tooling and work-item-keyed context injection
+- generic `ChunkSource` ingestion, including SQL, commit, and archive sources
+- deterministic entity extraction and chunk-to-entity reconciliation
+- diffed chunk-graph snapshot export to Quipu
+- quarantined inferred extraction with an explicit confidence envelope
+
+### Fixed
+
+- join the live Aegis code-entity namespace
+- preserve complementary non-adjacent expansion results
+- record the serving model and refuse model-mixed evaluation aggregation
+- install `protoc` before release package verification
+
 ## [0.6.7] - 2026-08-07
 
 Bootstrap the repository-owned release baseline. Release-plz can now package
