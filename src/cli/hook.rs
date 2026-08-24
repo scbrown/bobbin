@@ -1097,8 +1097,6 @@ async fn inject_context_remote(
     output: &OutputConfig,
     server_url: &str,
 ) -> Result<()> {
-    use crate::http::client::Client;
-
     // 1. Read stdin JSON
     let input: HookInput =
         serde_json::from_reader(std::io::stdin().lock()).context("Failed to parse stdin JSON")?;
@@ -1128,6 +1126,32 @@ async fn inject_context_remote(
     let repo_root = find_bobbin_root(&cwd).unwrap_or_else(|| cwd.clone());
     let metrics_source = crate::metrics::resolve_source(None, Some(&input.session_id));
     let hook_start = std::time::Instant::now();
+    let client = crate::http::client::Client::new(server_url);
+
+    // The trusted NA harness has already consulted the graph once at the turn
+    // boundary. Verify and inject that local evidence before ordinary code
+    // retrieval, so Quipu latency never enters this hook's hot path.
+    if let Ok(Some(grounding)) = verified_na_grounding(input.grounding.as_ref()) {
+        let injection_id = generate_context_injection_id(&grounding.grounding_id);
+        let out = format!("{}[injection_id: {}]\n", grounding.text, injection_id);
+        print!("{out}");
+        let session_id = (!input.session_id.is_empty()).then_some(input.session_id.as_str());
+        let _ = client
+            .store_scoped_injection_with_output(
+                &injection_id,
+                session_id,
+                None,
+                "NA turn-boundary grounding",
+                &[],
+                grounding.text.lines().count(),
+                grounding.text.lines().count(),
+                Some(&out),
+                Some("na"),
+                Some(&grounding.faction_id),
+                Some(&grounding.grounding_id),
+            )
+            .await;
+    }
 
     // 3. Check min prompt length
     let prompt = input.prompt.trim();
@@ -1256,7 +1280,6 @@ async fn inject_context_remote(
     //    side, including coupling expansion and provenance bridging).
     //    Falls back to /search if /context returns 404 (e.g., Traefik proxy
     //    not forwarding the endpoint).
-    let client = Client::new(server_url);
     let role = crate::access::RepoFilter::resolve_role(None);
 
     // Keyword-triggered repo scoping: when query matches configured keywords,
@@ -2441,6 +2464,107 @@ struct HookInput {
     /// Claude Code session ID (used as metrics source identity)
     #[serde(default)]
     session_id: String,
+    /// Trusted turn-boundary grounding reference supplied by the NA harness.
+    #[serde(default)]
+    grounding: Option<NaGroundingRef>,
+}
+
+#[derive(Clone, Deserialize)]
+struct NaGroundingRef {
+    scope: Option<String>,
+    grounding_id: Option<String>,
+    faction_id: Option<String>,
+    worldview_sha256: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct NaGroundingEvidence {
+    graph: String,
+    query: String,
+    entities: Vec<String>,
+    turn: u64,
+    outcome: String,
+    faction_id: String,
+    worldview_sha256: String,
+}
+
+struct VerifiedNaGrounding {
+    faction_id: String,
+    grounding_id: String,
+    text: String,
+}
+
+/// Resolve the NA harness reference locally. Unknown, partial, tampered, and
+/// cross-faction evidence all abstain: no unscoped fact reaches an injection.
+fn verified_na_grounding(
+    reference: Option<&NaGroundingRef>,
+) -> Result<Option<VerifiedNaGrounding>> {
+    let cache = std::env::var_os("YUPANA_GROUNDING_CACHE_DIR")
+        .or_else(|| std::env::var_os("HANK_GROUNDING_CACHE_DIR"))
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("XDG_STATE_HOME")
+                .map(PathBuf::from)
+                .map(|p| p.join("yupana/grounding"))
+        })
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|p| p.join(".local/state/yupana/grounding"))
+        });
+    verified_na_grounding_at(reference, cache.as_deref())
+}
+
+fn verified_na_grounding_at(
+    reference: Option<&NaGroundingRef>,
+    cache: Option<&Path>,
+) -> Result<Option<VerifiedNaGrounding>> {
+    let Some(reference) = reference else {
+        return Ok(None);
+    };
+    if reference.scope.as_deref() != Some("na") {
+        anyhow::bail!("NA grounding scope is missing or unknown");
+    }
+    let grounding_id = reference
+        .grounding_id
+        .as_deref()
+        .context("NA grounding_id missing")?;
+    let faction_id = reference
+        .faction_id
+        .as_deref()
+        .context("NA faction_id missing")?;
+    let worldview = reference
+        .worldview_sha256
+        .as_deref()
+        .context("NA worldview hash missing")?;
+    let digest = grounding_id
+        .strip_prefix("sha256:")
+        .filter(|v| v.len() == 64 && v.bytes().all(|b| b.is_ascii_hexdigit()))
+        .context("NA grounding_id is not sha256:<hex>")?;
+    let cache = cache.context("NA grounding cache is not configured")?;
+    let body = std::fs::read(cache.join(format!("{digest}.json")))?;
+    use sha2::{Digest, Sha256};
+    if hex::encode(Sha256::digest(&body)) != digest.to_ascii_lowercase() {
+        anyhow::bail!("NA grounding evidence digest mismatch");
+    }
+    let evidence: NaGroundingEvidence = serde_json::from_slice(&body)?;
+    if evidence.faction_id != faction_id || evidence.worldview_sha256 != worldview {
+        anyhow::bail!("NA grounding evidence crosses faction or worldview scope");
+    }
+    let entities = if evidence.entities.is_empty() {
+        "(none)".to_string()
+    } else {
+        evidence.entities.join(", ")
+    };
+    let text = format!(
+        "NA turn grounding [injection scope: faction={faction_id}, grounding_id={grounding_id}]\nGraph: {}\nTurn: {}\nOutcome: {}\nEntities: {}\nQuery: {}\n",
+        evidence.graph, evidence.turn, evidence.outcome, entities, evidence.query,
+    );
+    Ok(Some(VerifiedNaGrounding {
+        faction_id: faction_id.to_string(),
+        grounding_id: grounding_id.to_string(),
+        text,
+    }))
 }
 
 /// Generate a unique injection_id for a context injection.
@@ -2475,6 +2599,8 @@ struct PostToolUseInput {
     /// Claude Code session ID
     #[serde(default)]
     session_id: String,
+    #[serde(default)]
+    grounding: Option<NaGroundingRef>,
 }
 
 /// Claude Code PostToolUseFailure hook input
@@ -5276,6 +5402,23 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         }
     }
 
+    // Edit-time NA grounding uses the same trusted, content-addressed turn
+    // reference as task start. It is local-only and faction-bound.
+    let na_grounding = if matches!(input.tool_name.as_str(), "Edit" | "Write") {
+        verified_na_grounding(input.grounding.as_ref())
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+    if let Some(grounding) = na_grounding.as_ref() {
+        if !context.is_empty() {
+            context.push('\n');
+        }
+        context.push_str(&grounding.text);
+        turn.claim_file("urn:neuralamplifier:graph:knowledge");
+    }
+
     // Skip if nothing useful to report across all sections
     if context.is_empty() {
         let dispatch_label = match &mode {
@@ -5323,6 +5466,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         &input.session_id,
         &dispatch_query,
         &context,
+        na_grounding.as_ref(),
     );
 
     // 12. Emit metric
@@ -5724,6 +5868,7 @@ async fn run_post_tool_use_failure_inner(args: PostToolUseFailureArgs) -> Result
         &input.session_id,
         error_excerpt,
         &output_text,
+        None,
     );
 
     // 9. Emit metric
@@ -5763,6 +5908,7 @@ fn record_non_prompt_injection(
     cc_session_id: &str,
     query: &str,
     output_text: &str,
+    grounding: Option<&VerifiedNaGrounding>,
 ) {
     if turn.is_empty() {
         return;
@@ -5776,7 +5922,7 @@ fn record_non_prompt_injection(
         } else {
             Some(cc_session_id)
         };
-        let _ = fb_store.store_injection_with_output(
+        let _ = fb_store.store_scoped_injection_with_output(
             turn.injection_id(),
             session_id,
             None,
@@ -5785,6 +5931,9 @@ fn record_non_prompt_injection(
             turn.len(),
             output_text.lines().count(),
             Some(output_text),
+            grounding.map(|_| "na"),
+            grounding.map(|g| g.faction_id.as_str()),
+            grounding.map(|g| g.grounding_id.as_str()),
         );
     }
 
@@ -9488,6 +9637,54 @@ mod tests {
         let files = vec!["src/a.rs".to_string(), "src/b.rs".to_string()];
         let rendered = "// src/a.rs\n// src/b.rs\n";
         assert!(withheld_of(&files, rendered).is_empty());
+    }
+
+    fn na_fixture(faction: &str) -> (tempfile::TempDir, NaGroundingRef) {
+        use sha2::{Digest, Sha256};
+        let dir = tempfile::tempdir().unwrap();
+        let body = format!(
+            r#"{{"entities":["urn:fact:one"],"faction_id":"{faction}","graph":"urn:neuralamplifier:graph:knowledge","outcome":"used","query":"SELECT ?s WHERE {{ ?s ?p ?o }}","turn":42,"worldview_sha256":"sha256:world"}}"#
+        );
+        let digest = hex::encode(Sha256::digest(body.as_bytes()));
+        std::fs::write(dir.path().join(format!("{digest}.json")), body).unwrap();
+        (
+            dir,
+            NaGroundingRef {
+                scope: Some("na".into()),
+                grounding_id: Some(format!("sha256:{digest}")),
+                faction_id: Some(faction.into()),
+                worldview_sha256: Some("sha256:world".into()),
+            },
+        )
+    }
+
+    #[test]
+    fn na_grounding_is_injected_only_after_content_and_scope_verify() {
+        let (dir, reference) = na_fixture("gaia");
+        let got = verified_na_grounding_at(Some(&reference), Some(dir.path()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.faction_id, "gaia");
+        assert!(got.text.contains("urn:fact:one"));
+    }
+
+    #[test]
+    fn cross_faction_grounding_fails_closed() {
+        let (dir, mut reference) = na_fixture("gaia");
+        reference.faction_id = Some("spartans".into());
+        assert!(verified_na_grounding_at(Some(&reference), Some(dir.path())).is_err());
+    }
+
+    #[test]
+    fn tampered_grounding_fails_closed() {
+        let (dir, reference) = na_fixture("gaia");
+        let digest = reference
+            .grounding_id
+            .as_deref()
+            .unwrap()
+            .trim_start_matches("sha256:");
+        std::fs::write(dir.path().join(format!("{digest}.json")), b"tampered").unwrap();
+        assert!(verified_na_grounding_at(Some(&reference), Some(dir.path())).is_err());
     }
 }
 

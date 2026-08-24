@@ -880,6 +880,38 @@ impl Client {
         budget_lines: usize,
         formatted_output: Option<&str>,
     ) -> Result<()> {
+        self.store_scoped_injection_with_output(
+            injection_id,
+            session_id,
+            agent,
+            query,
+            files,
+            total_chunks,
+            budget_lines,
+            formatted_output,
+            None,
+            None,
+            None,
+        )
+        .await
+    }
+
+    /// Store an injection with a verified NA grounding scope.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn store_scoped_injection_with_output(
+        &self,
+        injection_id: &str,
+        session_id: Option<&str>,
+        agent: Option<&str>,
+        query: &str,
+        files: &[String],
+        total_chunks: usize,
+        budget_lines: usize,
+        formatted_output: Option<&str>,
+        scope: Option<&str>,
+        faction_id: Option<&str>,
+        grounding_id: Option<&str>,
+    ) -> Result<()> {
         let url = format!("{}/injections", self.base_url);
         let mut body = serde_json::json!({
             "injection_id": injection_id,
@@ -892,6 +924,15 @@ impl Client {
         });
         if let Some(out) = formatted_output {
             body["formatted_output"] = serde_json::Value::String(out.to_string());
+        }
+        if let Some(value) = scope {
+            body["scope"] = serde_json::Value::String(value.to_string());
+        }
+        if let Some(value) = faction_id {
+            body["faction_id"] = serde_json::Value::String(value.to_string());
+        }
+        if let Some(value) = grounding_id {
+            body["grounding_id"] = serde_json::Value::String(value.to_string());
         }
         let resp = self
             .http

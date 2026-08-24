@@ -128,6 +128,12 @@ pub struct InjectionDetail {
     pub files: Vec<String>,
     pub total_chunks: i64,
     pub budget_lines: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub faction_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grounding_id: Option<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub formatted_output: String,
     pub feedback: Vec<FeedbackRecord>,
@@ -214,6 +220,15 @@ impl FeedbackStore {
                 "ALTER TABLE injections ADD COLUMN bundle_name TEXT;",
             ),
             ("bead_id", "ALTER TABLE injections ADD COLUMN bead_id TEXT;"),
+            ("scope", "ALTER TABLE injections ADD COLUMN scope TEXT;"),
+            (
+                "faction_id",
+                "ALTER TABLE injections ADD COLUMN faction_id TEXT;",
+            ),
+            (
+                "grounding_id",
+                "ALTER TABLE injections ADD COLUMN grounding_id TEXT;",
+            ),
         ];
         for (col, ddl) in migrations {
             let has_col: bool = self.conn.query_row(
@@ -270,13 +285,50 @@ impl FeedbackStore {
         budget_lines: usize,
         formatted_output: Option<&str>,
     ) -> Result<()> {
+        self.store_scoped_injection_with_output(
+            injection_id,
+            session_id,
+            agent,
+            query,
+            files,
+            total_chunks,
+            budget_lines,
+            formatted_output,
+            None,
+            None,
+            None,
+        )
+    }
+
+    /// Store an injection plus its verified knowledge scope.
+    #[allow(clippy::too_many_arguments)]
+    pub fn store_scoped_injection_with_output(
+        &self,
+        injection_id: &str,
+        session_id: Option<&str>,
+        agent: Option<&str>,
+        query: &str,
+        files: &[String],
+        total_chunks: usize,
+        budget_lines: usize,
+        formatted_output: Option<&str>,
+        scope: Option<&str>,
+        faction_id: Option<&str>,
+        grounding_id: Option<&str>,
+    ) -> Result<()> {
+        if scope == Some("na") && (faction_id.is_none() || grounding_id.is_none()) {
+            anyhow::bail!("NA injections require faction_id and grounding_id");
+        }
+        if scope != Some("na") && (faction_id.is_some() || grounding_id.is_some()) {
+            anyhow::bail!("faction_id and grounding_id require scope=na");
+        }
         let files_json = serde_json::to_string(files).unwrap_or_default();
         let now = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.fZ")
             .to_string();
         self.conn.execute(
-            "INSERT OR REPLACE INTO injections (injection_id, timestamp, session_id, agent, query, files_json, total_chunks, budget_lines, formatted_output) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            rusqlite::params![injection_id, now, session_id, agent, query, files_json, total_chunks as i64, budget_lines as i64, formatted_output.unwrap_or("")],
+            "INSERT OR REPLACE INTO injections (injection_id, timestamp, session_id, agent, query, files_json, total_chunks, budget_lines, formatted_output, scope, faction_id, grounding_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            rusqlite::params![injection_id, now, session_id, agent, query, files_json, total_chunks as i64, budget_lines as i64, formatted_output.unwrap_or(""), scope, faction_id, grounding_id],
         )?;
         Ok(())
     }
@@ -647,7 +699,7 @@ impl FeedbackStore {
     /// Get full injection detail by ID, including associated feedback.
     pub fn get_injection(&self, injection_id: &str) -> Result<Option<InjectionDetail>> {
         let mut stmt = self.conn.prepare(
-            "SELECT injection_id, timestamp, session_id, agent, query, files_json, total_chunks, budget_lines, COALESCE(formatted_output, '') FROM injections WHERE injection_id = ?1",
+            "SELECT injection_id, timestamp, session_id, agent, query, files_json, total_chunks, budget_lines, COALESCE(formatted_output, ''), scope, faction_id, grounding_id FROM injections WHERE injection_id = ?1",
         )?;
 
         let mut rows = stmt.query(rusqlite::params![injection_id])?;
@@ -678,6 +730,9 @@ impl FeedbackStore {
             total_chunks: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
             budget_lines: row.get::<_, Option<i64>>(7)?.unwrap_or(0),
             formatted_output,
+            scope: row.get(9)?,
+            faction_id: row.get(10)?,
+            grounding_id: row.get(11)?,
             feedback,
         }))
     }
@@ -1501,5 +1556,56 @@ mod tests {
         let xyz = by_bead.iter().find(|e| e.key == "aegis-xyz").unwrap();
         assert_eq!(xyz.injections, 1);
         assert_eq!(xyz.harmful, 1);
+    }
+
+    #[test]
+    fn scoped_na_injection_persists_scope_for_feedback_join() {
+        let (store, _f) = temp_store();
+        store
+            .store_scoped_injection_with_output(
+                "inj-na",
+                Some("session"),
+                None,
+                "turn grounding",
+                &[],
+                1,
+                8,
+                Some("grounded"),
+                Some("na"),
+                Some("gaia"),
+                Some("sha256:abc"),
+            )
+            .unwrap();
+        store
+            .store_feedback(&FeedbackInput {
+                injection_id: "inj-na".into(),
+                agent: "agent".into(),
+                rating: "useful".into(),
+                reason: "matched the turn".into(),
+            })
+            .unwrap();
+        let detail = store.get_injection("inj-na").unwrap().unwrap();
+        assert_eq!(detail.scope.as_deref(), Some("na"));
+        assert_eq!(detail.faction_id.as_deref(), Some("gaia"));
+        assert_eq!(detail.feedback.len(), 1);
+    }
+
+    #[test]
+    fn unscoped_na_injection_is_rejected() {
+        let (store, _f) = temp_store();
+        let result = store.store_scoped_injection_with_output(
+            "inj-na",
+            None,
+            None,
+            "turn grounding",
+            &[],
+            1,
+            8,
+            None,
+            Some("na"),
+            None,
+            Some("sha256:abc"),
+        );
+        assert!(result.is_err());
     }
 }

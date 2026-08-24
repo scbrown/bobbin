@@ -39,6 +39,12 @@ pub(super) struct InjectionInput {
     budget_lines: usize,
     #[serde(default)]
     formatted_output: Option<String>,
+    #[serde(default)]
+    scope: Option<String>,
+    #[serde(default)]
+    faction_id: Option<String>,
+    #[serde(default)]
+    grounding_id: Option<String>,
 }
 
 /// POST /injections — store an injection record for feedback reference
@@ -51,7 +57,7 @@ pub(super) async fn injection_store(
     }
     let store = open_feedback_store(&state).map_err(internal_error)?;
     store
-        .store_injection_with_output(
+        .store_scoped_injection_with_output(
             &input.injection_id,
             input.session_id.as_deref(),
             input.agent.as_deref(),
@@ -60,6 +66,9 @@ pub(super) async fn injection_store(
             input.total_chunks,
             input.budget_lines,
             input.formatted_output.as_deref(),
+            input.scope.as_deref(),
+            input.faction_id.as_deref(),
+            input.grounding_id.as_deref(),
         )
         .map_err(internal_error)?;
     Ok(Json(serde_json::json!({
