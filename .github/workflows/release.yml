@@ -259,22 +259,18 @@ jobs:
           fail_on_unmatched_files: true
 
   # Open/refresh the release PR on every main push; merging it tags + releases.
-  # Same gap hank had: config without an executor is prose. release-plz.toml
-  # landed with this job so it runs from day one.
-  release-plz:
-    name: Release-plz
+  # release-please works from commit history and the manifest directly. Unlike
+  # release-plz it does not run `cargo package`, which cannot represent Bobbin's
+  # deliberately git-pinned Quipu dependency: Cargo strips the git source from
+  # packaged manifests and then tries to resolve the unrelated crates.io crate.
+  release-please:
+    name: Release Please
     if: startsWith(github.ref, 'refs/heads/')
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
         with:
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install protoc
-        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3
-      - uses: MarcoIeni/release-plz-action@v0.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
