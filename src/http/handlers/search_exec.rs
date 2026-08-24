@@ -24,10 +24,16 @@ pub(super) async fn execute_single_search(
     let vector_store = open_vector_store(state).await.map_err(internal_error)?;
 
     match mode {
-        "keyword" => vector_store
+        "keyword" => match vector_store
             .search_fts_filtered(query, limit, repo_filter, combined_filter)
             .await
-            .map_err(|e| internal_error(e.into())),
+        {
+            Ok(results) => Ok(results),
+            Err(error) => {
+                crate::operational_metrics::record_fts_search_error(mode);
+                Err(internal_error(error.into()))
+            }
+        },
 
         "semantic" | "hybrid" => {
             let embedder = state.get_embedder().await.map_err(internal_error)?.clone();
@@ -37,7 +43,12 @@ pub(super) async fn execute_single_search(
                 search
                     .search_filtered(query, limit, repo_filter, combined_filter)
                     .await
-                    .map_err(|e| internal_error(e.into()))
+                    .map_err(|error| {
+                        if error.to_string().contains("FTS") {
+                            crate::operational_metrics::record_fts_search_error(mode);
+                        }
+                        internal_error(error.into())
+                    })
             } else {
                 let mut search =
                     HybridSearch::new(embedder, vector_store, state.config.search.semantic_weight);

@@ -1135,13 +1135,25 @@ impl VectorStore {
         match Self::run_fts_query(table, query, limit, combined.as_deref()).await {
             Ok(batches) => Self::batches_to_fts_results(&batches),
             Err(first_err) => {
-                if self.rebuild_fts_index().await.is_err() {
-                    return Err(first_err).context("Failed to collect FTS results");
+                // Index writers and maintenance run in other processes. A
+                // rebuild can therefore race the very commit that invalidated
+                // the index, so one immediate rebuild+retry still leaked a
+                // transient 500. Keep the recovery bounded, but give churn
+                // three chances to settle before surfacing the original error.
+                for delay in [50, 100, 200] {
+                    if self.rebuild_fts_index().await.is_ok() {
+                        match Self::run_fts_query(table, query, limit, combined.as_deref()).await {
+                            Ok(batches) => return Self::batches_to_fts_results(&batches),
+                            Err(err) => tracing::warn!(
+                                error = %err,
+                                delay_ms = delay,
+                                "FTS query still unavailable after index rebuild"
+                            ),
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 }
-                let batches = Self::run_fts_query(table, query, limit, combined.as_deref())
-                    .await
-                    .context("Failed to collect FTS results after index rebuild")?;
-                Self::batches_to_fts_results(&batches)
+                Err(first_err).context("Failed to collect FTS results after bounded index recovery")
             }
         }
     }
@@ -1183,6 +1195,7 @@ impl VectorStore {
             .execute()
             .await
             .context("Failed to (re)build FTS index")?;
+        crate::operational_metrics::record_fts_rebuild();
         self.fts_indexed.store(true, Ordering::Relaxed);
         Ok(())
     }

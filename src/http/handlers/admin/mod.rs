@@ -113,6 +113,20 @@ pub(super) async fn metrics(State(state): State<Arc<AppState>>) -> impl IntoResp
     out.push_str("# HELP bobbin_up Whether bobbin is running.\n");
     out.push_str("# TYPE bobbin_up gauge\n");
     out.push_str("bobbin_up 1\n");
+    out.push_str("# HELP bobbin_search_errors_total Search requests that ended in an error.\n");
+    out.push_str("# TYPE bobbin_search_errors_total counter\n");
+    for mode in ["keyword", "hybrid"] {
+        out.push_str(&format!(
+            "bobbin_search_errors_total{{mode=\"{mode}\",reason=\"fts\"}} {}\n",
+            crate::operational_metrics::fts_search_errors(mode)
+        ));
+    }
+    out.push_str("# HELP bobbin_fts_rebuild_total Successful automatic FTS index rebuilds.\n");
+    out.push_str("# TYPE bobbin_fts_rebuild_total counter\n");
+    out.push_str(&format!(
+        "bobbin_fts_rebuild_total {}\n",
+        crate::operational_metrics::fts_rebuild_total()
+    ));
 
     if let Some(s) = stats {
         out.push_str("# HELP bobbin_index_files_total Total indexed files.\n");

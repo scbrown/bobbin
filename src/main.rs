@@ -14,6 +14,7 @@ mod iri;
 mod knowledge;
 mod mcp;
 mod metrics;
+mod operational_metrics;
 /// The agent's current work item, published by the harness and read (never
 /// asked for) — what makes retrieval cumulative rather than per-prompt.
 pub mod plate;
