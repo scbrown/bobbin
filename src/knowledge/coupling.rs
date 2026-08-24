@@ -121,9 +121,9 @@ fn generate_coupling_turtle(couplings: &[FileCoupling], repo_name: &str) -> Stri
 
 /// Build the IRI for a code module entity.
 ///
-/// Matches the live ingest lane's shape exactly: `CODE_BASE` + encoded repo
-/// + "/" + the relative path as ONE percent-encoded segment (`/` → `%2F`),
-/// so coupling edges attach to the same nodes the repo ingest mints.
+/// Matches the live lane's shape exactly: `CODE_BASE` + repo + "/" + the
+/// relative path as ONE percent-encoded segment (`/` → `%2F`), so coupling
+/// edges attach to the same nodes hank's code-promote mints (aegis-6noan).
 pub(crate) use crate::iri::code_module_iri;
 
 /// Build a deterministic IRI for a coupling node (enables idempotent upsert).
@@ -159,10 +159,16 @@ mod tests {
         assert!(turtle.contains("\"15\""));
     }
 
+    /// Named for what it always claimed to check. Until aegis-6noan it
+    /// asserted quipu's `ingest-repos.py` shape, which has 0 live instances;
+    /// the LIVE lane is hank's, one segment deeper under `ontology/`.
     #[test]
     fn test_code_module_iri_matches_live_ingest_shape() {
         let iri = code_module_iri("myrepo", "src/main.rs");
-        assert_eq!(iri, "http://aegis.gastown.local/code/myrepo/src%2Fmain.rs");
+        assert_eq!(
+            iri,
+            "http://aegis.gastown.local/ontology/code/myrepo/src%2Fmain.rs"
+        );
     }
 
     #[test]

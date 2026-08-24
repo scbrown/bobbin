@@ -102,9 +102,9 @@ fn seed(store: &mut quipu::Store, turtle: &str) {
 fn seeded_store() -> (quipu::Store, String) {
     let mut store = quipu::Store::open_in_memory().expect("in-memory store");
     let c_iri = chunk_iri("repo", "src/main.rs", 5);
-    let unique = symbol_iri("repo", "src/util.rs", "Unique", 3);
-    let twin_a = symbol_iri("repo", "src/a.rs", "Twin", 8);
-    let twin_b = symbol_iri("repo", "src/b.rs", "Twin", 9);
+    let unique = symbol_iri("repo", "src/util.rs", "Unique");
+    let twin_a = symbol_iri("repo", "src/a.rs", "Twin");
+    let twin_b = symbol_iri("repo", "src/b.rs", "Twin");
     let turtle = format!(
         "@prefix bobbin: <{ns}> .\n\
          <{c_iri}> a bobbin:Chunk ;\n\
@@ -158,8 +158,8 @@ fn resolves_danglings_and_ambiguous_honestly() {
 fn ambiguity_narrows_to_the_chunks_own_module() {
     let mut store = quipu::Store::open_in_memory().expect("in-memory store");
     let c_iri = chunk_iri("repo", "src/main.rs", 5);
-    let local = symbol_iri("repo", "src/main.rs", "Twin", 40);
-    let remote = symbol_iri("repo", "src/other.rs", "Twin", 7);
+    let local = symbol_iri("repo", "src/main.rs", "Twin");
+    let remote = symbol_iri("repo", "src/other.rs", "Twin");
     let turtle = format!(
         "@prefix bobbin: <{ns}> .\n\
          <{c_iri}> a bobbin:Chunk ; bobbin:mentions \"Twin\" .\n\
@@ -202,7 +202,7 @@ fn dangling_resolves_once_the_entity_appears() {
     reconcile_mentions(&mut store, "2026-01-02T00:00:00Z").expect("first run");
 
     // The entity graph learns about Ghost.
-    let ghost = symbol_iri("repo", "src/ghost.rs", "Ghost", 12);
+    let ghost = symbol_iri("repo", "src/ghost.rs", "Ghost");
     seed(
         &mut store,
         &format!(

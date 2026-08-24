@@ -64,7 +64,7 @@ fn extractor_finds_code_refs_in_markdown_prose() {
         .unwrap();
     assert_eq!(
         rel.chunk_iri,
-        "http://aegis.gastown.local/code/myrepo/docs%2Fguide.md/C3"
+        "http://aegis.gastown.local/ontology/chunk/myrepo/docs%2Fguide.md#C3"
     );
     assert_eq!(
         rel.predicate,

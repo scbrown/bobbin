@@ -69,7 +69,7 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
         if !seen_files.insert(chunk.file_path.as_str()) {
             continue;
         }
-        let module = crate::iri::code_module_iri(repo, &chunk.file_path);
+        let module = file_entity_iri(repo, chunk);
         if matches!(chunk.language.as_str(), "markdown" | "pdf") {
             turtle.push_str(&format!("<{module}> a bobbin:Document ;\n"));
             turtle.push_str(&format!(
@@ -91,23 +91,60 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
 
     let mut order_in_file = 0u32;
     let mut prev_file: Option<&str> = None;
+    let mut claimed_iris: std::collections::HashSet<String> = std::collections::HashSet::new();
     for chunk in &file_chunks {
         if prev_file != Some(chunk.file_path.as_str()) {
             order_in_file = 0;
             prev_file = Some(chunk.file_path.as_str());
         }
-        let iri = chunk_iri(repo, &chunk.file_path, chunk.start_line);
-        let module = crate::iri::code_module_iri(repo, &chunk.file_path);
+        let module = file_entity_iri(repo, chunk);
         let label = chunk
             .name
             .clone()
             .unwrap_or_else(|| format!("{}:{}", chunk.file_path, chunk.start_line));
 
-        let governed_type = match chunk.chunk_type {
+        let mut governed_type = match chunk.chunk_type {
             ChunkType::Section if chunk.name.is_some() => Some("Section"),
             t if t.is_code_symbol() && chunk.name.is_some() => Some("CodeSymbol"),
             _ => None,
         };
+
+        // A dual-typed chunk takes the identity of the entity it IS, so it
+        // merges with hank's node for the same symbol/section rather than
+        // forking beside it (aegis-6noan). That makes hank's collision
+        // problem ours: bobbin has no scope chain, so two same-named symbols
+        // in one file mint one IRI, and a second block would assert two
+        // values for the maxCount-1 `name`/`symbolKind`/`chunkOrder`
+        // properties. hank keeps the first and drops the rest
+        // (`export.rs::dedupe_by_iri`); we keep the first and DEMOTE the rest
+        // to the chunk lane, which loses no span — bobbin's product is the
+        // span — and never asserts a conflicting value.
+        //
+        // The demotion is not silent, for hank's reason: a quiet collapse
+        // hides a genuine IRI collision exactly as well as it hides a benign
+        // one, and the note travels with the payload that gets promoted AND
+        // with the one that gets refused.
+        let mut iri = match (governed_type, chunk.name.as_deref()) {
+            (Some("CodeSymbol"), Some(name)) => {
+                crate::iri::symbol_iri(repo, &chunk.file_path, name)
+            }
+            (Some("Section"), Some(heading)) => {
+                crate::iri::section_iri(repo, &chunk.file_path, heading)
+            }
+            _ => chunk_iri(repo, &chunk.file_path, chunk.start_line),
+        };
+        if governed_type.is_some() && !claimed_iris.insert(iri.clone()) {
+            turtle.push_str(&format!(
+                "# bobbin: <{iri}> was already claimed by an earlier chunk in this file \
+                 (bobbin has no scope chain, so same-named symbols in one file collide). \
+                 Demoting {}:{} to the chunk lane so no maxCount-1 property is asserted \
+                 twice. See aegis-6noan.\n",
+                chunk.file_path, chunk.start_line
+            ));
+            governed_type = None;
+            iri = chunk_iri(repo, &chunk.file_path, chunk.start_line);
+        }
+
         match governed_type {
             Some(kind) => turtle.push_str(&format!("<{iri}> a bobbin:Chunk, bobbin:{kind} ;\n")),
             None => turtle.push_str(&format!("<{iri}> a bobbin:Chunk ;\n")),
@@ -165,6 +202,16 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
     }
 
     turtle
+}
+
+/// The file entity a chunk belongs to: documents live on the live lane's
+/// `doc/` base, source files on `code/` (aegis-6noan).
+fn file_entity_iri(repo: &str, chunk: &Chunk) -> String {
+    if matches!(chunk.language.as_str(), "markdown" | "pdf") {
+        crate::iri::document_iri(repo, &chunk.file_path)
+    } else {
+        crate::iri::code_module_iri(repo, &chunk.file_path)
+    }
 }
 
 fn governed_symbol_kind(chunk_type: ChunkType) -> Option<&'static str> {
@@ -383,19 +430,27 @@ mod tests {
         }];
         let turtle = generate_chunk_turtle(&chunks, &edges, "myrepo");
 
-        // Durable IRIs: repo + %2F-encoded path + C{start_line} ordinal.
+        // Durable IRIs on the LIVE lane (aegis-6noan): a NAMED section takes
+        // the identity of the section it is — `doc/{repo}/{path}#{slug}` — so
+        // it merges with hank's node instead of forking beside it. The slug is
+        // of the LEAF heading, matching hank; `Intro > Setup` is a breadcrumb.
         assert!(turtle.contains(
-            "<http://aegis.gastown.local/code/myrepo/docs%2Fguide.md/C1> a bobbin:Chunk"
+            "<http://aegis.gastown.local/ontology/doc/myrepo/docs%2Fguide.md#intro> \
+             a bobbin:Chunk, bobbin:Section"
         ));
         assert!(turtle.contains(
-            "<http://aegis.gastown.local/code/myrepo/docs%2Fguide.md/C1> bobbin:nextChunk \
-             <http://aegis.gastown.local/code/myrepo/docs%2Fguide.md/C7> ."
+            "<http://aegis.gastown.local/ontology/doc/myrepo/docs%2Fguide.md#intro> \
+             bobbin:nextChunk \
+             <http://aegis.gastown.local/ontology/doc/myrepo/docs%2Fguide.md#setup> ."
         ));
-        // Membership points at the module/document entity the live ingest
-        // lane mints, so the graphs join.
+        // Membership points at the document entity on the doc lane, so the
+        // graphs join.
         assert!(turtle.contains(
-            "bobbin:inDocument <http://aegis.gastown.local/code/myrepo/docs%2Fguide.md>"
+            "bobbin:inDocument <http://aegis.gastown.local/ontology/doc/myrepo/docs%2Fguide.md>"
         ));
+        // The superseded lane must not reappear.
+        assert!(!turtle.contains("http://aegis.gastown.local/code/"));
+        assert!(!turtle.contains("/C1>"));
         // The volatile hash ids never reach the graph.
         assert!(!turtle.contains("hash1"));
     }
@@ -416,14 +471,25 @@ mod tests {
         let section = chunk("section", "docs/guide.md", 3, Some("Guide > Setup"));
         let turtle = generate_chunk_turtle(&[code, section], &[], "repo");
 
-        assert!(turtle.contains("src%2Flib.rs> a bobbin:CodeModule"));
+        assert!(turtle.contains(
+            "<http://aegis.gastown.local/ontology/code/repo/src%2Flib.rs> a bobbin:CodeModule"
+        ));
         assert!(turtle.contains("bobbin:repo \"repo\""));
         assert!(turtle.contains("bobbin:language \"rust\""));
-        assert!(turtle.contains("C10> a bobbin:Chunk, bobbin:CodeSymbol"));
+        // A dual-typed code chunk IS hank's CodeSymbol node: `{module}::{name}`.
+        assert!(turtle.contains(
+            "<http://aegis.gastown.local/ontology/code/repo/src%2Flib.rs::parse> \
+             a bobbin:Chunk, bobbin:CodeSymbol"
+        ));
         assert!(turtle.contains("bobbin:name \"parse\""));
         assert!(turtle.contains("bobbin:symbolKind \"function\""));
-        assert!(turtle.contains("docs%2Fguide.md> a bobbin:Document"));
-        assert!(turtle.contains("C3> a bobbin:Chunk, bobbin:Section"));
+        assert!(turtle.contains(
+            "<http://aegis.gastown.local/ontology/doc/repo/docs%2Fguide.md> a bobbin:Document"
+        ));
+        assert!(turtle.contains(
+            "<http://aegis.gastown.local/ontology/doc/repo/docs%2Fguide.md#setup> \
+             a bobbin:Chunk, bobbin:Section"
+        ));
         assert!(turtle.contains("bobbin:heading \"Guide > Setup\""));
         assert!(turtle.contains("bobbin:headingDepth \"2\"^^xsd:integer"));
     }
@@ -505,7 +571,8 @@ mod tests {
 
         let store = quipu::Store::open(dir.path().join(".bobbin/quipu/quipu.db").to_str().unwrap())
             .unwrap();
-        let gone = chunk_iri("r", "docs/guide.md", 7);
+        // Named sections take the section identity, not the chunk-span one.
+        let gone = crate::iri::section_iri("r", "docs/guide.md", "Setup");
         let facts = store.current_facts().unwrap();
         if let Some(id) = store.lookup(&gone).unwrap() {
             assert!(
@@ -514,7 +581,9 @@ mod tests {
             );
         }
         // And the survivor is still live.
-        let kept = store.lookup(&chunk_iri("r", "docs/guide.md", 1)).unwrap();
+        let kept = store
+            .lookup(&crate::iri::section_iri("r", "docs/guide.md", "Intro"))
+            .unwrap();
         let kept = kept.expect("surviving chunk stays interned");
         assert!(facts.iter().any(|f| f.entity == kept));
     }
@@ -527,7 +596,9 @@ mod tests {
             chunk("c", "b.md", 3, None),
         ];
         let turtle = generate_chunk_turtle(&chunks, &[], "r");
-        let c_block = turtle.split("b.md/C3").nth(1).unwrap();
+        // Unnamed chunks have no governed entity to be, so they stay on the
+        // chunk lane: `chunk/{repo}/{path}#C{line}`.
+        let c_block = turtle.split("b.md#C3").nth(1).unwrap();
         assert!(c_block.contains("chunkOrder \"0\""));
     }
 }

@@ -235,15 +235,15 @@ pub fn reconcile_mentions(store: &mut quipu::Store, timestamp: &str) -> Result<M
 
         let matches: &[(i64, String)] = name_index.get(name.as_str()).map_or(&[], |v| v.as_slice());
 
-        // Same-module narrowing for multi-match: the chunk IRI is
-        // `{module}/C{line}`, symbols in its file are `{module}/{name}-L{line}`.
+        // Same-module narrowing for multi-match. The chunk may be on its own
+        // `chunk/` lane or, when dual-typed, on the `code/` lane under the
+        // symbol identity it merged into (aegis-6noan) — `code_module_prefix_of`
+        // accepts both and yields the `{module}::` its file's symbols share.
         let chosen = match matches {
             [] => None,
             [only] => Some(only),
             many => {
-                let module_prefix = chunk_iri
-                    .rsplit_once('/')
-                    .map(|(module, _)| format!("{module}/"));
+                let module_prefix = crate::iri::code_module_prefix_of(&chunk_iri);
                 let scoped: Vec<&(i64, String)> = module_prefix
                     .as_deref()
                     .map(|prefix| {

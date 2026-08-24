@@ -27,8 +27,14 @@ pub fn build_entities(chunks: &[Chunk], repo: &str) -> Vec<Entity> {
     for chunk in chunks.iter().filter(|c| c.start_line > 0) {
         if seen_files.insert(chunk.file_path.as_str()) {
             let is_doc = chunk.language == "markdown" || chunk.language == "pdf";
+            // Documents live on their own `doc/` lane in the live hank scheme,
+            // not on `code/` with a different rdf:type (aegis-6noan).
             entities.push(Entity {
-                entity_iri: crate::iri::code_module_iri(repo, &chunk.file_path),
+                entity_iri: if is_doc {
+                    crate::iri::document_iri(repo, &chunk.file_path)
+                } else {
+                    crate::iri::code_module_iri(repo, &chunk.file_path)
+                },
                 text: chunk.file_path.clone(),
                 entity_type: if is_doc { "Document" } else { "CodeModule" }.to_string(),
                 repo: Some(repo.to_string()),
@@ -41,12 +47,7 @@ pub fn build_entities(chunks: &[Chunk], repo: &str) -> Vec<Entity> {
         match chunk.chunk_type {
             t if t.is_code_symbol() => {
                 entities.push(Entity {
-                    entity_iri: crate::iri::symbol_iri(
-                        repo,
-                        &chunk.file_path,
-                        name,
-                        chunk.start_line,
-                    ),
+                    entity_iri: crate::iri::symbol_iri(repo, &chunk.file_path, name),
                     text: format!("{} ({} in {})", name, chunk.chunk_type, chunk.file_path),
                     entity_type: "CodeSymbol".to_string(),
                     repo: Some(repo.to_string()),
@@ -54,7 +55,7 @@ pub fn build_entities(chunks: &[Chunk], repo: &str) -> Vec<Entity> {
             }
             ChunkType::Section => {
                 entities.push(Entity {
-                    entity_iri: crate::iri::section_iri(repo, &chunk.file_path, chunk.start_line),
+                    entity_iri: crate::iri::section_iri(repo, &chunk.file_path, name),
                     text: format!("{} ({})", name, chunk.file_path),
                     entity_type: "Section".to_string(),
                     repo: Some(repo.to_string()),
@@ -111,14 +112,26 @@ mod tests {
                 "Section"
             ]
         );
+        // The LIVE lane (aegis-6noan): symbols are `{module}::{name}` on the
+        // `code/` base, sections are `{document}#{leaf-slug}` on `doc/`. The
+        // local entities table and the quipu emitters share `crate::iri`, so
+        // a semantic hit here is the same identity hank's graph knows.
         assert_eq!(
             entities[1].entity_iri,
-            "http://aegis.gastown.local/code/myrepo/src%2Flib.rs/parse-L10"
+            "http://aegis.gastown.local/ontology/code/myrepo/src%2Flib.rs::parse"
         );
         assert_eq!(
             entities[4].entity_iri,
-            "http://aegis.gastown.local/code/myrepo/docs%2Fa.md/S5"
+            "http://aegis.gastown.local/ontology/doc/myrepo/docs%2Fa.md#setup"
         );
+        // No entity may regress to the superseded ingest-repos.py lane.
+        for e in &entities {
+            assert!(
+                !e.entity_iri.starts_with("http://aegis.gastown.local/code/"),
+                "regressed to the superseded lane: {}",
+                e.entity_iri
+            );
+        }
     }
 
     #[test]

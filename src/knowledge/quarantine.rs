@@ -54,7 +54,7 @@
 use anyhow::{bail, Context, Result};
 
 use super::inferred::{Extraction, InferredExtractor};
-use crate::iri::{iri_encode, CODE_BASE, ONTOLOGY_NS};
+use crate::iri::{iri_encode, INFERRED_BASE, ONTOLOGY_NS};
 
 /// Trust rank of the inferred plane — the bottom of the provenance chain.
 /// Mirrors camayoc `scripts/planes.py` (`crew:inferred`, rank 0).
@@ -116,8 +116,12 @@ impl QuarantinedFacts {
     /// Stamp an extraction: serialize every candidate with its derivation
     /// method (extractor id + params) and `aegis:sourceKind "inferred"`.
     pub fn stamp(extractor: &dyn InferredExtractor, extraction: &Extraction, repo: &str) -> Self {
+        // Off the code lane deliberately (aegis-6noan): the old
+        // `{CODE_BASE}{repo}/inferred/{id}` shape parses as a CodeModule whose
+        // path happens to start `inferred/`, so a quarantined model guess was
+        // one contract-reader away from being read as an observed code entity.
         let base = format!(
-            "{CODE_BASE}{}/inferred/{}",
+            "{INFERRED_BASE}{}/{}",
             iri_encode(repo),
             iri_encode(extractor.id())
         );
