@@ -149,6 +149,30 @@ Bobbin is a semantic code indexing tool written in Rust. Key components:
 
 **Build system**: Always use `just` (not raw `cargo`).
 
+## Use Bobbin Before Ad-hoc Search
+
+When exploring this repository, use Bobbin's own interfaces in this order:
+
+1. MCP tools (`search`, `grep`, `find_refs`, `impact`, `context`) when connected.
+2. Their `bobbin` CLI equivalents when MCP is unavailable.
+3. The documented HTTP API only as a transport fallback; search is
+   `GET /search?q=...`, not a JSON `POST`.
+
+Ask Bobbin's impact tools before structural edits, and include their evidence
+when a change renames, moves, or changes the signature of a shared symbol.
+
+## Use Bobbin Before Ad-hoc Search
+
+When exploring this repository, use Bobbin's own interfaces in this order:
+
+1. MCP tools (`search`, `grep`, `find_refs`, `impact`, `context`) when connected.
+2. Their `bobbin` CLI equivalents when MCP is unavailable.
+3. The documented HTTP API only as a transport fallback; search is
+   `GET /search?q=...`, not a JSON `POST`.
+
+Ask Bobbin's impact tools before structural edits, and include their evidence
+when a change renames, moves, or changes the signature of a shared symbol.
+
 ## Reporting Structure
 
 ```
