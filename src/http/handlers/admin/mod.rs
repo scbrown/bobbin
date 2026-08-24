@@ -113,6 +113,7 @@ pub(super) async fn metrics(State(state): State<Arc<AppState>>) -> impl IntoResp
     out.push_str("# HELP bobbin_up Whether bobbin is running.\n");
     out.push_str("# TYPE bobbin_up gauge\n");
     out.push_str("bobbin_up 1\n");
+    out.push_str(&crate::operational_metrics::render_fts_metrics());
 
     if let Some(s) = stats {
         out.push_str("# HELP bobbin_index_files_total Total indexed files.\n");

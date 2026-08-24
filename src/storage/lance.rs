@@ -11,6 +11,7 @@ use lancedb::index::Index;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::table::{CompactionOptions, Duration, OptimizeAction};
 use lancedb::{connect, Connection, Table};
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -40,6 +41,49 @@ const SCAN_ALL_LIMIT: usize = i64::MAX as usize;
 
 /// Default embedding dimension (for backward compatibility)
 const DEFAULT_EMBEDDING_DIM: i32 = 384;
+
+const FTS_RECOVERY_DELAYS_MS: [u64; 3] = [50, 100, 200];
+
+async fn recover_fts_query<T, Q, QF, R, RF, S, SF>(
+    mut query: Q,
+    mut rebuild: R,
+    mut sleep: S,
+) -> Result<T>
+where
+    Q: FnMut() -> QF,
+    QF: Future<Output = Result<T>>,
+    R: FnMut() -> RF,
+    RF: Future<Output = Result<()>>,
+    S: FnMut(u64) -> SF,
+    SF: Future<Output = ()>,
+{
+    let first_err = match query().await {
+        Ok(value) => return Ok(value),
+        Err(error) => error,
+    };
+
+    for delay_ms in FTS_RECOVERY_DELAYS_MS {
+        // The invalidation may be coming from another process. Waiting before
+        // rebuilding is what gives that writer a chance to finish; sleeping
+        // after our own failed cycle leaves the first retry just as racy as it
+        // was before bounded recovery existed.
+        sleep(delay_ms).await;
+        if let Err(error) = rebuild().await {
+            tracing::warn!(error = %error, delay_ms, "FTS index rebuild attempt failed");
+            continue;
+        }
+        match query().await {
+            Ok(value) => return Ok(value),
+            Err(error) => tracing::warn!(
+                error = %error,
+                delay_ms,
+                "FTS query still unavailable after index rebuild"
+            ),
+        }
+    }
+
+    Err(first_err).context("Failed to collect FTS results after bounded index recovery")
+}
 
 /// Target rows per compacted fragment.
 ///
@@ -1129,21 +1173,16 @@ impl VectorStore {
         // First attempt. `full_text_search` requires a valid FTS index — if the
         // index is missing or was invalidated (e.g. by compaction/prune, see
         // #16), the query fails. Rather than surface a 500, self-heal: rebuild
-        // the FTS index over current rows and retry once. This also fixes the
+        // the FTS index over current rows and retry with bounded backoff. This also fixes the
         // case where ensure_fts_index() marked the index ready after a failed
         // create, and refreshes coverage of rows added since the last build.
-        match Self::run_fts_query(table, query, limit, combined.as_deref()).await {
-            Ok(batches) => Self::batches_to_fts_results(&batches),
-            Err(first_err) => {
-                if self.rebuild_fts_index().await.is_err() {
-                    return Err(first_err).context("Failed to collect FTS results");
-                }
-                let batches = Self::run_fts_query(table, query, limit, combined.as_deref())
-                    .await
-                    .context("Failed to collect FTS results after index rebuild")?;
-                Self::batches_to_fts_results(&batches)
-            }
-        }
+        let batches = recover_fts_query(
+            || Self::run_fts_query(table, query, limit, combined.as_deref()),
+            || self.rebuild_fts_index(),
+            |delay_ms| tokio::time::sleep(std::time::Duration::from_millis(delay_ms)),
+        )
+        .await?;
+        Self::batches_to_fts_results(&batches)
     }
 
     /// Execute a single FTS query and collect its result batches.
@@ -1183,6 +1222,7 @@ impl VectorStore {
             .execute()
             .await
             .context("Failed to (re)build FTS index")?;
+        crate::operational_metrics::record_fts_rebuild();
         self.fts_indexed.store(true, Ordering::Relaxed);
         Ok(())
     }
@@ -3272,7 +3312,79 @@ fn str_to_chunk_type(s: &str) -> ChunkType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
     use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn bounded_fts_recovery_waits_and_eventually_succeeds() {
+        let queries = Arc::new(AtomicUsize::new(0));
+        let rebuilds = Arc::new(AtomicUsize::new(0));
+        let sleeps = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        let result = recover_fts_query(
+            {
+                let queries = Arc::clone(&queries);
+                move || {
+                    let attempt = queries.fetch_add(1, AtomicOrdering::SeqCst);
+                    async move {
+                        if attempt < 2 {
+                            anyhow::bail!("transient query failure")
+                        }
+                        Ok("recovered")
+                    }
+                }
+            },
+            {
+                let rebuilds = Arc::clone(&rebuilds);
+                move || {
+                    rebuilds.fetch_add(1, AtomicOrdering::SeqCst);
+                    async { Ok(()) }
+                }
+            },
+            {
+                let sleeps = Arc::clone(&sleeps);
+                move |delay| {
+                    sleeps.lock().unwrap().push(delay);
+                    async {}
+                }
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result, "recovered");
+        assert_eq!(queries.load(AtomicOrdering::SeqCst), 3);
+        assert_eq!(rebuilds.load(AtomicOrdering::SeqCst), 2);
+        assert_eq!(*sleeps.lock().unwrap(), vec![50, 100]);
+    }
+
+    #[tokio::test]
+    async fn bounded_fts_recovery_returns_original_cause_after_exhaustion() {
+        let queries = Arc::new(AtomicUsize::new(0));
+        let result: Result<()> = recover_fts_query(
+            {
+                let queries = Arc::clone(&queries);
+                move || {
+                    let attempt = queries.fetch_add(1, AtomicOrdering::SeqCst);
+                    async move {
+                        anyhow::bail!(if attempt == 0 {
+                            "initial cause"
+                        } else {
+                            "later failure"
+                        })
+                    }
+                }
+            },
+            || async { Ok(()) },
+            |_| async {},
+        )
+        .await;
+
+        let error = format!("{:#}", result.unwrap_err());
+        assert!(error.contains("initial cause"), "{error}");
+        assert!(!error.contains("later failure"), "{error}");
+        assert_eq!(queries.load(AtomicOrdering::SeqCst), 4);
+    }
 
     fn sample_chunk(id: &str, name: &str) -> Chunk {
         Chunk {
@@ -4550,7 +4662,12 @@ mod tests {
         assert_eq!(r2.len(), 1, "FTS should still work after compaction");
 
         // Explicit rebuild is idempotent and keeps search working.
+        let rebuilds_before = crate::operational_metrics::fts_rebuild_total();
         store.rebuild_fts_index().await.unwrap();
+        assert!(
+            crate::operational_metrics::fts_rebuild_total() >= rebuilds_before + 1,
+            "a successful rebuild must increment its operational counter"
+        );
         let r3 = store.search_fts("validate_token", 10, None).await.unwrap();
         assert_eq!(r3.len(), 1, "FTS should work after explicit rebuild");
     }
