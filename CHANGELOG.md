@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0](https://github.com/scbrown/bobbin/compare/v0.7.3...v0.8.0) (2026-08-24)
+
+
+### Features
+
+* inject faction-scoped NA grounding context ([e543c92](https://github.com/scbrown/bobbin/commit/e543c92da4691279dea10f6ccc9f10a04cb351a7))
+
 ## [0.7.3](https://github.com/scbrown/bobbin/compare/v0.7.2...v0.7.3) (2026-08-24)
 
 ### Bug Fixes
