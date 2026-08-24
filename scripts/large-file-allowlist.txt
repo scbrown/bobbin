@@ -23,6 +23,7 @@ src/index/embedder.rs
 src/index/git.rs
 src/index/parser.rs
 src/index/resolver.rs
+src/knowledge/chunks.rs
 src/mcp/server.rs
 src/mcp/tools.rs
 src/reactions.rs

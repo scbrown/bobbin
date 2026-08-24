@@ -7,11 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.3](https://github.com/scbrown/bobbin/compare/v0.7.2...v0.7.3) (2026-08-24)
 
-
 ### Bug Fixes
 
-* **index:** recover FTS compaction panics truthfully ([cc3a2e2](https://github.com/scbrown/bobbin/commit/cc3a2e22c6d44fdc90f89610a132fb9468a0800f))
-* **release:** replace package-bound release-plz lane ([fdbe086](https://github.com/scbrown/bobbin/commit/fdbe086178c9ff649b2145c03227cd82eb092c3b))
+- **index:** recover FTS compaction panics truthfully ([cc3a2e2](https://github.com/scbrown/bobbin/commit/cc3a2e22c6d44fdc90f89610a132fb9468a0800f))
+- **release:** replace package-bound release-plz lane ([fdbe086](https://github.com/scbrown/bobbin/commit/fdbe086178c9ff649b2145c03227cd82eb092c3b))
 
 ## [Unreleased]
 
