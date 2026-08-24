@@ -24,12 +24,12 @@
 //! it stays because it guards correctness of whatever store is opened, not
 //! a particular pin.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
 use crate::iri::ONTOLOGY_NS;
-use crate::types::{Chunk, ChunkEdge, ChunkEdgeType};
+use crate::types::{Chunk, ChunkEdge, ChunkEdgeType, ChunkType};
 
 /// Build the durable IRI for a chunk from stable coordinates.
 pub(crate) use crate::iri::chunk_iri;
@@ -60,6 +60,35 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
             .then(b.end_line.cmp(&a.end_line))
     });
 
+    // The remote ontology enforces the code-entities SHACL vocabulary. Assert
+    // each file entity in the same snapshot as its chunks: CodeSymbol.definedIn
+    // uses sh:class, and Quipu validates the submitted graph rather than looking
+    // up the target in pre-existing store state.
+    let mut seen_files = std::collections::HashSet::new();
+    for chunk in &file_chunks {
+        if !seen_files.insert(chunk.file_path.as_str()) {
+            continue;
+        }
+        let module = crate::iri::code_module_iri(repo, &chunk.file_path);
+        if matches!(chunk.language.as_str(), "markdown" | "pdf") {
+            turtle.push_str(&format!("<{module}> a bobbin:Document ;\n"));
+            turtle.push_str(&format!(
+                "    rdfs:label \"{}\" ;\n    bobbin:filePath \"{}\" .\n\n",
+                escape_literal(&chunk.file_path),
+                escape_literal(&chunk.file_path)
+            ));
+        } else {
+            turtle.push_str(&format!("<{module}> a bobbin:CodeModule ;\n"));
+            turtle.push_str(&format!(
+                "    rdfs:label \"{}\" ;\n    bobbin:filePath \"{}\" ;\n    bobbin:repo \"{}\" ;\n    bobbin:language \"{}\" .\n\n",
+                escape_literal(&chunk.file_path),
+                escape_literal(&chunk.file_path),
+                escape_literal(repo),
+                escape_literal(&chunk.language)
+            ));
+        }
+    }
+
     let mut order_in_file = 0u32;
     let mut prev_file: Option<&str> = None;
     for chunk in &file_chunks {
@@ -74,7 +103,15 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
             .clone()
             .unwrap_or_else(|| format!("{}:{}", chunk.file_path, chunk.start_line));
 
-        turtle.push_str(&format!("<{iri}> a bobbin:Chunk ;\n"));
+        let governed_type = match chunk.chunk_type {
+            ChunkType::Section if chunk.name.is_some() => Some("Section"),
+            t if t.is_code_symbol() && chunk.name.is_some() => Some("CodeSymbol"),
+            _ => None,
+        };
+        match governed_type {
+            Some(kind) => turtle.push_str(&format!("<{iri}> a bobbin:Chunk, bobbin:{kind} ;\n")),
+            None => turtle.push_str(&format!("<{iri}> a bobbin:Chunk ;\n")),
+        }
         turtle.push_str(&format!("    bobbin:inDocument <{module}> ;\n"));
         turtle.push_str(&format!(
             "    bobbin:chunkOrder \"{order_in_file}\"^^xsd:integer ;\n"
@@ -87,6 +124,22 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
             turtle.push_str(&format!(
                 "    bobbin:mentions \"{}\" ;\n",
                 escape_literal(name)
+            ));
+        }
+        if let (Some("CodeSymbol"), Some(name)) = (governed_type, chunk.name.as_deref()) {
+            turtle.push_str(&format!(
+                "    bobbin:name \"{}\" ;\n    bobbin:definedIn <{module}> ;\n",
+                escape_literal(name)
+            ));
+            if let Some(kind) = governed_symbol_kind(chunk.chunk_type) {
+                turtle.push_str(&format!("    bobbin:symbolKind \"{kind}\" ;\n"));
+            }
+        }
+        if let (Some("Section"), Some(heading)) = (governed_type, chunk.name.as_deref()) {
+            let depth = heading.split(" > ").count();
+            turtle.push_str(&format!(
+                "    bobbin:heading \"{}\" ;\n    bobbin:headingDepth \"{depth}\"^^xsd:integer ;\n",
+                escape_literal(heading)
             ));
         }
         turtle.push_str(&format!(
@@ -112,6 +165,21 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
     }
 
     turtle
+}
+
+fn governed_symbol_kind(chunk_type: ChunkType) -> Option<&'static str> {
+    match chunk_type {
+        ChunkType::Function => Some("function"),
+        ChunkType::Method => Some("method"),
+        ChunkType::Class => Some("class"),
+        ChunkType::Struct => Some("struct"),
+        ChunkType::Enum => Some("enum"),
+        ChunkType::Interface => Some("interface"),
+        // The loaded shape has no `trait` or `impl` member. Both remain
+        // CodeSymbol facts, but omit the optional symbolKind rather than lie.
+        ChunkType::Trait | ChunkType::Impl => None,
+        _ => None,
+    }
 }
 
 fn escape_literal(s: &str) -> String {
@@ -194,6 +262,92 @@ pub fn push_chunks_to_quipu(
     ))
 }
 
+/// Push the chunk graph to the configured remote Quipu ontology.
+///
+/// This is deliberately separate from the embedded-store helper above: a
+/// remote write needs authentication and its delivery must be established by
+/// the HTTP response. The same snapshot key makes the next scheduled index an
+/// idempotent reconciliation if a response is lost after commit.
+pub async fn push_chunks_to_remote_quipu(
+    chunks: &[Chunk],
+    edges: &[ChunkEdge],
+    repo_name: &str,
+    endpoint: &str,
+) -> Result<(i64, usize)> {
+    let token = quipu_auth_token().context(
+        "quipu_push_chunks targets a remote ontology but no QUIPU_AUTH_TOKEN or readable token file is available",
+    )?;
+    push_chunks_to_remote_quipu_with_token(chunks, edges, repo_name, endpoint, &token).await
+}
+
+async fn push_chunks_to_remote_quipu_with_token(
+    chunks: &[Chunk],
+    edges: &[ChunkEdge],
+    repo_name: &str,
+    endpoint: &str,
+    token: &str,
+) -> Result<(i64, usize)> {
+    let body = serde_json::json!({
+        "turtle": generate_chunk_turtle(chunks, edges, repo_name),
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "actor": "bobbin",
+        "source": format!("bobbin chunk index: {repo_name}"),
+        "replace_snapshot": true,
+        "snapshot": format!("bobbin-chunks:{repo_name}"),
+    });
+    let url = format!("{}/knot", endpoint.trim_end_matches('/'));
+    let response = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .context("building remote Quipu client")?
+        .post(&url)
+        .bearer_auth(token)
+        .json(&body)
+        .send()
+        .await
+        .with_context(|| format!("POST {url}"))?;
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        anyhow::bail!(
+            "remote Quipu returned HTTP {status}: {}",
+            text.chars().take(300).collect::<String>()
+        );
+    }
+    let result: serde_json::Value =
+        serde_json::from_str(&text).context("parsing remote Quipu /knot response")?;
+    if result.get("conforms").and_then(|v| v.as_bool()) == Some(false) {
+        anyhow::bail!("remote Quipu refused chunk snapshot by SHACL: {result}");
+    }
+    if result.get("replaced").and_then(|v| v.as_bool()) != Some(true) {
+        anyhow::bail!(
+            "remote Quipu did not confirm snapshot replacement; refusing an accumulating write: {result}"
+        );
+    }
+    Ok((
+        result["tx_id"].as_i64().unwrap_or(-1),
+        result["count"].as_u64().unwrap_or(0) as usize,
+    ))
+}
+
+fn quipu_auth_token() -> Option<String> {
+    std::env::var("QUIPU_AUTH_TOKEN")
+        .ok()
+        .filter(|token| !token.trim().is_empty())
+        .or_else(|| {
+            let path = std::env::var_os("QUIPU_AUTH_TOKEN_FILE")
+                .map(PathBuf::from)
+                .or_else(|| {
+                    directories::BaseDirs::new()
+                        .map(|dirs| dirs.home_dir().join(".config/aegis/quipu_token"))
+                })?;
+            std::fs::read_to_string(path)
+                .ok()
+                .map(|token| token.trim().to_string())
+                .filter(|token| !token.is_empty())
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,6 +398,84 @@ mod tests {
         ));
         // The volatile hash ids never reach the graph.
         assert!(!turtle.contains("hash1"));
+    }
+
+    #[test]
+    fn turtle_maps_chunks_into_loaded_code_entity_vocabulary() {
+        let code = Chunk {
+            id: "fn".into(),
+            file_path: "src/lib.rs".into(),
+            chunk_type: ChunkType::Function,
+            name: Some("parse".into()),
+            start_line: 10,
+            end_line: 20,
+            content: "fn parse() {}".into(),
+            language: "rust".into(),
+            tags: String::new(),
+        };
+        let section = chunk("section", "docs/guide.md", 3, Some("Guide > Setup"));
+        let turtle = generate_chunk_turtle(&[code, section], &[], "repo");
+
+        assert!(turtle.contains("src%2Flib.rs> a bobbin:CodeModule"));
+        assert!(turtle.contains("bobbin:repo \"repo\""));
+        assert!(turtle.contains("bobbin:language \"rust\""));
+        assert!(turtle.contains("C10> a bobbin:Chunk, bobbin:CodeSymbol"));
+        assert!(turtle.contains("bobbin:name \"parse\""));
+        assert!(turtle.contains("bobbin:symbolKind \"function\""));
+        assert!(turtle.contains("docs%2Fguide.md> a bobbin:Document"));
+        assert!(turtle.contains("C3> a bobbin:Chunk, bobbin:Section"));
+        assert!(turtle.contains("bobbin:heading \"Guide > Setup\""));
+        assert!(turtle.contains("bobbin:headingDepth \"2\"^^xsd:integer"));
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_is_authenticated_and_content_addressed_by_repo() {
+        use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone, Default)]
+        struct Seen(Arc<Mutex<Option<(HeaderMap, serde_json::Value)>>>);
+
+        async fn knot(
+            State(seen): State<Seen>,
+            headers: HeaderMap,
+            Json(body): Json<serde_json::Value>,
+        ) -> Json<serde_json::Value> {
+            *seen.0.lock().unwrap() = Some((headers, body));
+            Json(serde_json::json!({
+                "conforms": true,
+                "replaced": true,
+                "tx_id": 42,
+                "count": 7
+            }))
+        }
+
+        let seen = Seen::default();
+        let app = Router::new()
+            .route("/knot", post(knot))
+            .with_state(seen.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let chunks = vec![chunk("h", "docs/a.md", 1, Some("A"))];
+        let result = push_chunks_to_remote_quipu_with_token(
+            &chunks,
+            &[],
+            "repo",
+            &format!("http://{addr}"),
+            "secret",
+        )
+        .await
+        .unwrap();
+        assert_eq!(result, (42, 7));
+
+        let (headers, body) = seen.0.lock().unwrap().take().unwrap();
+        assert_eq!(headers["authorization"], "Bearer secret");
+        assert_eq!(body["replace_snapshot"], true);
+        assert_eq!(body["snapshot"], "bobbin-chunks:repo");
+        assert_eq!(body["actor"], "bobbin");
+        assert!(body["turtle"].as_str().unwrap().contains("bobbin:Section"));
     }
 
     #[test]

@@ -992,12 +992,23 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     // Push the chunk graph to quipu as a diffed snapshot (opt-in, W2.P4).
     #[cfg(feature = "knowledge")]
     if config.quipu_push_chunks && !all_slim_chunks.is_empty() {
-        match crate::knowledge::chunks::push_chunks_to_quipu(
-            &all_slim_chunks,
-            &all_chunk_edges,
-            repo_name,
-            &source_root,
-        ) {
+        let pushed = if let Some(endpoint) = config.quipu_endpoint.as_deref() {
+            crate::knowledge::chunks::push_chunks_to_remote_quipu(
+                &all_slim_chunks,
+                &all_chunk_edges,
+                repo_name,
+                endpoint,
+            )
+            .await
+        } else {
+            crate::knowledge::chunks::push_chunks_to_quipu(
+                &all_slim_chunks,
+                &all_chunk_edges,
+                repo_name,
+                &source_root,
+            )
+        };
+        match pushed {
             Ok((_tx, count)) => {
                 if output.verbose && !output.quiet && !output.json {
                     println!("  Pushed {} chunk-graph facts to quipu", count);

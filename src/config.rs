@@ -28,10 +28,10 @@ pub struct Config {
     /// When set, search results are annotated with entity spotlight data.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quipu_endpoint: Option<String>,
-    /// Push the chunk graph (bobbin:Chunk identity, membership, order,
-    /// adjacency) to the embedded quipu store on every index run, as a
-    /// diffed snapshot replacement. Opt-in: requires the `knowledge`
-    /// feature and a quipu revision with `replace_snapshot` support.
+    /// Push the governed chunk graph on every index run as a diffed snapshot
+    /// replacement. When `quipu_endpoint` is set this uses its authenticated
+    /// `/knot` transport; otherwise it uses the embedded Quipu store.
+    /// Opt-in: requires the `knowledge` feature and snapshot replacement.
     #[serde(default)]
     pub quipu_push_chunks: bool,
     /// Run the inferred-track extractor (W3.B) over markdown prose during

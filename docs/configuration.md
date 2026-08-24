@@ -10,6 +10,10 @@ Bobbin stores its configuration in `.bobbin/config.toml`, created by `bobbin ini
 # Top-level key — must appear before the first [section] header.
 # quipu_endpoint = "http://quipu.example"
 
+# Publish each index run's governed code-entity graph as a replaceable
+# snapshot. Uses quipu_endpoint when configured, otherwise the embedded store.
+quipu_push_chunks = false
+
 [server]
 # All three keys are unset by default (thin-client / serve options).
 
@@ -456,4 +460,4 @@ Top-level key (not a table). Quipu knowledge-graph endpoint (e.g. `"http://quipu
 
 ### `quipu_push_chunks`
 
-Top-level key (not a table). Default `false`. When `true` (and bobbin is built with the `knowledge` feature), each index run pushes the chunk graph to the embedded quipu store as a diffed snapshot replacement under the producer key `bobbin-chunks:{repo}` — chunk identity, document membership, order, and adjacency, never chunk content. Requires a quipu revision with `replace_snapshot` support; bobbin probes for it and refuses (with a message) rather than letting facts accumulate per run.
+Top-level key (not a table). Default `false`. When `true` (and bobbin is built with the `knowledge` feature), each index run publishes a governed code-entity graph as a diffed snapshot replacement under the producer key `bobbin-chunks:{repo}` — `CodeModule`, `CodeSymbol`, `Document`, and `Section` facts plus chunk identity, membership, order, and adjacency, never chunk content. When `quipu_endpoint` is configured, Bobbin sends the snapshot to its authenticated `/knot` endpoint using `QUIPU_AUTH_TOKEN`, `QUIPU_AUTH_TOKEN_FILE`, or `~/.config/aegis/quipu_token` (in that order); without a remote endpoint, Bobbin uses its embedded Quipu store. The target must support `replace_snapshot`; Bobbin refuses a response that does not confirm replacement rather than letting facts accumulate per run.
