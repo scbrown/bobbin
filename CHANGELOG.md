@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-08-24
+
+### Added
+
+- publish authenticated, replaceable chunk snapshots to a remote Quipu endpoint
+- map indexed modules, symbols, documents, and sections into the governed code-entity vocabulary
+
+### Fixed
+
+- mint code and document IRIs on the live ingest lane so entities merge with the
+  existing code graph instead of forking a second one beside it
+- encode the IRI characters that make a whole Turtle document unparseable, not
+  just their own triple
+
 ## [0.7.1] - 2026-08-24
 
 ### Fixed
