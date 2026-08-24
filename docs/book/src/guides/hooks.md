@@ -402,6 +402,31 @@ When an agent encounters a file-not-found error or tries to read a directory, bo
 
 This fires via the `try_directory_navigation()` function in the hook and requires no configuration.
 
+## Faction-scoped NA grounding
+
+A trusted harness (Neural Amplifier) that consults its knowledge graph once at a turn boundary can pass that evidence into bobbin's hooks, so the graph's answer is injected without adding graph latency to the hook's hot path. The harness includes a `grounding` object in the hook's stdin JSON:
+
+```json
+{
+  "prompt": "...",
+  "grounding": {
+    "scope": "na",
+    "grounding_id": "sha256:<hex>",
+    "faction_id": "gaians",
+    "worldview_sha256": "<hex>"
+  }
+}
+```
+
+The reference is resolved **locally and verified before anything is injected**: `grounding_id` is a content address into a grounding cache on disk (`YUPANA_GROUNDING_CACHE_DIR`, `HANK_GROUNDING_CACHE_DIR`, or the `yupana/grounding` directory under the XDG state home), and the cached evidence must hash to exactly that digest and carry the same `faction_id` and `worldview_sha256` as the reference. Unknown scope, missing fields, a digest mismatch, or evidence from another faction or worldview all make the hook **abstain** — no unscoped fact reaches an injection.
+
+Verified grounding is injected in two places:
+
+- **inject-context** (thin-client mode, when a remote bobbin server is configured) — the grounding text is printed before ordinary code retrieval runs.
+- **post-tool-use** — after `Edit` or `Write` tool calls, the same verified evidence is appended to the reactive context.
+
+Each grounding injection is recorded in the feedback store as a scoped injection (`scope = "na"`, plus its `faction_id` and `grounding_id`), so it shows up in feedback and lineage queries like any other injection.
+
 ## Removing hooks
 
 Remove Claude Code hooks:

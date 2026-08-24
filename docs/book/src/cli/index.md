@@ -38,3 +38,10 @@ bobbin index --source /other/repo --repo other  # Index a different directory
 | `--force` | | Force reindex all files |
 | `--repo <NAME>` | | Repository name for multi-repo indexing (default: "default") |
 | `--source <PATH>` | | Source directory to index files from (defaults to path) |
+
+## Maintenance and recovery
+
+Each index run ends with a Lance maintenance sweep (pruning old table versions and compacting fragments). Two properties of that sweep are worth knowing when you run `bobbin index` on a schedule:
+
+- **Maintenance failures fail the command.** A sweep that errors makes `bobbin index` exit non-zero instead of reporting success with a silently skipped compaction. Lock contention is the one non-error outcome: a sweep starved by another process's lock is reported loudly on stderr (even under `--quiet` and `--json`) and labeled `skipped_lock_held` in `--json` output.
+- **FTS compaction panics recover truthfully.** Lance's incremental full-text-index remap can panic while compacting the chunks table. When exactly that failure is detected, bobbin rebuilds the FTS index from scratch — discarding the broken incremental generation — and retries the compaction once. Unrelated compaction errors (I/O, schema, out of memory) are never treated as rebuildable and surface as-is.

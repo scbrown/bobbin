@@ -380,7 +380,9 @@ List recent archive records by date.
 
 ## knowledge_context
 
-Query the [Quipu](https://github.com/scbrown/quipu) knowledge graph for entities and facts relevant to a topic, using text search with link expansion. Best for questions like "what services run on node-4?" or "entities related to DNS".
+Find entities and facts relevant to a topic across both knowledge graphs a deployment has, using text search with link expansion. The response has two clearly separated sections: `ontology` (the organization knowledge graph on a remote [Quipu](https://github.com/scbrown/quipu) — infrastructure, ownership, and operational facts) and `local_code_graph` (bobbin's own embedded graph of code entities and file-coupling from git history). Best for questions like "what services run on node-4?" or "which files change together with X?".
+
+Always read the `store` field in the result: `ontology.consulted = false` means the remote was not asked (no remote configured), and an `error` there is a transport failure — neither is evidence a fact is absent.
 
 > Requires bobbin built with the `knowledge` feature (`cargo build --features knowledge`). Without it the tool is registered but returns an error directing you to rebuild.
 
@@ -394,7 +396,9 @@ Query the [Quipu](https://github.com/scbrown/quipu) knowledge graph for entities
 
 ## knowledge_query
 
-Execute a SPARQL SELECT query against the Quipu knowledge graph, with optional temporal filtering. Best for precise structured queries when you know the entity IRIs or predicates.
+Execute a SPARQL SELECT query against both knowledge graphs, with optional temporal filtering. The same query runs against the remote ontology Quipu and bobbin's embedded code graph, and each returns its rows in a separate section — an IRI that exists in only one graph returns rows in only that section. Best for precise structured queries when you know the entity IRIs or predicates.
+
+As with `knowledge_context`, read the `store` field: an empty section is never by itself evidence the fact does not exist.
 
 > Requires the `knowledge` build feature (see `knowledge_context`).
 
@@ -405,3 +409,57 @@ Execute a SPARQL SELECT query against the Quipu knowledge graph, with optional t
 | `query` | string | yes | — | SPARQL SELECT query |
 | `valid_at` | string | no | — | ISO-8601 timestamp for a temporal query (what was true then?) |
 | `tx` | integer | no | — | Transaction ID for a point-in-time (as-of) query |
+
+## knowledge_knot
+
+Write facts into bobbin's local embedded knowledge graph as RDF Turtle. This writes only to the local graph — never to the remote ontology Quipu, which is read-only from here.
+
+Always read the `shacl_validated` field in the result. When `true`, the write was checked against the configured SHACL shapes before being committed, and a violating write would have been refused (a SHACL refusal surfaces as a tool error, not as a success with a flag). When `false`, validation was not compiled in and the facts were stored unchecked — a success then means only that the write was accepted, not that it is conformant.
+
+> Requires the `knowledge` build feature (see `knowledge_context`).
+
+**Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `turtle` | string | yes | — | Facts to write, as RDF Turtle |
+| `actor` | string | no | — | Actor recorded as the author of this write (provenance). Pass it whenever you have one |
+| `source` | string | no | — | Where the facts came from (e.g. a file path or tool name) |
+| `shapes` | string | no | — | SHACL shapes (Turtle) to validate against instead of the store's configured shapes |
+
+**Response fields:** `written` (the store's write result), `shacl_validated`, `store`
+
+## knowledge_reconcile_mentions
+
+Run the idempotent chunk→entity mention reconcile pass over bobbin's local knowledge graph. It resolves weak `bobbin:mentions "SymbolName"` literals on chunk facts into typed reference edges against the live entity graph, and reports every mention as one of three outcomes: **resolved** (exactly one match — edge written), **dangling** (no match — literal left in place for a later run), or **ambiguous** (multiple matches — left unresolved, never guessed).
+
+Safe to re-run: an unchanged store yields the identical classification with `edges_written = 0`. Run it after new entities land in the graph to pick up previously dangling mentions. The same pass runs automatically after each chunk-snapshot push during `bobbin index` (see [Quipu Integration](../guides/quipu-integration.md)).
+
+> Requires the `knowledge` build feature (see `knowledge_context`).
+
+**Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `max_details` | integer | no | 50 | Maximum per-mention detail entries to return. The three counts are always complete |
+
+**Response fields:** `resolved`, `dangling`, `ambiguous`, `edges_written`, `details[]`, `details_truncated`, `store`
+
+## knowledge_inferred_extract
+
+Extract candidate entities and relationships from markdown prose via bobbin's inferred-track extractor seam. The one extractor today is the deterministic backtick-coderef heuristic — not a language model, and honestly labeled as such in every fact it produces.
+
+Everything returned is a claim at quarantined standing, never an observation. The response envelope carries the quarantine plane, trust rank 0, and `sourceKind = inferred` — inferred facts are never served bare. With `push = true` the stamped facts also land in the quarantined plane via a graph-routed `/knot` write, each fact carrying its extractor and parameters as the derivation method; the write refuses if the embedded store cannot enforce graph routing (the facts would masquerade in the default graph at observed standing) or the plane is unregistered. Promotion out of quarantine is the governing ontology's authority-gated flow, never this tool's.
+
+> Requires the `knowledge` build feature (see `knowledge_context`).
+
+**Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `text` | string | yes | — | Markdown prose to run the extractor over |
+| `repo` | string | no | `adhoc` | Repository name the prose belongs to, for IRI minting |
+| `file_path` | string | no | `adhoc.md` | File path the prose came from, for the source-chunk IRI |
+| `push` | boolean | no | false | Also land the stamped facts in the quarantined plane (default is preview only) |
+
+**Response fields:** `extractor` (`id`, `params`), `entities`, `relations`, `quarantine` (`graph`, `snapshot`, `turtle`), `pushed` (`tx_id`, `count` — only when `push = true`), all wrapped in the quarantine envelope

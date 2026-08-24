@@ -71,11 +71,13 @@ Related to src/auth/middleware.rs:
 
 📦 **Task-Aware Context** — `bobbin context "fix the login bug"` builds a budget-controlled bundle from search results + coupled files. Feed it straight to an AI agent.
 
-🤖 **MCP Server** — `bobbin serve` exposes 26 tools to Claude Code, Cursor, and any MCP-compatible agent (24 always available; `knowledge_context` and `knowledge_query` require the `knowledge` build feature).
+🤖 **MCP Server** — `bobbin serve` exposes 31 tools to Claude Code, Cursor, and any MCP-compatible agent (26 always available; the five `knowledge_*` tools require the `knowledge` build feature).
 
-🧠 **Knowledge Graph (Quipu)** — Optional integration with [Quipu](https://github.com/scbrown/quipu) for structured knowledge alongside code. SPARQL queries, SHACL validation, and vector search over knowledge entities — all exposed as MCP tools (`knowledge_context`, `knowledge_query`). Feature-gated behind `knowledge`.
+🧠 **Knowledge Graph (Quipu)** — Optional integration with [Quipu](https://github.com/scbrown/quipu) for structured knowledge alongside code. SPARQL queries, SHACL-validated writes, and vector search over knowledge entities — exposed as five `knowledge_*` MCP tools that query the remote ontology and the local code graph side by side. Feature-gated behind `knowledge`.
 
 🧵 **Governed Chunk Ontology** — Knowledge builds can publish each index run as a replaceable snapshot, so a reindex diffs rather than accumulates. A named code chunk or document section is published as a single node carrying both `bobbin:Chunk` and its governed code-entity type, under the same identity an external code-graph producer would mint for it, so the two graphs join instead of describing the same symbol twice. Anonymous spans keep their own chunk identity. Set `quipu_endpoint` for authenticated remote `/knot` delivery; leave it unset and publication is off rather than redirected to the embedded store.
+
+🧪 **Quarantined Inferred Extraction** — A deterministic extractor mines candidate entities and relationships from markdown prose. Candidates are claims, not observations, and the distinction is structural: every fact carries its extractor and parameters as the derivation method, lands only in a quarantined trust-rank-0 plane via graph-routed writes (the push refuses stores that cannot route graphs strictly), and is served only inside a quarantine envelope. Promotion out of quarantine belongs to the governing ontology, never the writer. Opt-in via `quipu_push_inferred` or the `knowledge_inferred_extract` MCP tool.
 
 🌐 **Multi-Repo** — Index multiple repositories into one database. Search across all or filter by name.
 
@@ -87,7 +89,7 @@ Related to src/auth/middleware.rs:
 
 🔄 **Feedback Loop** — Agents rate injections as useful/noise/harmful. Lineage tracking ties feedback to fixes (commits, beads, config changes). Metrics close the loop between search quality and real-world impact.
 
-🛡️ **FTS Churn Recovery** — Keyword and hybrid searches survive transient index churn: a failed full-text query triggers a bounded rebuild-and-retry cycle with backoff, and only a request that exhausts it surfaces an error — the original cause, not a synthesised one. `/metrics` exposes `bobbin_fts_rebuild_total` and mode-labelled `bobbin_search_errors_total{reason="fts"}` counters, so how often this happens is measurable rather than anecdotal.
+🛡️ **FTS Churn Recovery** — Keyword and hybrid searches survive transient index churn: a failed full-text query triggers a bounded rebuild-and-retry cycle with backoff, and only a request that exhausts it surfaces an error — the original cause, not a synthesised one. `/metrics` exposes `bobbin_fts_rebuild_total` and mode-labelled `bobbin_search_errors_total{reason="fts"}` counters, so how often this happens is measurable rather than anecdotal. Indexing gets the same honesty: a Lance FTS compaction panic triggers a full index rebuild and one retried compaction, and a maintenance failure fails `bobbin index` instead of exiting 0.
 
 ## Quick Start
 
@@ -152,7 +154,7 @@ Add to your Claude Code or Cursor MCP config:
 }
 ```
 
-Exposes 26 tools including: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `impact`, `review`, `similar`, `prime`, `search_beads`, `dependencies`, `file_history`, `status`, `commit_search`, `feedback_submit`, `feedback_list`, `feedback_stats`, `feedback_lineage_store`, `feedback_lineage_list`, `archive_search`, and `archive_recent`, plus `knowledge_context` and `knowledge_query` (require the `knowledge` build feature).
+Exposes 31 tools including: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `chunk_neighbors`, `hotspots`, `impact`, `review`, `similar`, `prime`, `search_beads`, `dependencies`, `file_history`, `test_coverage`, `status`, `commit_search`, `feedback_submit`, `feedback_list`, `feedback_stats`, `feedback_lineage_store`, `feedback_lineage_list`, `archive_search`, and `archive_recent`, plus `knowledge_context`, `knowledge_query`, `knowledge_knot`, `knowledge_reconcile_mentions`, and `knowledge_inferred_extract` (require the `knowledge` build feature).
 
 For agents, prefer this interface order: use MCP tools when a Bobbin server is
 available, use the equivalent `bobbin` CLI command next, and use the documented
@@ -278,7 +280,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup and code quali
 
 Bobbin v0.7.1 introduced bounded FTS churn recovery and its operational counters.
 v0.7.2 added remote chunk-snapshot publication and aligned code and document entity
-IRIs with the code graph they are meant to join.
+IRIs with the code graph they are meant to join. v0.7.3 extended FTS recovery to
+index-time compaction and made maintenance failures fail the index run instead of
+masquerading as success. v0.8.0 added verified, faction-scoped grounding injection
+for the Neural Amplifier harness.
 
 Tagged releases are built by the GitHub Actions release matrix and published as
 checksummed platform artifacts. The release artifacts are the supported binary

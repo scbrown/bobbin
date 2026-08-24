@@ -35,14 +35,17 @@ auto_embed = true                 # embed entities using Bobbin's ONNX pipeline
 
 ## MCP Tools
 
-With Quipu enabled, `bobbin serve` exposes two additional MCP tools:
+With Quipu enabled, `bobbin serve` exposes five additional MCP tools:
 
 | Tool | Description |
 |------|-------------|
-| `knowledge_context` | Semantic search over knowledge graph entities. Pass a natural language query and get back the most relevant entities. |
-| `knowledge_query` | Run SPARQL SELECT queries directly against the knowledge graph. |
+| `knowledge_context` | Semantic search over knowledge graph entities, across the remote ontology and the local code graph. |
+| `knowledge_query` | Run SPARQL SELECT queries against both graphs, with optional temporal filtering. |
+| `knowledge_knot` | Write facts into the local embedded graph as RDF Turtle, with SHACL validation when compiled in. |
+| `knowledge_reconcile_mentions` | Resolve chunk mention literals into typed edges against the live entity graph. |
+| `knowledge_inferred_extract` | Run the quarantined-track extractor over markdown prose (see below). |
 
-These appear alongside Bobbin's existing tools (search, grep, context, etc.) in a single MCP server.
+These appear alongside Bobbin's existing tools (search, grep, context, etc.) in a single MCP server. See the [Tools Reference](../mcp/tools.md) for parameters and response shapes.
 
 ### Example: knowledge_context
 
@@ -70,6 +73,30 @@ Run a SPARQL query against the graph:
   }
 }
 ```
+
+## Publishing Chunk Snapshots
+
+With `quipu_push_chunks = true` (a top-level key in `.bobbin/config.toml`), every index run publishes the repository's governed code-entity graph as a **diffed snapshot replacement** under the producer key `bobbin-chunks:{repo}` — so a reindex diffs against the previous run rather than accumulating a copy per run. The snapshot carries `CodeModule`, `CodeSymbol`, `Document`, and `Section` facts plus chunk identity, membership, order, and adjacency — never chunk content.
+
+Where the snapshot goes depends on `quipu_endpoint`:
+
+- **Set** — the snapshot is delivered to that remote Quipu's authenticated `/knot` endpoint. The bearer token is resolved from `QUIPU_AUTH_TOKEN`, then `QUIPU_AUTH_TOKEN_FILE`, then `~/.config/aegis/quipu_token`; with no token available the push fails rather than sending unauthenticated.
+- **Unset** — the snapshot lands in the embedded local store.
+
+Either way the target must support snapshot replacement: Bobbin probes for it first and refuses (with a message) rather than letting facts accumulate per run. After a successful push, `bobbin index` also runs the mention-reconcile pass over the local graph — the same pass the `knowledge_reconcile_mentions` tool runs on demand.
+
+## Quarantined Inferred Extraction
+
+Facts that are *inferred* from prose are claims, not observations, and Bobbin keeps that distinction structural. The inferred track is a pluggable extractor seam; the one extractor today is a deterministic backtick-coderef heuristic over markdown — not a language model, and every fact it produces says so.
+
+Candidates never mix with observed facts:
+
+- Each fact carries its extractor and parameters as the derivation method, and `sourceKind = inferred`.
+- Facts land only in a dedicated quarantined plane at trust rank 0, via a graph-routed `/knot` write. The push refuses when the store cannot enforce graph routing — inferred facts must never masquerade in the default graph at observed standing.
+- The `knowledge_inferred_extract` MCP tool serves candidates only inside the quarantine envelope (plane, trust rank, source kind), never bare.
+- Promotion out of quarantine is the governing ontology's authority-gated flow, deliberately not implemented in Bobbin.
+
+Set `quipu_push_inferred = true` (top-level key, opt-in) to run the extractor over markdown prose during indexing and land the stamped candidates in the quarantined plane as a diffed snapshot. It requires the `knowledge` feature, a Quipu revision with strict `/knot` graph routing, and the quarantine plane registered and trust-labelled on the store.
 
 ## Architecture
 

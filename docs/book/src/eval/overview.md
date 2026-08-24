@@ -131,6 +131,13 @@ After each run, the eval runner reads the metrics log and computes:
 
 This data appears in the `bobbin_metrics` field of each result JSON, enabling analysis of *why* bobbin helped (or didn't) on a given task.
 
+## Serving-Model Attribution
+
+A comparison between arms is only valid if both arms were served by the same model, so the model that actually served each run is part of the run's identity:
+
+- **Write-time attribution** — the runner persists a top-level `serving_model` field into every run artifact, extracted from the agent's own usage record. A run with no usage record gets an explicit `null` and stays unattributed; the model the config *requested* is never copied in, because declared intent is exactly what attribution cannot rest on. Error-path artifacts carry the field as `null` too.
+- **Scoring refusal** — `score` excludes unattributed runs from cross-arm comparison (reporting how many were excluded) and refuses to compare arms served by different models, naming the models and per-arm counts. `--mixed-models` forces the comparison anyway, but every arm is labeled with its model mix and the output carries a model-mixed banner — a forced comparison can never pass as a clean one.
+
 ## LLM Judge
 
 Optionally, an LLM judge performs pairwise comparison of agent diffs across three dimensions:
