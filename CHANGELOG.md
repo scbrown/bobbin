@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-24
+
+### Fixed
+
+- recover transient FTS failures during cross-process index churn with bounded backoff
+- expose FTS rebuild and terminal search-error counters for keyword and hybrid modes
+- verify release checksums against final asset names and retire the stale Forgejo deploy path
+
 ## [0.7.0] - 2026-08-23
 
 Release the chunk-graph, generic source, deterministic extraction, and Quipu snapshot
