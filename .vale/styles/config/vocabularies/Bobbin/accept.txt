@@ -15,6 +15,7 @@ bridge_boost_factor
 bridge_mode
 changeset
 changesets
+chunk_neighbors
 Clippy
 code_block
 commit
@@ -34,6 +35,7 @@ default_allow
 deny_paths
 deps
 dev
+Disambiguates
 Dockerfile
 Docusaurus
 dotenv
