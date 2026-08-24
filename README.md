@@ -75,7 +75,7 @@ Related to src/auth/middleware.rs:
 
 🧠 **Knowledge Graph (Quipu)** — Optional integration with [Quipu](https://github.com/scbrown/quipu) for structured knowledge alongside code. SPARQL queries, SHACL validation, and vector search over knowledge entities — all exposed as MCP tools (`knowledge_context`, `knowledge_query`). Feature-gated behind `knowledge`.
 
-🧵 **Governed Chunk Ontology** — Knowledge builds can publish each index run as a replaceable snapshot. Code and prose chunks keep their stable `bobbin:Chunk` identity while named modules, symbols, documents, and sections are also mapped to Quipu's governed code-entity vocabulary. Configure `quipu_endpoint` for authenticated remote `/knot` delivery, or omit it to use the embedded store.
+🧵 **Governed Chunk Ontology** — Knowledge builds can publish each index run as a replaceable snapshot, so a reindex diffs rather than accumulates. A named code chunk or document section is published as a single node carrying both `bobbin:Chunk` and its governed code-entity type, under the same identity an external code-graph producer would mint for it, so the two graphs join instead of describing the same symbol twice. Anonymous spans keep their own chunk identity. Set `quipu_endpoint` for authenticated remote `/knot` delivery; leave it unset and publication is off rather than redirected to the embedded store.
 
 🌐 **Multi-Repo** — Index multiple repositories into one database. Search across all or filter by name.
 
@@ -87,7 +87,7 @@ Related to src/auth/middleware.rs:
 
 🔄 **Feedback Loop** — Agents rate injections as useful/noise/harmful. Lineage tracking ties feedback to fixes (commits, beads, config changes). Metrics close the loop between search quality and real-world impact.
 
-🛡️ **FTS Churn Recovery** — Keyword and hybrid searches retry bounded transient index churn and rebuild a recoverable FTS index once. `/metrics` exposes `bobbin_fts_rebuild_total` and mode-labelled `bobbin_search_errors_total{reason="fts"}` counters so terminal failures remain visible.
+🛡️ **FTS Churn Recovery** — Keyword and hybrid searches survive transient index churn: a failed full-text query triggers a bounded rebuild-and-retry cycle with backoff, and only a request that exhausts it surfaces an error — the original cause, not a synthesised one. `/metrics` exposes `bobbin_fts_rebuild_total` and mode-labelled `bobbin_search_errors_total{reason="fts"}` counters, so how often this happens is measurable rather than anecdotal.
 
 ## Quick Start
 
@@ -277,9 +277,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup and code quali
 ## Releases
 
 Bobbin v0.7.1 introduced bounded FTS churn recovery and its operational counters.
+v0.7.2 added remote chunk-snapshot publication and aligned code and document entity
+IRIs with the code graph they are meant to join.
+
 Tagged releases are built by the GitHub Actions release matrix and published as
 checksummed platform artifacts. The release artifacts are the supported binary
 delivery lane; deployments should consume a pinned tag and verify its checksum.
+A commit on `main` is deliberately not deployable until a release is published.
 
 ## Documentation
 
