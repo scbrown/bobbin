@@ -236,6 +236,18 @@ jobs:
 
           find . -type f \( -name "*.tar.gz" -o -name "SHA256SUMS.txt" -o -name "bobbin-linux-*" -o -name "libonnxruntime-linux-*.so" \) -exec mv {} . \; 2>/dev/null || true
           rm -rf bobbin-*/ checksums/
+
+          # The checksums job runs before the standalone Linux binaries are
+          # extracted, so its manifest can only cover the archives. Regenerate
+          # the release manifest here, after every published asset exists in the
+          # same directory. This keeps the convenient raw binaries verifiable
+          # instead of making them an attractive unchecked download path.
+          rm -f SHA256SUMS.txt
+          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\0' \
+            | sort -z \
+            | xargs -0 sha256sum > SHA256SUMS.txt
+          echo "Final release checksums:"
+          cat SHA256SUMS.txt
           ls -la
 
       - name: Create GitHub Release
