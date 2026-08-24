@@ -63,33 +63,31 @@ fn maintenance_lock_wait() -> LockWait {
 /// while the command still exits 0. That was previously indistinguishable from
 /// a sweep that reclaimed gigabytes, and the difference went unnoticed for
 /// months because nothing could report it.
+#[derive(Debug)]
 struct MaintenanceReport {
-    /// `None` means the sweep ERRORED (already reported on stderr by us).
-    outcome: Option<MaintenanceOutcome>,
-}
-
-impl From<anyhow::Result<MaintenanceOutcome>> for MaintenanceReport {
-    fn from(r: anyhow::Result<MaintenanceOutcome>) -> Self {
-        match r {
-            Ok(outcome) => Self {
-                outcome: Some(outcome),
-            },
-            Err(e) => {
-                eprintln!("warning: lance maintenance failed: {e:#}");
-                Self { outcome: None }
-            }
-        }
-    }
+    outcome: MaintenanceOutcome,
 }
 
 impl MaintenanceReport {
+    /// Turn a completed maintenance call into its operator-facing report.
+    ///
+    /// A real maintenance error must fail the index command. Swallowing it here
+    /// made systemd report success while every scheduled run failed compaction.
+    /// Lock contention is different: it is represented explicitly by
+    /// `SkippedLockHeld` and remains a reportable, non-error outcome.
+    fn from_result(r: anyhow::Result<MaintenanceOutcome>) -> anyhow::Result<Self> {
+        Ok(Self {
+            outcome: r.context("Lance maintenance failed")?,
+        })
+    }
+
     /// Print an unmissable stderr warning when the sweep was starved.
     ///
     /// stderr and not stdout, and unconditional: `--json` and `--quiet` are the
     /// modes the scheduled reindex actually runs in, and those are exactly the
     /// runs where a silent skip went unnoticed for months.
     fn warn_if_starved(&self) {
-        let Some(MaintenanceOutcome::SkippedLockHeld { waited }) = self.outcome else {
+        let MaintenanceOutcome::SkippedLockHeld { waited } = self.outcome else {
             return;
         };
         let waited = waited.as_secs();
@@ -104,9 +102,7 @@ impl MaintenanceReport {
     /// Machine-readable summary for `--json`, e.g. `"ran"` or
     /// `"skipped_lock_held"`.
     fn json_label(&self) -> String {
-        self.outcome
-            .map_or("failed", MaintenanceOutcome::label)
-            .to_string()
+        self.outcome.label().to_string()
     }
 }
 
@@ -1355,7 +1351,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     // worst-case wait for every one of them, and a separate acquisition leaves
     // a window for a contender to steal the lock between the prune and the
     // compaction it is supposed to precede.
-    let maintenance = MaintenanceReport::from(vector_store.maintain(maintenance_lock_wait()).await);
+    let maintenance =
+        MaintenanceReport::from_result(vector_store.maintain(maintenance_lock_wait()).await)?;
     profile.compact_ms = t_compact.elapsed().as_millis();
 
     // A starved sweep is reported LOUDLY on stderr even under --quiet/--json.
@@ -1827,6 +1824,28 @@ mod tests {
     use super::*;
     use crate::types::ChunkType;
     use tempfile::tempdir;
+
+    #[test]
+    fn maintenance_error_is_not_reported_as_success() {
+        let err =
+            MaintenanceReport::from_result(Err(anyhow::anyhow!("Failed to compact chunks table")))
+                .expect_err("maintenance failures must fail the index command");
+
+        assert_eq!(
+            format!("{err:#}"),
+            "Lance maintenance failed: Failed to compact chunks table"
+        );
+    }
+
+    #[test]
+    fn maintenance_lock_contention_remains_an_explicit_outcome() {
+        let report = MaintenanceReport::from_result(Ok(MaintenanceOutcome::SkippedLockHeld {
+            waited: std::time::Duration::from_secs(120),
+        }))
+        .expect("lock contention is a modeled non-error outcome");
+
+        assert_eq!(report.json_label(), "skipped_lock_held");
+    }
 
     #[test]
     fn test_compute_hash() {

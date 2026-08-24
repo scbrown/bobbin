@@ -254,6 +254,15 @@ fn is_commit_conflict<E: std::fmt::Display>(err: &E) -> bool {
     msg.contains("Commit conflict") || msg.contains("concurrent commit")
 }
 
+/// Narrow discriminator for Lance's FTS incremental-index worker panic.
+/// The join boundary is stable across Lance releases; requiring both the
+/// inverted-index source path and a worker panic avoids treating ordinary
+/// compaction failures as rebuildable index state.
+fn is_fts_compaction_panic<E: std::fmt::Display>(err: &E) -> bool {
+    let msg = format!("{err:#}");
+    msg.contains("scalar/inverted/builder.rs") && msg.contains("panicked")
+}
+
 /// Retry a table write that hit a commit conflict: refresh the table handle to
 /// the latest version and re-run, at most twice, with a short backoff. Every
 /// participant compacts/writes the same tables, so occasional conflicts are
@@ -981,7 +990,7 @@ impl VectorStore {
     async fn compact_locked(&self, tables: &[(&'static str, &Table)]) -> Result<()> {
         let mut first_err = None;
         for (name, table) in tables {
-            let r = retry_on_conflict!(
+            let mut r = retry_on_conflict!(
                 table,
                 table.optimize(OptimizeAction::Compact {
                     options: bounded_compaction_options(),
@@ -989,6 +998,31 @@ impl VectorStore {
                 })
             )
             .with_context(|| format!("Failed to compact {name} table"));
+
+            // Lance's incremental FTS-index remap can panic while compacting
+            // the chunks table. A full replacement build is the upstream-safe
+            // recovery path: it discards the broken incremental generation,
+            // after which the same bounded compaction can proceed. Never apply
+            // this to unrelated compaction errors (I/O, schema, OOM, etc.).
+            if *name == "chunks" && r.as_ref().err().is_some_and(|e| is_fts_compaction_panic(e)) {
+                tracing::warn!(
+                    error = %r.as_ref().expect_err("checked above"),
+                    "FTS incremental compaction panicked; rebuilding the FTS index and retrying once"
+                );
+                if let Err(rebuild_err) = self.rebuild_fts_index().await {
+                    r = Err(rebuild_err
+                        .context("Failed to rebuild FTS index after incremental compaction panic"));
+                } else {
+                    r = retry_on_conflict!(
+                        table,
+                        table.optimize(OptimizeAction::Compact {
+                            options: bounded_compaction_options(),
+                            remap_options: None,
+                        })
+                    )
+                    .with_context(|| "Failed to compact chunks table after FTS rebuild");
+                }
+            }
             if let Err(e) = r {
                 first_err.get_or_insert(e);
             }
@@ -3865,6 +3899,21 @@ mod tests {
         assert!(is_commit_conflict(&conflict));
         let other = anyhow::anyhow!("Failed to open table: corrupt manifest");
         assert!(!is_commit_conflict(&other));
+    }
+
+    #[test]
+    fn fts_compaction_panic_classifier_is_narrow() {
+        let incident = anyhow::anyhow!(
+            "LanceError(IO): task 85132 panicked with message Option unwrap, \
+             lance-index-4.0.0/src/scalar/inverted/builder.rs:316:30"
+        );
+        assert!(is_fts_compaction_panic(&incident));
+        assert!(!is_fts_compaction_panic(&anyhow::anyhow!(
+            "Failed to compact chunks table: out of memory"
+        )));
+        assert!(!is_fts_compaction_panic(&anyhow::anyhow!(
+            "scalar/inverted/builder.rs returned an ordinary error"
+        )));
     }
 
     #[tokio::test]
