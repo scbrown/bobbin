@@ -250,8 +250,8 @@ pub struct VectorStore {
 /// concurrent writers (indexer vs. server vs. CLI) that the lance error text
 /// itself says to resolve by rerunning off the latest version.
 fn is_commit_conflict<E: std::fmt::Display>(err: &E) -> bool {
-    let msg = err.to_string();
-    msg.contains("Commit conflict") || msg.contains("concurrent commit")
+    let msg = err.to_string().to_ascii_lowercase();
+    msg.contains("commit conflict") || msg.contains("concurrent commit")
 }
 
 /// Narrow discriminator for Lance's FTS incremental-index worker panic.
@@ -3897,6 +3897,11 @@ mod tests {
              that conflicts with this one and it cannot be automatically resolved."
         );
         assert!(is_commit_conflict(&conflict));
+        let retryable_rewrite = anyhow::anyhow!(
+            "Retryable commit conflict for version 645776: This Rewrite transaction was \
+             preempted by concurrent transaction Rewrite at version 645776. Please retry."
+        );
+        assert!(is_commit_conflict(&retryable_rewrite));
         let other = anyhow::anyhow!("Failed to open table: corrupt manifest");
         assert!(!is_commit_conflict(&other));
     }
