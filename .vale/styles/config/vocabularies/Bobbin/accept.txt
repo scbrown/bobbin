@@ -23,6 +23,7 @@ coderef
 commit
 commit_search
 composable
+conformant
 config
 configs
 current_app
@@ -87,6 +88,7 @@ maturin
 MCP
 mdbook
 middleware
+misconfigured
 monorepo
 [Mm]ultimodal
 Namespace
@@ -98,10 +100,14 @@ PDFs
 pensieve
 Pensieve
 polars
+prepended
 protoc
+pluggable
 pylint
 Quipu
 reactively
+reachability
+rebuildable
 read_chunk
 rebase
 reformats
@@ -137,9 +143,11 @@ test_coverage
 tmux
 tokenization
 tokenizer
+tokenises
 tokei
 toolchain
 unstaged
+unscoped
 upserted
 upserts
 walkthrough
@@ -147,4 +155,6 @@ werkzeug
 wip
 worktrees
 xcode
+Yupana
+Yupana's
 zsh

@@ -46,7 +46,7 @@ to prevent, inverted.
 
 ## Enabling it
 
-There is no configuration of its own. The transport is the existing
+This feature has no configuration of its own. The transport is the existing
 `quipu_endpoint` key — the same one search spotlight annotations and the MCP
 ontology tools use:
 
@@ -104,7 +104,7 @@ believing it checked.
 Yupana refuses a projection carrying an effect it cannot enforce, and it is
 right to: a dropped wire there is a boundary that reads as guarded and is not.
 Here the failure runs the other way — a dropped wire is a boundary the agent is
-never told about. So Bobbin surfaces everything:
+never told about. Bobbin therefore surfaces everything:
 
 - An effect outside `warn` / `deny` / `throttle` (the vocabulary also includes
   `allow`, `require-approval`, `escalate`, `record`) is **named verbatim**.
