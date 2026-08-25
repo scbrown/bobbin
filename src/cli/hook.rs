@@ -9238,7 +9238,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn test_session_ledger_injected_files() {
         let mut ledger = SessionLedger {
