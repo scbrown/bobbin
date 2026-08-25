@@ -1,6 +1,6 @@
 # Advanced Query Syntax
 
-> **Implementation status (2026-08-25):** 🟡 Partial — Server-side query language fully landed (`src/search/query.rs` parser + `filters_to_sql`, OR/NOT/regex execution in `src/http/handlers/search.rs`, filter-chip UI + `/suggest` autocomplete, ~45 tests). `/search` echoes a `parsed` object, `+` is a real required-term operator, and **`bobbin search` now calls the parser too** — inline filters, phrases, OR branches, NOT and regex behave the same on the CLI as over HTTP, because both call `query::parse` and `query::retain_matching`. Remaining gap: parenthesized/nested booleans are unimplemented (flat OR-split, no `Term` AST), so `(redis OR memcached) AND cache` still mis-tokenizes into literal `(redis` / `memcached)`. Tracked as the follow-on in [#50](https://github.com/scbrown/bobbin/issues/50); it needs a written grouping spec before coding.
+> **Implementation status (2026-08-25):** 🟡 Partial — Server-side query language fully landed (`src/search/query.rs` parser + `filters_to_sql`, OR/NOT/regex execution in `src/http/handlers/search.rs`, filter-chip UI + `/suggest` autocomplete, ~45 tests). `/search` echoes a `parsed` object, `+` is a real required-term operator, and **`bobbin search` now calls the parser too** — inline filters, phrases, OR branches, NOT and regex behave the same on the CLI as over HTTP, because both call `query::parse` and `query::retain_matching`. Remaining gap: parenthesized/nested booleans are unimplemented (flat OR-split, no `Term` AST), so `(redis OR memcached) AND cache` still mis-tokenizes into literal `(redis` / `memcached)`. Tracked as the follow-on in [#50](https://github.com/scbrown/bobbin/issues/50). **That grouping spec is now written** — see [`docs/designs/query-grouping.md`](../designs/query-grouping.md) (`bobbin-0a5`), which supersedes the `Term` sketch in §"Phase 1" below and carries eight open questions awaiting review. The build remains unstarted.
 
 **Status**: Design
 **Author**: ian (PO)
@@ -222,6 +222,11 @@ fn filters_to_sql(filters: &[Filter]) -> Option<String> {
 This composes with existing §69 role filtering and group filtering.
 
 ### Phase 3: Boolean Query Execution (P2)
+
+> Shipped for the **flat** case only. Parenthesised and nested booleans are
+> specified in [`docs/designs/query-grouping.md`](../designs/query-grouping.md)
+> and not built; that document also supersedes the `Term` enum sketched in
+> Phase 1 above, which predates the parser that actually shipped.
 
 For boolean operators in search terms:
 
