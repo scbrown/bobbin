@@ -57,6 +57,8 @@ pub(super) fn router(state: Arc<AppState>) -> axum::Router {
         .route("/symbols", get(analysis::list_symbols))
         .route("/hotspots", get(analysis::hotspots))
         .route("/impact", get(analysis::impact))
+        .route("/deps", get(analysis::deps))
+        .route("/history", get(analysis::history))
         .route("/review", get(review::review))
         .route("/similar", get(similar::similar))
         .route("/prime", get(admin::prime))

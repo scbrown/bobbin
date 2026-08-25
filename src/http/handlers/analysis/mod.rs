@@ -14,7 +14,11 @@ use super::{
     bad_request, internal_error, open_metadata_store, open_vector_store, AppState, ErrorBody,
 };
 
+mod deps;
+mod history;
 mod hotspots;
+pub(super) use deps::*;
+pub(super) use history::*;
 pub(super) use hotspots::*;
 
 // ---------------------------------------------------------------------------

@@ -33,6 +33,8 @@ The server binds to `0.0.0.0` on the specified port and includes CORS headers fo
 | `GET` | `/related` | Find temporally coupled files |
 | `GET` | `/refs` | Find symbol definitions and usages |
 | `GET` | `/symbols` | List symbols in a file |
+| `GET` | `/deps` | Import dependencies for a file |
+| `GET` | `/history` | Git commit history for a file |
 | `GET` | `/hotspots` | Identify high-churn complex files |
 | `GET` | `/impact` | Predict change impact |
 | `GET` | `/review` | Diff-aware review context |
@@ -135,6 +137,39 @@ curl "http://localhost:3030/refs?symbol=parse_config"
 
 ```bash
 curl "http://localhost:3030/symbols?file=src/config.rs"
+```
+
+### GET /deps
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `file` | string | required | File path |
+| `reverse` | boolean | `false` | Show what imports this file instead |
+| `both` | boolean | `false` | Show both directions |
+| `role` | string | none | Role for access filtering |
+
+`imports` and `imported_by` are **omitted, not empty**, when a direction was
+not asked for — so "not asked" stays distinguishable from "none found".
+
+```bash
+curl "http://localhost:3030/deps?file=src/config.rs&both=true"
+```
+
+### GET /history
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `file` | string | required | File path |
+| `limit` | integer | 20 | Maximum commits |
+| `role` | string | none | Role for access filtering |
+
+Returns the commits plus a `stats` block: total commits, per-author counts, and
+`churn_rate` (commits per 30 days over the returned window). `churn_rate` is
+`0.0` when fewer than two commits were returned — one commit gives no interval
+to measure.
+
+```bash
+curl "http://localhost:3030/history?file=src/config.rs&limit=10"
 ```
 
 ### GET /hotspots
