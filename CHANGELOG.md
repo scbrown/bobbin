@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+**Coverage before 0.6.0 is partial.** v0.5.0, v0.3.0 and v0.2.0 were tagged and
+released but have no section here, and 0.4.0/0.3.1/0.1.0 predate the current
+format. This is a recorded decision, not an oversight ([#62]): the three missing
+ranges are ~543 commits, and machine-generating them would make the pre-history
+70% of a file whose job is telling you what changed recently. For complete
+history before 0.6.0, use the tag list and `git log v0.4.0..v0.5.0` and friends.
+
+**Section order is maintained by release-please**, which prepends each generated
+release directly beneath this header. A hand-added `## [Unreleased]` heading
+therefore does not stay at the top — it gets buried under the next release and
+reads as if 0.7.2 shipped after 0.8.0, which is how it went wrong twice. Do not
+re-add one; unreleased work is described by its conventional-commit subjects
+until release-please cuts the section.
+
+[#62]: https://github.com/scbrown/bobbin/issues/62
+
 ## [0.8.0](https://github.com/scbrown/bobbin/compare/v0.7.3...v0.8.0) (2026-08-24)
 
 ### Features
@@ -17,8 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **index:** recover FTS compaction panics truthfully ([cc3a2e2](https://github.com/scbrown/bobbin/commit/cc3a2e22c6d44fdc90f89610a132fb9468a0800f))
 - **release:** replace package-bound release-plz lane ([fdbe086](https://github.com/scbrown/bobbin/commit/fdbe086178c9ff649b2145c03227cd82eb092c3b))
-
-## [Unreleased]
 
 ## [0.7.2] - 2026-08-24
 
