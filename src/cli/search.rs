@@ -97,6 +97,133 @@ struct SearchResultOutput {
     content_preview: Option<String>,
 }
 
+// ---------------------------------------------------------------------------
+// Query interpretation helpers (#50 item 1)
+// ---------------------------------------------------------------------------
+
+/// Resolve the repo filter: an inline `repo:` wins over `--repo`.
+///
+/// Inline is the more specific statement of intent and it is the precedence
+/// the HTTP handler already applies, so the two surfaces agree. Only a single
+/// non-negated value counts — `repo:a,b` and `-repo:x` are multi-value/negated
+/// and stay in the SQL filter list where they can be expressed properly.
+fn resolve_repo(parsed: &crate::search::query::ParsedQuery, flag: Option<&str>) -> Option<String> {
+    parsed
+        .filters
+        .iter()
+        .find(|f| {
+            f.field == crate::search::query::FilterField::Repo && !f.negated && f.values.len() == 1
+        })
+        .map(|f| f.values[0].clone())
+        .or_else(|| flag.map(str::to_string))
+}
+
+/// Resolve the group name: an inline `group:` wins over `--group`.
+fn resolve_group(parsed: &crate::search::query::ParsedQuery, flag: Option<&str>) -> Option<String> {
+    crate::search::query::extract_group_filters(&parsed.filters)
+        .into_iter()
+        .next()
+        .or_else(|| flag.map(str::to_string))
+}
+
+/// The text actually sent to the index.
+///
+/// The parsed free text, NOT the raw argument: the filters have already become
+/// SQL and must not also be matched as literal words — that is what made
+/// `bobbin search 'repo:foo bar'` return nothing, since no chunk contains the
+/// literal string "repo:foo". A filters-only query has no free text at all, so
+/// it falls back to the raw string rather than searching for the empty string.
+fn search_text_for(parsed: &crate::search::query::ParsedQuery, raw: &str) -> String {
+    if parsed.text_query.is_empty() {
+        raw.to_string()
+    } else {
+        parsed.text_query.clone()
+    }
+}
+
+/// Everything one search execution needs, so an OR-branched query can run the
+/// same code per branch as a plain one.
+///
+/// This mirrors `http::handlers::search_exec` rather than sharing it: that one
+/// is bound to `AppState` (shared embedder cache, HTTP error type), and the
+/// CLI has neither. The part that MUST NOT diverge is query interpretation,
+/// and that is genuinely shared — `query::parse` and `query::retain_matching`.
+struct SearchExec<'a> {
+    lance_path: &'a std::path::Path,
+    mode: SearchMode,
+    limit: usize,
+    repo_filter: Option<&'a str>,
+    combined_filter: Option<&'a str>,
+    embedding: &'a crate::config::EmbeddingConfig,
+    model_dir: &'a std::path::Path,
+    semantic_weight: f32,
+    rrf_k: f32,
+}
+
+impl SearchExec<'_> {
+    /// Run one query against an already-open store, consuming it.
+    async fn run_one(&self, query: &str, vector_store: VectorStore) -> Result<Vec<SearchResult>> {
+        match self.mode {
+            SearchMode::Keyword => vector_store
+                .search_fts_filtered(query, self.limit, self.repo_filter, self.combined_filter)
+                .await
+                .context("Keyword search failed"),
+            SearchMode::Semantic => {
+                let embedder = Embedder::from_config(self.embedding, self.model_dir)
+                    .context("Failed to load embedding model")?;
+                let mut search = SemanticSearch::new(embedder, vector_store);
+                search
+                    .search_filtered(query, self.limit, self.repo_filter, self.combined_filter)
+                    .await
+                    .context("Semantic search failed")
+            }
+            SearchMode::Hybrid => {
+                let embedder = Embedder::from_config(self.embedding, self.model_dir)
+                    .context("Failed to load embedding model")?;
+                let mut search = HybridSearch::new(embedder, vector_store, self.semantic_weight)
+                    .with_rrf_k(self.rrf_k);
+                search
+                    .search_filtered(query, self.limit, self.repo_filter, self.combined_filter)
+                    .await
+                    .context("Hybrid search failed")
+            }
+        }
+    }
+
+    /// Run each OR branch and merge by best score per chunk.
+    ///
+    /// Same merge rule as the HTTP path: a chunk found by two branches keeps
+    /// its higher score rather than being counted twice, and the merged set is
+    /// re-sorted because per-branch ordering says nothing about the union.
+    async fn run_or_branches(&self, branches: &[String]) -> Result<Vec<SearchResult>> {
+        use std::collections::HashMap;
+
+        let mut best_by_id: HashMap<String, SearchResult> = HashMap::new();
+        for branch in branches {
+            let vector_store = VectorStore::open(self.lance_path)
+                .await
+                .context("Failed to open vector store")?;
+            for result in self.run_one(branch, vector_store).await? {
+                let id = result.chunk.id.clone();
+                match best_by_id.get(&id) {
+                    Some(existing) if existing.score >= result.score => {}
+                    _ => {
+                        best_by_id.insert(id, result);
+                    }
+                }
+            }
+        }
+
+        let mut merged: Vec<SearchResult> = best_by_id.into_values().collect();
+        merged.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Ok(merged)
+    }
+}
+
 pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
     // Thin-client mode: proxy through remote server
     if let Some(ref server_url) = output.server {
@@ -153,11 +280,19 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         args.limit
     };
 
-    let repo_filter = args.repo.as_deref();
+    // Advanced query syntax — the same parser the HTTP `/search` handler uses.
+    // Until this call existed, `bobbin search 'repo:foo lang:rust "error
+    // handling"'` sent the whole string to FTS as literal text, so inline
+    // filters, phrases, OR/NOT and regex were inert on the CLI while working
+    // over HTTP: one query, two answers, depending on how you asked (#50).
+    let parsed = crate::search::query::parse(&args.query);
+
+    let inline_repo = resolve_repo(&parsed, args.repo.as_deref());
+    let repo_filter = inline_repo.as_deref();
+    let group_arg = resolve_group(&parsed, args.group.as_deref());
 
     // Resolve group filter to SQL clause
-    let group_sql = args
-        .group
+    let group_sql = group_arg
         .as_deref()
         .map(|name| {
             config.group_filter(name).ok_or_else(|| {
@@ -177,6 +312,9 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
 
     // Build tag filters and combine with group filter
     let mut extra_filters: Vec<String> = Vec::new();
+    // Inline filters (repo:, lang:, type:, file:, path:, tag:) first — group:
+    // is excluded by `filters_to_sql` and handled above.
+    extra_filters.extend(crate::search::query::filters_to_sql(&parsed.filters));
     if let Some(ref g) = group_sql {
         extra_filters.push(g.clone());
     }
@@ -192,78 +330,61 @@ pub async fn run(args: SearchArgs, output: OutputConfig) -> Result<()> {
         Some(extra_filters.join(" AND "))
     };
 
-    let results = match args.mode {
-        SearchMode::Keyword => vector_store
-            .search_fts_filtered(
-                &args.query,
-                search_limit,
-                repo_filter,
-                combined_filter.as_deref(),
-            )
-            .await
-            .context("Keyword search failed")?,
-        SearchMode::Semantic | SearchMode::Hybrid => {
-            let current_model = config.embedding.model.as_str();
-            let stored_model = metadata_store.get_meta("embedding_model")?;
-
-            if let Some(stored) = stored_model {
-                if stored != current_model {
-                    bail!(
-                        "Configured embedding model ({}) differs from indexed model ({}). Run `bobbin index` to re-index.",
-                        current_model,
-                        stored
-                    );
-                }
-            }
-
-            let embedder = Embedder::from_config(&config.embedding, &model_dir)
-                .context("Failed to load embedding model")?;
-
-            match args.mode {
-                SearchMode::Semantic => {
-                    let mut search = SemanticSearch::new(embedder, vector_store);
-                    search
-                        .search_filtered(
-                            &args.query,
-                            search_limit,
-                            repo_filter,
-                            combined_filter.as_deref(),
-                        )
-                        .await
-                        .context("Semantic search failed")?
-                }
-                SearchMode::Hybrid => {
-                    // Config cascade: calibration.json > config.toml
-                    let calibration = super::calibrate::load_calibration(&repo_root);
-                    let sw = calibration
-                        .as_ref()
-                        .map(|c| c.best_config.semantic_weight)
-                        .unwrap_or(config.search.semantic_weight);
-                    let rrf = calibration
-                        .as_ref()
-                        .map(|c| c.best_config.rrf_k)
-                        .unwrap_or(config.search.rrf_k);
-
-                    let mut search = HybridSearch::new(embedder, vector_store, sw).with_rrf_k(rrf);
-                    search
-                        .search_filtered(
-                            &args.query,
-                            search_limit,
-                            repo_filter,
-                            combined_filter.as_deref(),
-                        )
-                        .await
-                        .context("Hybrid search failed")?
-                }
-                SearchMode::Keyword => unreachable!(),
+    // Model/index agreement is checked once, before any branch runs — a
+    // mismatch is a property of the store, not of one query.
+    if matches!(args.mode, SearchMode::Semantic | SearchMode::Hybrid) {
+        let current_model = config.embedding.model.as_str();
+        if let Some(stored) = metadata_store.get_meta("embedding_model")? {
+            if stored != current_model {
+                bail!(
+                    "Configured embedding model ({}) differs from indexed model ({}). Run `bobbin index` to re-index.",
+                    current_model,
+                    stored
+                );
             }
         }
+    }
+
+    let search_text = search_text_for(&parsed, &args.query);
+
+    // Config cascade: calibration.json > config.toml (hybrid only).
+    let calibration = super::calibrate::load_calibration(&repo_root);
+    let exec = SearchExec {
+        lance_path: &lance_path,
+        mode: args.mode,
+        limit: search_limit,
+        repo_filter,
+        combined_filter: combined_filter.as_deref(),
+        embedding: &config.embedding,
+        model_dir: &model_dir,
+        semantic_weight: calibration
+            .as_ref()
+            .map(|c| c.best_config.semantic_weight)
+            .unwrap_or(config.search.semantic_weight),
+        rrf_k: calibration
+            .as_ref()
+            .map(|c| c.best_config.rrf_k)
+            .unwrap_or(config.search.rrf_k),
+    };
+
+    // The already-open store serves the single-query path; OR branches reopen
+    // per branch, because each executor takes ownership of the store.
+    let results = if parsed.has_or && parsed.or_branches.len() > 1 {
+        drop(vector_store);
+        exec.run_or_branches(&parsed.or_branches).await?
+    } else {
+        exec.run_one(&search_text, vector_store).await?
     };
 
     // Apply role-based access filtering
     let access_filter = RepoFilter::from_config(&config.access, &output.role);
-    let results =
+    let mut results =
         access_filter.filter_vec(results, |r| RepoFilter::repo_from_path(&r.chunk.file_path));
+
+    // +required / -negated / /regex/ — the same post-filter the HTTP handler
+    // applies, called through the shared helper so the two cannot drift.
+    crate::search::query::retain_matching(&mut results, &parsed, |r| r.chunk.content.as_str());
+    let results = results;
 
     let filtered_results: Vec<SearchResult> = if let Some(ref chunk_type) = type_filter {
         results
@@ -744,5 +865,90 @@ mod tests {
         assert!(json.contains("\"chunk_type\":\"function\""));
         assert!(json.contains("\"score\":0.95"));
         assert!(json.contains("\"match_type\":\"semantic\""));
+    }
+
+    // -- Query interpretation wiring (#50 item 1) --
+
+    use crate::search::query::parse;
+
+    #[test]
+    fn inline_repo_filter_beats_the_flag() {
+        // `bobbin search 'repo:aegis foo' --repo other` -> aegis.
+        assert_eq!(
+            resolve_repo(&parse("repo:aegis foo"), Some("other")).as_deref(),
+            Some("aegis")
+        );
+        // With no inline filter the flag still applies.
+        assert_eq!(
+            resolve_repo(&parse("foo"), Some("other")).as_deref(),
+            Some("other")
+        );
+        // Neither: no repo filter at all, not an empty-string one.
+        assert_eq!(resolve_repo(&parse("foo"), None), None);
+    }
+
+    #[test]
+    fn multi_value_and_negated_repo_stay_in_sql() {
+        // `repo:a,b` and `-repo:x` cannot be expressed by the single-repo
+        // parameter; they must fall through to filters_to_sql instead of
+        // silently collapsing to the first value or to a positive match.
+        assert_eq!(resolve_repo(&parse("repo:a,b foo"), None), None);
+        assert_eq!(resolve_repo(&parse("-repo:x foo"), None), None);
+        let sql = crate::search::query::filters_to_sql(&parse("repo:a,b foo").filters);
+        assert!(!sql.is_empty(), "multi-value repo must still produce SQL");
+    }
+
+    #[test]
+    fn inline_group_beats_the_flag() {
+        assert_eq!(
+            resolve_group(&parse("group:infra foo"), Some("other")).as_deref(),
+            Some("infra")
+        );
+        assert_eq!(
+            resolve_group(&parse("foo"), Some("other")).as_deref(),
+            Some("other")
+        );
+        assert_eq!(resolve_group(&parse("foo"), None), None);
+    }
+
+    #[test]
+    fn search_text_strips_filters_but_never_goes_empty() {
+        // Filters must not also be matched as literal words: no chunk contains
+        // the string "repo:aegis".
+        assert_eq!(
+            search_text_for(&parse("repo:aegis error"), "repo:aegis error"),
+            "error"
+        );
+        // A filters-only query falls back to the raw string rather than
+        // searching for nothing.
+        assert_eq!(
+            search_text_for(&parse("repo:aegis"), "repo:aegis"),
+            "repo:aegis"
+        );
+        // Phrases survive into the text query.
+        assert_eq!(
+            search_text_for(&parse("repo:aegis \"error handling\""), "x"),
+            "\"error handling\""
+        );
+    }
+
+    #[test]
+    fn cli_and_http_read_a_query_identically() {
+        // The property #50 item 1 is about: one query, one interpretation.
+        // Both surfaces call `query::parse`, so asserting on the parse is
+        // asserting on both.
+        let q = "+context -assembler repo:aegis lang:rust /handler/ a OR b";
+        let p = parse(q);
+        assert_eq!(p.required_terms, vec!["context"]);
+        assert_eq!(p.negated_terms, vec!["assembler"]);
+        assert_eq!(p.regex_patterns, vec!["handler"]);
+        assert!(p.has_or);
+        assert_eq!(resolve_repo(&p, None).as_deref(), Some("aegis"));
+        assert!(
+            crate::search::query::filters_to_sql(&p.filters)
+                .iter()
+                .any(|c| c.contains("language")),
+            "lang: must reach SQL"
+        );
     }
 }

@@ -31,6 +31,27 @@ bobbin search "handleAuth" --mode keyword         # Keyword-only search
 bobbin search "auth" --repo myproject             # Search within a specific repo
 ```
 
+### Advanced query syntax
+
+`bobbin search` parses the same query language as the HTTP `/search` endpoint,
+so a query means the same thing on either surface:
+
+```bash
+bobbin search 'repo:aegis lang:rust "error handling"'   # inline filters + phrase
+bobbin search '+context -assembler'                     # required / excluded terms
+bobbin search 'redis OR memcached'                      # OR branches, merged by best score
+bobbin search 'type:function /_handler$/'               # chunk type + regex
+bobbin search 'group:infra deploy'                      # named repo group
+```
+
+An inline `repo:` or `group:` takes precedence over the `--repo` / `--group`
+flag. Filters are stripped from the searched text, so `repo:aegis error` searches
+for `error` in `aegis` — not for the literal string `repo:aegis`.
+
+Not yet supported: parenthesised grouping. `(redis OR memcached) AND cache`
+tokenises as the literal words `(redis` and `memcached)`. See
+[#50](https://github.com/scbrown/bobbin/issues/50).
+
 ## Options
 
 | Flag | Short | Description |
@@ -38,7 +59,7 @@ bobbin search "auth" --repo myproject             # Search within a specific rep
 | `--type <TYPE>` | `-t` | Filter by chunk type (function, method, class, struct, enum, interface, module, impl, trait, doc, section, table, `code_block`) |
 | `--limit <N>` | `-n` | Maximum results (default: 10) |
 | `--mode <MODE>` | `-m` | Search mode: `hybrid` (default), `semantic`, or `keyword` |
-| `--repo <NAME>` | `-r` | Filter to a specific repository |
+| `--repo <NAME>` | `-r` | Filter to a specific repository (an inline `repo:` in the query wins) |
 
 ## Search Modes
 
