@@ -217,8 +217,9 @@ behavior change.
 SQL source (`[[sql.sources]]` with connection, query, id column, text
 columns). Stable row IDs; no chunks-table schema change needed.
 
-**P3 — logs + metrics (batched migration).** Both need event time:
-`Chunk.occurred_at`. Any chunks-table column addition is a table drop in
+**P3 — logs + metrics (batched migration).** Specified as **`bobbin-5b0`**
+(P2, 2026-08-25) — what must batch together, the operator-comms deliverables,
+and acceptance criteria. Both need event time: `Chunk.occurred_at`. Any chunks-table column addition is a table drop in
 `open_with_dim` — a silent full reindex + re-embed — so this lands as ONE
 batched migration event (with any W1.P3 promotions) with explicit operator
 comms, not as drive-by columns. Logs: windowed chunking by time, source
@@ -238,7 +239,7 @@ stay in the TSDB).
 | Chunk vocabulary shapes (advise-first) | camayoc | W2.P4 | ✅ done — advisory ChunkShape (camayoc 8cd622e) |
 | Quipu dependency pin update (replace_snapshot + shacl) | bobbin | chunk push, W2.P5 | ✅ done 2026-08-22 — pin 0.3.23 rev 37bfc06a, shacl ON, onnx off; probes pass |
 | SHACL named-graph type-context gap | quipu | W3.B chunked writes | ✅ done upstream — quipu-080 closed (d0c24b7), in the pinned rev |
-| occurred_at chunks-table migration batch | bobbin | W4.P3 | open |
+| occurred_at chunks-table migration batch | bobbin | W4.P3 | open — **now specified as `bobbin-5b0`** (P2). Blocked on Stiwi's decision on timing, not on any technical dependency: executing it re-embeds every chunk in every deployed store. |
 
 ## Non-goals
 
