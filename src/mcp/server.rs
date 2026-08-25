@@ -195,7 +195,7 @@ impl BobbinMcpServer {
             "local_code_graph": {
                 "path": self.quipu_store_path().to_string_lossy(),
                 "contains": "bobbin's OWN graph: code entities and file-coupling \
-        derived from git history (IRIs under http://aegis.gastown.local/code/)",
+        derived from git history (IRIs under http://aegis.gastown.local/ontology/code/)",
             },
             "ontology": match self.quipu_remote_url() {
                 Some(url) => serde_json::json!({
@@ -3092,7 +3092,7 @@ impl BobbinMcpServer {
         description = "Find entities and facts relevant to a topic across BOTH knowledge graphs this deployment has. \
 Returns two clearly separated sections. 'ontology': the organisation knowledge graph on a remote Quipu (semantic search, then each \
 matching entity's facts fetched individually) — this is where infrastructure, ownership and operational facts live. \
-'local_code_graph': bobbin's own embedded graph of code entities and file-coupling from git history (IRIs under http://aegis.gastown.local/code/). \
+'local_code_graph': bobbin's own embedded graph of code entities and file-coupling from git history (IRIs under http://aegis.gastown.local/ontology/code/). \
 ALWAYS read the 'store' field: if ontology.consulted is false the ontology was NOT ASKED (no remote configured), and if it carries \
 an 'error' that is a TRANSPORT FAILURE — neither is evidence a fact is absent. Best for: 'who owns X?', 'what runs on Y?', \
 'which files change together with Z?'"
@@ -3421,7 +3421,7 @@ Run it after new entities land in the graph to pick up previously dangling menti
     #[tool(
         description = "Execute a SPARQL SELECT against BOTH knowledge graphs and return each result separately. \
 'ontology': the organisation knowledge graph on a remote Quipu (infrastructure, ownership, operational facts). \
-'local_code_graph': bobbin's own embedded graph (code entities and file-coupling from git history, IRIs under http://aegis.gastown.local/code/). \
+'local_code_graph': bobbin's own embedded graph (code entities and file-coupling from git history, IRIs under http://aegis.gastown.local/ontology/code/). \
 The SAME query runs against both, so an IRI that exists in only one returns rows in only that section. \
 ALWAYS read the 'store' field: ontology.consulted=false means NOT ASKED (no remote configured) and an 'error' means TRANSPORT \
 FAILURE — an empty section is NEVER by itself evidence the fact does not exist. Supports valid_at and tx for temporal queries. \

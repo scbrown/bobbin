@@ -116,6 +116,22 @@ ever written) — implement or delete it. Acceptance: one IRI spelling
 round-trips bobbin→quipu→bobbin; `expand_knowledge` verifiably returns
 entities on a live store.
 
+> **Correction, 2026-08-25.** The row in the register below was marked ✅ for
+> this item while HALF of it was still broken, and the half that was broken is
+> the half the acceptance criterion names. `coupling.rs` did move to the aegis
+> base at 242b10e; `expand_knowledge` did not. Its parser was ported from the
+> `bobbin:code/` CURIE onto `http://aegis.gastown.local/code/` — the
+> **superseded** ingest-repos.py lane, measured at 0 live instances, minted by
+> nothing in this repo — so the leg went on returning nothing, and its three
+> unit tests pinned that dead lane and stayed green over it. Fixed by parsing
+> `iri::CODE_BASE`/`DOC_BASE`/`CHUNK_BASE` with hank's real `::symbol` and
+> `#slug` suffixes, with the parser moved next to the minters in `src/iri.rs`
+> and a round-trip test (`parses_what_the_minters_mint`) composing the actual
+> constructors, so a fourth lane cannot pass. The lesson for the register: a
+> ✅ whose acceptance criterion says "verifiably ... on a live store" needs
+> that verification, and a unit test written against the same wrong constant
+> as the code is not it.
+
 **P3 — chunk vocabulary (after P1).** Mint `bobbin:Chunk`, `nextChunk`, and
 an `inDocument`-style part-of predicate. Constraints from camayoc: never
 reuse `aegis:contains` (shape-bound to `aegis:Bead` via `sh:targetSubjectsOf`
@@ -201,7 +217,7 @@ stay in the TSDB).
 | Competency file: document structure & chunk retrieval | camayoc | W2.P3, W3.A vocabulary | ✅ done (competency/document-structure-and-chunks.md) |
 | Plane-routed bulk ingress (`/knot` graph key honored) | quipu | W3.B | ✅ done — strict registered-committed-graph targets (quipu 22b3569) |
 | Consolidate IRIs to the live aegis scheme | quipu | W2.P2 | ✅ done — dead bobbin.dev constructors deleted; reconcile fixed (quipu ee0c5a6) |
-| Retire `https://bobbin.dev/` in coupling.rs / expand_knowledge | bobbin | W2.P2 | ✅ done (242b10e) |
+| Retire `https://bobbin.dev/` in coupling.rs / expand_knowledge | bobbin | W2.P2 | ✅ done — coupling.rs at 242b10e; `expand_knowledge` only from 2026-08-25 (see note below) |
 | Chunk vocabulary shapes (advise-first) | camayoc | W2.P4 | ✅ done — advisory ChunkShape (camayoc 8cd622e) |
 | Quipu dependency pin update (replace_snapshot + shacl) | bobbin | chunk push, W2.P5 | ✅ done 2026-08-22 — pin 0.3.23 rev 37bfc06a, shacl ON, onnx off; probes pass |
 | SHACL named-graph type-context gap | quipu | W3.B chunked writes | ✅ done upstream — quipu-080 closed (d0c24b7), in the pinned rev |

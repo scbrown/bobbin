@@ -216,24 +216,8 @@ pub fn chunk_iri(repo: &str, path: &str, start_line: u32) -> String {
     )
 }
 
-/// The `{module}::` prefix that every symbol defined in the same file as this
-/// chunk shares, for same-file narrowing of an ambiguous mention.
-///
-/// Accepts either lane a chunk can be on: its own `chunk/` span IRI, or the
-/// `code/` symbol IRI it took when it was dual-typed. Returns `None` for a
-/// document/section chunk — a markdown file defines no code symbols, so
-/// "narrow to symbols in this file" has no referent rather than an empty one.
-pub fn code_module_prefix_of(chunk_iri: &str) -> Option<String> {
-    if let Some(rest) = chunk_iri.strip_prefix(CHUNK_BASE) {
-        let span = rest.split('#').next()?;
-        return Some(format!("{CODE_BASE}{span}::"));
-    }
-    if let Some(rest) = chunk_iri.strip_prefix(CODE_BASE) {
-        let module = rest.split("::").next()?;
-        return Some(format!("{CODE_BASE}{module}::"));
-    }
-    None
-}
+mod parse;
+pub use parse::{code_module_prefix_of, entity_iri_file_path};
 
 #[cfg(test)]
 mod tests {
@@ -330,30 +314,6 @@ mod tests {
     fn paths_are_one_opaque_segment() {
         assert_eq!(path_segment("src/main.rs"), "src%2Fmain.rs");
         assert_eq!(path_segment("docs/my file.md"), "docs%2Fmy%20file.md");
-    }
-
-    #[test]
-    fn module_prefix_narrows_from_either_lane() {
-        let want = "http://aegis.gastown.local/ontology/code/q/src%2Fa.rs::".to_string();
-        // an anonymous chunk, on the chunk lane
-        assert_eq!(
-            code_module_prefix_of(&chunk_iri("q", "src/a.rs", 12)),
-            Some(want.clone())
-        );
-        // a dual-typed chunk, which took the symbol identity
-        assert_eq!(
-            code_module_prefix_of(&symbol_iri("q", "src/a.rs", "run")),
-            Some(want)
-        );
-        // a doc section defines no code symbols
-        assert_eq!(
-            code_module_prefix_of(&section_iri("q", "README.md", "Features")),
-            None
-        );
-        // and the prefix must actually match a sibling symbol
-        let prefix = code_module_prefix_of(&chunk_iri("q", "src/a.rs", 12)).unwrap();
-        assert!(symbol_iri("q", "src/a.rs", "sibling").starts_with(&prefix));
-        assert!(!symbol_iri("q", "src/b.rs", "sibling").starts_with(&prefix));
     }
 
     #[test]

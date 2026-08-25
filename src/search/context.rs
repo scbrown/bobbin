@@ -116,29 +116,19 @@ fn chunk_cost(unit: BudgetUnit, content: &str, start_line: u32, end_line: u32) -
 
 /// Recover a repo-relative file path from a live knowledge-graph entity IRI.
 ///
-/// Live entities are minted as `http://aegis.gastown.local/code/{repo}/{path}`
-/// with the relative path percent-encoded into ONE segment (`/` → `%2F`);
-/// symbols and sections append a further `/{name}-L{line}` or `/S{line}`
-/// segment, which is dropped here — the file is what the vector store keys
-/// chunks by. Returns `None` for IRIs outside the code base (the previous
-/// implementation matched `bobbin:code/` CURIEs, which no writer ever
-/// produced, so this leg silently returned nothing — bobbin-jdlkh's silent-
-/// miss class).
+/// Delegates to [`crate::iri::entity_iri_file_path`], which lives beside the
+/// minters so the parser and the producers cannot drift apart. It had drifted:
+/// this function used to strip `http://aegis.gastown.local/code/` and the
+/// `{name}-L{line}` / `S{line}` suffixes — the SUPERSEDED lane (`iri.rs`
+/// module docs), measured at 0 live instances and minted by nothing in this
+/// repo — so knowledge expansion matched no entity at all while its own tests
+/// passed over the dead lane. That is exactly the silent-miss class the doc
+/// comment here already named; a round-trip test against the real constructors
+/// (`iri::tests::parses_what_the_minters_mint`) is what now prevents a third
+/// lane.
 #[cfg_attr(not(feature = "knowledge"), allow(dead_code))]
 fn file_path_from_entity_iri(iri: &str) -> Option<String> {
-    let rest = iri.strip_prefix("http://aegis.gastown.local/code/")?;
-    let (_repo, encoded_path_and_suffix) = rest.split_once('/')?;
-    let encoded_path = encoded_path_and_suffix
-        .split('/')
-        .next()
-        .filter(|s| !s.is_empty())?;
-    Some(
-        encoded_path
-            .replace("%2F", "/")
-            .replace("%2f", "/")
-            .replace("%20", " ")
-            .replace("%25", "%"),
-    )
+    crate::iri::entity_iri_file_path(iri)
 }
 
 /// Configuration for context assembly
@@ -2354,24 +2344,34 @@ mod tests {
 
     #[test]
     fn test_file_path_from_entity_iri_live_shapes() {
-        // Module: path is one percent-encoded segment.
-        assert_eq!(
-            file_path_from_entity_iri("http://aegis.gastown.local/code/quipu/src%2Fnamespace.rs"),
-            Some("src/namespace.rs".to_string())
-        );
-        // Symbol: trailing name-L{line} segment is dropped.
+        // Module: path is one percent-encoded segment, under the LIVE base.
         assert_eq!(
             file_path_from_entity_iri(
-                "http://aegis.gastown.local/code/quipu/src%2Fstore%2Fops.rs/transact-L139"
+                "http://aegis.gastown.local/ontology/code/quipu/src%2Fnamespace.rs"
+            ),
+            Some("src/namespace.rs".to_string())
+        );
+        // Symbol: hank's `::{name}` suffix is dropped (NOT `/name-L{line}`).
+        assert_eq!(
+            file_path_from_entity_iri(
+                "http://aegis.gastown.local/ontology/code/quipu/src%2Fstore%2Fops.rs::transact"
             ),
             Some("src/store/ops.rs".to_string())
         );
-        // Section: trailing S{line} segment is dropped.
+        // Section: hank's `#{slug}` suffix is dropped (NOT `/S{line}`), on the
+        // doc lane where sections are actually minted.
         assert_eq!(
-            file_path_from_entity_iri("http://aegis.gastown.local/code/quipu/README.md/S42"),
+            file_path_from_entity_iri(
+                "http://aegis.gastown.local/ontology/doc/quipu/README.md#see-it-in-action"
+            ),
             Some("README.md".to_string())
         );
-        // Outside the code base — including the old CURIE form — is None.
+        // The superseded lane no producer mints is NOT accepted.
+        assert_eq!(
+            file_path_from_entity_iri("http://aegis.gastown.local/code/quipu/src%2Fnamespace.rs"),
+            None
+        );
+        // Outside the entity bases — including the old CURIE form — is None.
         assert_eq!(
             file_path_from_entity_iri("bobbin:code/repo/src/lib.rs"),
             None
