@@ -7,7 +7,6 @@ use std::sync::Arc;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::search::{HybridSearch, SemanticSearch};
@@ -52,11 +51,66 @@ pub(super) struct SearchResponse {
     query: String,
     mode: String,
     count: usize,
+    /// How `query` was actually interpreted. Without this a caller cannot
+    /// tell a typo'd filter (`rpeo:aegis`, parsed as a free-text term) from a
+    /// working one — both return results, and only one of them means what the
+    /// caller wrote.
+    parsed: ParsedQueryOutput,
     results: Vec<SearchResultItem>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     bundles: Vec<BundleMatchOutput>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     spotlight_annotations: Vec<SpotlightHit>,
+}
+
+/// The interpreted query, echoed back to the caller.
+#[derive(Serialize, Default)]
+pub(super) struct ParsedQueryOutput {
+    /// The text actually sent to the index, with filters stripped.
+    text_query: String,
+    terms: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    phrases: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    filters: Vec<ParsedFilterOutput>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    required_terms: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    negated_terms: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    regex_patterns: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    or_branches: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub(super) struct ParsedFilterOutput {
+    field: String,
+    values: Vec<String>,
+    negated: bool,
+}
+
+impl From<&crate::search::query::ParsedQuery> for ParsedQueryOutput {
+    fn from(p: &crate::search::query::ParsedQuery) -> Self {
+        Self {
+            text_query: p.text_query.clone(),
+            terms: p.terms.clone(),
+            phrases: p.phrases.clone(),
+            filters: p
+                .filters
+                .iter()
+                .map(|f| ParsedFilterOutput {
+                    field: f.field.canonical_name().to_string(),
+                    values: f.values.clone(),
+                    negated: f.negated,
+                })
+                .collect(),
+            required_terms: p.required_terms.clone(),
+            negated_terms: p.negated_terms.clone(),
+            regex_patterns: p.regex_patterns.clone(),
+            or_branches: p.or_branches.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -120,6 +174,7 @@ pub(super) async fn search(
             query: params.q,
             mode: mode.to_string(),
             count: 0,
+            parsed: (&parsed).into(),
             results: vec![],
             bundles: vec![],
             spotlight_annotations: vec![],
@@ -244,28 +299,10 @@ pub(super) async fn search(
     let access = super::resolve_filter(&state, params.role.as_deref());
     let mut results = access.filter_vec_by_path(results, |r| &r.chunk.file_path);
 
-    // Apply NOT exclusions: filter out results containing negated terms
-    if !parsed.negated_terms.is_empty() {
-        results.retain(|r| {
-            let content_lower = r.chunk.content.to_lowercase();
-            !parsed
-                .negated_terms
-                .iter()
-                .any(|neg| content_lower.contains(&neg.to_lowercase()))
-        });
-    }
-
-    // Apply regex pattern filters: keep only results whose content matches ALL patterns
-    if !parsed.regex_patterns.is_empty() {
-        let compiled: Vec<Regex> = parsed
-            .regex_patterns
-            .iter()
-            .filter_map(|p| Regex::new(p).ok())
-            .collect();
-        if !compiled.is_empty() {
-            results.retain(|r| compiled.iter().all(|re| re.is_match(&r.chunk.content)));
-        }
-    }
+    // Apply the content-level parts of the query the store cannot express as
+    // SQL: +required, -negated / NOT, and /regex/. Shared with the CLI so both
+    // surfaces answer the same query the same way.
+    crate::search::query::retain_matching(&mut results, &parsed, |r| r.chunk.content.as_str());
 
     let filtered: Vec<_> = if let Some(ref chunk_type) = type_filter {
         results
@@ -302,6 +339,7 @@ pub(super) async fn search(
         query: params.q,
         mode: mode.to_string(),
         count: filtered.len(),
+        parsed: (&parsed).into(),
         results: filtered.iter().map(to_search_item).collect(),
         bundles: matched_bundles,
         spotlight_annotations,

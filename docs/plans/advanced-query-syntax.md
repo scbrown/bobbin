@@ -1,6 +1,6 @@
 # Advanced Query Syntax
 
-> **Implementation status (2026-07-23, lowery):** 🟡 Partial — Server-side query language fully landed (`src/search/query.rs` parser + `filters_to_sql`, OR/NOT/regex execution in `src/http/handlers/search.rs`, filter-chip UI + `/suggest` autocomplete, ~40 tests). Gaps: the `bobbin search` CLI never calls the parser (raw FTS only), no `parsed` field in the JSON response, `+` shorthand is a no-op, and parenthesized/nested booleans are unimplemented (flat OR-split, no `Term` AST). Scoped in [#50](https://github.com/scbrown/bobbin/issues/50).
+> **Implementation status (2026-08-25):** 🟡 Partial — Server-side query language fully landed (`src/search/query.rs` parser + `filters_to_sql`, OR/NOT/regex execution in `src/http/handlers/search.rs`, filter-chip UI + `/suggest` autocomplete, ~45 tests). `/search` now echoes a `parsed` object, and `+` is a real required-term operator (enforced by `query::retain_matching`). Remaining gaps: the `bobbin search` CLI still never calls the parser (raw FTS only), and parenthesized/nested booleans are unimplemented (flat OR-split, no `Term` AST), so `(redis OR memcached) AND cache` still mis-tokenizes. Scoped in [#50](https://github.com/scbrown/bobbin/issues/50); the nested-boolean half needs a written grouping spec before coding.
 
 **Status**: Design
 **Author**: ian (PO)
@@ -73,7 +73,14 @@ Shorthand with `+` and `-` prefixes:
 
 ```
 +context -assembler        # must have context, must not have assembler
++"error handling"          # a required phrase
 ```
+
+A `+` term is *also* an ordinary search term — it drives retrieval and is then
+enforced as a post-filter, so `+context` narrows results rather than replacing
+the query. `+repo:aegis` is accepted and means exactly `repo:aegis`: a positive
+filter already requires its value, so the `+` is dropped rather than given a
+third meaning.
 
 ### 4. Inline Field Filters
 

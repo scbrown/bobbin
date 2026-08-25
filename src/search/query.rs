@@ -19,6 +19,12 @@ pub struct ParsedQuery {
     pub filters: Vec<Filter>,
     /// Terms to exclude from results (-word or NOT word)
     pub negated_terms: Vec<String>,
+    /// Terms every result MUST contain (`+word` / `+"exact phrase"`), the
+    /// documented mirror of `-word`. A required term is also a normal search
+    /// term — `+` promises "this one has to be there", not "search only for
+    /// this one" — so it appears in `terms`/`phrases` as well and drives
+    /// retrieval; this list is what the post-filter enforces.
+    pub required_terms: Vec<String>,
     /// The reconstructed free-text query (terms + phrases joined)
     pub text_query: String,
     /// Whether the query contains OR operators (signals multi-branch search)
@@ -126,6 +132,7 @@ pub fn parse(input: &str) -> ParsedQuery {
     let mut phrases: Vec<String> = Vec::new();
     let mut filters: Vec<Filter> = Vec::new();
     let mut negated_terms: Vec<String> = Vec::new();
+    let mut required_terms: Vec<String> = Vec::new();
     let mut regex_patterns: Vec<String> = Vec::new();
     let mut has_or = false;
     let mut next_negated = false; // set by NOT keyword
@@ -137,6 +144,7 @@ pub fn parse(input: &str) -> ParsedQuery {
             phrases,
             filters,
             negated_terms,
+            required_terms,
             text_query: String::new(),
             has_or: false,
             or_branches: vec![],
@@ -201,6 +209,38 @@ pub fn parse(input: &str) -> ParsedQuery {
             continue;
         }
 
+        // Required-term shorthand: +word / +"exact phrase" (the documented
+        // mirror of -word). `+repo:aegis` is not a distinct meaning — a plain
+        // positive filter already requires its value — so the `+` is dropped
+        // and the filter taken as-is, rather than inventing a third semantics.
+        if chars[i] == '+' && i + 1 < len && !chars[i + 1].is_whitespace() {
+            if let Some((filter, end)) = parse_filter(&chars, i + 1, false) {
+                filters.push(filter);
+                i = end;
+                continue;
+            }
+            if chars[i + 1] == '"' {
+                if let Some((phrase, end)) = parse_quoted(&chars, i + 1) {
+                    if !phrase.is_empty() {
+                        required_terms.push(phrase.clone());
+                        phrases.push(phrase);
+                    }
+                    i = end;
+                    continue;
+                }
+                // Unmatched quote — fall through to the literal path below.
+            }
+            let (word, end) = parse_word(&chars, i + 1);
+            if !word.is_empty() {
+                // A bare "+" operator-ish token (`a + b`) is caught by the
+                // whitespace guard above, so anything here is a real term.
+                required_terms.push(word.clone());
+                terms.push(word);
+                i = end;
+                continue;
+            }
+        }
+
         // Try to parse as field:value filter (non-negated)
         if let Some((filter, end)) = parse_filter(&chars, i, false) {
             filters.push(filter);
@@ -252,10 +292,65 @@ pub fn parse(input: &str) -> ParsedQuery {
         phrases,
         filters,
         negated_terms,
+        required_terms,
         text_query,
         has_or,
         or_branches,
         regex_patterns,
+    }
+}
+
+/// Apply the content-level parts of a parsed query that the store cannot
+/// express as SQL: required terms (`+word`), negated terms (`-word` / `NOT`),
+/// and regex patterns (`/pattern/`).
+///
+/// Shared by the HTTP handler and the `bobbin search` CLI so the two agree by
+/// construction. They did not before: the CLI never called the parser at all,
+/// so the same query answered differently over HTTP and on the command line.
+///
+/// A regex that does not compile is skipped rather than failing the query —
+/// the parser's standing rule is to never error on bad syntax.
+pub fn retain_matching<T>(
+    results: &mut Vec<T>,
+    parsed: &ParsedQuery,
+    content_of: impl Fn(&T) -> &str,
+) {
+    if !parsed.required_terms.is_empty() {
+        let required: Vec<String> = parsed
+            .required_terms
+            .iter()
+            .map(|t| t.to_lowercase())
+            .collect();
+        results.retain(|r| {
+            let haystack = content_of(r).to_lowercase();
+            required.iter().all(|t| haystack.contains(t))
+        });
+    }
+
+    if !parsed.negated_terms.is_empty() {
+        let negated: Vec<String> = parsed
+            .negated_terms
+            .iter()
+            .map(|t| t.to_lowercase())
+            .collect();
+        results.retain(|r| {
+            let haystack = content_of(r).to_lowercase();
+            !negated.iter().any(|t| haystack.contains(t))
+        });
+    }
+
+    if !parsed.regex_patterns.is_empty() {
+        let compiled: Vec<regex::Regex> = parsed
+            .regex_patterns
+            .iter()
+            .filter_map(|p| regex::Regex::new(p).ok())
+            .collect();
+        if !compiled.is_empty() {
+            results.retain(|r| {
+                let haystack = content_of(r);
+                compiled.iter().all(|re| re.is_match(haystack))
+            });
+        }
     }
 }
 
@@ -668,11 +763,74 @@ mod tests {
     }
 
     #[test]
-    fn test_plus_prefix_treated_as_term() {
-        // +word is just a regular term (+ doesn't negate)
+    fn test_plus_prefix_is_a_required_term() {
+        // `+context -assembler` is the documented shorthand pair: must have
+        // context, must not have assembler. The `+` is an operator, not part
+        // of the term — it used to be kept literally, so `+context` searched
+        // the FTS index for the string "+context" and matched nothing.
         let q = parse("+context -assembler");
-        assert_eq!(q.terms, vec!["+context"]);
+        assert_eq!(q.terms, vec!["context"]);
+        assert_eq!(q.required_terms, vec!["context"]);
         assert_eq!(q.negated_terms, vec!["assembler"]);
+        // A required term still drives retrieval, so it must reach the query.
+        assert_eq!(q.text_query, "context");
+    }
+
+    #[test]
+    fn test_plus_prefixed_phrase_is_required() {
+        let q = parse("+\"error handling\" retries");
+        assert_eq!(q.phrases, vec!["error handling"]);
+        assert_eq!(q.required_terms, vec!["error handling"]);
+        assert_eq!(q.terms, vec!["retries"]);
+    }
+
+    #[test]
+    fn test_plus_prefixed_filter_is_just_the_filter() {
+        // A positive filter already requires its value; `+` adds nothing and
+        // must not leak into the field name.
+        let q = parse("+repo:aegis context");
+        assert_eq!(q.filters.len(), 1);
+        assert_eq!(q.filters[0].field, FilterField::Repo);
+        assert_eq!(q.filters[0].values, vec!["aegis"]);
+        assert!(!q.filters[0].negated);
+        assert!(q.required_terms.is_empty());
+    }
+
+    #[test]
+    fn test_plain_query_has_no_required_terms() {
+        let q = parse("context assembler");
+        assert!(q.required_terms.is_empty());
+    }
+
+    #[test]
+    fn test_retain_matching_enforces_required_negated_and_regex() {
+        let docs = || {
+            vec![
+                "fn context_assembler() {}".to_string(),
+                "fn context_only() {}".to_string(),
+                "fn unrelated() {}".to_string(),
+            ]
+        };
+
+        // Required keeps only what contains the term.
+        let mut v = docs();
+        retain_matching(&mut v, &parse("+context"), |s| s.as_str());
+        assert_eq!(v.len(), 2);
+
+        // Required and negated compose.
+        let mut v = docs();
+        retain_matching(&mut v, &parse("+context -assembler"), |s| s.as_str());
+        assert_eq!(v, vec!["fn context_only() {}".to_string()]);
+
+        // Regex narrows further.
+        let mut v = docs();
+        retain_matching(&mut v, &parse("+context /_only/"), |s| s.as_str());
+        assert_eq!(v, vec!["fn context_only() {}".to_string()]);
+
+        // A query with none of the three is a no-op, not an empty result.
+        let mut v = docs();
+        retain_matching(&mut v, &parse("context"), |s| s.as_str());
+        assert_eq!(v.len(), 3);
     }
 
     #[test]
