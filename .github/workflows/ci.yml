@@ -60,6 +60,13 @@ jobs:
       - name: File size ratchet
         run: bash scripts/check-file-size.sh --all
 
+      # A Linux release must become deployable when its own matrix leg finishes;
+      # waiting for unrelated macOS legs caused a false deploy page on every
+      # slow release (aegis-if8dp).  This is a static workflow contract because
+      # the failure is orchestration order, not Rust behavior.
+      - name: Release asset publication contract
+        run: python3 scripts/test-release-workflow-contract.py
+
   # The eval framework's own 289 tests were run by NOTHING: `just test` is
   # cargo-only, `just check` does not reach them, and no workflow mentioned
   # them. Sixteen files with a declared pytest dev-dependency and a pyproject,

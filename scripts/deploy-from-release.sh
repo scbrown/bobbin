@@ -10,13 +10,13 @@
 # release artifacts are already built by CI on four targets; re-building them on the
 # serving host buys nothing and costs a runner nobody maintains.
 #
-# WHY THE TARBALL AND NOT `bobbin-linux-amd64`. The release publishes BOTH raw
-# binaries and per-target tarballs, but **SHA256SUMS.txt covers ONLY the tarballs**
-# (measured on v0.6.6: 4 checksum lines, all `*.tar.gz`, none for the two raw
-# binaries). A pull-based deploy that fetched the raw binary would have nothing to
-# verify it against — the one property that makes pulling safe. So this fetches the
-# checksummed artifact. If the raw binaries are ever added to SHA256SUMS.txt this can
-# change; until then, fetching them is unverifiable by construction.
+# WHY THE TARBALL AND NOT `bobbin-linux-amd64`. The x86_64 Linux matrix leg
+# publishes its tarball plus a matching early SHA256SUMS.txt as soon as that leg
+# finishes, before the slower macOS builds.  The finalizer later replaces the
+# manifest with one covering every final asset, including the raw binaries.  The
+# tarball is therefore the one artifact that is checksummed in BOTH states: while
+# the release is still assembling and after it is complete.  Pulling it lets the
+# homelab deploy safely without waiting on platforms it never runs (aegis-if8dp).
 #
 # THE CHAIN OF CUSTODY, end to end:
 #   1. download <tarball> + SHA256SUMS.txt from the named release
