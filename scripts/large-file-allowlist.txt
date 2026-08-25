@@ -1,37 +1,44 @@
-# Grandfathered large files — existing before file size enforcement (bobbin-qex.2)
-# Remove entries as files are split down to size.
-src/access.rs
-src/analysis/complexity.rs
-src/analysis/impact.rs
-src/analysis/refs.rs
-src/analysis/similar.rs
-src/cli/bundle.rs
-src/cli/calibrate.rs
-src/cli/feedback.rs
-src/cli/grep.rs
-src/cli/hook.rs
-src/cli/index.rs
-src/cli/run.rs
-src/cli/search.rs
-src/cli/status.rs
-src/cli/tour.rs
-src/cli/watch.rs
-src/config.rs
-src/http/client.rs
-src/http/handlers.rs
-src/index/embedder.rs
-src/index/git.rs
-src/index/parser.rs
-src/index/resolver.rs
-src/knowledge/chunks.rs
-src/mcp/server.rs
-src/mcp/tools.rs
-src/reactions.rs
-src/search/context.rs
-src/search/query.rs
-src/storage/feedback.rs
-src/storage/lance.rs
-src/tags.rs
-src/types.rs
-tests/cli_hook_handlers.rs
-tests/cli_hook_install.rs
+# Grandfathered large files — frozen at the line count recorded here.
+#
+# These are CEILINGS, not exemptions: a listed file may shrink freely,
+# but growing past its number fails the build. A file over the
+# 500-line limit that is not listed fails outright.
+#
+# Regenerate after a file shrinks (never loosens an entry):
+#   scripts/check-file-size.sh --update-allowlist
+#
+# Shrinking this file is the point. Remove entries by splitting files.
+src/access.rs 616
+src/analysis/complexity.rs 783
+src/analysis/impact.rs 667
+src/analysis/refs.rs 790
+src/analysis/similar.rs 1180
+src/cli/bundle.rs 2313
+src/cli/calibrate.rs 2105
+src/cli/feedback.rs 535
+src/cli/grep.rs 651
+src/cli/hook.rs 9878
+src/cli/index.rs 2042
+src/cli/run.rs 746
+src/cli/search.rs 954
+src/cli/status.rs 629
+src/cli/tour.rs 528
+src/cli/watch.rs 789
+src/config.rs 1939
+src/http/client.rs 1242
+src/index/embedder.rs 1091
+src/index/git.rs 2002
+src/index/parser.rs 2620
+src/index/resolver.rs 530
+src/knowledge/chunks.rs 604
+src/mcp/server.rs 3851
+src/mcp/tools.rs 1359
+src/reactions.rs 2397
+src/search/context.rs 3149
+src/search/query.rs 1051
+src/storage/feedback.rs 1611
+src/storage/lance.rs 5362
+src/tags.rs 2022
+src/types.rs 826
+tests/cli_hook_handlers.rs 713
+tests/cli_hook_install.rs 642

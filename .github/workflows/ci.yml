@@ -51,3 +51,11 @@ jobs:
 
       - name: Clippy (default, no features)
         run: cargo clippy
+
+      # The file-size ratchet ran only from `just check`, i.e. only for whoever
+      # remembered to run it. That is how `src/cli/hook.rs` grew 378 lines
+      # inside its allowlist entry without a single red build. An allowlist
+      # entry is a CEILING now, so the gate has something to enforce — enforce
+      # it where nobody can skip it.
+      - name: File size ratchet
+        run: bash scripts/check-file-size.sh --all

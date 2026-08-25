@@ -90,6 +90,35 @@ just docs lint       # Markdown lint (markdownlint-cli2)
 just docs check      # Full pipeline: lint + vale + validate + build
 ```
 
+### File Size
+
+Source files warn at 400 lines and fail at 500. Tests are exempt.
+
+`scripts/large-file-allowlist.txt` grandfathers the files that already exceed
+the limit, and each entry records the line count it was **frozen at**:
+
+```text
+src/cli/hook.rs 9878
+```
+
+That number is a ceiling, not an exemption. A listed file may shrink freely;
+growing past its number fails the build. A listed path with no number also
+fails — otherwise adding a bare path would restore an unbounded exemption,
+which is the loosening this replaced.
+
+```bash
+scripts/check-file-size.sh                     # staged .rs files
+scripts/check-file-size.sh --all               # everything tracked (what CI runs)
+scripts/check-file-size.sh --update-allowlist  # after a split; never loosens
+```
+
+`--update-allowlist` refuses to raise any entry: for a file that grew it keeps
+the smaller recorded number, so it cannot be used to get growth past the gate.
+Run it after splitting a file and commit the result.
+
+The right response to a new file over 500 lines is to split it. Adding it to
+the allowlist is a deliberate, reviewable act that freezes it where it is.
+
 ### Feature Flags
 
 The `knowledge` feature enables [Quipu](https://github.com/scbrown/quipu) integration (knowledge graph, SPARQL, MCP tools). Code that depends on Quipu must be gated behind `#[cfg(feature = "knowledge")]` so Bobbin compiles cleanly without it.

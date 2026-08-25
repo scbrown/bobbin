@@ -21,6 +21,40 @@ exists as of 2026-08-21 and carries the sprint execution status.
 
 ## 1. The file-size ratchet is red — and `bobbin-aoz` had it right
 
+> **Update (2026-08-25): the retirement path exists, and the numbers below are
+> superseded.** This section's closing line — "a ratchet with no retirement
+> path is a ratchet that only ever loosens" — was a prediction, and the three
+> days since the 2026-08-22 update confirmed it. Re-measured today:
+>
+> | | 2026-08-22 (recorded below) | 2026-08-25 |
+> |---|---|---|
+> | allowlist entries | 34 | 35 (one of them dead: `src/http/handlers.rs` no longer exists) |
+> | `src/cli/hook.rs` | 9,500 lines | **9,878** |
+> | gate result | 0 errors | 0 errors |
+>
+> Green throughout, by design: an allowlist entry was a total exemption, so
+> +378 lines in the largest file in the repo and a 35th entry both registered
+> as nothing at all.
+>
+> **Fixed by making an allowlist entry a CEILING rather than an exemption.**
+> `scripts/large-file-allowlist.txt` now records the line count each file was
+> frozen at (`path <lines>`). A listed file may shrink freely; growing past its
+> number fails the gate. A listed path with **no** recorded number also fails,
+> naming the fix — otherwise hand-adding a bare path would restore the old
+> unbounded exemption. `scripts/check-file-size.sh --update-allowlist`
+> regenerates the file after a split and **never loosens an entry**: for a file
+> that grew it keeps the smaller recorded number, so the update mode cannot be
+> used to launder growth past the gate. Dead entries are reported by name.
+>
+> Adapted from quipu's `.file-size-baseline` ratchet, which solved the same
+> problem; kept on bobbin's conventions (raw line counts, the existing
+> allowlist path).
+>
+> The 35 entries are now 34 real ceilings totalling **58,217 lines**, and that
+> total can only go down. The debt itself — `hook.rs` at 9,878 lines,
+> `lance.rs` at 5,362, `mcp/server.rs` at 3,851 — is unchanged and still needs
+> splitting; what changed is that it can no longer quietly get worse.
+
 > **Update (2026-08-22): the ratchet is green.** Re-running the gate the way
 > this section insists it be measured:
 >
@@ -38,6 +72,8 @@ exists as of 2026-08-21 and carries the sprint execution status.
 > grandfathered allowlist with no retirement path — **still stands**: the
 > allowlist still holds 34 entries and `src/cli/hook.rs` has grown to 9,500
 > lines inside it; the gate still has no mechanism for shrinking it.
+> *(Superseded 2026-08-25 — see the update above. The mechanism now exists;
+> the counts in this paragraph were already stale when written down.)*
 
 > **Correction (2026-08-17).** An earlier revision of this section claimed the
 > bead understated the problem by 4× — "bobbin-aoz says 10 files over the
@@ -82,7 +118,8 @@ allowlist them with rationale — and needs no re-scoping before dispatch. What
 it does need is a decision on the allowlist itself, which is the real debt here:
 34 grandfathered entries including an 8,050-line file means the gate protects
 new code and has no mechanism for retiring old. A ratchet with no retirement
-path is a ratchet that only ever loosens.
+path is a ratchet that only ever loosens. *(Actioned 2026-08-25: entries are
+now ceilings. See the update at the top of this section.)*
 
 **Not actioned here.** Splitting these is the "large code change" the ranger
 charter reserves for polecats.
