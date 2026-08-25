@@ -626,8 +626,15 @@ For deployments enabling knowledge for the first time:
 
 ### SHACL Shapes for Code Entities
 
+The `bobbin:` prefix binds to the **live** ontology namespace — `bobbin:` ≡
+`aegis:` (Stiwi, 2026-08-21), the single value `src/iri/mod.rs::ONTOLOGY_NS`
+holds and every emitter in this repo mints under. The example below said
+`https://bobbin.dev/ontology#`, which is the retired spelling GH#58 was filed
+about: a shape written against it would target a class no producer asserts and
+validate nothing.
+
 ```turtle
-@prefix bobbin: <https://bobbin.dev/ontology#> .
+@prefix bobbin: <http://aegis.gastown.local/ontology/> .
 @prefix sh:     <http://www.w3.org/ns/shacl#> .
 
 bobbin:CodeModuleShape a sh:NodeShape ;
