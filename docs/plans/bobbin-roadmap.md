@@ -18,7 +18,8 @@ entities and relationships from documents into the quipu knowledge graph,
 
 One pass executed most of the near-term graph: **W1 complete** (P1 edges +
 neighbors tool; P2 edge-aware context leg with `neighbor_budget_pct`; P3
-repo-scoped edges; P4 Tests edge). **W2 P1–P4 shipped**: camayoc competency
+repo-scoped edges; P4 Tests edge). **W2 P1–P4 shipped** (with two P2 corrections dated 2026-08-25 below —
+`expand_knowledge` and the orphaned mapping file): camayoc competency
 slice `document-structure-and-chunks`; namespace consolidated to the live
 aegis scheme on both sides (quipu's dead bobbin.dev constructors deleted;
 coupling/PPR/expand_knowledge join the live entity graph); advisory
@@ -112,9 +113,25 @@ constructors used only by its reconcile module. Port quipu's constructors
 (`code_module_iri`, `code_symbol_iri`, `document_iri`, `section_iri`,
 `bundle_iri`, `parse_bobbin_iri`) to the aegis base and fix both bobbin ends.
 Also: `bobbin-quipu-mapping.toml` at repo root is orphaned (no loader was
-ever written) — implement or delete it. Acceptance: one IRI spelling
+ever written) — implement or delete it. **Deleted 2026-08-25**, see the note
+below. Acceptance: one IRI spelling
 round-trips bobbin→quipu→bobbin; `expand_knowledge` verifiably returns
 entities on a live store.
+
+> **`bobbin-quipu-mapping.toml`, resolved by deletion (2026-08-25).** It had 0
+> references in `src/`, `tests/`, the justfile or `build.rs` — no loader was
+> ever written — while its own header claimed "Changes here only require a
+> config reload, not code changes". That sentence was false in the most
+> expensive direction: it invites an operator to retune `show_predicates`,
+> `max_depth` or `spotlight_confidence` and conclude from the unchanged output
+> that the setting did nothing, rather than that the file is read by nobody.
+> The behavior it purports to configure is real but lives elsewhere:
+> `config.quipu_endpoint` (`src/config.rs`) is what gates the spotlight call in
+> `src/http/handlers/search.rs`, and entity identity comes from `src/iri.rs`,
+> not from `[mappings.*]`. A config file that silently does nothing is worse
+> than no config file, so it is deleted rather than kept as a placeholder. The
+> declarative-mapping design it sketched still stands in
+> `docs/design/micro-ui.md`, which is now marked as unimplemented.
 
 > **Correction, 2026-08-25.** The row in the register below was marked ✅ for
 > this item while HALF of it was still broken, and the half that was broken is

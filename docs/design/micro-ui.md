@@ -173,7 +173,7 @@ pages with structured knowledge about displayed code.
 extensions, CI tools, and Quipu's own UI can consume them. This is the
 Drupal RDF module pattern — declarative mapping, not code.
 
-**Implementation**: Driven by `bobbin-quipu-mapping.toml`.
+**Implementation**: was to be driven by `bobbin-quipu-mapping.toml`. **Not built.** The file existed at the repo root with no loader behind it and was deleted on 2026-08-25; the mapping below is design, not configuration. What ships today is `config.quipu_endpoint` (`src/config.rs`) gating the spotlight call in `src/http/handlers/search.rs`, with entity identity from `src/iri.rs`.
 
 ## Declarative Type Mapping
 
@@ -269,7 +269,7 @@ src/http/ui.html               # +badges, Knowledge tab, JSON-LD (~100 lines)
 src/config.rs                  # +quipu_endpoint field (~5 lines)
 src/knowledge/mapping.rs       # NEW: mapping config loader (~100 lines)
 src/knowledge/mod.rs           # +mapping module re-export
-bobbin-quipu-mapping.toml      # NEW: type mapping config
+bobbin-quipu-mapping.toml      # PROPOSED — never implemented, file deleted 2026-08-25
 ```
 
 Estimated: ~250 lines of new Rust, ~100 lines of SPA changes. Compare to
