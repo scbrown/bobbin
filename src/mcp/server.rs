@@ -1975,17 +1975,16 @@ impl BobbinMcpServer {
 
         let mut search = HybridSearch::new(embedder, vector_store, config.search.semantic_weight);
 
-        // Fetch more results than needed so we can filter
+        // Push the Issue predicate into both halves of hybrid search.  Issue chunks
+        // are a tiny fraction of the corpus, so searching the whole corpus and then
+        // filtering a fixed over-fetch can return zero beads for common terms even
+        // when matching Issue chunks exist.  Keep this aligned with GET /beads.
         let search_results = search
-            .search(&req.query, limit * 5, None)
+            .search_filtered(&req.query, limit, None, Some("chunk_type = 'issue'"))
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        // Filter to only Issue chunks
-        let mut filtered: Vec<SearchResult> = search_results
-            .into_iter()
-            .filter(|r| r.chunk.chunk_type == ChunkType::Issue)
-            .collect();
+        let mut filtered: Vec<SearchResult> = search_results.into_iter().collect();
 
         // Apply rig filter (file_path is "beads:<rig>:<id>")
         if let Some(ref rig) = req.rig {
