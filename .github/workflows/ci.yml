@@ -59,3 +59,38 @@ jobs:
       # it where nobody can skip it.
       - name: File size ratchet
         run: bash scripts/check-file-size.sh --all
+
+  # The eval framework's own 289 tests were run by NOTHING: `just test` is
+  # cargo-only, `just check` does not reach them, and no workflow mentioned
+  # them. Sixteen files with a declared pytest dev-dependency and a pyproject,
+  # clearly meant to run, silently unexecuted.
+  #
+  # That matters more than the count. This framework is what measures injection
+  # quality — the thing GH#54 proposes to A/B an embedding-model upgrade
+  # against. An unrun scorer cannot be trusted to say a change helped, so the
+  # measuring instrument needs a gate before the measurements do.
+  #
+  # Same defect as the file-size ratchet above, one language over: a real check
+  # that only ran for whoever remembered to type the command.
+  eval-tests:
+    name: Eval framework tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Installed explicitly rather than via `pip install -e .[dev]`: the
+      # runtime deps include `anthropic`, and the tests neither need it nor
+      # should a network-calling client be pulled into a gate that must stay
+      # hermetic. matplotlib/pandas are here because test_mpl_charts.py imports
+      # them at module scope, so their absence is a collection ERROR that takes
+      # the whole run down rather than a skip.
+      - name: Install test dependencies
+        run: pip install pytest pyyaml click jinja2 matplotlib pandas
+
+      - name: Run eval tests
+        working-directory: eval
+        run: python -m pytest tests/ scorer/test_scorer.py -q

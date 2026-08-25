@@ -26,6 +26,14 @@ build:
 test:
     cargo test {{cargo_flags}} {{cargo_features}}
 
+# The eval framework's Python tests. Deliberately NOT folded into `just test`:
+# they need pytest and matplotlib, which a Rust contributor has no reason to
+# have, and a `just test` that fails on a missing python package trains people
+# to stop running it. CI runs this on every push (job `eval-tests`), so it is
+# gated where it counts — this recipe is for running it locally, not the gate.
+test-eval:
+    cd eval && python3 -m pytest tests/ scorer/test_scorer.py -q
+
 # Type check and pre-commit hooks (quiet by default, use verbose=true for full output)
 check:
     cargo check {{cargo_flags}} {{cargo_features}}
