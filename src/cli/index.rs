@@ -19,7 +19,7 @@ use crate::types::{Chunk, ImportDependency, ImportEdge};
 /// source repo name so bead state never collides with a source repo that
 /// happens to be named "beads"; shared across index runs because the bead
 /// corpus is global, not per source repo.
-const BEADS_HASH_REPO: &str = "beads-issues";
+pub(crate) const BEADS_HASH_REPO: &str = "beads-issues";
 
 /// The repo key for archive-record chunks and their content hashes. Same
 /// rationale as [`BEADS_HASH_REPO`]: the archive corpus is global (configured

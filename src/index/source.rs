@@ -239,6 +239,103 @@ pub async fn index_watermark_source<S: WatermarkSource>(
     Ok(chunks.len())
 }
 
+/// What one single-item pass did, for the caller to report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ItemOutcome {
+    /// (Re)embedded and inserted.
+    Indexed,
+    /// Content hash unchanged — nothing re-embedded.
+    Unchanged,
+    /// Gone from the source and swept out of the index.
+    Removed,
+    /// Gone from the source and not in the index either — nothing to do.
+    Absent,
+}
+
+/// Index ONE item of a hashed source, addressed by its stable key.
+///
+/// The single-item counterpart to [`index_hashed_source`], for a post-write
+/// trigger that knows exactly which item changed and must not pay for a full
+/// corpus fetch.
+///
+/// **It deliberately does not reuse [`index_hashed_source`], and that is the
+/// whole point of it existing.** That function's removal sweep deletes every
+/// previously indexed key absent from the fetch it was handed. Handing it a
+/// one-item fetch would therefore delete the entire rest of the corpus on
+/// every single-bead reindex — silently, since the sweep is the same code path
+/// that legitimately removes vanished items. So the sweep is narrowed here to
+/// the one key the caller named, and nothing else in `repo_key` is touched.
+///
+/// `chunk: None` means the item is gone from the source. That is not an error
+/// and not a no-op: it removes the item from the index, which is how a bead
+/// that was just closed (and so no longer passes the visibility rules) leaves
+/// the corpus at the moment its post-write hook fires.
+///
+/// Hashes are persisted only after a successful insert, matching the batch
+/// path, so a failed run retries rather than recording a lie.
+pub async fn index_hashed_item(
+    repo_key: &str,
+    source_label: &str,
+    key: &str,
+    chunk: Option<&Chunk>,
+    vector_store: &mut VectorStore,
+    metadata_store: &MetadataStore,
+    embedder: &Embedder,
+    force: bool,
+) -> Result<ItemOutcome> {
+    let Some(chunk) = chunk else {
+        let known = metadata_store
+            .get_file_hash(repo_key, key)
+            .ok()
+            .flatten()
+            .is_some();
+        if !known {
+            return Ok(ItemOutcome::Absent);
+        }
+        let keys = [key.to_string()];
+        vector_store
+            .delete_by_file(&keys, Some(repo_key))
+            .await
+            .ok();
+        metadata_store
+            .delete_file_hashes(Some(repo_key), &keys)
+            .ok();
+        return Ok(ItemOutcome::Removed);
+    };
+
+    let hash = content_hash(&chunk.content);
+    if !force {
+        let stored = metadata_store.get_file_hash(repo_key, key).ok().flatten();
+        if stored.as_deref() == Some(hash.as_str()) {
+            return Ok(ItemOutcome::Unchanged);
+        }
+    }
+
+    let embeddings = embedder.embed_batch(&[chunk.content.as_str()]).await?;
+    let now = chrono::Utc::now().timestamp().to_string();
+    let items = [chunk.clone()];
+
+    // Replace rather than duplicate: the chunk id is derived from `key`, so the
+    // prior row for this item has exactly this id.
+    vector_store.delete(&[chunk.id.clone()]).await.ok();
+    vector_store
+        .insert(
+            &items,
+            &embeddings,
+            &vec![None; 1],
+            repo_key,
+            source_label,
+            &now,
+        )
+        .await?;
+
+    metadata_store
+        .set_file_hashes_bulk(repo_key, &[(key, hash.as_str())])
+        .ok();
+
+    Ok(ItemOutcome::Indexed)
+}
+
 /// Stable content hash for change detection (shared by all hashed sources).
 pub fn content_hash(content: &str) -> String {
     use sha2::{Digest, Sha256};

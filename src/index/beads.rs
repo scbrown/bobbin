@@ -110,6 +110,10 @@ struct CommentRow {
     text: String,
 }
 
+mod keys;
+pub(crate) use keys::issues_where_clause;
+pub use keys::{bead_file_path, bead_file_paths, rig_of};
+
 /// Fetch beads from all configured Dolt databases and convert to Chunks.
 pub async fn fetch_beads(config: &BeadsConfig) -> Result<Vec<Chunk>> {
     if !config.enabled || config.databases.is_empty() {
@@ -119,7 +123,7 @@ pub async fn fetch_beads(config: &BeadsConfig) -> Result<Vec<Chunk>> {
     let mut all_chunks = Vec::new();
 
     for db_name in &config.databases {
-        let chunks = fetch_from_database(config, db_name)
+        let chunks = fetch_from_database(config, db_name, None)
             .await
             .with_context(|| format!("Failed to fetch beads from {}", db_name))?;
         all_chunks.extend(chunks);
@@ -128,10 +132,45 @@ pub async fn fetch_beads(config: &BeadsConfig) -> Result<Vec<Chunk>> {
     Ok(all_chunks)
 }
 
-/// Fetch beads from a single Dolt database
-async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<Chunk>> {
+/// Fetch the chunk for ONE bead, across every configured database (or just
+/// `rig_filter`'s, when given).
+///
+/// Returns an empty vec when the bead does not exist, is closed/deleted/aged
+/// out under the configured visibility rules, or carries an excluded label —
+/// all four of which the caller must treat as "remove it from the index",
+/// never as "leave whatever is there". A bead being closed is precisely when a
+/// post-write trigger fires, and it is the case a naive re-embed gets wrong.
+pub async fn fetch_bead(
+    config: &BeadsConfig,
+    bead_id: &str,
+    rig_filter: Option<&str>,
+) -> Result<Vec<Chunk>> {
+    if !config.enabled || config.databases.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut found = Vec::new();
+    for db_name in &config.databases {
+        if rig_filter.is_some_and(|want| want != rig_of(db_name)) {
+            continue;
+        }
+        let chunks = fetch_from_database(config, db_name, Some(bead_id))
+            .await
+            .with_context(|| format!("Failed to fetch bead {} from {}", bead_id, db_name))?;
+        found.extend(chunks);
+    }
+
+    Ok(found)
+}
+
+/// Fetch beads from a single Dolt database, optionally narrowed to one id.
+async fn fetch_from_database(
+    config: &BeadsConfig,
+    db_name: &str,
+    only_id: Option<&str>,
+) -> Result<Vec<Chunk>> {
     // Extract rig name from db_name (e.g., "beads_aegis" -> "aegis")
-    let rig = db_name.strip_prefix("beads_").unwrap_or(db_name);
+    let rig = rig_of(db_name);
 
     let url = format!(
         "mysql://{}@{}:{}/{}",
@@ -145,30 +184,7 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
         )
     })?;
 
-    // Build WHERE clause
-    let mut conditions = Vec::new();
-    if !config.include_closed {
-        conditions.push("status NOT IN ('closed', 'deleted')".to_string());
-    } else {
-        // When including closed beads, still exclude deleted ones
-        conditions.push("status != 'deleted'".to_string());
-    }
-    if config.max_age_days > 0 {
-        // Age bounds CLOSED beads only — an OPEN bead is active work and must be
-        // indexed regardless of age. Previously this applied to all beads, so
-        // rigs whose open beads are all older than max_age_days (e.g.
-        // beads_goldblum: 632 open, none <90d) indexed ZERO beads.
-        conditions.push(format!(
-            "(status NOT IN ('closed', 'deleted') OR created_at >= DATE_SUB(NOW(), INTERVAL {} DAY))",
-            config.max_age_days
-        ));
-    }
-
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!(" WHERE {}", conditions.join(" AND "))
-    };
+    let where_clause = issues_where_clause(config, only_id);
 
     // Fetch issues. `metadata` is a JSON column — CAST to text so the driver
     // returns a String; COALESCE guards against NULL.
@@ -283,15 +299,17 @@ async fn fetch_from_database(config: &BeadsConfig, db_name: &str) -> Result<Vec<
 
             let content = build_bead_content(&issue, &issue_comments, &labels);
 
-            // Generate deterministic ID
-            let id_input = format!("beads:{}:{}", rig, issue.id);
+            // Generate deterministic ID. Keyed on the same string the chunk is
+            // stored under, via one shared constructor, so a single-bead
+            // reindex addresses the row the batch sweep wrote.
+            let file_path = bead_file_path(rig, &issue.id);
             let mut hasher = Sha256::new();
-            hasher.update(id_input.as_bytes());
+            hasher.update(file_path.as_bytes());
             let id = hex::encode(hasher.finalize());
 
             Some(Chunk {
                 id,
-                file_path: format!("beads:{}:{}", rig, issue.id),
+                file_path,
                 chunk_type: ChunkType::Issue,
                 name: Some(issue.title),
                 start_line: 0,

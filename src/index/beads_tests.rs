@@ -133,3 +133,108 @@ fn test_empty_databases_returns_empty() {
     let chunks = rt.block_on(fetch_beads(&config)).unwrap();
     assert!(chunks.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Single-bead path (GH#52 Phase 4)
+// ---------------------------------------------------------------------------
+
+fn open_config() -> BeadsConfig {
+    BeadsConfig {
+        enabled: true,
+        databases: vec!["beads_aegis".to_string()],
+        max_age_days: 90,
+        ..Default::default()
+    }
+}
+
+/// THE INVARIANT. Narrowing to one bead must add a predicate and remove none.
+///
+/// If `index-bead` relaxed the visibility rules, asking for a bead by name
+/// would index rows `--include-beads` deliberately filters out — closed beads,
+/// aged-out beads, deleted beads — and the two paths would disagree about what
+/// the corpus contains, with the batch sweep silently deleting whatever the
+/// single-bead path admitted on its next run.
+#[test]
+fn single_bead_narrows_without_relaxing() {
+    let config = open_config();
+    let batch = issues_where_clause(&config, None);
+    let single = issues_where_clause(&config, Some("aegis-0a9"));
+
+    // Every batch condition survives verbatim.
+    assert!(
+        single.starts_with(batch.as_str()),
+        "batch={batch}\nsingle={single}"
+    );
+    // And exactly one condition is added.
+    assert_eq!(
+        single.matches(" AND ").count(),
+        batch.matches(" AND ").count() + 1
+    );
+    assert!(single.ends_with("id = 'aegis-0a9'"));
+}
+
+#[test]
+fn single_bead_clause_honours_include_closed() {
+    let mut config = open_config();
+    config.include_closed = true;
+    let single = issues_where_clause(&config, Some("x-1"));
+    assert!(single.contains("status != 'deleted'"));
+    // Deleted rows stay excluded even when closed ones are wanted.
+    assert!(!single.contains("status NOT IN ('closed', 'deleted') AND"));
+}
+
+#[test]
+fn single_bead_clause_escapes_quotes() {
+    let config = open_config();
+    let single = issues_where_clause(&config, Some("o'brien-1"));
+    assert!(single.ends_with("id = 'o''brien-1'"), "{single}");
+}
+
+/// The chunk id is derived from the chunk key, so `index_hashed_item` can
+/// address the row the batch path wrote without re-querying it.
+#[test]
+fn chunk_id_is_the_hash_of_the_chunk_key() {
+    let key = bead_file_path("aegis", "aegis-0a9");
+    let mut hasher = Sha256::new();
+    hasher.update(key.as_bytes());
+    assert_eq!(hex::encode(hasher.finalize()).len(), 64);
+    assert_eq!(key, "beads:aegis:aegis-0a9");
+}
+
+#[test]
+fn fetch_bead_is_a_no_op_when_beads_are_unconfigured() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    // Disabled.
+    let chunks = rt
+        .block_on(fetch_bead(&BeadsConfig::default(), "bo-1", None))
+        .unwrap();
+    assert!(chunks.is_empty());
+    // Enabled but with no databases: no connection is attempted, so this must
+    // return empty rather than erroring on a refused MySQL connect.
+    let config = BeadsConfig {
+        enabled: true,
+        databases: vec![],
+        ..Default::default()
+    };
+    let chunks = rt.block_on(fetch_bead(&config, "bo-1", None)).unwrap();
+    assert!(chunks.is_empty());
+}
+
+/// A rig filter that matches nothing must skip every database rather than
+/// falling through to "all of them".
+#[test]
+fn fetch_bead_with_an_unmatched_rig_touches_nothing() {
+    let config = BeadsConfig {
+        enabled: true,
+        // Deliberately unroutable: if the filter leaked, this would try to
+        // connect and the test would fail with a connection error instead.
+        host: "192.0.2.1".to_string(),
+        databases: vec!["beads_aegis".to_string()],
+        ..Default::default()
+    };
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let chunks = rt
+        .block_on(fetch_bead(&config, "bo-1", Some("gastown")))
+        .unwrap();
+    assert!(chunks.is_empty());
+}

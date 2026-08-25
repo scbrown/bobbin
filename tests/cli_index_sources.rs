@@ -115,3 +115,117 @@ fn index_archive_incremental_and_removal_sweep() {
     assert_eq!(json["archive_unchanged"], 1);
     assert_eq!(json["archive_indexed"], 0);
 }
+
+// ---------------------------------------------------------------------------
+// `bobbin index-bead <id>` — GH#52 Phase 4
+// ---------------------------------------------------------------------------
+
+/// Point `[beads]` at `databases` without enabling a reachable server. Enough
+/// for every guard `index-bead` applies before it touches Dolt.
+fn configure_beads_databases(project: &TestProject, dbs: &[&str]) {
+    let config_path = project.path().join(".bobbin/config.toml");
+    let cfg = std::fs::read_to_string(&config_path).unwrap();
+    let list = dbs
+        .iter()
+        .map(|d| format!("\"{d}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let new_cfg = cfg.replace("databases = []", &format!("databases = [{list}]"));
+    assert_ne!(
+        cfg, new_cfg,
+        "generated config should have an empty [beads] databases list"
+    );
+    std::fs::write(&config_path, new_cfg).unwrap();
+}
+
+/// `index-bead` is a bead-only command. Unlike `bobbin index`, there is no file
+/// half that could still do useful work, so an unconfigured `[beads]` section
+/// must be a loud error and not a silent exit-0 — a post-write hook wired to a
+/// misconfigured repo would otherwise report success forever while indexing
+/// nothing.
+#[test]
+fn index_bead_refuses_when_no_beads_databases_are_configured() {
+    let project = common::init_project();
+    let output = TestProject::bobbin_cmd()
+        .args(["index-bead", "bo-1"])
+        .arg(project.path())
+        .assert()
+        .failure()
+        .get_output()
+        .stderr
+        .clone();
+    let stderr = String::from_utf8_lossy(&output);
+    assert!(
+        stderr.contains("No beads databases configured"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+/// A rig name that is not configured must be rejected by name rather than
+/// quietly matching nothing — "no beads found" and "you typed the rig wrong"
+/// are different answers and the operator needs the second one.
+#[test]
+fn index_bead_rejects_an_unknown_rig() {
+    let project = common::init_project();
+    configure_beads_databases(&project, &["beads_aegis"]);
+    let output = TestProject::bobbin_cmd()
+        .args(["index-bead", "bo-1", "--rig", "nope"])
+        .arg(project.path())
+        .assert()
+        .failure()
+        .get_output()
+        .stderr
+        .clone();
+    let stderr = String::from_utf8_lossy(&output);
+    assert!(
+        stderr.contains("Unknown rig `nope`"),
+        "unexpected stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("aegis"),
+        "the error should name the configured rigs: {stderr}"
+    );
+}
+
+/// The incremental fast path needs a corpus to be incremental against. It must
+/// say so before loading an embedding model — `bobbin init` creates an empty
+/// vector directory, so the presence of that directory proves nothing.
+#[test]
+fn index_bead_refuses_before_a_first_full_index() {
+    let project = common::init_project();
+    configure_beads_databases(&project, &["beads_aegis"]);
+    let output = TestProject::bobbin_cmd()
+        .args(["index-bead", "bo-1"])
+        .arg(project.path())
+        .assert()
+        .failure()
+        .get_output()
+        .stderr
+        .clone();
+    let stderr = String::from_utf8_lossy(&output);
+    assert!(
+        stderr.contains("No index yet"),
+        "unexpected stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("bobbin index"),
+        "the error should name the command that fixes it: {stderr}"
+    );
+}
+
+/// The subcommand is reachable and self-describing. Cheap, but it is the only
+/// assertion that the clap wiring exists at all — the rest of the suite would
+/// pass identically with the command unregistered.
+#[test]
+fn index_bead_is_a_registered_subcommand() {
+    let output = TestProject::bobbin_cmd()
+        .args(["index-bead", "--help"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let stdout = String::from_utf8_lossy(&output);
+    assert!(stdout.contains("--rig"), "missing --rig: {stdout}");
+    assert!(stdout.contains("--force"), "missing --force: {stdout}");
+}

@@ -1,6 +1,6 @@
 # Bobbin + Beads Integration Plan
 
-> **Implementation status (2026-07-23, dearing):** ✅ **Implemented** (core). Phases 1–2 built + unit-tested: `ChunkType::Issue` (src/types.rs:37), `src/index/beads.rs` (Dolt fetch of issues/comments/labels → `beads:{rig}:{id}` chunks, 9 tests), `[beads]` config (src/config.rs:594), `--include-beads` pipeline wiring with content-hash incremental (src/cli/index.rs), and the `search_beads` MCP tool (src/mcp/server.rs:1481, HTTP at src/http/handlers/archive.rs:428). Bonus: `exclude_labels` keeps security/escalation beads out of the index. 🟡 Phase 3 (hook auto-inject) works via the generic context path (beads: chunks flow through injection; hook.rs:1839/2177) but has no beads-specific relevance gate — small gap. ⬜ Phase 4 (`bobbin index-bead <id>` single-bead incremental + `bd hooks`) not built and is partly beads-side — tracked as GitHub issue #52. Incremental is content-hash based (not the plan's `beads_last_sync` watermark) — functionally equivalent/better (detects removals).
+> **Implementation status (2026-07-23, dearing):** ✅ **Implemented** (core). Phases 1–2 built + unit-tested: `ChunkType::Issue` (src/types.rs:37), `src/index/beads.rs` (Dolt fetch of issues/comments/labels → `beads:{rig}:{id}` chunks, 9 tests), `[beads]` config (src/config.rs:594), `--include-beads` pipeline wiring with content-hash incremental (src/cli/index.rs), and the `search_beads` MCP tool (src/mcp/server.rs:1481, HTTP at src/http/handlers/archive.rs:428). Bonus: `exclude_labels` keeps security/escalation beads out of the index. 🟡 Phase 3 (hook auto-inject) works via the generic context path (beads: chunks flow through injection; hook.rs:1839/2177) but has no beads-specific relevance gate — small gap. ✅ Phase 4 bobbin-side built 2026-08-25: `bobbin index-bead <id>` (`src/cli/index_bead.rs`) fetches one bead via `beads::fetch_bead` and runs it through `index::source::index_hashed_item` — a single-item lifecycle on the same seam, whose removal sweep is narrowed to the named key (handing the batch `index_hashed_source` a one-bead fetch would delete every OTHER bead). Same `beads-issues` repo key and same `beads:{rig}:{id}` chunk keys as the batch path, so the two are interchangeable. A bead that stops passing the visibility rules (closed, aged out, relabelled) is REMOVED rather than left stale, which is the case a post-write trigger actually fires on. The `bd hooks` half remains beads-side and out of this repo — tracked as bobbin-cf4. Incremental is content-hash based (not the plan's `beads_last_sync` watermark) — functionally equivalent/better (detects removals).
 
 **Epic:** bo-flq4v
 **Status:** Planning
@@ -42,7 +42,8 @@ Dolt (dolt.example:3306)          Bobbin Index (LanceDB)
 
 Two triggers:
 1. **Batch:** `bobbin index --include-beads` — full re-index from Dolt
-2. **Incremental:** beads post-write hook calls `bobbin index-bead <id>` (preferred)
+2. **Incremental:** beads post-write hook calls `bobbin index-bead <id>` (preferred).
+   Implemented; see `docs/book/src/cli/index-bead.md`.
 
 ### Query (read path)
 
@@ -101,10 +102,16 @@ Each bead becomes a Chunk in LanceDB:
    - Include relevant issues in injected context
    - Gate by relevance threshold (avoid noise)
 
-### Phase 4: Beads Auto-Trigger (beads-side)
+### Phase 4: Beads Auto-Trigger
 
-6. `bd hooks` feature in beads CLI
-   - Post-write hook fires `bobbin index-bead --id ${BEAD_ID}`
+6a. **`bobbin index-bead <id>`** (bobbin-side) — ✅ built. One-bead fetch under
+   the batch path's own visibility rules, then a single-item pass on the
+   `ChunkSource` seam. Refuses rather than guessing when beads are
+   unconfigured, when no full index exists yet, or when the embedding model
+   has changed under the index.
+
+6b. `bd hooks` feature in beads CLI (beads-side, not this repo)
+   - Post-write hook fires `bobbin index-bead ${BEAD_ID}` (positional id, as built)
    - Configurable per-workspace
    - Makes indexing fully automatic
 

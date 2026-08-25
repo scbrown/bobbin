@@ -38,6 +38,10 @@ bobbin index --source /other/repo --repo other  # Index a different directory
 | `--force` | | Force reindex all files |
 | `--repo <NAME>` | | Repository name for multi-repo indexing (default: "default") |
 | `--source <PATH>` | | Source directory to index files from (defaults to path) |
+| `--include-beads` | | Also index beads (issues) from Dolt |
+
+To reindex one bead without re-fetching the whole bead corpus, use
+[`index-bead`](index-bead.md).
 
 ## Maintenance and recovery
 

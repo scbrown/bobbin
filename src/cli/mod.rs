@@ -14,6 +14,7 @@ mod hook;
 mod hotspots;
 mod impact;
 mod index;
+mod index_bead;
 mod init;
 mod log;
 mod ontology;
@@ -83,6 +84,9 @@ enum Commands {
 
     /// Build or update the search index
     Index(index::IndexArgs),
+
+    /// Reindex a single bead by id (incremental fast path for a bd post-write hook)
+    IndexBead(index_bead::IndexBeadArgs),
 
     /// Calibrate search parameters against git history
     Calibrate(calibrate::CalibrateArgs),
@@ -188,6 +192,7 @@ impl Commands {
             Commands::Init(_) => "init",
             Commands::Connect(_) => "connect",
             Commands::Index(_) => "index",
+            Commands::IndexBead(_) => "index-bead",
             Commands::Calibrate(_) => "calibrate",
             Commands::Search(_) => "search",
             Commands::Context(_) => "context",
