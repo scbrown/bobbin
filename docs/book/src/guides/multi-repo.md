@@ -18,6 +18,17 @@ Every chunk in bobbin's index is tagged with a **repository name**. By default t
 
 The index itself lives in a single `.bobbin/` directory. Multiple repos feed into the same LanceDB vector store and SQLite metadata store.
 
+### Which config a multi-repo store reads
+
+The shared index directory has its own `.bobbin/config.toml`, and that is the
+per-repo layer — **not** the config of any repository you index into it. The
+source repositories' own `.bobbin/` directories are not consulted.
+
+Settings you want to hold across every index directory belong one level up, in
+the machine-wide `~/.config/bobbin/config.toml`, which merges beneath the local
+file (tables merge recursively; arrays and scalars are replaced wholesale). See
+[Configuration Reference](../config/reference.md) for the full cascade.
+
 ## Setting up multi-repo indexing
 
 ### Step 1: Initialize bobbin

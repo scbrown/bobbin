@@ -52,7 +52,7 @@ Key sections: `[index]` file patterns, `[search]` hybrid weights, `[embedding]` 
 | Calibration | Grid sweep of search params against git history | `docs/book/src/cli/calibrate.md` |
 | Tags & effects | Pattern-based chunk tagging with score boosts/demotions | `docs/book/src/guides/tags.md`, `docs/book/src/guides/tags-playbook.md` |
 | Hooks | Auto-inject context into Claude Code prompts | `docs/book/src/guides/hooks.md`, `docs/book/src/config/hooks.md` |
-| RBAC | Role-based repo/path access control | `docs/book/src/config/reference.md` (`[access]`) |
+| RBAC | Role-based repo/path access control | `docs/book/src/guides/access-control.md` |
 | Multi-repo | Index multiple repos into one store | `docs/book/src/guides/multi-repo.md` |
 | Reactions | Pattern-triggered hook actions | `.bobbin/reactions.toml` |
 | Feedback | Agent ratings improve search quality | `docs/book/src/guides/feedback.md` |
