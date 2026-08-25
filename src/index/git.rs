@@ -275,9 +275,10 @@ impl GitAnalyzer {
         Ok(map)
     }
 
-    /// Get files changed in a specific commit
-    // TODO(bobbin-6vq): For incremental indexing
-    #[allow(dead_code)]
+    /// Get files changed in a specific commit.
+    ///
+    /// Live: `search::context` uses it to expand a bead's commits into the
+    /// files they touched.
     pub fn get_commit_files(&self, commit_hash: &str) -> Result<Vec<String>> {
         let output = Command::new("git")
             .args([
@@ -290,29 +291,6 @@ impl GitAnalyzer {
             .current_dir(&self.repo_root)
             .output()
             .context("Failed to get commit files")?;
-
-        let files = String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .map(|s| s.to_string())
-            .collect();
-
-        Ok(files)
-    }
-
-    /// Get list of files that have changed since the last index
-    // TODO(bobbin-6vq): For incremental indexing
-    #[allow(dead_code)]
-    pub fn get_changed_files(&self, since_commit: Option<&str>) -> Result<Vec<String>> {
-        let args = match since_commit {
-            Some(commit) => vec!["diff", "--name-only", commit, "HEAD"],
-            None => vec!["ls-files"],
-        };
-
-        let output = Command::new("git")
-            .args(&args)
-            .current_dir(&self.repo_root)
-            .output()
-            .context("Failed to get changed files")?;
 
         let files = String::from_utf8_lossy(&output.stdout)
             .lines()
