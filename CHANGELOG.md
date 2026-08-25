@@ -21,6 +21,26 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.9.0](https://github.com/scbrown/bobbin/compare/v0.8.0...v0.9.0) (2026-08-25)
+
+
+### Features
+
+* **cli:** wire the advanced query parser into `bobbin search` ([905c291](https://github.com/scbrown/bobbin/commit/905c2916512a066189a4056b516e1230b4672054))
+* **http:** add GET /deps and GET /history for MCP/HTTP parity ([63b2309](https://github.com/scbrown/bobbin/commit/63b2309571780b8fe6bc0a6e51aa2d3d904e4787))
+* **index:** add `bobbin index-bead <id>` single-bead incremental reindex ([0622f35](https://github.com/scbrown/bobbin/commit/0622f35926962ca47d24f7fa21be2f7b4b4dc175))
+* **reactions:** wire search-based reactions into the hook, with a no-results signal and real latency ([3a6844f](https://github.com/scbrown/bobbin/commit/3a6844fc8c4b98706b5e957a63e1f262467aaa10))
+* **search:** echo the parsed query on /search and make `+` a real required-term operator ([53a32b3](https://github.com/scbrown/bobbin/commit/53a32b338cdcc50a34e13123edbfdab5657edaa1))
+* **tripwire:** surface governed path boundaries in injected context ([c45b576](https://github.com/scbrown/bobbin/commit/c45b576e2d7e3acc52ee7459fbdfcf0b6a1a97ac))
+
+
+### Bug Fixes
+
+* **docs:** accept established technical vocabulary ([9061580](https://github.com/scbrown/bobbin/commit/90615807ca6e1c796d774985d0acc1722ea0f4c2))
+* **knowledge:** parse the live IRI lane in expand_knowledge, not the superseded one ([108b5e9](https://github.com/scbrown/bobbin/commit/108b5e93426129dfc4406c602534ddf25580846b))
+* **mcp:** push bead filter into search ([ce86add](https://github.com/scbrown/bobbin/commit/ce86add711ef55bd14db365e730c277fcd1d7f51))
+* **release:** publish deployable Linux asset per target ([28088ce](https://github.com/scbrown/bobbin/commit/28088ce6976b5a953b614f0dfa038e1011b945fc))
+
 ## [0.8.0](https://github.com/scbrown/bobbin/compare/v0.7.3...v0.8.0) (2026-08-24)
 
 ### Features
