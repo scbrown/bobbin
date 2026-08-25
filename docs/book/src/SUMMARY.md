@@ -27,6 +27,7 @@
 - [Access Control (RBAC)](guides/access-control.md)
 - [Context Bundles](guides/bundles.md)
 - [Quipu Integration](guides/quipu-integration.md)
+- [Governed Path Boundaries](guides/governed-boundaries.md)
 
 # CLI Reference
 

@@ -148,8 +148,17 @@ The integration is being built in phases. See [docs/plans/quipu-integration.md](
 | 4. Unified search results | Planned | Merge code + knowledge results with normalized scores |
 | 5. Knowledge-aware context | Planned | Context assembly expanded with knowledge graph facts |
 
+## Governed Path Boundaries
+
+Setting `quipu_endpoint` also turns on tripwire surfacing: governed path-boundary
+policies spanning the files Bobbin is about to inject are named in the injected
+context, so an agent sees a boundary before it crosses one. Unlike the MCP tools
+above this needs no `knowledge` feature — it reads Quipu's `POST /query` over
+HTTP. See [Governed Path Boundaries](governed-boundaries.md).
+
 ## See Also
 
+- [Governed Path Boundaries](governed-boundaries.md)
 - [Architecture Overview](../architecture/overview.md)
 - [MCP Tools Reference](../mcp/tools.md)
 - [Context Assembly](context-assembly.md)

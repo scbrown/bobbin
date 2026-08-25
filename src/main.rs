@@ -22,6 +22,9 @@ pub mod reactions;
 mod search;
 mod storage;
 pub mod tags;
+/// Governed path-boundary policies ("tripwires"), surfaced in injected context
+/// so an agent learns a boundary exists before it walks into one.
+pub mod tripwire;
 mod types;
 
 use cli::Cli;

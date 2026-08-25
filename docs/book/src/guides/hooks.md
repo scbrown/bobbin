@@ -486,6 +486,8 @@ bobbin hook status --json
 
 ## Next steps
 
+- [Governed Path Boundaries](governed-boundaries.md) — tripwire policies named
+  in the injected context, on both the local and thin-client paths
 - [Watch & Automation](watch-automation.md) — keep your index current
 - [Searching](searching.md) — understand the search engine behind injection
 - [`hook` CLI reference](../cli/hook.md) — full subcommand reference
