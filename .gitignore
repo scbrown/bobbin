@@ -36,6 +36,10 @@ uv.lock
 .beads/
 
 # mdbook build output
+# (the root `book/` mdbook tree was deleted 2026-08-25 — it declared a second,
+# never-built book while `docs/book` is the one every gate knows about. This
+# entry stays: an ignore rule costs nothing and re-adding it after someone
+# runs mdbook in the wrong directory costs a commit.)
 book/_build/
 
 # Committed runtime state — an operator-path leak (aegis-mqnl). Never track.
