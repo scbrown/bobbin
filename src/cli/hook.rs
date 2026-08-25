@@ -4724,6 +4724,98 @@ fn is_source_code_file(path: &str) -> bool {
 /// - Any tool: reaction rules from .bobbin/reactions.toml
 /// Uses ContextAssembler with full config cascade (calibration + config.toml).
 /// Fast because ensure_fts_index reuses persisted index.
+/// Execute one search-based reaction through a `ContextAssembler`.
+///
+/// Returns `None` when the search could not be run at all — no index, no
+/// store, no embedder. That is deliberately distinct from `Some(vec![])`:
+/// "the index has nothing for this query" is a fact about coverage that the
+/// caller reports as a warning, while "the store would not open" is an
+/// infrastructure failure, and reporting the second as the first would tell an
+/// operator their rule's scope is wrong when it is not.
+///
+/// Builds its own stores rather than borrowing the dispatch path's assembler:
+/// that one is consumed inside the builtin-search block and never constructed
+/// at all in `ReactionsOnly`/`RefsOnly` mode, where reaction rules still fire.
+/// The stores are cheap to reopen — the same argument the coupling path here
+/// already makes for `MetadataStore`.
+#[allow(clippy::too_many_arguments)]
+async fn run_reaction_search(
+    search: &crate::reactions::PendingSearch,
+    repo_root: &Path,
+    lance_path: &Path,
+    db_path: &Path,
+    config: &Config,
+    cwd: &Path,
+    budget: usize,
+) -> Option<Vec<crate::reactions::SearchHit>> {
+    use crate::index::Embedder;
+    use crate::search::context::{BridgeMode, ContentMode, ContextAssembler, ContextConfig};
+
+    if budget == 0 {
+        return None;
+    }
+
+    let vector_store = match crate::storage::VectorStore::open(lance_path).await {
+        Ok(vs) if vs.count().await.unwrap_or(0) > 0 => vs,
+        _ => return None,
+    };
+    let metadata_store = MetadataStore::open(db_path).ok()?;
+    let model_dir = Config::model_cache_dir().ok()?;
+    let embedder = Embedder::from_config(&config.embedding, &model_dir).ok()?;
+
+    // Scope: `search_group` resolves to a repo IN (...) clause, `search_tags`
+    // to a tag include clause. Both are ANDed — a rule that names a group AND
+    // tags means both, matching the HTTP surface.
+    let mut clauses: Vec<String> = Vec::new();
+    if let Some(ref group) = search.group {
+        if let Some(g) = config.group_filter(group) {
+            clauses.push(g);
+        }
+    }
+    if !search.tags.is_empty() {
+        clauses.push(crate::tags::build_tag_include_filter(&search.tags));
+    }
+    let extra_filter = if clauses.is_empty() {
+        None
+    } else {
+        Some(clauses.join(" AND "))
+    };
+
+    let context_config = ContextConfig {
+        budget_lines: budget,
+        depth: 0,
+        max_coupled: 0,
+        content_mode: ContentMode::None, // File list only — reactions cite files
+        bridge_mode: BridgeMode::Off,
+        search_limit: 10,
+        extra_filter,
+        file_type_rules: config.file_types.clone(),
+        repo_affinity: detect_repo_name(cwd),
+        repo_affinity_boost: config.hooks.repo_affinity_boost,
+        repo_path_prefix: config.server.repo_path_prefix.clone(),
+        ..ContextConfig::default()
+    };
+
+    let mut assembler =
+        ContextAssembler::new(embedder, vector_store, metadata_store, context_config);
+    if let Ok(git) = crate::index::git::GitAnalyzer::new(repo_root) {
+        assembler = assembler.with_git_analyzer(git);
+    }
+
+    let bundle = assembler.assemble(&search.query, None).await.ok()?;
+
+    Some(
+        bundle
+            .files
+            .iter()
+            .map(|f| crate::reactions::SearchHit {
+                path: f.path.clone(),
+                score: f.score,
+            })
+            .collect(),
+    )
+}
+
 async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     use crate::index::Embedder;
     use crate::reactions::{self, CompiledRule, DedupTracker, ReactionConfig, ToolEvent};
@@ -5352,10 +5444,20 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     let mut rules_fired: Vec<String> = Vec::new();
     let mut rules_deduped = 0usize;
     if has_reactions {
+        let reactions_start = std::time::Instant::now();
+
         // Open MetadataStore for coupling reactions (may already be open above, but
         // the store is cheap to reopen and this path also serves ReactionsOnly mode)
         let reaction_metadata = MetadataStore::open(&db_path).ok();
         let reaction_budget = budget.saturating_sub(lines_used);
+
+        // Collect search-based reactions BEFORE evaluate_reactions.
+        // Order is load-bearing: `evaluate_reactions` records a dedup key for
+        // every rule it fires, and `pending_searches` skips any rule whose key
+        // has already fired. Calling it afterwards would find every search rule
+        // already deduped and return nothing — a silent no-op indistinguishable
+        // from the unwired state this fixes.
+        let pending = reactions::pending_searches(&tool_event, &compiled_rules, &dedup, &role);
 
         let eval_result = reactions::evaluate_reactions(
             &tool_event,
@@ -5379,7 +5481,86 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         rules_fired = eval_result.rules_fired.clone();
         rules_deduped = eval_result.rules_deduped;
 
-        // Emit per-rule metrics with injection_ids
+        // 10b. Execute the search-based reactions whose rule actually fired.
+        //
+        // Only rules present in `rules_fired` are run: `evaluate_reactions`
+        // has already applied dedup, the role check and the budget, and a rule
+        // it declined must not still get its files injected.
+        let injection_for = |name: &str| -> Option<&String> {
+            eval_result
+                .rules_fired
+                .iter()
+                .position(|r| r == name)
+                .and_then(|i| eval_result.injection_ids.get(i))
+        };
+        let to_run: Vec<&reactions::PendingSearch> = pending
+            .iter()
+            .filter(|p| eval_result.rules_fired.contains(&p.rule_name))
+            .collect();
+
+        if !to_run.is_empty() {
+            for search in to_run {
+                if lines_used >= budget {
+                    break;
+                }
+                let search_start = std::time::Instant::now();
+                let hits = run_reaction_search(
+                    search,
+                    &repo_root,
+                    &lance_path,
+                    &db_path,
+                    &config,
+                    &cwd,
+                    budget.saturating_sub(lines_used).min(search.max_lines),
+                )
+                .await;
+
+                // A store that could not be opened is NOT "no results" — that
+                // would report an infrastructure failure as a measurement
+                // about the index's coverage. Say nothing and emit nothing.
+                let Some(hits) = hits else {
+                    continue;
+                };
+
+                let block = reactions::format_search_results(search, &hits);
+                let block_lines = block.lines().count();
+                context.push_str(&block);
+                lines_used += block_lines;
+
+                let injection_id = injection_for(&search.rule_name)
+                    .cloned()
+                    .unwrap_or_default();
+                let event_type = if hits.is_empty() {
+                    "reaction_no_results"
+                } else {
+                    "reaction_search"
+                };
+                crate::metrics::emit(
+                    &repo_root,
+                    &crate::metrics::event(
+                        &metrics_source,
+                        event_type,
+                        &search.rule_name,
+                        search_start.elapsed().as_millis() as u64,
+                        serde_json::json!({
+                            "tool_name": input.tool_name,
+                            "rule": search.rule_name,
+                            "injection_id": injection_id,
+                            "query": search.query,
+                            "group": search.group,
+                            "tags": search.tags,
+                            "results": hits.len(),
+                        }),
+                    ),
+                );
+            }
+        }
+
+        // Emit per-rule metrics with injection_ids.
+        // `duration_ms` carries the reaction-evaluation latency; it was
+        // hardcoded to 0, which made every reaction look free and left no way
+        // to notice a rule set getting slow.
+        let reactions_ms = reactions_start.elapsed().as_millis() as u64;
         for (rule_name, inj_id) in eval_result
             .rules_fired
             .iter()
@@ -5391,7 +5572,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                     &metrics_source,
                     "reaction_fired",
                     rule_name,
-                    0,
+                    reactions_ms,
                     serde_json::json!({
                         "tool_name": input.tool_name,
                         "rule": rule_name,

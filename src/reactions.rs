@@ -648,6 +648,56 @@ pub struct PendingSearch {
     pub max_lines: usize,
 }
 
+/// One indexed file returned for a search-based reaction.
+#[derive(Debug, Clone)]
+pub struct SearchHit {
+    pub path: String,
+    pub score: f32,
+}
+
+/// Render the executed result of one search-based reaction.
+///
+/// Kept beside [`format_reaction`] so the two blocks stay one shape: the hook
+/// appends this under the guidance block that `evaluate_reactions` already
+/// emitted for the same rule, reusing that rule's `injection_id` so a rating
+/// on the injection covers everything the rule contributed.
+///
+/// A zero-hit search renders a WARNING rather than nothing. Silence is the
+/// wrong answer here: a rule whose query matches no indexed file looks
+/// identical to a rule that never ran, and the most likely cause — the group
+/// or tags name files this index does not contain — is exactly what the
+/// operator needs told. `search_group` targeting a group absent from the
+/// current index is the design's own open question, so it must not fail quiet.
+pub fn format_search_results(search: &PendingSearch, hits: &[SearchHit]) -> String {
+    let mut out = String::new();
+    if hits.is_empty() {
+        out.push_str(&format!(
+            "\n--- No indexed files found for `{}` ---\n\n",
+            search.query
+        ));
+        out.push_str(
+            "  WARNING: this reaction's search returned nothing. Either the index does not\n",
+        );
+        out.push_str("  cover these files, or the rule's scope excludes everything indexed.\n");
+        if let Some(ref group) = search.group {
+            out.push_str(&format!("  scope: group `{group}`\n"));
+        }
+        if !search.tags.is_empty() {
+            out.push_str(&format!("  scope: tags {}\n", search.tags.join(", ")));
+        }
+        return out;
+    }
+
+    out.push_str(&format!(
+        "\n--- Indexed files ({} results) ---\n\n",
+        hits.len()
+    ));
+    for h in hits {
+        out.push_str(&format!("  {} (score: {:.2})\n", h.path, h.score));
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // Default built-in rules
 // ---------------------------------------------------------------------------
@@ -1828,6 +1878,101 @@ guidance = "Review coupled files for {file_stem}"
         assert_eq!(searches[0].query, "related to main");
         assert_eq!(searches[0].group, Some("infra".into()));
         assert_eq!(searches[0].tags, vec!["auto:config"]);
+    }
+
+    /// The ordering constraint the hook depends on, asserted here rather than
+    /// left as a comment: `evaluate_reactions` records a dedup key for every
+    /// rule it fires, and `pending_searches` skips already-fired keys. So the
+    /// hook MUST collect pending searches first. Calling them the other way
+    /// round returns nothing — a silent no-op indistinguishable from the
+    /// unwired state, which is the bug this whole change fixes.
+    #[test]
+    fn test_pending_searches_must_be_collected_before_evaluate() {
+        let rules: Vec<CompiledRule> = vec![CompiledRule::compile(ReactionRule {
+            name: "search-rule".into(),
+            tool: "Edit".into(),
+            match_conditions: HashMap::new(),
+            guidance: "Check related".into(),
+            search_query: "related to {file_stem}".into(),
+            search_group: String::new(),
+            search_tags: vec![],
+            max_context_lines: 50,
+            use_coupling: false,
+            coupling_threshold: 0.3,
+            roles: vec![],
+        })
+        .unwrap()];
+
+        let event = ToolEvent {
+            tool_name: "Edit".into(),
+            tool_input: json!({"file_path": "/home/user/main.tf"}),
+        };
+
+        // Correct order: collect, then evaluate.
+        let mut dedup = DedupTracker {
+            fired: std::collections::HashSet::new(),
+            path: None,
+        };
+        let before = pending_searches(&event, &rules, &dedup, "default");
+        let eval = evaluate_reactions(&event, &rules, &mut dedup, None, 100, "default");
+        assert_eq!(eval.reactions_fired, 1);
+        assert_eq!(before.len(), 1, "search must be visible before evaluation");
+
+        // The trap: the same call after evaluation sees the rule as deduped.
+        let after = pending_searches(&event, &rules, &dedup, "default");
+        assert!(
+            after.is_empty(),
+            "evaluate_reactions marks the rule fired, so a later collection is empty"
+        );
+    }
+
+    // -- Search result formatting --
+
+    #[test]
+    fn test_format_search_results_lists_hits() {
+        let search = PendingSearch {
+            rule_name: "r".into(),
+            query: "terraform container web".into(),
+            group: None,
+            tags: vec![],
+            max_lines: 50,
+        };
+        let out = format_search_results(
+            &search,
+            &[
+                SearchHit {
+                    path: "infra/web.tf".into(),
+                    score: 0.91,
+                },
+                SearchHit {
+                    path: "infra/net.tf".into(),
+                    score: 0.42,
+                },
+            ],
+        );
+        assert!(out.contains("Indexed files (2 results)"), "{out}");
+        assert!(out.contains("infra/web.tf (score: 0.91)"), "{out}");
+        assert!(!out.contains("WARNING"), "{out}");
+    }
+
+    /// A zero-hit search must SAY so. Rendering nothing makes a rule whose
+    /// scope matches no indexed file look exactly like a rule that never ran.
+    #[test]
+    fn test_format_search_results_warns_on_no_hits() {
+        let search = PendingSearch {
+            rule_name: "r".into(),
+            query: "terraform container web".into(),
+            group: Some("goldblum".into()),
+            tags: vec!["auto:config".into()],
+            max_lines: 50,
+        };
+        let out = format_search_results(&search, &[]);
+        assert!(out.contains("No indexed files found"), "{out}");
+        assert!(out.contains("WARNING"), "{out}");
+        // The scope is named, because a group absent from this index is the
+        // most likely cause and the operator cannot guess it from silence.
+        assert!(out.contains("group `goldblum`"), "{out}");
+        assert!(out.contains("auto:config"), "{out}");
     }
 
     // -- Built-in rules tests --
