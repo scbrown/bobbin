@@ -2,6 +2,7 @@ mod common;
 
 use common::{init_project, try_indexed_project, TestProject};
 use predicates::prelude::*;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // ─── inject-context handler ─────────────────────────────────────────────────
 
@@ -102,6 +103,57 @@ fn inject_context_silent_on_missing_index() {
         .assert()
         .success()
         .stdout(predicate::str::is_empty());
+}
+
+#[test]
+fn local_inject_context_consumes_the_published_work_item() {
+    let project = init_project();
+    let plate_root = tempfile::tempdir().unwrap();
+    let plate_dir = plate_root.path().join("crew").join("kelly");
+    std::fs::create_dir_all(&plate_dir).unwrap();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    std::fs::write(
+        plate_dir.join("plate.json"),
+        format!(r#"{{"item":"aegis-368cu.9","at":{now},"session":null}}"#),
+    )
+    .unwrap();
+
+    let stdin_json = serde_json::json!({
+        "prompt": "how does the calculator work",
+        "cwd": project.path().to_str().unwrap()
+    });
+    TestProject::bobbin_cmd()
+        .args(["hook", "inject-context", "--gate-threshold", "0.0"])
+        .current_dir(project.path())
+        .env("SHANTY_ROOT", plate_root.path())
+        .env("SHANTY_AGENT", "kelly")
+        .write_stdin(serde_json::to_string(&stdin_json).unwrap())
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "scoping retrieval to work item aegis-368cu.9",
+        ));
+}
+
+#[test]
+fn local_inject_context_abstains_when_the_plate_is_unknown() {
+    let project = init_project();
+    let stdin_json = serde_json::json!({
+        "prompt": "how does the calculator work",
+        "cwd": project.path().to_str().unwrap()
+    });
+    TestProject::bobbin_cmd()
+        .args(["hook", "inject-context", "--gate-threshold", "0.0"])
+        .current_dir(project.path())
+        .env_remove("SHANTY_ROOT")
+        .env_remove("SHANTY_AGENT")
+        .write_stdin(serde_json::to_string(&stdin_json).unwrap())
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("scoping retrieval to work item").not());
 }
 
 #[test]

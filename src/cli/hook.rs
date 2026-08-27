@@ -1253,15 +1253,14 @@ async fn inject_context_remote(
     // abstains rather than guessing, because a wrong item would skew every
     // retrieval in the session while looking exactly like it was working.
     let work_item = crate::plate::current();
-    let item_scoped_query;
-    let search_query = match work_item.as_deref() {
-        Some(item) => {
-            item_scoped_query = format!("{search_query} {item}");
-            eprintln!("bobbin: scoping retrieval to work item {item}");
-            item_scoped_query.as_str()
-        }
-        None => search_query,
-    };
+    let item_scoped_query = crate::plate::scope_query(search_query, work_item.as_deref());
+    if matches!(&item_scoped_query, std::borrow::Cow::Owned(_)) {
+        eprintln!(
+            "bobbin: scoping retrieval to work item {}",
+            work_item.as_deref().expect("owned query requires an item")
+        );
+    }
+    let search_query = item_scoped_query.as_ref();
 
     // 3g. Query intent classification: adjust gate threshold for operational queries
     let intent = crate::search::intent::classify_intent(search_query);
@@ -3617,6 +3616,20 @@ async fn inject_context_inner(args: InjectContextArgs) -> Result<()> {
     let trajectory_query = prompt_history.build_trajectory_query(search_query, 700);
     prompt_history.record(search_query);
     let search_query = trajectory_query.as_str();
+
+    // The local path consumes the SAME published answer and uses the SAME
+    // additive retrieval prior as remote mode. This was the missing half of
+    // 72691f7: --server was work-item-aware while local injection silently
+    // remained per-prompt and stateless.
+    let work_item = crate::plate::current();
+    let item_scoped_query = crate::plate::scope_query(search_query, work_item.as_deref());
+    if matches!(&item_scoped_query, std::borrow::Cow::Owned(_)) {
+        eprintln!(
+            "bobbin: scoping retrieval to work item {}",
+            work_item.as_deref().expect("owned query requires an item")
+        );
+    }
+    let search_query = item_scoped_query.as_ref();
 
     // 4. Open stores
     let lance_path = Config::lance_path(&repo_root);

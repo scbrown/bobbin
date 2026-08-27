@@ -33,6 +33,7 @@
 //! which is worse than the stateless behaviour it replaces because it looks
 //! like it is working.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 /// A plate older than this is UNKNOWN. Overridable with `BOBBIN_PLATE_MAX_AGE_SECS`.
@@ -97,9 +98,22 @@ pub fn current() -> Option<String> {
     parse(&doc, now, max_age)
 }
 
+/// Add the published work item as a retrieval prior without replacing the prompt.
+///
+/// Shared by local and remote injection so the two execution modes cannot
+/// disagree about how work-item scope biases retrieval. Unknown leaves the
+/// original query borrowed and byte-identical.
+#[must_use]
+pub fn scope_query<'a>(query: &'a str, item: Option<&str>) -> Cow<'a, str> {
+    match item {
+        Some(item) => Cow::Owned(format!("{query} {item}")),
+        None => Cow::Borrowed(query),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::parse;
+    use super::{parse, scope_query};
 
     #[test]
     fn a_fresh_plate_yields_its_item() {
@@ -130,5 +144,21 @@ mod tests {
         ] {
             assert_eq!(parse(doc, 1_500, 3_600), None, "should abstain on: {doc}");
         }
+    }
+
+    #[test]
+    fn scope_is_an_additive_retrieval_prior() {
+        assert_eq!(
+            scope_query("how does dispatch work", Some("aegis-368cu.9")),
+            "how does dispatch work aegis-368cu.9"
+        );
+    }
+
+    #[test]
+    fn unknown_scope_preserves_the_query_byte_for_byte() {
+        let query = "  keep my exact whitespace  ";
+        let scoped = scope_query(query, None);
+        assert!(matches!(scoped, std::borrow::Cow::Borrowed(_)));
+        assert_eq!(scoped, query);
     }
 }
