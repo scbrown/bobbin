@@ -21,6 +21,16 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.9.1](https://github.com/scbrown/bobbin/compare/v0.9.0...v0.9.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **ci:** keep Lance conflict test within size ratchet ([5eccd8e](https://github.com/scbrown/bobbin/commit/5eccd8eebd85672ee9692e5f479bfc5d528bfa87))
+* **ci:** refresh hook file-size ratchets ([f7c0954](https://github.com/scbrown/bobbin/commit/f7c09545e1c140d4b11f49dce59f5e144a88bf0d))
+* **hook:** align local work-item context scope ([a5d533f](https://github.com/scbrown/bobbin/commit/a5d533fb6a02db914c14eb6db031ac619401f837))
+* **lance:** recognize lowercase retryable commit conflicts ([0637ec7](https://github.com/scbrown/bobbin/commit/0637ec744d466abda5800dd36a84ad56c4196fbc))
+
 ## [0.9.0](https://github.com/scbrown/bobbin/compare/v0.8.0...v0.9.0) (2026-08-25)
 
 
