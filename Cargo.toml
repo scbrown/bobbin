@@ -1,9 +1,7 @@
 [package]
-name = "bobbin"
-# Release Please manages version bumps and tags without invoking Cargo's
-# packaging/publishing path. Safe: the crates.io `bobbin` name is owned by an
-# unrelated party, so an accidental `cargo publish` errors on ownership rather
-# than leaking anything.
+name = "bobbin-ai"
+# The package uses the unique crates.io suffix; the [[bin]] name below remains
+# `bobbin`, so user-facing commands and the project name do not change.
 version = "0.9.0"
 edition = "2021"
 authors = ["Bobbin Team"]
@@ -11,7 +9,7 @@ description = "Local-first context injection engine for AI coding agents"
 license = "MIT"
 repository = "https://github.com/scbrown/bobbin"
 homepage = "https://github.com/scbrown/bobbin"
-documentation = "https://docs.rs/bobbin"
+documentation = "https://docs.rs/bobbin-ai"
 readme = "README.md"
 keywords = ["rag", "code-search", "embeddings", "tree-sitter"]
 categories = ["command-line-utilities", "development-tools"]
@@ -118,8 +116,8 @@ schemars = "1.0"
 
 # Knowledge graph (Quipu subsystem)
 #
-# rev = 37bfc06a is quipu 0.3.23, current main as of 2026-08-22. The previous pin
-# (7f984b4e, 0.2.0) was a deliberate hold: 0.3.x moved `tool_project` to
+# quipu-ai 0.3.27 is the published registry package for this project's Quipu
+# dependency. The previous 0.3.23 git pin was a deliberate hold: 0.3.x moved `tool_project` to
 # `&mut Store` and bobbin passed `&Store` from an immutable borrow. That
 # migration is done — the assembler reaches its store through `&mut self`
 # (src/search/context.rs run_hybrid_search) and src/search/ppr.rs takes
@@ -131,23 +129,6 @@ schemars = "1.0"
 #     probe in src/knowledge/quarantine.rs passes,
 #   - graph-scoped SHACL repair context for chunked named-graph writes
 #     (quipu-080 / d0c24b7).
-#
-# Pinned by rev rather than `branch = "main"` so the compiled quipu can never
-# drift from the rev this code was adapted to, whatever checkout state CI has.
-# With `knowledge` built by CI (bobbin-jdlkh), a floating branch dep would
-# break the build the moment quipu's API moved.
-#
-# LOCKFILE LANDMINE: quipu declares `rudof_lib = "^0.2.8"`, but rudof_lib
-# 0.2.9+ moved `validate_shacl` to a builder API that quipu 37bfc06a does not
-# compile against, and the rudof workspace crates use loose cross-reqs, so a
-# mixed-version rudof family does not compile either. Bobbin's (tracked)
-# Cargo.lock therefore pins the WHOLE family to the versions in quipu's own
-# Cargo.lock: rudof_lib/rudof_rdf/shacl_ir/shacl_validation/shapes_converter/
-# shex_ast/shex_validation/sparql_service/dctap 0.2.8, prefixmap/rudof_generate/
-# shacl_ast/shacl_rdf/shapes_comparator 0.2.6, rbe 0.2.7. A bare
-# `cargo update` floats them to 0.2.20 and breaks the quipu build; re-pin
-# with `cargo update -p <crate> --precise <ver>` per the list above
-# (rudof_lib first, then comparator, then the rest).
 #
 # `default-features = false` keeps quipu's `onnx` OFF — MUST stay off. Verified via
 # `cargo tree -i ort`: only bobbin pulls ort/tokenizers, quipu does not, so quipu's
@@ -161,7 +142,7 @@ schemars = "1.0"
 # (see KNOWLEDGE_SHACL_ENABLED in src/mcp/server.rs). The chrono clash that
 # used to forbid this (rudof_lib needed ^0.4.42, arrow-array 53.4.1 capped at
 # <0.4.40) was dissolved by the lancedb 0.27 / arrow 57 bump above.
-quipu = { version = "=0.3.23", git = "https://github.com/scbrown/quipu", rev = "37bfc06a33081d26177cd7176de45c7cab3647e8", default-features = false, features = ["shacl"], optional = true }
+quipu = { package = "quipu-ai", version = "0.3.27", default-features = false, features = ["shacl"], optional = true }
 
 # HTTP Server
 axum = "0.8"
