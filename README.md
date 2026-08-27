@@ -283,7 +283,12 @@ v0.7.2 added remote chunk-snapshot publication and aligned code and document ent
 IRIs with the code graph they are meant to join. v0.7.3 extended FTS recovery to
 index-time compaction and made maintenance failures fail the index run instead of
 masquerading as success. v0.8.0 added verified, faction-scoped grounding injection
-for the Neural Amplifier harness.
+for the Neural Amplifier harness. v0.9.0 wired the advanced query parser into
+`bobbin search` and made `+` a real required-term operator, with `/search` echoing the
+parsed query so a caller can see how their input was interpreted rather than inferring
+it from the results; it also added `GET /deps` and `GET /history` for HTTP/MCP parity,
+`bobbin index-bead <id>` for single-bead incremental reindexing, and surfaced governed
+path boundaries in injected context.
 
 Tagged releases are built by the GitHub Actions release matrix and published as
 checksummed platform artifacts. The release artifacts are the supported binary
