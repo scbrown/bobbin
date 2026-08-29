@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.10.2](https://github.com/scbrown/bobbin/compare/v0.10.1...v0.10.2) (2026-08-29)
+
+
+### Bug Fixes
+
+* **http:** authenticate push webhooks with HMAC (aegis-svpnm) ([2d69e39](https://github.com/scbrown/bobbin/commit/2d69e3924455b4c8c1a0b328024b981d7254fd9a))
+
 ## [0.10.1](https://github.com/scbrown/bobbin/compare/v0.10.0...v0.10.1) (2026-08-29)
 
 
