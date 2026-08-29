@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.10.3](https://github.com/scbrown/bobbin/compare/v0.10.2...v0.10.3) (2026-08-29)
+
+
+### Bug Fixes
+
+* **index:** bound remote graph publication stalls ([ad1b499](https://github.com/scbrown/bobbin/commit/ad1b499d1745dae9c232c3c7bb89b1a8bfe0533e))
+
 ## [0.10.2](https://github.com/scbrown/bobbin/compare/v0.10.1...v0.10.2) (2026-08-29)
 
 
