@@ -1,0 +1,19 @@
+{
+  "manifest": {
+    "schema": "https://github.com/scbrown/quipu/share-manifest/v1",
+    "share_id": "sha256:bb6c0816a249c856c61c089e1bc17cad9d2438e513c18fd7b2d74162935faa15",
+    "store_id": "urn:uuid:7c8cae87-3213-4ed7-8025-595334eed25d",
+    "tx_anchor": 42,
+    "graph_hash": "sha256:9f767ff74fecab572dd616de64ada3234f94667e3c0de1b2344d017e45339e1b",
+    "shapes_hash": "sha256:4ec95ce0355ac6dc52cab188de1ed1c0d24482071a2e8dd0c4c693efd72df2fa",
+    "scope": {"kind": "group", "value": "public-example"},
+    "parent_share": null,
+    "created_at": "2026-08-29T08:38:00Z",
+    "producer": {"name": "quipu", "version": "0.3.27"},
+    "files": {"graph": "export.nt", "shapes": "shapes.ttl", "turtle_view": null}
+  },
+  "export_ntriples": "<https://example.org/people/alice> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://xmlns.com/foaf/0.1/Person> .\n<https://example.org/people/alice> <http://www.w3.org/2000/01/rdf-schema#label> \"Alice\" .\n",
+  "shapes_turtle": "@prefix foaf: <http://xmlns.com/foaf/0.1/> .\n@prefix sh: <http://www.w3.org/ns/shacl#> .\n\n[] a sh:NodeShape ; sh:targetClass foaf:Person .\n",
+  "source": "https://example.org/shares/alice-v1",
+  "actor": "https://example.org/actors/bobbin-test"
+}

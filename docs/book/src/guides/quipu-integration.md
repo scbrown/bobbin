@@ -136,6 +136,23 @@ Key design decisions:
 - **Shared embeddings**: Both systems use the same ONNX model session for vector generation.
 - **Single MCP server**: One `bobbin serve` process exposes both Bobbin and Quipu tools.
 
+## Share bundle contract
+
+Bobbin's knowledge build includes typed consumer models for Quipu's versioned
+share manifest and import request/response. A canonical v1 share contains
+`manifest.json`, `export.nt`, and `shapes.ttl`; `export.ttl` is an optional
+human-readable view and is not the graph identity. Consumers reject unsupported
+manifest versions and non-canonical paths. Additive fields within v1 are
+preserved during typed round trips so an older Bobbin does not erase extensions
+from a newer compatible Quipu.
+
+The checked-in fixture at `tests/fixtures/quipu-share-v1/` exercises graph and
+shape hashes, the JCS-derived share identity, sorted duplicate-free N-Triples,
+staged import resolution, quarantine, and promotion blockers. It is the contract
+fixture for future `knowledge_*` adapters. Those adapters delegate canonical
+serialization, identity resolution, quarantine, and RDF merge semantics to
+Quipu; Bobbin does not define a parallel bundle format.
+
 ## Integration Roadmap
 
 The integration is being built in phases. See [docs/plans/quipu-integration.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/quipu-integration.md) for the full plan.

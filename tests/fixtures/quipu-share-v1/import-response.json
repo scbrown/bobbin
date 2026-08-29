@@ -1,0 +1,20 @@
+{
+  "outcome": "quarantined",
+  "import_id": "https://example.org/imports/alice-v1",
+  "share_id": "sha256:bb6c0816a249c856c61c089e1bc17cad9d2438e513c18fd7b2d74162935faa15",
+  "graph_hash": "sha256:9f767ff74fecab572dd616de64ada3234f94667e3c0de1b2344d017e45339e1b",
+  "staging_graph": "https://example.org/graphs/import/alice-v1",
+  "triples": {"accepted": 1, "quarantined": 1},
+  "resolution": {
+    "exact_merges": [],
+    "candidates": [
+      {"foreign": "https://example.org/people/alice", "local": "https://example.org/people/alicia", "score": 0.91}
+    ],
+    "unmatched": []
+  },
+  "validation": {
+    "conforms": false,
+    "report": {"code": "unknown-local-class", "focus": "http://xmlns.com/foaf/0.1/Person"}
+  },
+  "promotion": {"eligible": false, "blockers": ["quarantined-facts", "resolution-review"]}
+}
