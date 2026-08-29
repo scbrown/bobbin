@@ -31,6 +31,11 @@ use anyhow::{Context, Result};
 use crate::iri::ONTOLOGY_NS;
 use crate::types::{Chunk, ChunkEdge, ChunkEdgeType, ChunkType};
 
+#[cfg(not(test))]
+const REMOTE_QUIPU_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+#[cfg(test)]
+const REMOTE_QUIPU_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// Build the durable IRI for a chunk from stable coordinates.
 pub(crate) use crate::iri::chunk_iri;
 
@@ -344,7 +349,10 @@ async fn push_chunks_to_remote_quipu_with_token(
     });
     let url = format!("{}/knot", endpoint.trim_end_matches('/'));
     let response = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
+        // Chunk publication is best-effort and snapshot-idempotent. Do not let
+        // an unavailable ontology make an otherwise-complete index look hung;
+        // the next index run reconciles the same named snapshot.
+        .timeout(REMOTE_QUIPU_TIMEOUT)
         .build()
         .context("building remote Quipu client")?
         .post(&url)
@@ -542,6 +550,36 @@ mod tests {
         assert_eq!(body["snapshot"], "bobbin-chunks:repo");
         assert_eq!(body["actor"], "bobbin");
         assert!(body["turtle"].as_str().unwrap().contains("bobbin:Section"));
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_timeout_is_bounded() {
+        use axum::{routing::post, Json, Router};
+
+        async fn stalled_knot() -> Json<serde_json::Value> {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            Json(serde_json::json!({"conforms": true, "replaced": true}))
+        }
+
+        let app = Router::new().route("/knot", post(stalled_knot));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let started = std::time::Instant::now();
+        let result = push_chunks_to_remote_quipu_with_token(
+            &[chunk("h", "docs/a.md", 1, Some("A"))],
+            &[],
+            "repo",
+            &format!("http://{addr}"),
+            "secret",
+        )
+        .await;
+
+        server.abort();
+        assert!(result.is_err());
+        assert!(started.elapsed() < std::time::Duration::from_millis(500));
+        assert!(format!("{:#}", result.unwrap_err()).contains("POST"));
     }
 
     #[test]

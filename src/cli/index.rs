@@ -204,6 +204,7 @@ struct ProfileStats {
     git_coupling_ms: u128,
     git_commits_ms: u128,
     deps_ms: u128,
+    graph_push_ms: u128,
     compact_ms: u128,
     total_chunks_embedded: usize,
     total_batches: usize,
@@ -985,9 +986,22 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
+    // Dependency extraction/storage is complete here. Remote graph
+    // publication has its own latency and must not masquerade as dependency
+    // work in --verbose profiles.
+    profile.deps_ms = t_deps.elapsed().as_millis();
+    let t_graph_push = Instant::now();
+
     // Push the chunk graph to quipu as a diffed snapshot (opt-in, W2.P4).
     #[cfg(feature = "knowledge")]
     if config.quipu_push_chunks && !all_slim_chunks.is_empty() {
+        if config.quipu_endpoint.is_some() && !output.quiet && !output.json {
+            println!(
+                "  Publishing {} chunks and {} edges to remote Quipu (best effort, 15s timeout)...",
+                all_slim_chunks.len(),
+                all_chunk_edges.len()
+            );
+        }
         let pushed = if let Some(endpoint) = config.quipu_endpoint.as_deref() {
             crate::knowledge::chunks::push_chunks_to_remote_quipu(
                 &all_slim_chunks,
@@ -1064,7 +1078,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
     }
 
-    profile.deps_ms = t_deps.elapsed().as_millis();
+    profile.graph_push_ms = t_graph_push.elapsed().as_millis();
 
     // Index git commits as searchable chunks
     let t_commits = Instant::now();
@@ -1374,6 +1388,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             + profile.insert_ms
             + profile.git_coupling_ms
             + profile.deps_ms
+            + profile.graph_push_ms
             + profile.git_commits_ms
             + profile.compact_ms;
         let other_ms = total_ms.saturating_sub(accounted);
@@ -1394,6 +1409,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         println!("  git coupling:   {:>7}ms", profile.git_coupling_ms);
         println!("  git commits:    {:>7}ms", profile.git_commits_ms);
         println!("  deps:           {:>7}ms", profile.deps_ms);
+        println!("  graph push:     {:>7}ms", profile.graph_push_ms);
         println!("  compact:        {:>7}ms", profile.compact_ms);
         println!("  other/overhead: {:>7}ms", other_ms);
         println!("  TOTAL:          {:>7}ms", total_ms);
