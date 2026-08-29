@@ -37,7 +37,7 @@ use cli::Cli;
 /// 2. `<exe_dir>/lib/` — release tarball bundle
 /// 3. `<exe_dir>/` — library next to binary
 /// 4. pip/uv cache under `~/.cache/uv/` or `~/.local/lib/python*/site-packages/`
-/// 5. System paths: `/usr/lib/`, `/usr/local/lib/`
+/// 5. System paths, including Linux multiarch directories
 fn ensure_ort_dylib() {
     if std::env::var_os("ORT_DYLIB_PATH").is_some() {
         return;
@@ -97,7 +97,12 @@ fn find_ort_dylib() -> Option<std::path::PathBuf> {
     }
 
     // 3. System paths
-    for dir in &["/usr/local/lib", "/usr/lib"] {
+    for dir in &[
+        "/usr/local/lib",
+        "/usr/lib",
+        "/usr/lib/x86_64-linux-gnu",
+        "/usr/lib/aarch64-linux-gnu",
+    ] {
         let path = std::path::Path::new(dir);
         if let Some(found) = search_dir(path, ext_check) {
             return Some(found);
@@ -171,6 +176,25 @@ fn search_python_site_packages(
 
 fn home_dir() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").map(std::path::PathBuf::from)
+}
+
+#[cfg(test)]
+mod ort_loader_tests {
+    use super::search_dir;
+
+    #[test]
+    fn finds_versioned_onnx_runtime_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = dir.path().join("libonnxruntime.so.1.23.2");
+        std::fs::write(&runtime, b"fixture").unwrap();
+        let found = search_dir(dir.path(), |path| {
+            path.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .starts_with("libonnxruntime.so")
+        });
+        assert_eq!(found.as_deref(), Some(runtime.as_path()));
+    }
 }
 
 #[tokio::main]

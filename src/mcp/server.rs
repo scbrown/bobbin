@@ -3825,7 +3825,18 @@ pub async fn run_http_server(repo_root: PathBuf, port: u16) -> Result<()> {
             },
         );
 
-    let router = axum::Router::new().nest_service("/mcp", service);
+    async fn count_mcp_request(
+        request: axum::extract::Request,
+        next: axum::middleware::Next,
+    ) -> axum::response::Response {
+        let has_session = request.headers().contains_key("mcp-session-id");
+        crate::operational_metrics::record_request("mcp", has_session);
+        next.run(request).await
+    }
+
+    let router = axum::Router::new()
+        .nest_service("/mcp", service)
+        .layer(axum::middleware::from_fn(count_mcp_request));
     let config_path = crate::config::Config::config_path(&repo_root);
     let bind_host = if config_path.exists() {
         crate::config::Config::load(&config_path)

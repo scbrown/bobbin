@@ -17,6 +17,14 @@ use crate::config::{Config, SourcesConfig};
 use crate::index::embedder::Embedder;
 use crate::tags::TagsConfig;
 
+async fn count_http_request(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    crate::operational_metrics::record_request("http", false);
+    next.run(request).await
+}
+
 /// Shared application state for HTTP handlers
 pub struct AppState {
     pub repo_root: PathBuf,
@@ -74,7 +82,7 @@ pub async fn run_server(repo_root: PathBuf, port: u16) -> Result<()> {
         embedder: OnceCell::new(),
     });
 
-    let app = handlers::router(state);
+    let app = handlers::router(state).layer(axum::middleware::from_fn(count_http_request));
 
     let addr = SocketAddr::from((bind_addr, port));
     tracing::info!("Bobbin HTTP server listening on {}", addr);
