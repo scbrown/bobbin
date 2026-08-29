@@ -3808,35 +3808,24 @@ pub async fn run_http_server(repo_root: PathBuf, port: u16) -> Result<()> {
                 //     HTTP 404: Invalid OAuth error response ... Raw body: <EMPTY>
                 // for EVERY bobbin tool, while the server itself is perfectly healthy.
                 // The failure is permanent for that agent session: the client never
-                // re-initializes, so the agent silently falls back to grep for the rest
-                // of its life. (The MCP spec says an expired session SHOULD get 404, on
-                // which clients MUST re-initialize; rmcp's 401 is what routes it into
-                // the OAuth path instead.)
-                //
+                // re-initializes, so the agent silently falls back to grep. Stateless
+                // mode avoids that stale-session failure.
                 // Stateless mode removes the session concept altogether: every POST is
                 // self-contained, so a restart cannot orphan a client. It is ~free here
                 // because `BobbinMcpServer::new` only checks that the config file exists
                 // and builds the tool router — every store is opened per tool call.
-                // GET/DELETE now return 405, which the spec explicitly permits for
-                // servers that offer no server-initiated SSE stream.
                 stateful_mode: false,
                 sse_keep_alive: Some(std::time::Duration::from_secs(15)),
                 cancellation_token: ct.child_token(),
             },
         );
 
-    async fn count_mcp_request(
-        request: axum::extract::Request,
-        next: axum::middleware::Next,
-    ) -> axum::response::Response {
-        let has_session = request.headers().contains_key("mcp-session-id");
-        crate::operational_metrics::record_request("mcp", has_session);
-        next.run(request).await
-    }
-
-    let router = axum::Router::new()
-        .nest_service("/mcp", service)
-        .layer(axum::middleware::from_fn(count_mcp_request));
+    let router =
+        axum::Router::new()
+            .nest_service("/mcp", service)
+            .layer(axum::middleware::from_fn(
+                crate::operational_metrics::count_mcp_request,
+            ));
     let config_path = crate::config::Config::config_path(&repo_root);
     let bind_host = if config_path.exists() {
         crate::config::Config::load(&config_path)

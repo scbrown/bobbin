@@ -21,6 +21,14 @@ pub(crate) fn record_request(transport: &str, has_session: bool) {
     }
 }
 
+pub(crate) async fn count_mcp_request(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    record_request("mcp", request.headers().contains_key("mcp-session-id"));
+    next.run(request).await
+}
+
 pub(crate) fn record_fts_rebuild() {
     FTS_REBUILD_TOTAL.fetch_add(1, Ordering::Relaxed);
 }
