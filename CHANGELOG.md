@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.10.0](https://github.com/scbrown/bobbin/compare/v0.9.1...v0.10.0) (2026-08-29)
+
+
+### Features
+
+* **knowledge:** add Quipu share v1 contract fixtures ([c8d11c0](https://github.com/scbrown/bobbin/commit/c8d11c0295d40e472263c90ce8e9823a20f699cf))
+
 ## [0.9.1](https://github.com/scbrown/bobbin/compare/v0.9.0...v0.9.1) (2026-08-27)
 
 
