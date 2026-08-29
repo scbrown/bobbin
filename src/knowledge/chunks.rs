@@ -24,17 +24,15 @@
 //! it stays because it guards correctness of whatever store is opened, not
 //! a particular pin.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 
 use crate::iri::ONTOLOGY_NS;
 use crate::types::{Chunk, ChunkEdge, ChunkEdgeType, ChunkType};
 
-#[cfg(not(test))]
-const REMOTE_QUIPU_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
-#[cfg(test)]
-const REMOTE_QUIPU_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(100);
+mod remote;
+pub use remote::push_chunks_to_remote_quipu;
 
 /// Build the durable IRI for a chunk from stable coordinates.
 pub(crate) use crate::iri::chunk_iri;
@@ -314,95 +312,6 @@ pub fn push_chunks_to_quipu(
     ))
 }
 
-/// Push the chunk graph to the configured remote Quipu ontology.
-///
-/// This is deliberately separate from the embedded-store helper above: a
-/// remote write needs authentication and its delivery must be established by
-/// the HTTP response. The same snapshot key makes the next scheduled index an
-/// idempotent reconciliation if a response is lost after commit.
-pub async fn push_chunks_to_remote_quipu(
-    chunks: &[Chunk],
-    edges: &[ChunkEdge],
-    repo_name: &str,
-    endpoint: &str,
-) -> Result<(i64, usize)> {
-    let token = quipu_auth_token().context(
-        "quipu_push_chunks targets a remote ontology but no QUIPU_AUTH_TOKEN or readable token file is available",
-    )?;
-    push_chunks_to_remote_quipu_with_token(chunks, edges, repo_name, endpoint, &token).await
-}
-
-async fn push_chunks_to_remote_quipu_with_token(
-    chunks: &[Chunk],
-    edges: &[ChunkEdge],
-    repo_name: &str,
-    endpoint: &str,
-    token: &str,
-) -> Result<(i64, usize)> {
-    let body = serde_json::json!({
-        "turtle": generate_chunk_turtle(chunks, edges, repo_name),
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "actor": "bobbin",
-        "source": format!("bobbin chunk index: {repo_name}"),
-        "replace_snapshot": true,
-        "snapshot": format!("bobbin-chunks:{repo_name}"),
-    });
-    let url = format!("{}/knot", endpoint.trim_end_matches('/'));
-    let response = reqwest::Client::builder()
-        // Chunk publication is best-effort and snapshot-idempotent. Do not let
-        // an unavailable ontology make an otherwise-complete index look hung;
-        // the next index run reconciles the same named snapshot.
-        .timeout(REMOTE_QUIPU_TIMEOUT)
-        .build()
-        .context("building remote Quipu client")?
-        .post(&url)
-        .bearer_auth(token)
-        .json(&body)
-        .send()
-        .await
-        .with_context(|| format!("POST {url}"))?;
-    let status = response.status();
-    let text = response.text().await.unwrap_or_default();
-    if !status.is_success() {
-        anyhow::bail!(
-            "remote Quipu returned HTTP {status}: {}",
-            text.chars().take(300).collect::<String>()
-        );
-    }
-    let result: serde_json::Value =
-        serde_json::from_str(&text).context("parsing remote Quipu /knot response")?;
-    if result.get("conforms").and_then(|v| v.as_bool()) == Some(false) {
-        anyhow::bail!("remote Quipu refused chunk snapshot by SHACL: {result}");
-    }
-    if result.get("replaced").and_then(|v| v.as_bool()) != Some(true) {
-        anyhow::bail!(
-            "remote Quipu did not confirm snapshot replacement; refusing an accumulating write: {result}"
-        );
-    }
-    Ok((
-        result["tx_id"].as_i64().unwrap_or(-1),
-        result["count"].as_u64().unwrap_or(0) as usize,
-    ))
-}
-
-fn quipu_auth_token() -> Option<String> {
-    std::env::var("QUIPU_AUTH_TOKEN")
-        .ok()
-        .filter(|token| !token.trim().is_empty())
-        .or_else(|| {
-            let path = std::env::var_os("QUIPU_AUTH_TOKEN_FILE")
-                .map(PathBuf::from)
-                .or_else(|| {
-                    directories::BaseDirs::new()
-                        .map(|dirs| dirs.home_dir().join(".config/aegis/quipu_token"))
-                })?;
-            std::fs::read_to_string(path)
-                .ok()
-                .map(|token| token.trim().to_string())
-                .filter(|token| !token.is_empty())
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -500,86 +409,6 @@ mod tests {
         ));
         assert!(turtle.contains("bobbin:heading \"Guide > Setup\""));
         assert!(turtle.contains("bobbin:headingDepth \"2\"^^xsd:integer"));
-    }
-
-    #[tokio::test]
-    async fn remote_snapshot_is_authenticated_and_content_addressed_by_repo() {
-        use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
-        use std::sync::{Arc, Mutex};
-
-        #[derive(Clone, Default)]
-        struct Seen(Arc<Mutex<Option<(HeaderMap, serde_json::Value)>>>);
-
-        async fn knot(
-            State(seen): State<Seen>,
-            headers: HeaderMap,
-            Json(body): Json<serde_json::Value>,
-        ) -> Json<serde_json::Value> {
-            *seen.0.lock().unwrap() = Some((headers, body));
-            Json(serde_json::json!({
-                "conforms": true,
-                "replaced": true,
-                "tx_id": 42,
-                "count": 7
-            }))
-        }
-
-        let seen = Seen::default();
-        let app = Router::new()
-            .route("/knot", post(knot))
-            .with_state(seen.clone());
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-        let chunks = vec![chunk("h", "docs/a.md", 1, Some("A"))];
-        let result = push_chunks_to_remote_quipu_with_token(
-            &chunks,
-            &[],
-            "repo",
-            &format!("http://{addr}"),
-            "secret",
-        )
-        .await
-        .unwrap();
-        assert_eq!(result, (42, 7));
-
-        let (headers, body) = seen.0.lock().unwrap().take().unwrap();
-        assert_eq!(headers["authorization"], "Bearer secret");
-        assert_eq!(body["replace_snapshot"], true);
-        assert_eq!(body["snapshot"], "bobbin-chunks:repo");
-        assert_eq!(body["actor"], "bobbin");
-        assert!(body["turtle"].as_str().unwrap().contains("bobbin:Section"));
-    }
-
-    #[tokio::test]
-    async fn remote_snapshot_timeout_is_bounded() {
-        use axum::{routing::post, Json, Router};
-
-        async fn stalled_knot() -> Json<serde_json::Value> {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            Json(serde_json::json!({"conforms": true, "replaced": true}))
-        }
-
-        let app = Router::new().route("/knot", post(stalled_knot));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-        let started = std::time::Instant::now();
-        let result = push_chunks_to_remote_quipu_with_token(
-            &[chunk("h", "docs/a.md", 1, Some("A"))],
-            &[],
-            "repo",
-            &format!("http://{addr}"),
-            "secret",
-        )
-        .await;
-
-        server.abort();
-        assert!(result.is_err());
-        assert!(started.elapsed() < std::time::Duration::from_millis(500));
-        assert!(format!("{:#}", result.unwrap_err()).contains("POST"));
     }
 
     #[test]

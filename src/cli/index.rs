@@ -15,6 +15,9 @@ use crate::index::{embedder, resolver, Embedder, Parser};
 use crate::storage::{LockWait, MaintenanceOutcome, MetadataStore, VectorStore};
 use crate::types::{Chunk, ImportDependency, ImportEdge};
 
+mod profile;
+use profile::ProfileStats;
+
 /// The repo key for bead-issue chunks and their file hashes. Distinct from any
 /// source repo name so bead state never collides with a source repo that
 /// happens to be named "beads"; shared across index runs because the bead
@@ -187,27 +190,6 @@ struct FileIndexResult {
     chunks: Vec<Chunk>,
     /// Context-enriched text for each chunk (None = use chunk content directly)
     contexts: Vec<Option<String>>,
-}
-
-/// Accumulated timing stats for profiling the index pipeline.
-#[derive(Default)]
-struct ProfileStats {
-    file_read_ms: u128,
-    parse_ms: u128,
-    context_ms: u128,
-    embed_ms: u128,
-    embed_tokenize_ms: u128,
-    embed_inference_ms: u128,
-    embed_pooling_ms: u128,
-    delete_ms: u128,
-    insert_ms: u128,
-    git_coupling_ms: u128,
-    git_commits_ms: u128,
-    deps_ms: u128,
-    graph_push_ms: u128,
-    compact_ms: u128,
-    total_chunks_embedded: usize,
-    total_batches: usize,
 }
 
 pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
@@ -1377,48 +1359,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     let elapsed = start_time.elapsed();
 
-    // Print profiling summary when verbose
     if output.verbose && !output.json {
-        let total_ms = elapsed.as_millis();
-        let accounted = profile.file_read_ms
-            + profile.parse_ms
-            + profile.context_ms
-            + profile.embed_ms
-            + profile.delete_ms
-            + profile.insert_ms
-            + profile.git_coupling_ms
-            + profile.deps_ms
-            + profile.graph_push_ms
-            + profile.git_commits_ms
-            + profile.compact_ms;
-        let other_ms = total_ms.saturating_sub(accounted);
-
-        println!("\n{}", "Profile:".bold());
-        println!("  file I/O:       {:>7}ms", profile.file_read_ms);
-        println!("  parse:          {:>7}ms", profile.parse_ms);
-        println!("  context:        {:>7}ms", profile.context_ms);
-        println!(
-            "  embed:          {:>7}ms  ({} chunks in {} batches)",
-            profile.embed_ms, profile.total_chunks_embedded, profile.total_batches
-        );
-        println!("    tokenize:     {:>7}ms", profile.embed_tokenize_ms);
-        println!("    inference:    {:>7}ms", profile.embed_inference_ms);
-        println!("    pooling:      {:>7}ms", profile.embed_pooling_ms);
-        println!("  lance delete:   {:>7}ms", profile.delete_ms);
-        println!("  lance insert:   {:>7}ms", profile.insert_ms);
-        println!("  git coupling:   {:>7}ms", profile.git_coupling_ms);
-        println!("  git commits:    {:>7}ms", profile.git_commits_ms);
-        println!("  deps:           {:>7}ms", profile.deps_ms);
-        println!("  graph push:     {:>7}ms", profile.graph_push_ms);
-        println!("  compact:        {:>7}ms", profile.compact_ms);
-        println!("  other/overhead: {:>7}ms", other_ms);
-        println!("  TOTAL:          {:>7}ms", total_ms);
-
-        if profile.total_chunks_embedded > 0 && profile.embed_ms > 0 {
-            let chunks_per_sec =
-                profile.total_chunks_embedded as f64 / (profile.embed_ms as f64 / 1000.0);
-            println!("  embed throughput: {:.1} chunks/s", chunks_per_sec);
-        }
+        profile.print(elapsed);
     }
 
     // Build import stats for output (only if deps were processed)
