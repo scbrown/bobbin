@@ -18,7 +18,7 @@ Archive sources are configured in `.bobbin/config.toml`:
 ```toml
 [archive]
 enabled = true
-webhook_secret = ""  # Optional: Forgejo webhook auth token
+webhook_secret = ""  # HMAC-SHA256 secret; empty rejects every webhook
 
 [[archive.sources]]
 name = "pensieve"
@@ -99,7 +99,10 @@ For automatic re-indexing when archive sources are updated via git push:
 webhook_secret = "your-secret-token"
 ```
 
-Configure a Forgejo/Gitea push webhook pointing to `POST /webhook/push`. When a push event matches a configured repo, bobbin triggers an incremental re-index of that source.
+Configure a Forgejo/Gitea push webhook pointing to `POST /webhook/push`. Bobbin
+verifies Forgejo's `X-Gitea-Signature` HMAC-SHA256 over the exact request body;
+unsigned or invalid requests receive HTTP 401. When an authenticated push event
+matches a configured repo, bobbin triggers an incremental re-index of that source.
 
 ## Use Cases
 

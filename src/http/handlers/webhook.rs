@@ -4,9 +4,14 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use axum::body::Bytes;
 use axum::extract::State;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::IntoResponse;
 use axum::Json;
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 
 use crate::config::Config;
 use crate::storage::VectorStore;
@@ -211,10 +216,64 @@ pub(super) struct WebhookResponse {
     message: String,
 }
 
+const SIGNATURE_HEADER: &str = "x-gitea-signature";
+
+/// Verify Forgejo/Gitea's hex-encoded HMAC-SHA256 over the exact request body.
+/// Empty configuration is fail-closed: a declared authentication surface that
+/// silently becomes public when its secret is missing is worse than an outage.
+fn valid_signature(secret: &str, signature: Option<&str>, body: &[u8]) -> bool {
+    if secret.is_empty() {
+        return false;
+    }
+    let Some(signature) = signature.and_then(|value| hex::decode(value).ok()) else {
+        return false;
+    };
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret.as_bytes()) else {
+        return false;
+    };
+    mac.update(body);
+    mac.verify_slice(&signature).is_ok()
+}
+
+#[cfg(test)]
+fn hmac_sha256(key: &[u8], body: &[u8]) -> [u8; 32] {
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts keys of any size");
+    mac.update(body);
+    mac.finalize().into_bytes().into()
+}
+
 pub(super) async fn webhook_push(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<ForgejoPushPayload>,
-) -> impl axum::response::IntoResponse {
+    headers: HeaderMap,
+    body: Bytes,
+) -> axum::response::Response {
+    let signature = headers
+        .get(SIGNATURE_HEADER)
+        .and_then(|value| value.to_str().ok());
+    if !valid_signature(&state.config.archive.webhook_secret, signature, &body) {
+        tracing::warn!("Rejected push webhook with missing or invalid signature");
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(WebhookResponse {
+                status: "unauthorized".to_string(),
+                message: "Missing or invalid webhook signature".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    let payload: ForgejoPushPayload = match serde_json::from_slice(&body) {
+        Ok(payload) => payload,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(WebhookResponse {
+                    status: "invalid".to_string(),
+                    message: format!("Invalid webhook payload: {error}"),
+                }),
+            )
+                .into_response();
+        }
+    };
     let repo_name = payload
         .repository
         .as_ref()
@@ -241,7 +300,8 @@ pub(super) async fn webhook_push(
         return Json(WebhookResponse {
             status: "skipped".to_string(),
             message: format!("Repo '{}' not indexed", short_repo),
-        });
+        })
+        .into_response();
     }
 
     // Pull latest changes
@@ -279,6 +339,7 @@ pub(super) async fn webhook_push(
         status: "accepted".to_string(),
         message: format!("Re-index queued for push to {}", git_ref),
     })
+    .into_response()
 }
 
 /// Run incremental indexing for a specific repo (used by webhook handler).

@@ -226,7 +226,7 @@ enabled = false
 # Index archive sources (directories of markdown files with YAML frontmatter)
 enabled = false
 
-# Webhook secret for push notifications. Empty = no auth.
+# HMAC-SHA256 secret for push notifications. Empty = reject all webhooks.
 webhook_secret = ""
 
 # Archive sources to index. None by default; uncomment to add:
@@ -423,7 +423,7 @@ Indexes archive sources — directories of markdown files with YAML frontmatter.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | bool | `false` | Index archive sources |
-| `webhook_secret` | string | `""` | Webhook secret for push notifications (empty = no auth) |
+| `webhook_secret` | string | `""` | HMAC-SHA256 secret for push notifications (empty = reject all webhooks) |
 | `sources` | table[] | `[]` | Archive sources — each `[[archive.sources]]` has `name`, `path`, `schema` (required) and optional `name_field` |
 
 ### `[access]`

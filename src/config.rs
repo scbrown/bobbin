@@ -706,7 +706,7 @@ pub struct ArchiveConfig {
     pub enabled: bool,
     /// Archive sources to index
     pub sources: Vec<ArchiveSource>,
-    /// Webhook secret for push notifications (empty = no auth)
+    /// HMAC-SHA256 secret for push notifications (empty = reject all webhooks)
     pub webhook_secret: String,
 }
 

@@ -8,6 +8,26 @@
 use super::*;
 
 #[test]
+fn test_webhook_signature_accepts_only_the_exact_body() {
+    // RFC 4231 test case 2: pins the HMAC construction independently of our
+    // request handler and prevents a plain SHA-256(secret || body) substitute.
+    let body = b"what do ya want for nothing?";
+    let signature = "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843";
+    assert!(valid_signature("Jefe", Some(signature), body));
+    assert!(!valid_signature("Jefe", Some(signature), b"changed"));
+}
+
+#[test]
+fn test_webhook_signature_fails_closed() {
+    let body = br#"{"ref":"refs/heads/main"}"#;
+    let valid = hex::encode(hmac_sha256(b"configured", body));
+    assert!(!valid_signature("configured", None, body));
+    assert!(!valid_signature("configured", Some("not-hex"), body));
+    assert!(!valid_signature("", Some(&valid), body));
+    assert!(valid_signature("configured", Some(&valid), body));
+}
+
+#[test]
 fn test_web_base_from_remote_ssh() {
     assert_eq!(
         web_base_from_remote("git@github.com:owner/repo.git"),

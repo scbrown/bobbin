@@ -274,9 +274,14 @@ curl http://localhost:3030/metrics
 ### POST /webhook/push
 
 Triggers re-indexing. Useful for CI/CD pipelines or git webhook integrations.
+The request must carry Forgejo/Gitea's `X-Gitea-Signature`: the lowercase hex
+HMAC-SHA256 of the exact request body under `[archive].webhook_secret`.
 
 ```bash
-curl -X POST http://localhost:3030/webhook/push
+body='{"ref":"refs/heads/main","repository":{"full_name":"owner/repo"}}'
+signature=$(printf %s "$body" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | awk '{print $2}')
+curl -X POST http://localhost:3030/webhook/push \
+  -H "X-Gitea-Signature: $signature" -H 'Content-Type: application/json' -d "$body"
 ```
 
 ## Thin-Client Mode
