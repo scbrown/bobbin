@@ -15,6 +15,8 @@ use crate::index::{embedder, resolver, Embedder, Parser};
 use crate::storage::{LockWait, MaintenanceOutcome, MetadataStore, VectorStore};
 use crate::types::{Chunk, ImportDependency, ImportEdge};
 
+#[cfg(feature = "knowledge")]
+mod graph_push;
 mod profile;
 use profile::ProfileStats;
 
@@ -58,11 +60,6 @@ fn maintenance_lock_wait() -> LockWait {
     } else {
         LockWait::UpTo(std::time::Duration::from_secs(secs))
     }
-}
-
-#[cfg(feature = "knowledge")]
-fn require_chunk_graph_push(pushed: anyhow::Result<(i64, usize)>) -> anyhow::Result<(i64, usize)> {
-    pushed.context("chunk-graph publication incomplete: dropped_pushes=1; refusing a success exit")
 }
 
 /// What the maintenance step of a reindex actually did, so the run can say so.
@@ -1005,7 +1002,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 &source_root,
             )
         };
-        match require_chunk_graph_push(pushed) {
+        match graph_push::require(pushed) {
             Ok((_tx, count)) => {
                 if output.verbose && !output.quiet && !output.json {
                     println!("  Pushed {} chunk-graph facts to quipu", count);
@@ -1793,18 +1790,6 @@ mod tests {
         assert_eq!(
             format!("{err:#}"),
             "Lance maintenance failed: Failed to compact chunks table"
-        );
-    }
-
-    #[cfg(feature = "knowledge")]
-    #[test]
-    fn chunk_graph_failure_reports_drop_and_fails_the_run() {
-        let err = require_chunk_graph_push(Err(anyhow::anyhow!("POST /knot timed out")))
-            .expect_err("a dropped graph push must fail the index command");
-
-        assert_eq!(
-            format!("{err:#}"),
-            "chunk-graph publication incomplete: dropped_pushes=1; refusing a success exit: POST /knot timed out"
         );
     }
 
