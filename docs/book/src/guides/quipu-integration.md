@@ -85,6 +85,11 @@ Where the snapshot goes depends on `quipu_endpoint`:
 
 Either way the target must support snapshot replacement: Bobbin probes for it first and refuses (with a message) rather than letting facts accumulate per run. After a successful push, `bobbin index` also runs the mention-reconcile pass over the local graph — the same pass the `knowledge_reconcile_mentions` tool runs on demand.
 
+Chunk publication is part of a successful index run, not best-effort telemetry. If the single
+bounded `/knot` attempt fails, the command reports `dropped_pushes=1` and exits nonzero; it does
+not retry an abandoned request or let a scheduler record an incomplete graph as success. Remote
+requests carry `X-Quipu-Client: ingest-cron` for server-side attribution.
+
 ## Quarantined Inferred Extraction
 
 Facts that are *inferred* from prose are claims, not observations, and Bobbin keeps that distinction structural. The inferred track is a pluggable extractor seam; the one extractor today is a deterministic backtick-coderef heuristic over markdown — not a language model, and every fact it produces says so.

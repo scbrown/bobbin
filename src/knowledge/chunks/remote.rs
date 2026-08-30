@@ -5,6 +5,8 @@ use anyhow::{Context, Result};
 
 use crate::types::{Chunk, ChunkEdge};
 
+const QUIPU_CLIENT: &str = "ingest-cron";
+
 #[cfg(not(test))]
 const TIMEOUT: Duration = Duration::from_secs(15);
 #[cfg(test)]
@@ -44,6 +46,7 @@ async fn push_with_token(
         .build()
         .context("building remote Quipu client")?
         .post(&url)
+        .header("X-Quipu-Client", QUIPU_CLIENT)
         .bearer_auth(token)
         .json(&body)
         .send()
@@ -132,10 +135,9 @@ mod tests {
                 .unwrap(),
             (42, 7)
         );
-        assert_eq!(
-            seen.0.lock().unwrap().take().unwrap()["authorization"],
-            "Bearer secret"
-        );
+        let headers = seen.0.lock().unwrap().take().unwrap();
+        assert_eq!(headers["authorization"], "Bearer secret");
+        assert_eq!(headers["x-quipu-client"], QUIPU_CLIENT);
 
         async fn stalled() -> Json<serde_json::Value> {
             tokio::time::sleep(Duration::from_secs(1)).await;

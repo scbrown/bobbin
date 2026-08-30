@@ -60,6 +60,11 @@ fn maintenance_lock_wait() -> LockWait {
     }
 }
 
+#[cfg(feature = "knowledge")]
+fn require_chunk_graph_push(pushed: anyhow::Result<(i64, usize)>) -> anyhow::Result<(i64, usize)> {
+    pushed.context("chunk-graph publication incomplete: dropped_pushes=1; refusing a success exit")
+}
+
 /// What the maintenance step of a reindex actually did, so the run can say so.
 ///
 /// The interesting state is `SkippedLockHeld` — maintenance that did nothing
@@ -979,7 +984,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     if config.quipu_push_chunks && !all_slim_chunks.is_empty() {
         if config.quipu_endpoint.is_some() && !output.quiet && !output.json {
             println!(
-                "  Publishing {} chunks and {} edges to remote Quipu (best effort, 15s timeout)...",
+                "  Publishing {} chunks and {} edges to remote Quipu (required, 15s timeout)...",
                 all_slim_chunks.len(),
                 all_chunk_edges.len()
             );
@@ -1000,7 +1005,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 &source_root,
             )
         };
-        match pushed {
+        match require_chunk_graph_push(pushed) {
             Ok((_tx, count)) => {
                 if output.verbose && !output.quiet && !output.json {
                     println!("  Pushed {} chunk-graph facts to quipu", count);
@@ -1027,11 +1032,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                     }
                 }
             }
-            Err(e) => {
-                if !output.quiet && !output.json {
-                    println!("{} Chunk-graph push skipped: {}", "!".yellow(), e);
-                }
-            }
+            Err(e) => return Err(e),
         }
     }
 
@@ -1792,6 +1793,18 @@ mod tests {
         assert_eq!(
             format!("{err:#}"),
             "Lance maintenance failed: Failed to compact chunks table"
+        );
+    }
+
+    #[cfg(feature = "knowledge")]
+    #[test]
+    fn chunk_graph_failure_reports_drop_and_fails_the_run() {
+        let err = require_chunk_graph_push(Err(anyhow::anyhow!("POST /knot timed out")))
+            .expect_err("a dropped graph push must fail the index command");
+
+        assert_eq!(
+            format!("{err:#}"),
+            "chunk-graph publication incomplete: dropped_pushes=1; refusing a success exit: POST /knot timed out"
         );
     }
 
