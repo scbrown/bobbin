@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.10.4](https://github.com/scbrown/bobbin/compare/v0.10.3...v0.10.4) (2026-08-30)
+
+
+### Bug Fixes
+
+* **index:** fail on dropped chunk graph pushes ([9bd3c7b](https://github.com/scbrown/bobbin/commit/9bd3c7bd09db9998fdbd6486a73c65ccf75ac9bc))
+
 ## [0.10.3](https://github.com/scbrown/bobbin/compare/v0.10.2...v0.10.3) (2026-08-29)
 
 
