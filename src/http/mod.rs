@@ -63,6 +63,10 @@ pub async fn run_server(repo_root: PathBuf, port: u16) -> Result<()> {
     }
 
     let config = Config::load(&config_path).context("Failed to load config")?;
+    // A configured reranker with missing model files refuses at server
+    // startup — loud, not a per-request surprise or a silent downgrade.
+    crate::search::rerank::validate_config(&config.search.reranker)
+        .context("[search.reranker] configuration")?;
     let bind_addr: std::net::IpAddr = config
         .server
         .bind_address

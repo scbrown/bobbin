@@ -5,6 +5,8 @@ pub mod keyword;
 pub mod ppr;
 pub mod preprocess;
 pub mod query;
+pub mod rerank;
+pub mod rerank_onnx;
 pub mod review;
 pub mod semantic;
 

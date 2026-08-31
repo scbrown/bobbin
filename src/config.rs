@@ -251,40 +251,10 @@ impl Default for EmbeddingConfig {
     }
 }
 
-impl EmbeddingConfig {
-    /// Check if GPU should be used.
-    ///
-    /// Resolution order:
-    /// 1. `BOBBIN_GPU=0` / `false` → force CPU
-    /// 2. `BOBBIN_GPU=1` / `true` → force GPU
-    /// 3. Config `gpu = true` → force GPU
-    /// 4. Otherwise → auto-detect CUDA availability
-    pub fn use_gpu(&self) -> bool {
-        if let Ok(v) = std::env::var("BOBBIN_GPU") {
-            if v == "0" || v.eq_ignore_ascii_case("false") {
-                return false;
-            }
-            if v == "1" || v.eq_ignore_ascii_case("true") {
-                return true;
-            }
-        }
-        if self.gpu {
-            return true;
-        }
-        // Auto-detect: only for ONNX backend
-        if self.backend == EmbeddingBackend::Onnx {
-            return Self::detect_cuda();
-        }
-        false
-    }
-
-    /// Probe whether the CUDA execution provider is available at runtime.
-    fn detect_cuda() -> bool {
-        crate::index::embedder::auto_resolve_gpu_dylib();
-        use ort::ep::{ExecutionProvider, CUDA};
-        CUDA::default().is_available().unwrap_or(false)
-    }
-}
+// GPU resolution for the embedding backend — split out under the
+// file-size ratchet; the inherent impl lives in `config_gpu.rs`.
+#[path = "config_gpu.rs"]
+mod gpu;
 
 /// Configuration for contextual embeddings
 ///
@@ -343,6 +313,10 @@ pub struct SearchConfig {
     /// non-knowledge binary. The 0.3 is to be tuned by the GH#56 calibration sweep.
     #[serde(default)]
     pub ppr_weight: f32,
+    /// Optional cross-encoder reranking stage ([search.reranker]). Absent =
+    /// off. See `search::rerank::RerankerConfig` for the knobs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reranker: Option<crate::search::rerank::RerankerConfig>,
 }
 
 impl Default for SearchConfig {
@@ -362,6 +336,7 @@ impl Default for SearchConfig {
             } else {
                 0.0
             },
+            reranker: None,
         }
     }
 }

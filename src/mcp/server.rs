@@ -662,7 +662,7 @@ impl BobbinMcpServer {
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?
                 } else {
                     let mut search =
-                        HybridSearch::new(embedder, vector_store, config.search.semantic_weight);
+                        HybridSearch::from_config(embedder, vector_store, &config.search);
                     search
                         .search_filtered(
                             &req.query,

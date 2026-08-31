@@ -1,7 +1,9 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
+use crate::config::SearchConfig;
 use crate::index::Embedder;
+use crate::search::rerank::{self, RerankerConfig};
 use crate::storage::VectorStore;
 use crate::types::{MatchType, SearchResult};
 
@@ -58,6 +60,11 @@ pub struct HybridSearch {
     recency_half_life_days: f32,
     recency_weight: f32,
     rrf_k: f32,
+    /// Opt-in cross-encoder reranking stage; None (default) = off. The
+    /// model is loaded lazily on first use through the process-wide cache
+    /// in `search::rerank`, so per-request HybridSearch construction stays
+    /// cheap; load/score failures propagate as search errors.
+    reranker: Option<RerankerConfig>,
 }
 
 impl HybridSearch {
@@ -70,7 +77,17 @@ impl HybridSearch {
             recency_half_life_days: 30.0,
             recency_weight: 0.3,
             rrf_k: 60.0,
+            reranker: None,
         }
+    }
+
+    /// Build from `[search]` config: semantic weight, RRF k, and the
+    /// opt-in reranker stage. Recency keeps the constructor defaults,
+    /// which equal the config defaults.
+    pub fn from_config(embedder: Embedder, vector_store: VectorStore, cfg: &SearchConfig) -> Self {
+        Self::new(embedder, vector_store, cfg.semantic_weight)
+            .with_rrf_k(cfg.rrf_k)
+            .with_reranker(cfg.reranker.clone())
     }
 
     /// Configure recency boosting parameters
@@ -83,6 +100,12 @@ impl HybridSearch {
     /// Configure the RRF constant k
     pub fn with_rrf_k(mut self, k: f32) -> Self {
         self.rrf_k = k;
+        self
+    }
+
+    /// Configure the opt-in cross-encoder reranking stage (None = off)
+    pub fn with_reranker(mut self, reranker: Option<RerankerConfig>) -> Self {
+        self.reranker = reranker;
         self
     }
 
@@ -108,7 +131,14 @@ impl HybridSearch {
         repo: Option<&str>,
         filter: Option<&str>,
     ) -> Result<Vec<SearchResult>> {
-        let fetch_limit = limit * 2;
+        // With a reranker configured, keep the fused list at top_k so the
+        // cross-encoder sees the full rerank window before the final
+        // truncation to `limit`.
+        let fuse_limit = match &self.reranker {
+            Some(cfg) => limit.max(cfg.top_k),
+            None => limit,
+        };
+        let fetch_limit = fuse_limit * 2;
 
         let query_embedding = self.embedder.embed(query).await?;
         let semantic_results = self
@@ -122,15 +152,31 @@ impl HybridSearch {
             .search_fts_filtered(&keyword_query, fetch_limit, repo, filter)
             .await?;
 
-        Self::combine_with_recency(
+        let mut results = Self::combine_with_recency(
             semantic_results,
             keyword_results,
             self.semantic_weight,
-            limit,
+            fuse_limit,
             self.recency_half_life_days,
             self.recency_weight,
             self.rrf_k,
-        )
+        )?;
+
+        // Neural second stage: rescore the top-K fused results, then apply
+        // the final truncation. Off unless [search.reranker] is configured.
+        if let Some(cfg) = &self.reranker {
+            let reranker = rerank::for_config(cfg)?;
+            results = rerank::apply_rerank(
+                reranker.as_ref(),
+                query,
+                results,
+                cfg.top_k,
+                cfg.rerank_weight,
+            )?;
+            results.truncate(limit);
+        }
+
+        Ok(results)
     }
 
     /// Combine semantic and keyword results using reciprocal rank fusion

@@ -45,7 +45,7 @@ pub(super) async fn execute_single_search(
                     .map_err(|error| internal_error(error.into()))
             } else {
                 let mut search =
-                    HybridSearch::new(embedder, vector_store, state.config.search.semantic_weight);
+                    HybridSearch::from_config(embedder, vector_store, &state.config.search);
                 search
                     .search_filtered(query, limit, repo_filter, combined_filter)
                     .await

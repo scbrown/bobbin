@@ -96,6 +96,16 @@ default_limit = 10
 
 Higher values favor semantic results; lower values favor keyword matches. The default (0.7) works well for most codebases.
 
+### Optional cross-encoder reranking
+
+Hybrid mode can add a neural second stage: an opt-in `[search.reranker]`
+section rescoring the top-K fused results with a local cross-encoder ONNX
+model (user-supplied — bobbin never downloads reranker models) before the
+final truncation. Off unless configured; results beyond the rerank window
+keep their fused scores and order. See
+[Search Settings](../config/search.md#cross-encoder-reranking-opt-in) for the
+knobs, the blend rule, and the current validation status.
+
 ## grep vs search --mode keyword
 
 Both use the same underlying FTS index. The differences:
