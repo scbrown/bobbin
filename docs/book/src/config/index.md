@@ -44,6 +44,10 @@ use_gitignore = true
 # Multimodal ingest (opt-in). When true, the indexer also walks PDFs,
 # extracts their text, and chunks it like a plain-text document.
 multimodal = false
+
+# Documents source (opt-in). When true, the indexer also walks HTML files,
+# converts them to markdown-ish text, and chunks them by heading structure.
+documents = false
 ```
 
 ## Options
@@ -54,6 +58,7 @@ multimodal = false
 | `exclude` | string[] | See above | Additional exclusion patterns (on top of `.gitignore`) |
 | `use_gitignore` | bool | `true` | Whether to respect `.gitignore` files |
 | `multimodal` | bool | `false` | Enable multimodal ingest (PDF text extraction). See below. |
+| `documents` | bool | `false` | Enable the documents source (HTML text extraction). See below. |
 
 ## Notes
 
@@ -75,3 +80,22 @@ also ingest **PDFs** (runbooks, design docs, specs):
   skipped the same way an empty file is.
 - Image captioning (vision LLM) is **not** yet supported and is tracked as a
   follow-up.
+
+## Documents source
+
+Set `documents = true` to also ingest **HTML** files (`.html`, `.htm`) —
+exported wikis, generated API docs, saved pages:
+
+- The indexer automatically walks `**/*.html` and `**/*.htm` — you do **not**
+  need to add them to `include`. Toggling the flag is the only knob.
+- Conversion is a deterministic, dependency-free tag stripper (no model in the
+  loop): `<script>`/`<style>`/comments and `<head>` are dropped, headings
+  become markdown `#` headings, lists become bullets, `<pre>` becomes a fenced
+  code block, and entities are decoded. The result runs through the markdown
+  chunker, so headings become section chunks with breadcrumb names.
+- Chunks are tagged with `language = "html"`, so you can filter on them in
+  search.
+- Unparseable or text-free HTML degrades to a skipped file (same as an empty
+  file), never a failed index run.
+- Incremental indexing works as for any other file: unchanged files are
+  skipped by content hash.

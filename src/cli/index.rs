@@ -1532,6 +1532,8 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 fn read_indexable_content(path: &Path, config: &Config) -> Result<String> {
     if config.index.multimodal && crate::index::multimodal::is_multimodal_file(path) {
         crate::index::multimodal::extract_text(path)
+    } else if config.index.documents && crate::index::documents::is_document_file(path) {
+        crate::index::documents::extract_text(path)
     } else {
         std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))
     }
@@ -1547,6 +1549,13 @@ pub(crate) fn collect_files(repo_root: &Path, config: &Config) -> Result<Vec<Pat
         // turn them into searchable text. Kept separate from the default
         // include list so toggling the flag is the only knob users need.
         for ext in crate::index::multimodal::MULTIMODAL_EXTENSIONS {
+            include_globs.push(format!("**/*.{ext}"));
+        }
+    }
+    if config.index.documents {
+        // Same opt-in shape as multimodal: toggling the flag is the only
+        // knob, no include-pattern editing required.
+        for ext in crate::index::documents::DOCUMENT_EXTENSIONS {
             include_globs.push(format!("**/*.{ext}"));
         }
     }
@@ -1776,223 +1785,5 @@ fn compute_hash(content: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::types::ChunkType;
-    use tempfile::tempdir;
-
-    #[test]
-    fn maintenance_error_is_not_reported_as_success() {
-        let err =
-            MaintenanceReport::from_result(Err(anyhow::anyhow!("Failed to compact chunks table")))
-                .expect_err("maintenance failures must fail the index command");
-
-        assert_eq!(
-            format!("{err:#}"),
-            "Lance maintenance failed: Failed to compact chunks table"
-        );
-    }
-
-    #[test]
-    fn maintenance_lock_contention_remains_an_explicit_outcome() {
-        let report = MaintenanceReport::from_result(Ok(MaintenanceOutcome::SkippedLockHeld {
-            waited: std::time::Duration::from_secs(120),
-        }))
-        .expect("lock contention is a modeled non-error outcome");
-
-        assert_eq!(report.json_label(), "skipped_lock_held");
-    }
-
-    #[test]
-    fn test_compute_hash() {
-        let hash1 = compute_hash("hello world");
-        let hash2 = compute_hash("hello world");
-        let hash3 = compute_hash("different content");
-
-        assert_eq!(hash1, hash2);
-        assert_ne!(hash1, hash3);
-        assert_eq!(hash1.len(), 64);
-    }
-
-    #[test]
-    fn test_build_context_windows_enabled_language() {
-        let file_content = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10";
-        let chunks = vec![Chunk {
-            id: "c1".to_string(),
-            file_path: "doc.md".to_string(),
-            chunk_type: ChunkType::Section,
-            name: Some("Section".to_string()),
-            start_line: 4,
-            end_line: 6,
-            content: "line4\nline5\nline6".to_string(),
-            language: "markdown".to_string(),
-            tags: String::new(),
-        }];
-        let config = ContextualEmbeddingConfig {
-            context_lines: 2,
-            enabled_languages: vec!["markdown".to_string()],
-        };
-
-        let contexts = build_context_windows(&chunks, file_content, &config);
-        assert_eq!(contexts.len(), 1);
-        let ctx = contexts[0].as_ref().unwrap();
-        // Should include lines 2-3 (prefix), 4-6 (content), 7-8 (suffix)
-        assert!(ctx.contains("line2"));
-        assert!(ctx.contains("line3"));
-        assert!(ctx.contains("line4"));
-        assert!(ctx.contains("line5"));
-        assert!(ctx.contains("line6"));
-        assert!(ctx.contains("line7"));
-        assert!(ctx.contains("line8"));
-        assert!(!ctx.contains("line1"));
-        assert!(!ctx.contains("line9"));
-    }
-
-    #[test]
-    fn test_build_context_windows_disabled_language() {
-        let file_content = "line1\nline2\nline3\nline4\nline5";
-        let chunks = vec![Chunk {
-            id: "c1".to_string(),
-            file_path: "main.rs".to_string(),
-            chunk_type: ChunkType::Function,
-            name: Some("main".to_string()),
-            start_line: 2,
-            end_line: 4,
-            content: "line2\nline3\nline4".to_string(),
-            language: "rust".to_string(),
-            tags: String::new(),
-        }];
-        let config = ContextualEmbeddingConfig {
-            context_lines: 2,
-            enabled_languages: vec!["markdown".to_string()],
-        };
-
-        let contexts = build_context_windows(&chunks, file_content, &config);
-        assert_eq!(contexts.len(), 1);
-        assert!(contexts[0].is_none()); // Rust not enabled
-    }
-
-    #[test]
-    fn test_build_context_windows_at_file_boundaries() {
-        let file_content = "line1\nline2\nline3";
-        let chunks = vec![Chunk {
-            id: "c1".to_string(),
-            file_path: "doc.md".to_string(),
-            chunk_type: ChunkType::Section,
-            name: Some("All".to_string()),
-            start_line: 1,
-            end_line: 3,
-            content: "line1\nline2\nline3".to_string(),
-            language: "markdown".to_string(),
-            tags: String::new(),
-        }];
-        let config = ContextualEmbeddingConfig {
-            context_lines: 5,
-            enabled_languages: vec!["markdown".to_string()],
-        };
-
-        let contexts = build_context_windows(&chunks, file_content, &config);
-        // No surrounding lines available, should return None
-        assert!(contexts[0].is_none());
-    }
-
-    #[test]
-    fn test_build_context_windows_zero_lines() {
-        let file_content = "line1\nline2\nline3";
-        let chunks = vec![Chunk {
-            id: "c1".to_string(),
-            file_path: "doc.md".to_string(),
-            chunk_type: ChunkType::Section,
-            name: Some("S".to_string()),
-            start_line: 2,
-            end_line: 2,
-            content: "line2".to_string(),
-            language: "markdown".to_string(),
-            tags: String::new(),
-        }];
-        let config = ContextualEmbeddingConfig {
-            context_lines: 0,
-            enabled_languages: vec!["markdown".to_string()],
-        };
-
-        let contexts = build_context_windows(&chunks, file_content, &config);
-        assert!(contexts[0].is_none()); // context_lines=0 disables
-    }
-
-    #[test]
-    fn test_collect_files_respects_patterns() {
-        let dir = tempdir().unwrap();
-        let root = dir.path();
-
-        std::fs::write(root.join("main.rs"), "fn main() {}").unwrap();
-        std::fs::write(root.join("lib.rs"), "pub fn lib() {}").unwrap();
-        std::fs::write(root.join("test.txt"), "not code").unwrap();
-        std::fs::create_dir(root.join("src")).unwrap();
-        std::fs::write(root.join("src/mod.rs"), "mod test;").unwrap();
-
-        let config = Config::default();
-        let files = collect_files(root, &config).unwrap();
-
-        let rs_files: Vec<_> = files
-            .iter()
-            .filter(|p| p.extension().map(|e| e == "rs").unwrap_or(false))
-            .collect();
-        assert_eq!(rs_files.len(), 3);
-
-        let txt_files: Vec<_> = files
-            .iter()
-            .filter(|p| p.extension().map(|e| e == "txt").unwrap_or(false))
-            .collect();
-        assert!(txt_files.is_empty());
-    }
-
-    #[test]
-    fn test_collect_files_multimodal_flag_gates_pdf() {
-        let dir = tempdir().unwrap();
-        let root = dir.path();
-
-        std::fs::write(root.join("main.rs"), "fn main() {}").unwrap();
-        std::fs::write(root.join("runbook.pdf"), b"%PDF-1.4 dummy").unwrap();
-
-        // Off by default: PDFs are not walked.
-        let mut config = Config::default();
-        assert!(!config.index.multimodal);
-        let files = collect_files(root, &config).unwrap();
-        assert!(!files
-            .iter()
-            .any(|p| p.extension().map(|e| e == "pdf").unwrap_or(false)));
-
-        // Opt-in: the flag makes the walker pick up PDFs.
-        config.index.multimodal = true;
-        let files = collect_files(root, &config).unwrap();
-        assert!(files
-            .iter()
-            .any(|p| p.file_name().map(|n| n == "runbook.pdf").unwrap_or(false)));
-    }
-
-    #[test]
-    fn test_collect_files_excludes_patterns() {
-        let dir = tempdir().unwrap();
-        let root = dir.path();
-
-        std::fs::write(root.join("main.rs"), "fn main() {}").unwrap();
-        std::fs::create_dir_all(root.join("target/debug")).unwrap();
-        std::fs::write(root.join("target/debug/lib.rs"), "// build artifact").unwrap();
-        std::fs::create_dir_all(root.join("node_modules/pkg")).unwrap();
-        std::fs::write(root.join("node_modules/pkg/index.js"), "// npm").unwrap();
-
-        let config = Config::default();
-        let files = collect_files(root, &config).unwrap();
-
-        assert!(files
-            .iter()
-            .any(|p| p.file_name().map(|n| n == "main.rs").unwrap_or(false)));
-
-        assert!(!files
-            .iter()
-            .any(|p| p.to_string_lossy().contains("target/")));
-        assert!(!files
-            .iter()
-            .any(|p| p.to_string_lossy().contains("node_modules/")));
-    }
-}
+#[path = "index_tests.rs"]
+mod tests;
