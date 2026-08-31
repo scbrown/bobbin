@@ -356,16 +356,10 @@ pub async fn fetch_bead_metadata(
             config.user, config.host, config.port, db_name
         );
         let pool = mysql_async::Pool::new(url.as_str());
-        let mut conn = match pool.get_conn().await {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!(
-                    "Warning: failed to connect to Dolt for live enrichment: {}",
-                    e
-                );
-                continue;
-            }
-        };
+        let mut conn = pool
+            .get_conn()
+            .await
+            .with_context(|| format!("connect to {db_name} for live bead enrichment"))?;
 
         let placeholders: Vec<String> = ids
             .iter()
@@ -387,14 +381,20 @@ pub async fn fetch_bead_metadata(
             String,
             String,
             String,
-        )> = conn.query(&query).await.unwrap_or_default();
+        )> = conn
+            .query(&query)
+            .await
+            .with_context(|| format!("query live bead metadata from {db_name}"))?;
 
         // Fetch labels for these beads
         let labels_query = format!(
             "SELECT issue_id, label FROM labels WHERE issue_id IN ({})",
             in_clause
         );
-        let label_rows: Vec<(String, String)> = conn.query(&labels_query).await.unwrap_or_default();
+        let label_rows: Vec<(String, String)> = conn
+            .query(&labels_query)
+            .await
+            .with_context(|| format!("query live bead labels from {db_name}"))?;
 
         let mut labels_by_id: HashMap<String, Vec<String>> = HashMap::new();
         for (issue_id, label) in label_rows {
@@ -423,7 +423,9 @@ pub async fn fetch_bead_metadata(
         }
 
         drop(conn);
-        let _ = pool.disconnect().await;
+        pool.disconnect()
+            .await
+            .with_context(|| format!("disconnect live bead enrichment pool for {db_name}"))?;
     }
 
     Ok(result)

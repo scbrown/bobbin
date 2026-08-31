@@ -134,6 +134,30 @@ fn test_empty_databases_returns_empty() {
     assert!(chunks.is_empty());
 }
 
+#[test]
+fn live_metadata_enrichment_fails_loudly_when_source_is_unreachable() {
+    let config = BeadsConfig {
+        enabled: true,
+        host: "127.0.0.1".to_string(),
+        // Port 1 is deliberately closed. Enrichment is an explicitly live
+        // contract; callers that want indexed-only behavior set enrich=false.
+        port: 1,
+        databases: vec!["beads_aegis".to_string()],
+        ..Default::default()
+    };
+    let ids = vec![("aegis".to_string(), "aegis-probe".to_string())];
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let err = rt
+        .block_on(fetch_bead_metadata(&config, &ids))
+        .expect_err("unreachable live metadata source must not become an empty map");
+
+    assert!(
+        err.to_string()
+            .contains("connect to beads_aegis for live bead enrichment"),
+        "unexpected error: {err:#}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Single-bead path (GH#52 Phase 4)
 // ---------------------------------------------------------------------------

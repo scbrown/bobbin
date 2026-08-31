@@ -2008,7 +2008,7 @@ impl BobbinMcpServer {
 
             crate::index::beads::fetch_bead_metadata(&config.beads, &bead_ids)
                 .await
-                .unwrap_or_default()
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
         } else {
             std::collections::HashMap::new()
         };

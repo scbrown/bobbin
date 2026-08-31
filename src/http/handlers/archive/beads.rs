@@ -127,7 +127,7 @@ pub(crate) async fn search_beads(
 
         crate::index::beads::fetch_bead_metadata(&state.config.beads, &bead_ids)
             .await
-            .unwrap_or_default()
+            .map_err(internal_error)?
     } else {
         std::collections::HashMap::new()
     };
