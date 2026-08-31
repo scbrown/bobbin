@@ -127,7 +127,7 @@ List all symbols (functions, structs, traits, etc.) defined in a file.
 
 ## chunk_neighbors
 
-Follow relationship edges from a chunk. Deterministic structural edges (`next_chunk`, `part_of`) are emitted for every indexed file; AST edges (`implements`, `impl_for`, `extends`) come from tree-sitter.
+Follow relationship edges from a chunk. Deterministic structural edges (`next_chunk`, `part_of`) are emitted for every indexed file; AST edges (`implements`, `impl_for`, `extends`) come from tree-sitter; `similar_to` edges are near-duplicate pairs persisted opt-in by `bobbin similar --scan --persist`.
 
 **Parameters:**
 
@@ -137,7 +137,7 @@ Follow relationship edges from a chunk. Deterministic structural edges (`next_ch
 | `file` | string | no* | — | File path relative to repo root, used with `line` |
 | `line` | integer | no* | — | Line within `file`; smallest containing chunk becomes the anchor |
 | `repo` | string | no | all | Disambiguates `file` in multi-repo stores |
-| `edge_type` | string | no | all | Filter: `next_chunk`, `part_of`, `implements`, `impl_for`, `extends`, `tests` |
+| `edge_type` | string | no | all | Filter: `next_chunk`, `part_of`, `implements`, `impl_for`, `extends`, `tests`, `similar_to` |
 | `direction` | string | no | `both` | `out` (anchor is edge source), `in` (anchor is target) |
 | `limit` | integer | no | 20 | Maximum neighbors returned |
 

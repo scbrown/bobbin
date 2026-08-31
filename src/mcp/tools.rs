@@ -1307,7 +1307,7 @@ pub struct ChunkNeighborsRequest {
 
     /// Filter to one edge type
     #[schemars(
-        description = "Filter edges by type: next_chunk, part_of, implements, impl_for, extends, tests. Omit for all types."
+        description = "Filter edges by type: next_chunk, part_of, implements, impl_for, extends, tests, similar_to. Omit for all types."
     )]
     pub edge_type: Option<String>,
 

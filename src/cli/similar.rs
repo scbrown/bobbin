@@ -39,6 +39,11 @@ pub struct SimilarArgs {
     #[arg(long)]
     cross_repo: bool,
 
+    /// In scan mode, persist the threshold-gated pairs as similar_to edges
+    /// in the chunk_edges table (replaces the previous similar_to set)
+    #[arg(long, requires = "scan")]
+    persist: bool,
+
     /// Directory to search in (defaults to current directory)
     #[arg(long, short = 'C', default_value = ".")]
     path: PathBuf,
@@ -133,10 +138,28 @@ pub async fn run(args: SimilarArgs, output: OutputConfig) -> Result<()> {
     let repo_filter = args.repo.as_deref();
 
     if args.scan {
-        let clusters = analyzer
-            .scan_duplicates(args.threshold, args.limit, repo_filter, args.cross_repo)
+        let (clusters, edge_candidates) = analyzer
+            .scan_duplicates_with_edges(args.threshold, args.limit, repo_filter, args.cross_repo)
             .await
             .context("Scan failed")?;
+
+        // Opt-in persistence: replace the similar_to edge set (within the
+        // repo scope) with this scan's threshold-gated pairs. Runs before
+        // display filtering — access roles shape output, not storage.
+        if args.persist {
+            let written = analyzer
+                .persist_similar_edges(&edge_candidates, repo_filter)
+                .await
+                .context("Failed to persist similar_to edges")?;
+            if !output.json && !output.quiet {
+                println!(
+                    "{} Persisted {} similar_to edge(s) (threshold: {:.2})",
+                    "*".green(),
+                    written,
+                    args.threshold
+                );
+            }
+        }
 
         // Apply role-based access filtering to scan results
         let access_filter = RepoFilter::from_config(&config.access, &output.role);

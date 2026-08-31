@@ -1259,7 +1259,7 @@ impl BobbinMcpServer {
 
     /// Follow relationship edges from a chunk
     #[tool(
-        description = "Follow relationship edges from a chunk: next_chunk (adjacent chunks in document order), part_of (containment: fn in impl, section under parent heading, table in section), implements, impl_for, extends. Anchor by chunk `id` (from search results) or by file+line. Direction 'out'+next_chunk = the following chunk, 'in' = preceding; part_of 'out' = containing parent, 'in' = children. Best for: reading the surrounding document of a search hit, walking a doc section by section, finding a section's parent or children. Requires dependency tracking (on by default); an empty result on a fresh index means the file has no edges, not a failure."
+        description = "Follow relationship edges from a chunk: next_chunk (adjacent chunks in document order), part_of (containment: fn in impl, section under parent heading, table in section), implements, impl_for, extends, similar_to (near-duplicates persisted by `bobbin similar --scan --persist`). Anchor by chunk `id` (from search results) or by file+line. Direction 'out'+next_chunk = the following chunk, 'in' = preceding; part_of 'out' = containing parent, 'in' = children. Best for: reading the surrounding document of a search hit, walking a doc section by section, finding a section's parent or children. Requires dependency tracking (on by default); an empty result on a fresh index means the file has no edges, not a failure."
     )]
     async fn chunk_neighbors(
         &self,
@@ -1313,7 +1313,7 @@ impl BobbinMcpServer {
                     .ok_or_else(|| {
                         McpError::invalid_params(
                             format!(
-                                "Unknown edge_type '{}'. One of: next_chunk, part_of, implements, impl_for, extends, tests",
+                                "Unknown edge_type '{}'. One of: next_chunk, part_of, implements, impl_for, extends, tests, similar_to",
                                 s
                             ),
                             None,
