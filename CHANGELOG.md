@@ -21,6 +21,21 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.11.0](https://github.com/scbrown/bobbin/compare/v0.10.4...v0.11.0) (2026-08-31)
+
+
+### Features
+
+* **index:** opt-in HTML documents source through the file lifecycle (bobbin-e0d) ([a6482d7](https://github.com/scbrown/bobbin/commit/a6482d788bdc652f2f5208ef4b154814f8ba921a))
+* **search:** opt-in cross-encoder reranking stage for hybrid search (bobbin-cf8) ([660b4fb](https://github.com/scbrown/bobbin/commit/660b4fbe84969405c022428a8cf5ef10a109bf17))
+* **similar:** persist similar_to chunk edges from the near-duplicate scan (bobbin-363) ([2046e21](https://github.com/scbrown/bobbin/commit/2046e21953a5d06c47a630549facd52c07148b69))
+
+
+### Bug Fixes
+
+* **ci:** ignore release-please CHANGELOG in markdownlint ([f223a9c](https://github.com/scbrown/bobbin/commit/f223a9c7798e392e1c161a48dffa42ea77db5b20))
+* **search:** fail loud when live bead enrichment fails ([e5fd98f](https://github.com/scbrown/bobbin/commit/e5fd98f835985a75b488fa01d799ea430b29fbe8))
+
 ## [0.10.4](https://github.com/scbrown/bobbin/compare/v0.10.3...v0.10.4) (2026-08-30)
 
 
