@@ -981,7 +981,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     if config.quipu_push_chunks && !all_slim_chunks.is_empty() {
         if config.quipu_endpoint.is_some() && !output.quiet && !output.json {
             println!(
-                "  Publishing {} chunks and {} edges to remote Quipu (required, 15s timeout)...",
+                "  Publishing {} chunks and {} edges to remote Quipu (required, 120s timeout)...",
                 all_slim_chunks.len(),
                 all_chunk_edges.len()
             );

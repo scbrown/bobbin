@@ -8,7 +8,10 @@ use crate::types::{Chunk, ChunkEdge};
 const QUIPU_CLIENT: &str = "ingest-cron";
 
 #[cfg(not(test))]
-const TIMEOUT: Duration = Duration::from_secs(15);
+// Replacing a large repository snapshot is a real remote write transaction, not
+// a health probe. Production-scale snapshots can legitimately exceed the old
+// 15-second deadline while the remote service remains responsive to small reads.
+const TIMEOUT: Duration = Duration::from_secs(120);
 #[cfg(test)]
 const TIMEOUT: Duration = Duration::from_millis(100);
 
