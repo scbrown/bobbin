@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.11.1](https://github.com/scbrown/bobbin/compare/v0.11.0...v0.11.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **index:** allow production snapshot pushes to finish ([783c076](https://github.com/scbrown/bobbin/commit/783c0760d5b24bfedd03159e2e85d1fb08cf7131))
+
 ## [0.11.0](https://github.com/scbrown/bobbin/compare/v0.10.4...v0.11.0) (2026-08-31)
 
 
