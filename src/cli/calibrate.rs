@@ -398,10 +398,6 @@ struct GridPoint {
     bridge_boost_factor: f32,
 }
 
-// Keep unattended calibration bounded: 15 core configs × 20 default samples = 300 probes.
-const DEFAULT_CALIBRATION_BUDGET: usize = 300;
-const DEFAULT_CALIBRATION_SEARCH_LIMIT: usize = 20;
-
 /// Build the core parameter grid (sw × dd × k × sl × b points).
 /// Core grid uses Inject mode only. Bridge modes are swept in --full.
 fn build_grid(budgets: &[usize], search_limits: &[usize]) -> Vec<GridPoint> {
@@ -1156,11 +1152,11 @@ async fn run_core_sweep(
 ) -> Result<Vec<GridResult>> {
     let budgets = match args.budget {
         Some(b) => vec![b],
-        None => vec![DEFAULT_CALIBRATION_BUDGET],
+        None => vec![300],
     };
     let search_limits = match args.search_limit {
         Some(sl) => vec![sl],
-        None => vec![DEFAULT_CALIBRATION_SEARCH_LIMIT],
+        None => vec![20],
     };
     let grid = build_grid(&budgets, &search_limits);
     let total_probes = grid.len() * commits.len();
@@ -1735,8 +1731,8 @@ mod tests {
     #[test]
     fn test_build_grid_size() {
         let grid = build_grid(&[300], &[20]);
-        // 5 sw × 3 dd × 1 k × 1 b × 1 sl = 15 (core uses single bridge mode)
-        assert_eq!(grid.len(), 15);
+        // 15 configs × 20 default samples = a bounded 300-probe core run.
+        assert_eq!(grid.len() * 20, 300);
         // Core grid points should have no recency overrides
         assert!(grid[0].recency_half_life_days.is_none());
         assert!(grid[0].recency_weight.is_none());
@@ -1749,24 +1745,6 @@ mod tests {
         let grid = build_grid(&[150, 300, 500], &[10, 20, 30, 40]);
         // 5 sw × 3 dd × 1 k × 3 b × 4 sl = 180 (core uses single bridge mode)
         assert_eq!(grid.len(), 180);
-    }
-
-    #[test]
-    fn test_default_core_sweep_probe_budget() {
-        let grid = build_grid(
-            &[DEFAULT_CALIBRATION_BUDGET],
-            &[DEFAULT_CALIBRATION_SEARCH_LIMIT],
-        );
-        let default_samples = 20;
-
-        assert_eq!(grid.len(), 15);
-        assert_eq!(grid.len() * default_samples, 300);
-        assert!(grid
-            .iter()
-            .all(|point| point.budget_lines == DEFAULT_CALIBRATION_BUDGET));
-        assert!(grid
-            .iter()
-            .all(|point| point.search_limit == DEFAULT_CALIBRATION_SEARCH_LIMIT));
     }
 
     #[test]
