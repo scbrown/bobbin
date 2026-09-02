@@ -13,8 +13,12 @@ const QUIPU_CLIENT: &str = "ingest-cron";
 // a health probe. Production-scale snapshots can legitimately exceed the old
 // 15-second deadline while the remote service remains responsive to small reads.
 const TIMEOUT: Duration = Duration::from_secs(30);
+#[cfg(not(test))]
+const PROMOTE_TIMEOUT: Duration = Duration::from_secs(180);
 #[cfg(test)]
 const TIMEOUT: Duration = Duration::from_millis(100);
+#[cfg(test)]
+const PROMOTE_TIMEOUT: Duration = Duration::from_millis(100);
 const PART_BYTES: usize = 256 * 1024;
 const MAX_ATTEMPTS: usize = 3;
 
@@ -61,11 +65,12 @@ async fn push_with_token(
         post_with_retries(&client, &format!("{base}/knot/stage"), token, &body).await?;
     }
 
-    let result = post_with_retries(
+    let result = post_with_retries_timeout(
         &client,
         &format!("{base}/knot/promote"),
         token,
         &serde_json::json!({"upload_id": upload_id}),
+        PROMOTE_TIMEOUT,
     )
     .await?;
     if result.get("conforms").and_then(|v| v.as_bool()) == Some(false) {
@@ -95,10 +100,21 @@ async fn post_with_retries(
     token: &str,
     body: &serde_json::Value,
 ) -> Result<serde_json::Value> {
+    post_with_retries_timeout(client, url, token, body, TIMEOUT).await
+}
+
+async fn post_with_retries_timeout(
+    client: &reqwest::Client,
+    url: &str,
+    token: &str,
+    body: &serde_json::Value,
+    timeout: Duration,
+) -> Result<serde_json::Value> {
     let mut last_error = None;
     for attempt in 1..=MAX_ATTEMPTS {
         match client
             .post(url)
+            .timeout(timeout)
             .header("X-Quipu-Client", QUIPU_CLIENT)
             .bearer_auth(token)
             .json(body)
