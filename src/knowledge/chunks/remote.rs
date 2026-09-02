@@ -14,11 +14,11 @@ const QUIPU_CLIENT: &str = "ingest-cron";
 // 15-second deadline while the remote service remains responsive to small reads.
 const TIMEOUT: Duration = Duration::from_secs(30);
 #[cfg(not(test))]
-const PROMOTE_TIMEOUT: Duration = Duration::from_secs(180);
+const PROMOTE_DEADLINE: Duration = Duration::from_secs(900);
 #[cfg(test)]
 const TIMEOUT: Duration = Duration::from_millis(100);
 #[cfg(test)]
-const PROMOTE_TIMEOUT: Duration = Duration::from_millis(100);
+const PROMOTE_DEADLINE: Duration = Duration::from_secs(1);
 const PART_BYTES: usize = 256 * 1024;
 const MAX_ATTEMPTS: usize = 3;
 
@@ -65,14 +65,21 @@ async fn push_with_token(
         post_with_retries(&client, &format!("{base}/knot/stage"), token, &body).await?;
     }
 
-    let result = post_with_retries_timeout(
-        &client,
-        &format!("{base}/knot/promote"),
-        token,
-        &serde_json::json!({"upload_id": upload_id}),
-        PROMOTE_TIMEOUT,
-    )
-    .await?;
+    let promote_url = format!("{base}/knot/promote");
+    let promote_body = serde_json::json!({"upload_id": upload_id});
+    let started = tokio::time::Instant::now();
+    let result = loop {
+        let result = post_with_retries(&client, &promote_url, token, &promote_body).await?;
+        if result.get("pending").and_then(|v| v.as_bool()) != Some(true) {
+            break result;
+        }
+        anyhow::ensure!(
+            started.elapsed() < PROMOTE_DEADLINE,
+            "remote Quipu snapshot promotion remained pending for {} seconds",
+            PROMOTE_DEADLINE.as_secs()
+        );
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    };
     if result.get("conforms").and_then(|v| v.as_bool()) == Some(false) {
         anyhow::bail!("remote Quipu refused chunk snapshot by SHACL: {result}");
     }
