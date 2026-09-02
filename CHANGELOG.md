@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.12.1](https://github.com/scbrown/bobbin/compare/v0.12.0...v0.12.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **knowledge:** allow bounded snapshot promotion ([62fe671](https://github.com/scbrown/bobbin/commit/62fe671ca9212bef4d4e5878a54e5a7f4e38f8e5))
+
 ## [0.12.0](https://github.com/scbrown/bobbin/compare/v0.11.1...v0.12.0) (2026-09-02)
 
 
