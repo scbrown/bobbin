@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.12.4](https://github.com/scbrown/bobbin/compare/v0.12.3...v0.12.4) (2026-09-02)
+
+
+### Bug Fixes
+
+* **calibrate:** satisfy source size ratchet ([ac6e294](https://github.com/scbrown/bobbin/commit/ac6e294a7be4e3e8daf7ba7ec5dffcc89c2ccc68))
+
 ## [0.12.3](https://github.com/scbrown/bobbin/compare/v0.12.2...v0.12.3) (2026-09-02)
 
 
