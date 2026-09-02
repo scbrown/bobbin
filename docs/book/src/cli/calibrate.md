@@ -30,6 +30,8 @@ bobbin calibrate --full --resume          # Resume interrupted full sweep
 bobbin calibrate --bridge-sweep           # Sweep bridge params using calibrated core
 bobbin calibrate -n 50 --since "1 year"   # More samples, wider time range
 bobbin calibrate --repo myproject         # Calibrate a specific repo in multi-repo setup
+bobbin calibrate --repo myproject --source /path/to/myproject /var/lib/bobbin
+                                          # Multi-repo index root + explicit Git source
 ```
 
 ## Options
@@ -38,8 +40,8 @@ bobbin calibrate --repo myproject         # Calibrate a specific repo in multi-r
 |------|-------|-------------|
 | `--samples <N>` | `-n` | Number of commits to sample (default: 20) |
 | `--since <RANGE>` | | Time range to sample from, git format (default: "6 months ago") |
-| `--search-limit <N>` | | Max results per probe. Omit to sweep [10, 20, 30, 40] |
-| `--budget <N>` | | Budget lines per probe. Omit to sweep [150, 300, 500] |
+| `--search-limit <N>` | | Max results per probe (default: 20) |
+| `--budget <N>` | | Budget lines per probe (default: 300) |
 | `--apply` | | Write best config to `.bobbin/calibration.json` |
 | `--full` | | Extended sweep: also tunes recency and coupling parameters |
 | `--resume` | | Resume an interrupted `--full` sweep from cache |
@@ -84,17 +86,24 @@ Configs are ranked by average F1 across all sampled commits.
 
 ### Core sweep (default)
 
-Sweeps 5 core parameter dimensions:
+Sweeps semantic weight and document demotion while holding the expensive result-size dimensions at representative defaults:
 
 | Parameter | Values |
 |-----------|--------|
 | `semantic_weight` | 0.0, 0.3, 0.5, 0.7, 0.9 |
 | `doc_demotion` | 0.1, 0.3, 0.5 |
-| `search_limit` | 10, 20, 30, 40 (or CLI override) |
-| `budget_lines` | 150, 300, 500 (or CLI override) |
+| `search_limit` | 20 (or CLI override) |
+| `budget_lines` | 300 (or CLI override) |
 | `rrf_k` | 60.0 (fixed) |
 
-Total: 180 configs × N commits = ~3,600 probes at default 20 samples. Takes a few minutes.
+Total: 15 configs × N commits = 300 probes at the default 20 samples. Use explicit `--budget` and `--search-limit` values to calibrate a different operating point; use `--full` for the extended parameter sweep.
+
+In a multi-repo installation, `[PATH]` is the Bobbin index root rather than a Git checkout. Pass both `--repo` and `--source` when the index metadata does not already record the repository source:
+
+```bash
+bobbin calibrate --apply --repo myproject \
+  --source /path/to/myproject /var/lib/bobbin
+```
 
 ### Full sweep (`--full`)
 
@@ -138,7 +147,7 @@ The output file contains:
   },
   "top_results": [ ... ],
   "sample_count": 20,
-  "probe_count": 3600
+  "probe_count": 300
 }
 ```
 
