@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.12.2](https://github.com/scbrown/bobbin/compare/v0.12.1...v0.12.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **knowledge:** poll atomic snapshot promotion ([ad6fbc3](https://github.com/scbrown/bobbin/commit/ad6fbc3687ef38e089ba1bc71627de830b170d8b))
+
 ## [0.12.1](https://github.com/scbrown/bobbin/compare/v0.12.0...v0.12.1) (2026-09-02)
 
 
