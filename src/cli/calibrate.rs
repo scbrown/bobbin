@@ -398,6 +398,7 @@ struct GridPoint {
     bridge_boost_factor: f32,
 }
 
+// Keep unattended calibration bounded: 15 core configs × 20 default samples = 300 probes.
 const DEFAULT_CALIBRATION_BUDGET: usize = 300;
 const DEFAULT_CALIBRATION_SEARCH_LIMIT: usize = 20;
 
