@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.12.0](https://github.com/scbrown/bobbin/compare/v0.11.1...v0.12.0) (2026-09-02)
+
+
+### Features
+
+* **knowledge:** publish chunk snapshots resumably ([5ba6d91](https://github.com/scbrown/bobbin/commit/5ba6d918a480899d098c6aeae8be2c2647f58dab))
+
 ## [0.11.1](https://github.com/scbrown/bobbin/compare/v0.11.0...v0.11.1) (2026-09-01)
 
 
