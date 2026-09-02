@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.12.3](https://github.com/scbrown/bobbin/compare/v0.12.2...v0.12.3) (2026-09-02)
+
+
+### Bug Fixes
+
+* **calibrate:** cap default sweep at 300 probes ([b11e700](https://github.com/scbrown/bobbin/commit/b11e70071e3025126d8f0d6afaf3c8231de56775))
+
 ## [0.12.2](https://github.com/scbrown/bobbin/compare/v0.12.1...v0.12.2) (2026-09-02)
 
 
