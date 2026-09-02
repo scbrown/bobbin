@@ -49,6 +49,9 @@ pub(super) async fn dispatch_command(command: Commands, output: OutputConfig) ->
         Commands::Prime(args) => prime::run(args, output).await,
         Commands::Tag(args) => tag::run(args, output).await,
         Commands::Bundle(args) => bundle::run(args, output).await,
+        Commands::Bc(args) => breadcrumb::run(args, output),
+        Commands::Mark(args) => breadcrumb::run_mark(args, output),
+        Commands::Recall(args) => breadcrumb::run_recall(args, output),
         Commands::Ontology(args) => ontology::run(args, output).await,
         // Run commands are resolved before dispatch, so this is unreachable
         Commands::Run(_) => anyhow::bail!("Nested run commands are not supported"),

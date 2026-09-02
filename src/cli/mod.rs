@@ -1,5 +1,6 @@
 mod bead;
 mod benchmark;
+mod breadcrumb;
 mod bundle;
 mod calibrate;
 mod completions;
@@ -175,6 +176,15 @@ enum Commands {
     /// Explore context bundles (named, hierarchical knowledge anchors)
     Bundle(bundle::BundleArgs),
 
+    /// Create, list, recall, and delete durable context breadcrumbs
+    Bc(breadcrumb::BreadcrumbArgs),
+
+    /// Alias for `bc create`
+    Mark(breadcrumb::BreadcrumbCreateArgs),
+
+    /// Alias for `bc recall`
+    Recall(breadcrumb::BreadcrumbRecallArgs),
+
     /// Navigate the tag ontology: hierarchy, relationships, and domain concepts
     Ontology(ontology::OntologyArgs),
 
@@ -222,6 +232,9 @@ impl Commands {
             Commands::Prime(_) => "prime",
             Commands::Tag(_) => "tag",
             Commands::Bundle(_) => "bundle",
+            Commands::Bc(_) => "bc",
+            Commands::Mark(_) => "mark",
+            Commands::Recall(_) => "recall",
             Commands::Ontology(_) => "ontology",
             Commands::Run(_) => "run",
             Commands::External(ref args) => {

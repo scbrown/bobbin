@@ -3,6 +3,7 @@ use clap::Parser;
 
 pub mod access;
 mod analysis;
+mod breadcrumb;
 mod cli;
 mod commands;
 pub mod config;

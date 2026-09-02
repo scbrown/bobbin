@@ -1,6 +1,6 @@
 # Bobbin: Tool-Result Context + Breadcrumb System
 
-> **Implementation status (2026-07-23, dearing):** ⬜ **Planned — not started.** Verified by mechanism: zero breadcrumb code exists. No `tool_response` field on `PostToolUseInput` (src/cli/hook.rs:2002 has only tool_name/tool_input/cwd/session_id), no `DiscoveredFiles` dispatch mode (hook.rs:3717 lists only EditRelated/SearchQuery/RefsOnly/ReactionsOnly), no `src/breadcrumb.rs` / `src/cli/breadcrumb.rs`, no `Breadcrumb`/`BreadcrumbStore` types (0 hits), no `bobbin bc` command, no `.bobbin/breadcrumbs.json`. The pre-existing `dp record` is unrelated (source claude-code, predates this plan). Greenfield multi-file work across all three features — scoped in GitHub issue #51.
+> **Implementation status (2026-09-02):** 🟨 **Breadcrumb core landed; hooks remain planned.** `src/breadcrumb.rs` provides the typed store and corruption-safe JSON persistence; `src/cli/breadcrumb.rs` provides `bc create/list/recall/delete`, with top-level `mark` and `recall` aliases. Recall currently returns the stored query and pinned files and records usage. Tool-result parsing, context assembly on recall, keyword triggers, session discovery, pruning, and Desire Path error capture remain later slices of GitHub issue #51.
 
 ## Context
 
@@ -236,10 +236,10 @@ bobbin bc recall auth-refresh
 
 ### Phase 2: Breadcrumb Core
 1. `breadcrumb.rs` — Breadcrumb struct, BreadcrumbStore, load/save JSON
-2. `cli/breadcrumb.rs` — create (positional args), recall, list, delete, prune
+2. `cli/breadcrumb.rs` — create (positional args), recall, list, delete (done); prune remains Phase 4
 3. Wire `Bc` subcommand into `cli/mod.rs`
-4. Recall: run stored query via ContextAssembler, merge pinned files into output
-5. Register `mark` and `recall` aliases in `commands.toml` (via `bobbin bc install-aliases` or during `bobbin init`)
+4. Recall: return stored query + pinned files and update metadata (done); ContextAssembler execution remains a later slice
+5. Register built-in `mark` and `recall` aliases (done as direct, help-visible commands)
 6. Desire-path integration: unrecognized subcommands call `dp record --source bobbin` before printing error. Requires `dp` binary on PATH (graceful no-op if absent).
 7. Tests for storage roundtrip, recall output, name validation
 
