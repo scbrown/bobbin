@@ -21,6 +21,19 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.13.0](https://github.com/scbrown/bobbin/compare/v0.12.4...v0.13.0) (2026-09-03)
+
+
+### Features
+
+* **pack:** add verified portable index artifacts ([55d5a41](https://github.com/scbrown/bobbin/commit/55d5a4168460851e43bfc783bfbd28b7f1557a04))
+* **release:** publish repository index pack [aegis-otg3xz.2] ([9fc05f9](https://github.com/scbrown/bobbin/commit/9fc05f94ba0b0951153d1c444faca83e1cdb26ed))
+
+
+### Bug Fixes
+
+* **ci:** split pack reindex helper from index CLI [aegis-fm02xf] ([f41bb77](https://github.com/scbrown/bobbin/commit/f41bb77bb810e0b1241832ffcb218b5a0f9e45a0))
+
 ## [0.12.4](https://github.com/scbrown/bobbin/compare/v0.12.3...v0.12.4) (2026-09-02)
 
 
