@@ -19,6 +19,7 @@ mod index_bead;
 mod init;
 mod log;
 mod ontology;
+mod pack;
 mod predict;
 mod prime;
 mod purge;
@@ -85,6 +86,9 @@ enum Commands {
 
     /// Build or update the search index
     Index(index::IndexArgs),
+
+    /// Export, verify, or import a portable search-index pack
+    Pack(pack::PackArgs),
 
     /// Reindex a single bead by id (incremental fast path for a bd post-write hook)
     IndexBead(index_bead::IndexBeadArgs),
@@ -202,6 +206,7 @@ impl Commands {
             Commands::Init(_) => "init",
             Commands::Connect(_) => "connect",
             Commands::Index(_) => "index",
+            Commands::Pack(_) => "pack",
             Commands::IndexBead(_) => "index-bead",
             Commands::Calibrate(_) => "calibrate",
             Commands::Search(_) => "search",

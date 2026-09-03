@@ -16,6 +16,7 @@ pub(super) async fn dispatch_command(command: Commands, output: OutputConfig) ->
         Commands::Init(args) => init::run(args, output).await,
         Commands::Connect(args) => connect::run(args, output).await,
         Commands::Index(args) => index::run(args, output).await,
+        Commands::Pack(args) => pack::run(args, output).await,
         Commands::IndexBead(args) => index_bead::run(args, output).await,
         Commands::Calibrate(args) => calibrate::run(args, output).await,
         Commands::Search(args) => search::run(args, output).await,

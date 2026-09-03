@@ -31,6 +31,14 @@ impl MetadataStore {
         store.init_schema()?;
         Ok(store)
     }
+
+    /// Write a transactionally consistent standalone copy of this database.
+    pub fn snapshot(&self, destination: &Path) -> Result<()> {
+        self.conn
+            .execute("VACUUM INTO ?1", [destination.to_string_lossy().as_ref()])
+            .with_context(|| format!("Failed to snapshot database to {}", destination.display()))?;
+        Ok(())
+    }
     /// Get file coupling data
     pub fn get_coupling(&self, file_path: &str, limit: usize) -> Result<Vec<FileCoupling>> {
         let mut stmt = self.conn.prepare(

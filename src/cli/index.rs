@@ -142,6 +142,29 @@ pub struct IndexArgs {
     path: PathBuf,
 }
 
+/// Run the normal hash- and watermark-based incremental index path after a
+/// portable pack has been activated.
+pub(crate) async fn run_after_pack_import(
+    home: PathBuf,
+    source: PathBuf,
+    repo: String,
+    output: OutputConfig,
+) -> Result<()> {
+    run(
+        IndexArgs {
+            incremental: true,
+            force: false,
+            repo: Some(repo),
+            source: Some(source),
+            include_beads: false,
+            skip_calibrate: true,
+            path: home,
+        },
+        output,
+    )
+    .await
+}
+
 #[derive(Serialize)]
 struct IndexOutput {
     status: String,

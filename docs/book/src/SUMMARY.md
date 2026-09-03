@@ -34,6 +34,7 @@
 - [Overview](cli/overview.md)
 - [init](cli/init.md)
 - [index](cli/index.md)
+- [pack](cli/pack.md)
 - [index-bead](cli/index-bead.md)
 - [search](cli/search.md)
 - [context](cli/context.md)
