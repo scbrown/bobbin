@@ -115,54 +115,31 @@ impl MaintenanceReport {
 pub struct IndexArgs {
     /// Only update changed files (now the default; kept for backwards compatibility)
     #[arg(long)]
-    incremental: bool,
+    pub(super) incremental: bool,
 
     /// Force reindex all files
     #[arg(long)]
-    force: bool,
+    pub(super) force: bool,
 
     /// Repository name for multi-repo indexing (auto-detected from source dir name)
     #[arg(long)]
-    repo: Option<String>,
+    pub(super) repo: Option<String>,
 
     /// Source directory to index files from (defaults to path)
     #[arg(long)]
-    source: Option<PathBuf>,
+    pub(super) source: Option<PathBuf>,
 
     /// Also index beads (issues) from Dolt
     #[arg(long)]
-    include_beads: bool,
+    pub(super) include_beads: bool,
 
     /// Skip auto-calibration after indexing
     #[arg(long)]
-    skip_calibrate: bool,
+    pub(super) skip_calibrate: bool,
 
     /// Directory containing .bobbin/ config (defaults to current directory)
     #[arg(default_value = ".")]
-    path: PathBuf,
-}
-
-/// Run the normal hash- and watermark-based incremental index path after a
-/// portable pack has been activated.
-pub(crate) async fn run_after_pack_import(
-    home: PathBuf,
-    source: PathBuf,
-    repo: String,
-    output: OutputConfig,
-) -> Result<()> {
-    run(
-        IndexArgs {
-            incremental: true,
-            force: false,
-            repo: Some(repo),
-            source: Some(source),
-            include_beads: false,
-            skip_calibrate: true,
-            path: home,
-        },
-        output,
-    )
-    .await
+    pub(super) path: PathBuf,
 }
 
 #[derive(Serialize)]

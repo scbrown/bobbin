@@ -8,7 +8,7 @@ use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::{index, OutputConfig};
+use super::OutputConfig;
 use crate::config::{Config, EmbeddingBackend};
 use crate::index::embedder;
 use crate::storage::{MetadataStore, VectorStore};
@@ -232,7 +232,7 @@ async fn import(args: ImportArgs, output: OutputConfig) -> Result<()> {
 
     activate_payload(&stage.path().join("data"), &data_dir)?;
     if !args.no_reindex && head != manifest.sha {
-        index::run_after_pack_import(home.clone(), source, manifest.repo.clone(), output.clone())
+        super::pack_reindex::run(home.clone(), source, manifest.repo.clone(), output.clone())
             .await?;
     }
     print_result(

@@ -20,6 +20,7 @@ mod init;
 mod log;
 mod ontology;
 mod pack;
+mod pack_reindex;
 mod predict;
 mod prime;
 mod purge;
