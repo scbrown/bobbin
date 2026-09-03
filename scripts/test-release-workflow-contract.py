@@ -45,7 +45,11 @@ assert release_please["force-tag-creation"] is True, "draft release must still c
 assert build.count("\n          draft: true\n") == 2, "both early matrix upload paths must preserve draft status"
 assert release.count("\n          draft: true\n") == 1, "final asset upload must preserve draft status"
 assert "- name: Publish complete GitHub Release" in release
-assert 'gh release edit "${{ env.VERSION }}" --draft=false --latest' in release
+assert (
+    'gh release edit "${{ env.VERSION }}" '
+    '--repo "${{ github.repository }}" --draft=false --latest'
+    in release
+)
 assert release.index("Finalize GitHub Release assets and checksums") < release.index(
     "Publish complete GitHub Release"
 ), "the release must become public only after final asset upload"

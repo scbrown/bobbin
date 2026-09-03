@@ -345,7 +345,7 @@ jobs:
 
       - name: Publish complete GitHub Release
         shell: bash
-        run: gh release edit "${{ env.VERSION }}" --draft=false --latest
+        run: gh release edit "${{ env.VERSION }}" --repo "${{ github.repository }}" --draft=false --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
