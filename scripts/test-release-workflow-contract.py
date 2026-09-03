@@ -7,6 +7,7 @@ unnecessary here: this checks the exact load-bearing workflow statements and
 their ordering with only the Python standard library.
 """
 
+import json
 from pathlib import Path
 
 
@@ -18,6 +19,7 @@ release_start = workflow.index("  release:\n")
 build = workflow[build_start:checksums_start]
 checksums = workflow[checksums_start:release_start]
 release = workflow[release_start:]
+release_please = json.loads(Path("release-please-config.json").read_text())
 
 required_build_fragments = (
     "    permissions:",
@@ -37,6 +39,16 @@ required_build_fragments = (
 )
 for fragment in required_build_fragments:
     assert fragment in build, f"release build contract missing: {fragment}"
+
+assert release_please["draft"] is True, "Release Please must not expose an assetless release"
+assert release_please["force-tag-creation"] is True, "draft release must still create the build trigger tag"
+assert build.count("\n          draft: true\n") == 2, "both early matrix upload paths must preserve draft status"
+assert release.count("\n          draft: true\n") == 1, "final asset upload must preserve draft status"
+assert "- name: Publish complete GitHub Release" in release
+assert 'gh release edit "${{ env.VERSION }}" --draft=false --latest' in release
+assert release.index("Finalize GitHub Release assets and checksums") < release.index(
+    "Publish complete GitHub Release"
+), "the release must become public only after final asset upload"
 
 assert build.index("Generate early Linux deploy checksum") < build.index(
     "Publish Linux deploy archive immediately"

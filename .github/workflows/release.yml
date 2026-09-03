@@ -214,8 +214,10 @@ jobs:
             bobbin-${{ env.VERSION }}-repository.bbpack
             bobbin-${{ env.VERSION }}-repository.bbpack.sha256
 
-      # The release is created by release-please before this workflow starts.
-      # Publish each archive here instead of waiting for `needs: build` below:
+      # Release Please creates a DRAFT release and forces the tag so this
+      # workflow can start without exposing an uninstallable `latest` release.
+      # Upload each archive to that draft here instead of waiting for
+      # `needs: build` below:
       # the macOS cross-builds have taken ~100 minutes, while the Linux deploy
       # needs only x86_64 Linux.  Serialising publication behind the slowest
       # matrix leg kept a perfectly healthy deploy stale long enough to page
@@ -241,6 +243,9 @@ jobs:
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           tag_name: ${{ env.VERSION }}
+          # Load-bearing: omitting this publishes the existing draft during
+          # the first matrix upload, before the deploy pair is complete.
+          draft: true
           files: |
             bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
             bobbin-${{ env.VERSION }}-repository.bbpack
@@ -253,6 +258,7 @@ jobs:
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           tag_name: ${{ env.VERSION }}
+          draft: true
           files: bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
           fail_on_unmatched_files: true
 
@@ -332,9 +338,16 @@ jobs:
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           tag_name: ${{ env.VERSION }}
+          draft: true
           files: artifacts/*
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+      - name: Publish complete GitHub Release
+        shell: bash
+        run: gh release edit "${{ env.VERSION }}" --draft=false --latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Open/refresh the release PR on every main push; merging it tags + releases.
   # release-please works from commit history and the manifest directly. Unlike
