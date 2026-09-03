@@ -26,6 +26,11 @@ required_build_fragments = (
     "if: matrix.target == 'x86_64-unknown-linux-gnu'",
     "- name: Publish Linux deploy archive immediately",
     "bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}",
+    "- name: Build repository index pack",
+    'PACK="bobbin-${{ env.VERSION }}-repository.bbpack"',
+    '"$BOBBIN" pack verify "$PACK" --path "$PACK_HOME/home"',
+    'sha256sum "$PACK" > "$PACK.sha256"',
+    "bobbin-${{ env.VERSION }}-repository.bbpack.sha256",
     "SHA256SUMS.txt",
     "- name: Publish target archive immediately",
     "if: matrix.target != 'x86_64-unknown-linux-gnu'",
@@ -36,9 +41,14 @@ for fragment in required_build_fragments:
 assert build.index("Generate early Linux deploy checksum") < build.index(
     "Publish Linux deploy archive immediately"
 ), "checksum must exist before the early Linux upload"
+assert build.index("Build repository index pack") < build.index(
+    "Publish Linux deploy archive immediately"
+), "verified repository pack must exist before the early Linux upload"
 assert "needs: build" in checksums, "full checksums must still wait for every target"
 assert "needs: [build, checksums]" in release, "finalizer must retain the full-build gate"
 assert "Finalize GitHub Release assets and checksums" in release
 assert "find . -maxdepth 1 -type f ! -name SHA256SUMS.txt" in release
+assert 'name "*.bbpack"' in checksums
+assert 'name "*.bbpack"' in release
 
 print("release workflow contract: ok")

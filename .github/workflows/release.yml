@@ -177,11 +177,42 @@ jobs:
 
           tar czvf "${STAGING}.tar.gz" "$STAGING"
 
+      - name: Build repository index pack
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        run: |
+          # Bobbin's own canonical pack rides each version release. The filename
+          # gives clone/bootstrap consumers an immutable URL, while the embedded
+          # manifest remains the authority for the exact repository SHA and
+          # embedding/tool identity. Rebuild it at every tag; never carry a pack
+          # forward merely because the source diff looks irrelevant to indexing.
+          PACK="bobbin-${{ env.VERSION }}-repository.bbpack"
+          PACK_HOME=$(mktemp -d)
+          mkdir -p "$PACK_HOME/home"
+          ORT_LIB_DIR=$(find /tmp/ort-extracted -type d -name lib | head -1)
+          export LD_LIBRARY_PATH="$ORT_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          BOBBIN="target/${{ matrix.target }}/release/bobbin"
+
+          "$BOBBIN" init "$PACK_HOME/home"
+          "$BOBBIN" index "$PACK_HOME/home" \
+            --repo bobbin \
+            --source "$GITHUB_WORKSPACE" \
+            --skip-calibrate
+          "$BOBBIN" pack export "$PACK_HOME/home" \
+            --repo bobbin \
+            --source "$GITHUB_WORKSPACE" \
+            --output "$PACK"
+          "$BOBBIN" pack verify "$PACK" --path "$PACK_HOME/home"
+          sha256sum "$PACK" > "$PACK.sha256"
+
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bobbin-${{ matrix.target }}
-          path: bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+          path: |
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+            bobbin-${{ env.VERSION }}-repository.bbpack
+            bobbin-${{ env.VERSION }}-repository.bbpack.sha256
 
       # The release is created by release-please before this workflow starts.
       # Publish each archive here instead of waiting for `needs: build` below:
@@ -199,7 +230,11 @@ jobs:
       - name: Generate early Linux deploy checksum
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
-        run: sha256sum "bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}" > SHA256SUMS.txt
+        run: |
+          sha256sum \
+            "bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}" \
+            "bobbin-${{ env.VERSION }}-repository.bbpack" \
+            > SHA256SUMS.txt
 
       - name: Publish Linux deploy archive immediately
         if: matrix.target == 'x86_64-unknown-linux-gnu'
@@ -208,6 +243,8 @@ jobs:
           tag_name: ${{ env.VERSION }}
           files: |
             bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+            bobbin-${{ env.VERSION }}-repository.bbpack
+            bobbin-${{ env.VERSION }}-repository.bbpack.sha256
             SHA256SUMS.txt
           fail_on_unmatched_files: true
 
@@ -232,7 +269,7 @@ jobs:
       - name: Generate SHA256 checksums
         run: |
           cd artifacts
-          find . -type f -name "*.tar.gz" -exec mv {} . \;
+          find . -type f \( -name "*.tar.gz" -o -name "*.bbpack" -o -name "*.bbpack.sha256" \) -exec mv {} . \;
           rm -rf bobbin-*/
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
@@ -275,7 +312,7 @@ jobs:
             rm -rf "$ARM_DIR"
           fi
 
-          find . -type f \( -name "*.tar.gz" -o -name "SHA256SUMS.txt" -o -name "bobbin-linux-*" -o -name "libonnxruntime-linux-*.so" \) -exec mv {} . \; 2>/dev/null || true
+          find . -type f \( -name "*.tar.gz" -o -name "*.bbpack" -o -name "*.bbpack.sha256" -o -name "SHA256SUMS.txt" -o -name "bobbin-linux-*" -o -name "libonnxruntime-linux-*.so" \) -exec mv {} . \; 2>/dev/null || true
           rm -rf bobbin-*/ checksums/
 
           # The checksums job runs before the standalone Linux binaries are
