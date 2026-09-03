@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.13.1](https://github.com/scbrown/bobbin/compare/v0.13.0...v0.13.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **release:** publish only after assets upload [aegis-yozpp0] ([8a1a1c5](https://github.com/scbrown/bobbin/commit/8a1a1c5faf823e25871fcdadcf3d0e3dd6eee05f))
+
 ## [0.13.0](https://github.com/scbrown/bobbin/compare/v0.12.4...v0.13.0) (2026-09-03)
 
 
