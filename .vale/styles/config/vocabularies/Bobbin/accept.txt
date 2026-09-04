@@ -17,6 +17,7 @@ bridge_mode
 changeset
 changesets
 chunk_neighbors
+chunker
 Clippy
 code_block
 coderef
@@ -59,6 +60,8 @@ feedback_stats
 feedback_submit
 file_history
 find_refs
+Forgejo
+Forgejo's
 frontend
 frontmatter
 FSEvents
@@ -77,6 +80,8 @@ knowledge_inferred_extract
 knowledge_knot
 knowledge_query
 knowledge_reconcile_mentions
+logit
+logits
 node-4
 LanceDB
 list_symbols
@@ -104,6 +109,7 @@ prepended
 protoc
 pluggable
 pylint
+queryable
 Quipu
 reactively
 reachability
@@ -115,6 +121,12 @@ reindex
 reindexing
 repo
 repos
+rerank
+reranked
+reranker
+reranking
+rescored
+rescoring
 ripgrep
 rmcp
 rrf_k
@@ -146,6 +158,7 @@ tokenizer
 tokenises
 tokei
 toolchain
+Unparseable
 unstaged
 unscoped
 upserted
