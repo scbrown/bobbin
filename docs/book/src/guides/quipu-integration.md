@@ -35,12 +35,16 @@ auto_embed = true                 # embed entities using Bobbin's ONNX pipeline
 
 ## MCP Tools
 
-With Quipu enabled, `bobbin serve` exposes five additional MCP tools:
+With Quipu enabled, `bobbin serve` exposes these additional MCP tools:
 
 | Tool | Description |
 |------|-------------|
 | `knowledge_context` | Semantic search over knowledge graph entities, across the remote ontology and the local code graph. |
 | `knowledge_query` | Run SPARQL SELECT queries against both graphs, with optional temporal filtering. |
+| `knowledge_export` | Export a canonical scoped RDF slice from the remote Quipu, optionally digest-only. |
+| `knowledge_share` | Produce Quipu's canonical v1 manifest and exact share files. |
+| `knowledge_import` | Verify and stage a canonical share; never promotes it. |
+| `knowledge_import_promote` | Explicitly promote an eligible staged share into ROOT. |
 | `knowledge_knot` | Write facts into the local embedded graph as RDF Turtle, with SHACL validation when compiled in. |
 | `knowledge_reconcile_mentions` | Resolve chunk mention literals into typed edges against the live entity graph. |
 | `knowledge_inferred_extract` | Run the quarantined-track extractor over markdown prose (see below). |
@@ -156,7 +160,10 @@ shape hashes, the JCS-derived share identity, sorted duplicate-free N-Triples,
 staged import resolution, quarantine, and promotion blockers. It is the contract
 fixture for future `knowledge_*` adapters. Those adapters delegate canonical
 serialization, identity resolution, quarantine, and RDF merge semantics to
-Quipu; Bobbin does not define a parallel bundle format.
+Quipu; Bobbin does not define a parallel bundle format. `knowledge_share`
+returns the producer's manifest and files unchanged. `knowledge_import` preserves
+the producer's resolution, validation, quarantine, and promotion state, while
+`knowledge_import_promote` keeps admission as a separate deliberate operation.
 
 ## Integration Roadmap
 

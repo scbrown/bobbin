@@ -1194,6 +1194,57 @@ pub struct KnowledgeContextRequest {
     pub expand_links: Option<bool>,
 }
 
+/// Scope shared by Quipu's canonical export and share producers.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum KnowledgeShareScopeKind {
+    Root,
+    Graph,
+    Group,
+    Construct,
+}
+
+/// Request for a canonical scoped RDF export from the configured remote Quipu.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct KnowledgeExportRequest {
+    pub scope_kind: KnowledgeShareScopeKind,
+    pub scope_value: Option<String>,
+    #[schemars(description = "RDF format: ntriples (canonical) or turtle")]
+    pub format: Option<String>,
+    #[schemars(description = "Return only byte count, triple count, and sha256 identity")]
+    pub digest_only: Option<bool>,
+    pub max_bytes: Option<usize>,
+}
+
+/// Request for Quipu's canonical v1 share-bundle producer.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct KnowledgeShareRequest {
+    pub scope_kind: KnowledgeShareScopeKind,
+    pub scope_value: Option<String>,
+    pub shapes: Option<Vec<String>>,
+    pub no_shapes: Option<bool>,
+    pub parent_share: Option<String>,
+    pub turtle_view: Option<bool>,
+    pub max_bytes: Option<usize>,
+}
+
+/// Request to stage a canonical v1 Quipu share. This never promotes it.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct KnowledgeImportRequest {
+    pub manifest: serde_json::Value,
+    pub export_ntriples: String,
+    pub shapes_turtle: Option<String>,
+    pub source: String,
+    pub actor: Option<String>,
+}
+
+/// Request to explicitly promote a previously staged Quipu share into ROOT.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct KnowledgeImportPromoteRequest {
+    pub share_id: String,
+    pub actor: Option<String>,
+}
+
 /// Request to write facts into the local knowledge graph (bobbin-di7 Phase 3).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct KnowledgeKnotRequest {

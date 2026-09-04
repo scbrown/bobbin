@@ -161,7 +161,7 @@ async fn post_with_retries_timeout(
     )
 }
 
-fn quipu_auth_token() -> Option<String> {
+pub(crate) fn quipu_auth_token() -> Option<String> {
     std::env::var("QUIPU_AUTH_TOKEN")
         .ok()
         .filter(|token| !token.trim().is_empty())

@@ -21,8 +21,10 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, S
 use super::tools::*;
 #[allow(unused_imports)]
 use super::tools::{
-    KnowledgeContextRequest, KnowledgeInferredExtractRequest, KnowledgeKnotRequest,
-    KnowledgeQueryRequest, KnowledgeReconcileRequest,
+    KnowledgeContextRequest, KnowledgeExportRequest, KnowledgeImportPromoteRequest,
+    KnowledgeImportRequest, KnowledgeInferredExtractRequest, KnowledgeKnotRequest,
+    KnowledgeQueryRequest, KnowledgeReconcileRequest, KnowledgeShareRequest,
+    KnowledgeShareScopeKind,
 };
 use crate::analysis::backend::{IndexBackend, StructuralBackend};
 use crate::analysis::complexity::ComplexityAnalyzer;
@@ -137,6 +139,127 @@ impl BobbinMcpServer {
             );
         }
         serde_json::from_str(&text).with_context(|| format!("parsing remote quipu {path} response"))
+    }
+
+    /// POST a canonical share operation, authenticating writes and returning
+    /// Quipu's JSON without reshaping it.
+    #[cfg(feature = "knowledge")]
+    async fn quipu_share_post(
+        base: &str,
+        path: &str,
+        body: serde_json::Value,
+        authenticated: bool,
+    ) -> Result<serde_json::Value> {
+        let timeout = if authenticated { 900 } else { 120 };
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(timeout))
+            .build()
+            .context("building HTTP client for remote quipu share operation")?;
+        let mut request = client
+            .post(format!("{base}{path}"))
+            .header("X-Quipu-Client", "agent-adhoc")
+            .json(&body);
+        if authenticated {
+            let token = crate::knowledge::chunks::quipu_auth_token()
+                .context("remote Quipu write requires QUIPU_AUTH_TOKEN or a readable token file")?;
+            request = request.bearer_auth(token);
+        }
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("POST {path} to remote quipu"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!(
+                "remote quipu {path} returned HTTP {status}: {}",
+                text.chars().take(300).collect::<String>()
+            );
+        }
+        serde_json::from_str(&text).with_context(|| format!("parsing remote quipu {path} response"))
+    }
+
+    #[cfg(feature = "knowledge")]
+    async fn quipu_export_post(
+        base: &str,
+        body: serde_json::Value,
+        max_bytes: Option<usize>,
+        digest_only: bool,
+    ) -> Result<serde_json::Value> {
+        use sha2::{Digest, Sha256};
+
+        let response = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .context("building HTTP client for remote quipu export")?
+            .post(format!("{base}/export"))
+            .header("X-Quipu-Client", "agent-adhoc")
+            .json(&body)
+            .send()
+            .await
+            .context("POST /export to remote quipu")?;
+        let status = response.status();
+        let bytes = response.bytes().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!(
+                "remote quipu /export returned HTTP {status}: {}",
+                String::from_utf8_lossy(&bytes)
+                    .chars()
+                    .take(300)
+                    .collect::<String>()
+            );
+        }
+        if let Some(limit) = max_bytes {
+            if bytes.len() > limit {
+                anyhow::bail!(
+                    "remote quipu export is {} bytes, above caller max_bytes {limit}",
+                    bytes.len()
+                );
+            }
+        }
+        let sha256 = format!("sha256:{:x}", Sha256::digest(&bytes));
+        let mut result = serde_json::json!({
+            "bytes": bytes.len(),
+            "sha256": sha256,
+        });
+        if !digest_only {
+            result["rdf"] = serde_json::Value::String(
+                String::from_utf8(bytes.to_vec()).context("Quipu export was not UTF-8 RDF")?,
+            );
+        }
+        Ok(result)
+    }
+
+    #[cfg(feature = "knowledge")]
+    fn share_scope(
+        kind: KnowledgeShareScopeKind,
+        value: Option<String>,
+    ) -> Result<serde_json::Value> {
+        let kind = match kind {
+            KnowledgeShareScopeKind::Root => "root",
+            KnowledgeShareScopeKind::Graph => "graph",
+            KnowledgeShareScopeKind::Group => "group",
+            KnowledgeShareScopeKind::Construct => "construct",
+        };
+        if kind == "root" && value.is_some() {
+            anyhow::bail!("root scope does not accept scope_value");
+        }
+        if kind != "root" && value.as_deref().is_none_or(str::is_empty) {
+            anyhow::bail!("{kind} scope requires scope_value");
+        }
+        Ok(serde_json::json!({ "kind": kind, "value": value }))
+    }
+
+    #[cfg(feature = "knowledge")]
+    fn export_scope(scope: serde_json::Value) -> serde_json::Value {
+        let kind = scope["kind"].as_str().unwrap_or("root");
+        let value = scope["value"].clone();
+        match kind {
+            "graph" => serde_json::json!({ "graph": value }),
+            "group" => serde_json::json!({ "group_id": value }),
+            "construct" => serde_json::json!({ "construct": value }),
+            _ => serde_json::json!({}),
+        }
     }
 
     /// Trim a knowledge payload so it fits a caller's tool-output budget.
@@ -3086,6 +3209,163 @@ impl BobbinMcpServer {
     /// dependency's `shacl` feature; never on its own.
     const KNOWLEDGE_SHACL_ENABLED: bool = true;
 
+    #[tool(
+        description = "Export a scoped slice from the configured remote Quipu using Quipu's canonical RDF serializer. Returns the exact RDF text plus its SHA-256 identity, or only the digest when digest_only=true. Requires an explicit scope and never reads Bobbin's separate embedded code graph."
+    )]
+    async fn knowledge_export(
+        &self,
+        Parameters(req): Parameters<KnowledgeExportRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        #[cfg(feature = "knowledge")]
+        {
+            let base = self.quipu_remote_url().ok_or_else(|| {
+                McpError::invalid_request(
+                    "knowledge_export requires quipu_endpoint or BOBBIN_QUIPU_REMOTE",
+                    None,
+                )
+            })?;
+            let scope = Self::share_scope(req.scope_kind, req.scope_value).map_err(|e| {
+                McpError::invalid_params(format!("invalid export scope: {e}"), None)
+            })?;
+            let mut body = Self::export_scope(scope);
+            body["format"] = serde_json::json!(req.format.unwrap_or_else(|| "ntriples".into()));
+            let result = Self::quipu_export_post(
+                &base,
+                body,
+                req.max_bytes,
+                req.digest_only.unwrap_or(false),
+            )
+            .await
+            .map_err(|e| McpError::internal_error(format!("Quipu export failed: {e:#}"), None))?;
+            Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap(),
+            )]))
+        }
+        #[cfg(not(feature = "knowledge"))]
+        {
+            let _ = req;
+            Err(McpError::internal_error(
+                "Knowledge graph tools require the 'knowledge' feature",
+                None,
+            ))
+        }
+    }
+
+    #[tool(
+        description = "Produce a canonical v1 share bundle through the configured remote Quipu. Returns Quipu's manifest and exact files unchanged; Bobbin does not reserialize RDF, synthesize a manifest, or calculate a competing share identity. Requires an explicit scope."
+    )]
+    async fn knowledge_share(
+        &self,
+        Parameters(req): Parameters<KnowledgeShareRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        #[cfg(feature = "knowledge")]
+        {
+            let base = self.quipu_remote_url().ok_or_else(|| {
+                McpError::invalid_request(
+                    "knowledge_share requires quipu_endpoint or BOBBIN_QUIPU_REMOTE",
+                    None,
+                )
+            })?;
+            let scope = Self::share_scope(req.scope_kind, req.scope_value)
+                .map_err(|e| McpError::invalid_params(format!("invalid share scope: {e}"), None))?;
+            let body = serde_json::json!({
+                "scope": scope, "shapes": req.shapes.unwrap_or_default(),
+                "no_shapes": req.no_shapes.unwrap_or(false), "parent_share": req.parent_share,
+                "turtle_view": req.turtle_view.unwrap_or(false), "max_bytes": req.max_bytes,
+            });
+            let result = Self::quipu_share_post(&base, "/share", body, false)
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(format!("Quipu share failed: {e:#}"), None)
+                })?;
+            Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap(),
+            )]))
+        }
+        #[cfg(not(feature = "knowledge"))]
+        {
+            let _ = req;
+            Err(McpError::internal_error(
+                "Knowledge graph tools require the 'knowledge' feature",
+                None,
+            ))
+        }
+    }
+
+    #[tool(
+        description = "Verify and stage a canonical v1 share bundle in the configured remote Quipu. NEVER PROMOTES. Returns Quipu's full result unchanged, including resolution candidates, validation, quarantine blockers, staging graph, and promotion eligibility. An unchanged outcome is success."
+    )]
+    async fn knowledge_import(
+        &self,
+        Parameters(req): Parameters<KnowledgeImportRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        #[cfg(feature = "knowledge")]
+        {
+            let base = self.quipu_remote_url().ok_or_else(|| {
+                McpError::invalid_request(
+                    "knowledge_import requires quipu_endpoint or BOBBIN_QUIPU_REMOTE",
+                    None,
+                )
+            })?;
+            let body = serde_json::json!({
+                "manifest": req.manifest, "export_ntriples": req.export_ntriples,
+                "shapes_turtle": req.shapes_turtle.unwrap_or_default(),
+                "source": req.source, "actor": req.actor,
+            });
+            let result = Self::quipu_share_post(&base, "/import", body, true)
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(format!("Quipu import failed: {e:#}"), None)
+                })?;
+            Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap(),
+            )]))
+        }
+        #[cfg(not(feature = "knowledge"))]
+        {
+            let _ = req;
+            Err(McpError::internal_error(
+                "Knowledge graph tools require the 'knowledge' feature",
+                None,
+            ))
+        }
+    }
+
+    #[tool(
+        description = "Explicitly promote an eligible, already-staged Quipu share into ROOT. This is separate from knowledge_import so quarantine and review cannot be bypassed accidentally. Returns Quipu's promotion result unchanged."
+    )]
+    async fn knowledge_import_promote(
+        &self,
+        Parameters(req): Parameters<KnowledgeImportPromoteRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        #[cfg(feature = "knowledge")]
+        {
+            let base = self.quipu_remote_url().ok_or_else(|| {
+                McpError::invalid_request(
+                    "knowledge_import_promote requires quipu_endpoint or BOBBIN_QUIPU_REMOTE",
+                    None,
+                )
+            })?;
+            let body = serde_json::json!({ "share_id": req.share_id, "actor": req.actor });
+            let result = Self::quipu_share_post(&base, "/import/promote", body, true)
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(format!("Quipu promotion failed: {e:#}"), None)
+                })?;
+            Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap(),
+            )]))
+        }
+        #[cfg(not(feature = "knowledge"))]
+        {
+            let _ = req;
+            Err(McpError::internal_error(
+                "Knowledge graph tools require the 'knowledge' feature",
+                None,
+            ))
+        }
+    }
+
     /// Query the knowledge graph for entities relevant to a topic
     #[tool(
         description = "Find entities and facts relevant to a topic across BOTH knowledge graphs this deployment has. \
@@ -3522,6 +3802,46 @@ fn clean_bead_snippet(content: &str, max_len: usize) -> String {
             end -= 1;
         }
         format!("{}...", &trimmed[..end])
+    }
+}
+
+#[cfg(all(test, feature = "knowledge"))]
+mod share_adapter_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_scope_translation_refuses_ambiguous_values() {
+        assert_eq!(
+            BobbinMcpServer::share_scope(KnowledgeShareScopeKind::Root, None).unwrap(),
+            serde_json::json!({"kind": "root", "value": null})
+        );
+        assert!(BobbinMcpServer::share_scope(
+            KnowledgeShareScopeKind::Root,
+            Some("unexpected".into())
+        )
+        .is_err());
+        assert!(BobbinMcpServer::share_scope(KnowledgeShareScopeKind::Group, None).is_err());
+        assert_eq!(
+            BobbinMcpServer::share_scope(
+                KnowledgeShareScopeKind::Group,
+                Some("repo:example".into())
+            )
+            .unwrap(),
+            serde_json::json!({"kind": "group", "value": "repo:example"})
+        );
+    }
+
+    #[test]
+    fn export_scope_uses_quipus_wire_keys() {
+        let group = BobbinMcpServer::share_scope(
+            KnowledgeShareScopeKind::Group,
+            Some("repo:example".into()),
+        )
+        .unwrap();
+        assert_eq!(
+            BobbinMcpServer::export_scope(group),
+            serde_json::json!({"group_id": "repo:example"})
+        );
     }
 }
 

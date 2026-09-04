@@ -71,11 +71,11 @@ Related to src/auth/middleware.rs:
 
 📦 **Task-Aware Context** — `bobbin context "fix the login bug"` builds a budget-controlled bundle from search results + coupled files. Feed it straight to an AI agent.
 
-🤖 **MCP Server** — `bobbin serve` exposes 31 tools to Claude Code, Cursor, and any MCP-compatible agent (26 always available; the five `knowledge_*` tools require the `knowledge` build feature).
+🤖 **MCP Server** — `bobbin serve` exposes 35 tools to Claude Code, Cursor, and any MCP-compatible agent (26 always available; nine `knowledge_*` tools require the `knowledge` build feature).
 
-🧠 **Knowledge Graph (Quipu)** — Optional integration with [Quipu](https://github.com/scbrown/quipu) for structured knowledge alongside code. SPARQL queries, SHACL-validated writes, and vector search over knowledge entities — exposed as five `knowledge_*` MCP tools that query the remote ontology and the local code graph side by side. Feature-gated behind `knowledge`.
+🧠 **Knowledge Graph (Quipu)** — Optional integration with [Quipu](https://github.com/scbrown/quipu) for structured knowledge alongside code. SPARQL queries, SHACL-validated writes, vector search, and canonical share transport are exposed as `knowledge_*` MCP tools. Feature-gated behind `knowledge`.
 
-🔁 **Versioned Share Contract** — Knowledge builds carry typed Quipu share-manifest and import request/response contracts. Bobbin rejects unsupported manifest versions and non-canonical bundle paths, while preserving additive fields from compatible v1 producers. Runtime share/import tools will use Quipu's canonical interfaces rather than a Bobbin-specific bundle dialect.
+🔁 **Versioned Share Contract** — Knowledge builds produce canonical Quipu exports and share bundles through `knowledge_export` and `knowledge_share`, then stage and explicitly promote them through `knowledge_import` and `knowledge_import_promote`. Bobbin delegates serialization, identity, validation, quarantine, and promotion to Quipu rather than defining a parallel bundle dialect.
 
 🧵 **Governed Chunk Ontology** — Knowledge builds can publish each index run as a replaceable snapshot, so a reindex diffs rather than accumulates. A named code chunk or document section is published as a single node carrying both `bobbin:Chunk` and its governed code-entity type, under the same identity an external code-graph producer would mint for it, so the two graphs join instead of describing the same symbol twice. Anonymous spans keep their own chunk identity. Publication is opt-in via `quipu_push_chunks`; set `quipu_endpoint` for authenticated remote `/knot` delivery, or leave it unset and the snapshot lands in the embedded store.
 
@@ -156,7 +156,7 @@ Add to your Claude Code or Cursor MCP config:
 }
 ```
 
-Exposes 31 tools including: `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `chunk_neighbors`, `hotspots`, `impact`, `review`, `similar`, `prime`, `search_beads`, `dependencies`, `file_history`, `test_coverage`, `status`, `commit_search`, `feedback_submit`, `feedback_list`, `feedback_stats`, `feedback_lineage_store`, `feedback_lineage_list`, `archive_search`, and `archive_recent`, plus `knowledge_context`, `knowledge_query`, `knowledge_knot`, `knowledge_reconcile_mentions`, and `knowledge_inferred_extract` (require the `knowledge` build feature).
+Exposes 26 core tools including `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `chunk_neighbors`, `hotspots`, `impact`, `review`, `similar`, `prime`, `search_beads`, `dependencies`, `file_history`, `test_coverage`, `status`, `commit_search`, `feedback_submit`, `feedback_list`, `feedback_stats`, `feedback_lineage_store`, `feedback_lineage_list`, `archive_search`, and `archive_recent`. Knowledge builds add `knowledge_context`, `knowledge_query`, `knowledge_knot`, `knowledge_reconcile_mentions`, `knowledge_inferred_extract`, `knowledge_export`, `knowledge_share`, `knowledge_import`, and `knowledge_import_promote`.
 
 For agents, prefer this interface order: use MCP tools when a Bobbin server is
 available, use the equivalent `bobbin` CLI command next, and use the documented
