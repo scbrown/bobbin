@@ -38,7 +38,7 @@ jobs:
           node-version: '22'
 
       - name: Run markdownlint
-        run: npx markdownlint-cli2 "docs/book/src/**/*.md" "README.md" "CONTRIBUTING.md"
+        run: npx markdownlint-cli2@0.23.2 "docs/book/src/**/*.md" "README.md" "CONTRIBUTING.md"
 
   vale:
     name: Style check
