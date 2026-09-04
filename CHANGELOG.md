@@ -21,6 +21,18 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.14.0](https://github.com/scbrown/bobbin/compare/v0.13.1...v0.14.0) (2026-09-04)
+
+
+### Features
+
+* **knowledge:** proxy canonical Quipu shares [aegis-hd9yu] ([7c70a9b](https://github.com/scbrown/bobbin/commit/7c70a9bb58812b27653b9979f60e2ddf36972efb))
+
+
+### Bug Fixes
+
+* **release:** address repository when publishing draft ([820d749](https://github.com/scbrown/bobbin/commit/820d74968fe6310ab4ff70f6f28a9c8037586025))
+
 ## [0.13.1](https://github.com/scbrown/bobbin/compare/v0.13.0...v0.13.1) (2026-09-03)
 
 
