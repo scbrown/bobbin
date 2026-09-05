@@ -64,9 +64,7 @@ fn index_archive_incremental_and_removal_sweep() {
     project.bobbin_init();
 
     // Skip if the ONNX runtime is unavailable.
-    if !project.bobbin_index() {
-        return;
-    };
+    project.index_or_explain();
 
     // Archive records live OUTSIDE the walked tree, like a real archive mount.
     let archive_dir = tempfile::tempdir().unwrap();

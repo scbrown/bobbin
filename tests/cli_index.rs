@@ -23,9 +23,7 @@ fn index_rust_files() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() {
-        return;
-    };
+    project.index_or_explain();
 
     // Verify via status
     let output = TestProject::bobbin_cmd()
@@ -59,9 +57,7 @@ fn index_json_output() {
     project.bobbin_init();
 
     // Check if ONNX runtime is available via plain index first
-    if !project.bobbin_index() {
-        return;
-    };
+    project.index_or_explain();
 
     let output = TestProject::bobbin_cmd()
         .args(["--json", "index", "--force"])
@@ -93,9 +89,7 @@ fn index_incremental_skips_unchanged_files() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() {
-        return;
-    };
+    project.index_or_explain();
 
     // Re-index without changes — should skip everything (0 files indexed)
     let output = TestProject::bobbin_cmd()
@@ -128,9 +122,7 @@ fn index_zero_files_still_indexes_commits() {
     project.bobbin_init();
 
     // First index establishes file hashes (skip if ONNX runtime unavailable).
-    if !project.bobbin_index() {
-        return;
-    };
+    project.index_or_explain();
 
     // Enable commit indexing in the project config (generated config disables it).
     let config_path = project.path().join(".bobbin/config.toml");
@@ -173,9 +165,7 @@ fn index_incremental_reindexes_modified_file() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() {
-        return;
-    };
+    project.index_or_explain();
 
     // Modify one file
     project.write_file(
@@ -209,9 +199,7 @@ fn index_incremental_flag_backwards_compat() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() {
-        return;
-    };
+    project.index_or_explain();
 
     // --incremental flag should still work (now a no-op since it's the default)
     let output = TestProject::bobbin_cmd()
@@ -234,9 +222,7 @@ fn index_force_reindexes_all() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() {
-        return;
-    };
+    project.index_or_explain();
 
     // Force reindex
     let output = TestProject::bobbin_cmd()
@@ -266,9 +252,7 @@ fn index_multi_language() {
     project.bobbin_init();
 
     // Check ONNX runtime available, then get JSON output via force reindex
-    if !project.bobbin_index() {
-        return;
-    };
+    project.index_or_explain();
 
     let output = TestProject::bobbin_cmd()
         .args(["--json", "index", "--force"])
@@ -357,9 +341,7 @@ fn index_emits_structural_chunk_edges() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() {
-        return;
-    };
+    project.index_or_explain();
 
     let counts = chunk_edge_counts(&project);
     assert!(
@@ -380,9 +362,7 @@ fn reindex_after_delete_clears_chunk_edges() {
     project.git_commit("initial");
     project.bobbin_init();
 
-    if !project.bobbin_index() {
-        return;
-    };
+    project.index_or_explain();
 
     let before = chunk_edge_counts(&project);
     let before_total: u64 = before.values().sum();
