@@ -1048,11 +1048,11 @@ pub struct ArchiveSearchRequest {
 /// Request for listing recent archive records
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ArchiveRecentRequest {
-    /// Only include records after this date (YYYY-MM-DD). Required.
+    /// Only include records after this date (YYYY-MM-DD). Defaults to 30 days ago.
     #[schemars(
-        description = "Only include records after this date (YYYY-MM-DD format). Required."
+        description = "Only include records after this date (YYYY-MM-DD format). Optional — defaults to 30 days ago."
     )]
-    pub after: String,
+    pub after: Option<String>,
 
     /// Archive source filter (e.g. "hla" for chat logs, "pensieve" for agent memory)
     #[schemars(

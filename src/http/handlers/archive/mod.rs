@@ -285,92 +285,27 @@ pub(super) async fn archive_recent(
     if !state.config.archive.enabled {
         return Err(bad_request("Archive not configured".to_string()));
     }
-
-    let limit = params.limit.unwrap_or(50);
-    let paths = archive_source_paths(&state.config.archive);
-    if paths.is_empty() {
+    if archive_source_paths(&state.config.archive).is_empty() {
         return Err(bad_request("No archive sources configured".to_string()));
     }
 
-    // (source_name, id, content, rel_path, sort_date)
-    let mut records: Vec<(String, String, String, String, String)> = Vec::new();
-
-    for (source_name, source_path) in &paths {
-        // Apply source filter early
-        if let Some(ref filter) = params.source {
-            if source_name != filter {
-                continue;
-            }
-        }
-        let archive_root = std::path::Path::new(source_path);
-        let mut source_records: Vec<(String, String, String)> = Vec::new();
-        // Default to 30 days ago if no after date provided
-        let default_after = {
-            let now = chrono::Utc::now();
-            let thirty_days_ago = now - chrono::Duration::days(30);
-            thirty_days_ago.format("%Y-%m-%d").to_string()
-        };
-        let after = params.after.as_deref().unwrap_or(&default_after);
-        collect_recent_records(archive_root, archive_root, after, &mut source_records);
-        for (id, content, rel_path) in source_records {
-            // Extract sort date: prefer frontmatter timestamp, fallback to path date
-            let sort_date = extract_timestamp_from_frontmatter(&content)
-                .or_else(|| extract_date_from_archive_path(&format!("_:{}", rel_path)))
-                .unwrap_or_default();
-            records.push((source_name.clone(), id, content, rel_path, sort_date));
-        }
-    }
-
-    // Sort by extracted date descending (newest first), then by path for ties
-    records.sort_by(|a, b| b.4.cmp(&a.4).then_with(|| b.3.cmp(&a.3)));
-
-    // Content-based dedup: same design doc often stored by multiple agents.
-    // Dedup on BODY (after frontmatter extraction) since duplicate records
-    // have different frontmatter (IDs, timestamps, agents) but identical bodies.
-    {
-        let mut seen_content = std::collections::HashSet::new();
-        records.retain(|(_, _, content, _, _)| {
-            let body = extract_body(content).unwrap_or_default();
-            let key = body.trim().to_lowercase();
-            // Truncate at a char boundary (floor_char_boundary avoids UTF-8 panic)
-            let end = if key.len() > 200 {
-                // Find the last char boundary at or before byte 200
-                let mut i = 200;
-                while i > 0 && !key.is_char_boundary(i) {
-                    i -= 1;
-                }
-                i
-            } else {
-                key.len()
-            };
-            let dedup_key = &key[..end];
-            seen_content.insert(dedup_key.to_string())
-        });
-    }
-
-    records.truncate(limit);
+    let records = crate::index::archive::collect_recent(
+        &state.config.archive,
+        params.after.as_deref(),
+        params.source.as_deref(),
+        params.limit.unwrap_or(50),
+    );
 
     let total = records.len();
     let results: Vec<ArchiveResultItem> = records
         .into_iter()
-        .map(|(source_name, id, content, rel_path, sort_date)| {
-            let body = extract_body(&content).unwrap_or_default();
-            let prefixed_path = format!("{}:{}", source_name, rel_path);
-            // Use the already-extracted sort_date for timestamp
-            let timestamp = if sort_date.is_empty() {
-                extract_date_from_archive_path(&prefixed_path).unwrap_or_default()
-            } else {
-                sort_date
-            };
-
-            ArchiveResultItem {
-                id,
-                content: body,
-                source: source_name,
-                timestamp,
-                score: 1.0,
-                file_path: prefixed_path,
-            }
+        .map(|r| ArchiveResultItem {
+            id: r.id,
+            content: r.body,
+            source: r.source,
+            timestamp: r.timestamp,
+            score: 1.0,
+            file_path: r.file_path,
         })
         .collect();
 

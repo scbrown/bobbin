@@ -3111,77 +3111,53 @@ impl BobbinMcpServer {
             )]));
         }
 
-        // Use FTS to find recent records by scanning archive chunks
-        let archive_languages: Vec<String> = config
-            .archive
-            .sources
-            .iter()
-            .map(|s| s.name.clone())
-            .collect();
+        // Listing recent records is a filesystem walk over the configured
+        // sources — the same one `/archive/recent` serves. This used to be a
+        // separate FTS query for the literal token "*", which matches nothing,
+        // so the tool answered "No archive records found" for every input while
+        // the HTTP endpoint returned rows for the identical query (aegis-44n1cy).
+        let records = crate::index::archive::collect_recent(
+            &config.archive,
+            req.after.as_deref(),
+            req.source.as_deref(),
+            limit,
+        );
 
-        let vector_store = self
-            .open_vector_store()
-            .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-        // Build filter: archive language + date path prefix
-        let lang_filter = if archive_languages.len() == 1 {
-            format!("language = '{}'", archive_languages[0].replace('\'', "''"))
-        } else {
-            let quoted: Vec<String> = archive_languages
+        if records.is_empty() {
+            let window = req
+                .after
+                .as_deref()
+                .map(|a| format!("after {}", a))
+                .unwrap_or_else(|| "in the last 30 days".to_string());
+            let scope = req
+                .source
+                .as_deref()
+                .map(|s| format!(" for source '{}'", s))
+                .unwrap_or_default();
+            let configured: Vec<&str> = config
+                .archive
+                .sources
                 .iter()
-                .map(|l| format!("'{}'", l.replace('\'', "''")))
+                .map(|s| s.name.as_str())
                 .collect();
-            format!("language IN ({})", quoted.join(", "))
-        };
-
-        // Use a broad search to get archive chunks, then filter by date
-        let results = vector_store
-            .search_fts_filtered("*", limit * 5, None, Some(&lang_filter))
-            .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-        let mut filtered: Vec<_> = results
-            .into_iter()
-            .filter(|r| archive_languages.contains(&r.chunk.language))
-            .filter(|r| {
-                extract_archive_date(&r.chunk.file_path)
-                    .is_some_and(|d| d.as_str() >= req.after.as_str())
-            })
-            .collect();
-
-        // Source filter
-        if let Some(ref source) = req.source {
-            filtered.retain(|r| &r.chunk.language == source);
-        }
-
-        // Sort by date descending (newest first) for "recent" queries
-        filtered.sort_by(|a, b| {
-            let da = extract_archive_date(&a.chunk.file_path).unwrap_or_default();
-            let db = extract_archive_date(&b.chunk.file_path).unwrap_or_default();
-            db.cmp(&da)
-        });
-
-        filtered.truncate(limit);
-
-        if filtered.is_empty() {
+            // Name the sources that were actually searched: an empty result
+            // for an unconfigured source is a different fact from an empty
+            // window, and the caller cannot tell them apart otherwise.
             return Ok(CallToolResult::success(vec![Content::text(format!(
-                "No archive records found after {}.",
-                req.after
+                "No archive records found {}{}. Configured sources: {}.",
+                window,
+                scope,
+                configured.join(", ")
             ))]));
         }
 
-        let mut text = format!(
-            "Archive recent: {} records after {}\n\n",
-            filtered.len(),
-            req.after
-        );
-        for r in &filtered {
-            let date = extract_archive_date(&r.chunk.file_path).unwrap_or_default();
-            let source = &r.chunk.language;
-            let id = r.chunk.name.as_deref().unwrap_or("-");
-            text.push_str(&format!("--- {} ({}, {}) ---\n", id, source, date));
-            text.push_str(&Self::truncate_content(&r.chunk.content, 500));
+        let mut text = format!("Archive recent: {} records\n\n", records.len());
+        for r in &records {
+            text.push_str(&format!(
+                "--- {} ({}, {}) ---\n",
+                r.id, r.source, r.timestamp
+            ));
+            text.push_str(&Self::truncate_content(&r.body, 500));
             text.push_str("\n\n");
         }
 

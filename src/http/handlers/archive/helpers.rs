@@ -6,20 +6,10 @@
 //! Archive and beads search handlers.
 #![allow(private_interfaces)]
 
-/// Extract a date string from an archive path like "{source}:YYYY/MM/DD/..."
-///
-/// Handles any source prefix (hla:, pensieve:, archive:, etc.)
-pub(super) fn extract_date_from_archive_path(path: &str) -> Option<String> {
-    // Strip the source prefix (everything before and including ':')
-    let after_prefix = path.split_once(':').map(|(_, rest)| rest)?;
-    // Path format: YYYY/MM/DD/filename.md
-    let parts: Vec<&str> = after_prefix.splitn(4, '/').collect();
-    if parts.len() >= 3 && parts[0].len() == 4 && parts[1].len() == 2 && parts[2].len() == 2 {
-        Some(format!("{}-{}-{}", parts[0], parts[1], parts[2]))
-    } else {
-        None
-    }
-}
+// The archive record helpers live with the archive domain logic in
+// `index::archive`, so the HTTP handler and the MCP tool share one
+// implementation instead of two that drift apart (aegis-44n1cy).
+pub(super) use crate::index::archive::{extract_body, extract_date_from_archive_path};
 
 /// Get the list of archive source names (language tags) from config.
 pub(super) fn archive_source_names(config: &crate::config::ArchiveConfig) -> Vec<String> {
@@ -63,102 +53,6 @@ pub(super) fn find_record_recursive(
         }
     }
     None
-}
-
-/// Collect archive records whose date is >= the `after` date.
-///
-/// Date is extracted from the path if it's date-partitioned (YYYY/MM/DD/...),
-/// otherwise falls back to parsing the `timestamp:` field from YAML frontmatter.
-pub(super) fn collect_recent_records(
-    root: &std::path::Path,
-    dir: &std::path::Path,
-    after: &str,
-    results: &mut Vec<(String, String, String)>,
-) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            // Skip underscore-prefixed directories (_plans/, _templates/, etc.)
-            // These contain static design docs, not time-series observations.
-            let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if dir_name.starts_with('_') {
-                continue;
-            }
-            collect_recent_records(root, &path, after, results);
-        } else if path.extension().is_some_and(|e| e == "md") {
-            let rel = match path.strip_prefix(root) {
-                Ok(r) => r.to_string_lossy().to_string(),
-                Err(_) => continue,
-            };
-
-            // Try date from path first (cheap)
-            let date = extract_date_from_archive_path(&format!("_:{}", rel));
-
-            if let Some(ref d) = date {
-                // Path has a date — filter without reading file
-                if d.as_str() >= after {
-                    if let Ok(content) = std::fs::read_to_string(&path) {
-                        let id = path
-                            .file_stem()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        results.push((id, content, rel));
-                    }
-                }
-            } else {
-                // No date in path — read file and check frontmatter timestamp
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    let fm_date = extract_timestamp_from_frontmatter(&content);
-                    if fm_date.as_deref().is_some_and(|d| d >= after) {
-                        let id = path
-                            .file_stem()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        results.push((id, content, rel));
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Extract a YYYY-MM-DD date from the `timestamp:` field in YAML frontmatter.
-pub(super) fn extract_timestamp_from_frontmatter(content: &str) -> Option<String> {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("---") {
-        return None;
-    }
-    let end = trimmed[3..].find("\n---")?;
-    let fm = &trimmed[3..3 + end];
-    for line in fm.lines() {
-        let line = line.trim();
-        if let Some(val) = line.strip_prefix("timestamp:") {
-            let ts = val.trim();
-            if ts.len() >= 10 {
-                return Some(ts[..10].to_string());
-            }
-        }
-    }
-    None
-}
-
-/// Extract body text after YAML frontmatter
-pub(super) fn extract_body(content: &str) -> Option<String> {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("---") {
-        return Some(content.to_string());
-    }
-    let close = trimmed[3..].find("\n---")?;
-    let body_start = 3 + close + 4;
-    let body = if body_start < trimmed.len() {
-        trimmed[body_start..].trim()
-    } else {
-        ""
-    };
-    Some(body.to_string())
 }
 
 pub(super) fn extract_bead_field(content: &str, prefix: &str) -> String {
