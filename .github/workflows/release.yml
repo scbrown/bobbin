@@ -384,9 +384,52 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
 
+      # Publish, and claim `latest` only if this really IS the latest.
+      #
+      # WHY (aegis-egqrv4). This step used to pass `--latest` unconditionally, so
+      # the LAST release run to reach it won `latest` regardless of version. That
+      # is reachable rather than theoretical: the job gates on `needs.build`, i.e.
+      # ALL FOUR matrix legs, and the macOS legs dominate — a measured 79m41s end
+      # to end for v0.15.0, against the ~100 minutes recorded at the top of this
+      # file. Merge a second release PR inside that window, which is ordinary when
+      # changes are landing, and two ~80-minute matrices run concurrently with
+      # nothing ordering their finishes.
+      #
+      # The consequence is silent. Bobbin deploys by `github-release`: aegis-cd
+      # resolves the latest PUBLISHED release every 15 minutes and cuts over to
+      # it. So an inversion does not mislabel a page, it DEPLOYS THE OLDER BUILD
+      # OVER THE NEWER ONE — with no failed run, no alert, and both releases
+      # present and complete. The newer release simply is not `latest`.
+      #
+      # `--latest` cannot just be dropped: a release published with no latest
+      # marker leaves a healthy deploy stale until something pages, which is
+      # aegis-if8dp. The property to hold is narrower — a completing OLDER release
+      # must not demote a published NEWER one — so the flag is decided rather than
+      # assumed.
       - name: Publish complete GitHub Release
         shell: bash
-        run: gh release edit "${{ env.VERSION }}" --repo "${{ github.repository }}" --draft=false --latest
+        run: |
+          set -euo pipefail
+          version="${{ env.VERSION }}"
+
+          # Highest published (non-draft, non-prerelease) version, by semver.
+          # `sort -V` is version-aware, so 0.9.0 sorts below 0.10.0 where a
+          # lexical sort would not.
+          highest="$(gh release list --repo "${{ github.repository }}" \
+                       --exclude-drafts --exclude-pre-releases --limit 200 \
+                       --json tagName --jq '.[].tagName' \
+                     | sed 's/^v//' | sort -V | tail -1)"
+          mine="${version#v}"
+
+          if [ -z "$highest" ] || [ "$(printf '%s\n%s\n' "$highest" "$mine" | sort -V | tail -1)" = "$mine" ]; then
+            echo "publishing $version as latest (highest published: ${highest:-none})"
+            gh release edit "$version" --repo "${{ github.repository }}" --draft=false --latest
+          else
+            echo "publishing $version WITHOUT --latest: $highest is already published and is newer."
+            echo "This is the aegis-egqrv4 guard. The release is still published and its"
+            echo "assets are still available; it simply does not demote a newer release."
+            gh release edit "$version" --repo "${{ github.repository }}" --draft=false --latest=false
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
