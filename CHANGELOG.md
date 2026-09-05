@@ -21,6 +21,20 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.15.0](https://github.com/scbrown/bobbin/compare/v0.14.0...v0.15.0) (2026-09-05)
+
+
+### Features
+
+* **hook:** read tool_response, so the injection can answer what you FOUND (aegis-dke1fo) ([ec99661](https://github.com/scbrown/bobbin/commit/ec996612a58d939bb84288bedbfce550ae76c825))
+
+
+### Bug Fixes
+
+* **archive:** one shared recent-record listing, so MCP and HTTP cannot diverge ([d3ebbfe](https://github.com/scbrown/bobbin/commit/d3ebbfe72a7eb8d000db09ad18d33918b90dd272))
+* **ci:** assert the full-build gate as a property, not a spelling (aegis-g2gpw5) ([909c61e](https://github.com/scbrown/bobbin/commit/909c61ebd80869a1f8af51acc250ad02e8eac523))
+* **release:** build+publish on releases_created in the same run (aegis-g2gpw5) ([a24cddb](https://github.com/scbrown/bobbin/commit/a24cddb093aa60ffac4a313a08139380d0e21111))
+
 ## [0.14.0](https://github.com/scbrown/bobbin/compare/v0.13.1...v0.14.0) (2026-09-04)
 
 
