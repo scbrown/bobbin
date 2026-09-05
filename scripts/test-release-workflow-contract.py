@@ -9,6 +9,8 @@ their ordering with only the Python standard library.
 
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -49,11 +51,12 @@ assert release_please["force-tag-creation"] is True, "draft release must still c
 assert build.count("\n          draft: true\n") == 2, "both early matrix upload paths must preserve draft status"
 assert release.count("\n          draft: true\n") == 1, "final asset upload must preserve draft status"
 assert "- name: Publish complete GitHub Release" in release
-assert (
-    'gh release edit "${{ env.VERSION }}" '
-    '--repo "${{ github.repository }}" --draft=false --latest'
-    in release
-)
+# The publish must clear the draft. It used to be pinned as one literal string
+# that ALSO baked in an unconditional `--latest`, so this contract was holding
+# the aegis-egqrv4 defect in place: any fix to the latest decision failed here.
+# The draft-clearing and the latest decision are separate obligations and are now
+# asserted separately (see the latest-marker block at the end of this file).
+assert "--draft=false" in release, "the publish step must clear the draft"
 assert release.index("Finalize GitHub Release assets and checksums") < release.index(
     "Publish complete GitHub Release"
 ), "the release must become public only after final asset upload"
@@ -101,3 +104,53 @@ assert 'name "*.bbpack"' in checksums
 assert 'name "*.bbpack"' in release
 
 print("release workflow contract: ok")
+
+
+# ── The `latest` marker must be DECIDED, not asserted (aegis-egqrv4) ──────────
+#
+# `gh release edit --latest` is unconditional wherever it appears bare, so the
+# LAST release run to reach it wins `latest` regardless of version. That is
+# reachable: the finalizer gates on every matrix leg, and the macOS legs dominate
+# (79m41s measured for v0.15.0, ~100 min recorded in release.yml). Merge a second
+# release PR inside that window and two matrices race with nothing ordering them.
+#
+# The damage is silent. Bobbin deploys by `github-release`: the deploy timer
+# resolves the latest PUBLISHED release, so an inversion deploys the OLDER build
+# over the newer one, with both releases complete and no run failing.
+assert "--latest=false" in release, (
+    "the publish step must be able to publish WITHOUT claiming latest; a bare "
+    "--latest lets an older release demote a newer one (aegis-egqrv4)"
+)
+assert "sort -V" in release, (
+    "the latest decision must compare versions with `sort -V`; a lexical sort "
+    "ranks 0.9.0 above 0.10.0 and inverts the guard in both directions"
+)
+assert "--exclude-drafts" in release and "--exclude-pre-releases" in release, (
+    "the highest published version must ignore drafts and prereleases — a draft "
+    "is the NORMAL state for most of a release's ~80-minute build"
+)
+# A prerelease must never claim latest: `sort -V` ranks 0.17.0-rc1 above both
+# 0.16.0 AND 0.17.0, and `latest` is what the deploy timer resolves.
+assert "it is a PRERELEASE" in release, (
+    "the publish step must refuse --latest for a prerelease; sort -V ranks a "
+    "prerelease above its own final release (aegis-egqrv4)"
+)
+# `--latest` must never appear without a decision around it. Every occurrence
+# lives in one of the two branches, so both spellings are present.
+assert release.count("--latest") >= 2, (
+    "expected both the --latest and --latest=false branches of the decision"
+)
+
+# The static assertions above check that the workflow SPELLS the decision
+# correctly. This runs the decision and checks it is RIGHT — wired here rather
+# than as its own CI step so it shares an execution path that already runs,
+# instead of being a check nothing invokes (aegis-n5b1rd).
+gate = Path("scripts/test-release-latest-gate.sh")
+if gate.exists():
+    result = subprocess.run(["bash", str(gate)], capture_output=True, text=True)
+    if result.returncode != 0:
+        sys.stdout.write(result.stdout)
+        sys.stderr.write(result.stderr)
+        raise SystemExit("release latest-gate logic test failed")
+else:
+    raise SystemExit(f"missing {gate}: the latest-gate logic is unverified")
