@@ -204,6 +204,51 @@ Provides semantic and keyword search capabilities.
         output.status.success()
     }
 
+    /// Index, and FAIL LOUDLY if it did not work — never skip.
+    ///
+    /// Every caller used to write `if !project.bobbin_index() { return; }`. A
+    /// returning `#[test]` has PASSED: Rust's harness reports it identically to
+    /// one that asserted. So an environment where `bobbin index` cannot run
+    /// turned every index-dependent test green, and the greenness was CAUSED by
+    /// the failure — the worse the environment, the more certain the pass.
+    ///
+    /// Measured (aegis-pnm0uo): the whole 11-test `cli_index` suite completes in
+    /// ~300 ms in CI against 15-21 s locally, i.e. CI has never executed these
+    /// assertions.
+    ///
+    /// Two things are checked, and the second is the one that matters. An exit
+    /// status says the process did not complain; it cannot distinguish "indexed
+    /// everything" from "indexed nothing". The ARTIFACT can. So this asserts the
+    /// index database exists and is non-empty, and reports the command's own
+    /// output when it does not — turning a silent skip into a named cause.
+    pub fn index_or_explain(&self) {
+        let output = std::process::Command::new(Self::bobbin_bin())
+            .arg("index")
+            .arg(self.path())
+            .output()
+            .expect("failed to run bobbin index");
+
+        assert!(
+            output.status.success(),
+            "`bobbin index` FAILED (status {:?}) — this test cannot run, and must \
+             not report success.\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+
+        // The artifact check. `test -s` for this suite (aegis-pnm0uo).
+        let db = self.path().join(".bobbin").join("index.db");
+        let size = std::fs::metadata(&db).map(|m| m.len()).unwrap_or(0);
+        assert!(
+            size > 0,
+            "`bobbin index` exited 0 but produced no index at {} ({} bytes). \
+             An exit status cannot tell an empty index from a full one; this can.",
+            db.display(),
+            size,
+        );
+    }
+
     /// Return the path to the bobbin binary (built via cargo).
     pub fn bobbin_bin() -> PathBuf {
         // assert_cmd finds the binary automatically via cargo

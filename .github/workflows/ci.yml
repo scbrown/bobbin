@@ -18,6 +18,33 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler cmake g++
 
+      # ONNX Runtime, without which `bobbin index` cannot run at all.
+      #
+      # WHY (aegis-pnm0uo). `ort` is built with `load-dynamic`, so it resolves
+      # libonnxruntime.so at RUNTIME via ORT_DYLIB_PATH. A bare runner has no
+      # such library, so every `bobbin index` panicked with
+      #   Failed to load ONNX Runtime dylib: ... dlopen failed
+      # and exited 101. Ten of the eleven cli_index tests opened with
+      # `if !project.bobbin_index() { return; }`, and a returning #[test] has
+      # PASSED — so the suite reported 11 passed while 1 had actually run, for as
+      # long as that pattern existed. Indexing is bobbin's core function; a green
+      # CI was not weak evidence about it, it was no evidence at all.
+      #
+      # Pinned to the version the deployed host installs (goldblum
+      # bobbin_onnxruntime_gpu_version), so CI and production resolve the same
+      # runtime rather than drifting apart silently. The CPU build is used here:
+      # runners have no GPU and the tests do not need one.
+      - name: Install ONNX Runtime
+        run: |
+          set -euo pipefail
+          version=1.24.1
+          curl -fsSL -o ort.tgz \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${version}/onnxruntime-linux-x64-${version}.tgz"
+          tar xzf ort.tgz
+          lib="$PWD/onnxruntime-linux-x64-${version}/lib/libonnxruntime.so"
+          test -s "$lib"   # refuse to continue on a truncated or missing download
+          echo "ORT_DYLIB_PATH=$lib" >> "$GITHUB_ENV"
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
