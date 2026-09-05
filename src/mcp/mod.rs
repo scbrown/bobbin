@@ -3,7 +3,10 @@
 //! This module exposes Bobbin's code search and analysis capabilities via the
 //! Model Context Protocol, allowing AI agents (Claude, Cursor) to use Bobbin as a tool.
 
+mod knowledge_tools;
+mod local_graph_tools;
 mod server;
+mod tool_annotations;
 mod tools;
 
 pub use server::{run_http_server, run_server};

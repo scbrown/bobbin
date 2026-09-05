@@ -49,6 +49,27 @@ pub struct BobbinMcpServer {
 }
 
 impl BobbinMcpServer {
+    /// The complete tool router this server serves.
+    ///
+    /// The tools live in two `#[tool_router]` blocks — the local-index tools in
+    /// this file and the Quipu tools in `mcp::knowledge_tools` — and this is
+    /// the single place they are combined. `new()` and the annotation guard
+    /// both call it, so the surface under test cannot drift from the surface
+    /// served. Building the combination in two places is what silently dropped
+    /// all nine knowledge tools from the guard's view the first time
+    /// (aegis-fmcth7); the count assertion caught it, but only because the
+    /// count was pinned.
+    fn build_router() -> ToolRouter<Self> {
+        Self::tool_router() + Self::knowledge_router() + Self::local_graph_router()
+    }
+
+    /// The tools this server advertises, for the annotation guard — the
+    /// macro-generated routers are private to their own modules.
+    #[cfg(test)]
+    pub(crate) fn advertised_tools() -> Vec<rmcp::model::Tool> {
+        Self::build_router().list_all()
+    }
+
     pub fn new(repo_root: PathBuf) -> Result<Self> {
         let config_path = Config::config_path(&repo_root);
         if !config_path.exists() {
@@ -60,7 +81,7 @@ impl BobbinMcpServer {
 
         Ok(Self {
             repo_root,
-            tool_router: Self::tool_router(),
+            tool_router: Self::build_router(),
         })
     }
 
@@ -699,7 +720,13 @@ impl BobbinMcpServer {
 impl BobbinMcpServer {
     /// Semantic search for code
     #[tool(
-        description = "Search for code using natural language. Finds functions, classes, and other code elements that match the semantic meaning of your query. Best for: 'functions that handle authentication', 'error handling code', 'database connection logic'."
+        description = "Search for code using natural language. Finds functions, classes, and other code elements that match the semantic meaning of your query. Best for: 'functions that handle authentication', 'error handling code', 'database connection logic'.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn search(
         &self,
@@ -834,7 +861,13 @@ impl BobbinMcpServer {
 
     /// Keyword/regex search
     #[tool(
-        description = "Search for code using exact keywords or regex patterns. Best for: finding specific function names, variable references, or pattern matching. Use ignore_case=true for case-insensitive search, regex=true for regex patterns."
+        description = "Search for code using exact keywords or regex patterns. Best for: finding specific function names, variable references, or pattern matching. Use ignore_case=true for case-insensitive search, regex=true for regex patterns.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn grep(
         &self,
@@ -985,7 +1018,13 @@ impl BobbinMcpServer {
 
     /// Assemble task-relevant context
     #[tool(
-        description = "Assemble a comprehensive context bundle for a task. Given a natural language task description, combines semantic search results with temporally coupled files from git history. Returns a deduplicated, budget-aware set of relevant code chunks grouped by file. Ideal for understanding everything relevant to a task before making changes."
+        description = "Assemble a comprehensive context bundle for a task. Given a natural language task description, combines semantic search results with temporally coupled files from git history. Returns a deduplicated, budget-aware set of relevant code chunks grouped by file. Ideal for understanding everything relevant to a task before making changes.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn context(
         &self,
@@ -1129,7 +1168,13 @@ impl BobbinMcpServer {
 
     /// Find related files
     #[tool(
-        description = "Find files that are related to a given file based on git commit history. Files that frequently change together have higher coupling scores. Useful for understanding dependencies and impact analysis."
+        description = "Find files that are related to a given file based on git commit history. Files that frequently change together have higher coupling scores. Useful for understanding dependencies and impact analysis.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn related(
         &self,
@@ -1225,7 +1270,13 @@ impl BobbinMcpServer {
 
     /// Map test↔source coverage
     #[tool(
-        description = "Map test↔source coverage inferred from git co-change history. Given a source file, returns the test files that change with it (the tests that likely cover it); given a test file, returns the source files it covers. Useful for: 'which tests exercise auth.rs?', 'what does test_auth.rs cover?'."
+        description = "Map test↔source coverage inferred from git co-change history. Given a source file, returns the test files that change with it (the tests that likely cover it); given a test file, returns the source files it covers. Useful for: 'which tests exercise auth.rs?', 'what does test_auth.rs cover?'.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn test_coverage(
         &self,
@@ -1287,7 +1338,13 @@ impl BobbinMcpServer {
 
     /// Find symbol references
     #[tool(
-        description = "Find the definition and all usages of a symbol by name. Returns the definition location (file, line, signature) and all usage sites across the codebase. Best for: 'where is parse_config defined?', 'who calls handle_request?', 'find all uses of Config struct'."
+        description = "Find the definition and all usages of a symbol by name. Returns the definition location (file, line, signature) and all usage sites across the codebase. Best for: 'where is parse_config defined?', 'who calls handle_request?', 'find all uses of Config struct'.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn find_refs(
         &self,
@@ -1341,7 +1398,13 @@ impl BobbinMcpServer {
 
     /// List symbols in a file
     #[tool(
-        description = "List all symbols (functions, structs, traits, etc.) defined in a file. Returns each symbol's name, type, line range, and signature. Best for: 'what functions are in main.rs?', 'list all structs in config.rs', 'show me the API of this module'."
+        description = "List all symbols (functions, structs, traits, etc.) defined in a file. Returns each symbol's name, type, line range, and signature. Best for: 'what functions are in main.rs?', 'list all structs in config.rs', 'show me the API of this module'.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn list_symbols(
         &self,
@@ -1382,7 +1445,13 @@ impl BobbinMcpServer {
 
     /// Follow relationship edges from a chunk
     #[tool(
-        description = "Follow relationship edges from a chunk: next_chunk (adjacent chunks in document order), part_of (containment: fn in impl, section under parent heading, table in section), implements, impl_for, extends, similar_to (near-duplicates persisted by `bobbin similar --scan --persist`). Anchor by chunk `id` (from search results) or by file+line. Direction 'out'+next_chunk = the following chunk, 'in' = preceding; part_of 'out' = containing parent, 'in' = children. Best for: reading the surrounding document of a search hit, walking a doc section by section, finding a section's parent or children. Requires dependency tracking (on by default); an empty result on a fresh index means the file has no edges, not a failure."
+        description = "Follow relationship edges from a chunk: next_chunk (adjacent chunks in document order), part_of (containment: fn in impl, section under parent heading, table in section), implements, impl_for, extends, similar_to (near-duplicates persisted by `bobbin similar --scan --persist`). Anchor by chunk `id` (from search results) or by file+line. Direction 'out'+next_chunk = the following chunk, 'in' = preceding; part_of 'out' = containing parent, 'in' = children. Best for: reading the surrounding document of a search hit, walking a doc section by section, finding a section's parent or children. Requires dependency tracking (on by default); an empty result on a fresh index means the file has no edges, not a failure.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn chunk_neighbors(
         &self,
@@ -1518,7 +1587,13 @@ impl BobbinMcpServer {
 
     /// Read a specific code chunk
     #[tool(
-        description = "Read a specific section of code from a file. Specify the file path and line range. Optionally include context lines before and after."
+        description = "Read a specific section of code from a file. Specify the file path and line range. Optionally include context lines before and after.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn read_chunk(
         &self,
@@ -1548,7 +1623,13 @@ impl BobbinMcpServer {
 
     /// Identify code hotspots
     #[tool(
-        description = "Identify code hotspots — files that are both frequently changed (high churn) and complex. Hotspots are the riskiest parts of a codebase: they change often and are hard to change safely. Score is the geometric mean of normalized churn and AST complexity. Best for: 'which files need refactoring?', 'find risky code', 'where are the maintenance bottlenecks?'."
+        description = "Identify code hotspots — files that are both frequently changed (high churn) and complex. Hotspots are the riskiest parts of a codebase: they change often and are hard to change safely. Score is the geometric mean of normalized churn and AST complexity. Best for: 'which files need refactoring?', 'find risky code', 'where are the maintenance bottlenecks?'.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn hotspots(
         &self,
@@ -1637,7 +1718,13 @@ impl BobbinMcpServer {
 
     /// Impact analysis
     #[tool(
-        description = "Predict which files are affected by a change to a target file or function. Combines git co-change coupling and semantic similarity signals, with optional transitive expansion. Returns a ranked list of impacted files with signal attribution and scores. Best for: 'what breaks if I change this?', 'which files should I review after touching auth.rs?'."
+        description = "Predict which files are affected by a change to a target file or function. Combines git co-change coupling and semantic similarity signals, with optional transitive expansion. Returns a ranked list of impacted files with signal attribution and scores. Best for: 'what breaks if I change this?', 'which files should I review after touching auth.rs?'.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn impact(
         &self,
@@ -1726,7 +1813,13 @@ impl BobbinMcpServer {
 
     /// Diff-aware review context
     #[tool(
-        description = "Assemble review context from a git diff. Given a diff specification (unstaged changes, staged changes, branch comparison, or commit range), finds the indexed code chunks that overlap with the changed lines and expands via temporal coupling. Returns a budget-aware context bundle with changed-file annotations. Ideal for code review: 'what do I need to understand to review these changes?'"
+        description = "Assemble review context from a git diff. Given a diff specification (unstaged changes, staged changes, branch comparison, or commit range), finds the indexed code chunks that overlap with the changed lines and expands via temporal coupling. Returns a budget-aware context bundle with changed-file annotations. Ideal for code review: 'what do I need to understand to review these changes?'",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn review(
         &self,
@@ -1889,7 +1982,13 @@ impl BobbinMcpServer {
 
     /// Find similar code or scan for duplicates
     #[tool(
-        description = "Find code chunks semantically similar to a target, or scan the entire codebase for near-duplicate clusters. Single-target mode: provide a chunk reference ('file.rs:function_name') or free text to find similar code. Scan mode: set scan=true to detect duplicate/near-duplicate code clusters across the codebase. Useful for: 'find code similar to this function', 'detect copy-paste duplicates', 'find redundant implementations'."
+        description = "Find code chunks semantically similar to a target, or scan the entire codebase for near-duplicate clusters. Single-target mode: provide a chunk reference ('file.rs:function_name') or free text to find similar code. Scan mode: set scan=true to detect duplicate/near-duplicate code clusters across the codebase. Useful for: 'find code similar to this function', 'detect copy-paste duplicates', 'find redundant implementations'.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn similar(
         &self,
@@ -2016,7 +2115,13 @@ impl BobbinMcpServer {
 
     /// Project primer/overview
     #[tool(
-        description = "Get an LLM-friendly overview of Bobbin with live index statistics. Shows what Bobbin does, architecture, available commands, and MCP tools. Use 'section' to get a specific part, or 'brief' for a compact summary. Always includes live stats when the index is initialized."
+        description = "Get an LLM-friendly overview of Bobbin with live index statistics. Shows what Bobbin does, architecture, available commands, and MCP tools. Use 'section' to get a specific part, or 'brief' for a compact summary. Always includes live stats when the index is initialized.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn prime(
         &self,
@@ -2072,7 +2177,13 @@ impl BobbinMcpServer {
 
     /// Search indexed beads (issues) semantically, with optional live Dolt enrichment
     #[tool(
-        description = "Search for beads (issues/tasks from the Dolt issue tracker) using natural language. Finds issues related to your query by semantic similarity. Filter by priority, status, assignee, rig, issue_type, or label. Results are enriched with live Dolt metadata by default (set enrich=false for faster indexed-only results). Compact mode (default) omits snippets to save tokens. Requires beads to be indexed first via `bobbin index --include-beads`."
+        description = "Search for beads (issues/tasks from the Dolt issue tracker) using natural language. Finds issues related to your query by semantic similarity. Filter by priority, status, assignee, rig, issue_type, or label. Results are enriched with live Dolt metadata by default (set enrich=false for faster indexed-only results). Compact mode (default) omits snippets to save tokens. Requires beads to be indexed first via `bobbin index --include-beads`.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn search_beads(
         &self,
@@ -2322,7 +2433,13 @@ impl BobbinMcpServer {
 
     /// Show import dependencies for a file
     #[tool(
-        description = "Show import dependencies for a file. Returns what the file imports (forward dependencies) and/or what imports the file (reverse dependencies). Use 'reverse=true' to see dependents only, 'both=true' for both directions. Requires the index to include dependency data (enabled by default)."
+        description = "Show import dependencies for a file. Returns what the file imports (forward dependencies) and/or what imports the file (reverse dependencies). Use 'reverse=true' to see dependents only, 'both=true' for both directions. Requires the index to include dependency data (enabled by default).",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn dependencies(
         &self,
@@ -2394,7 +2511,13 @@ impl BobbinMcpServer {
 
     /// Show commit history for a specific file
     #[tool(
-        description = "Show the git commit history for a specific file. Returns a list of commits that touched the file, along with statistics like author breakdown and churn rate (commits/month). Best for: 'who has worked on this file?', 'how often does this file change?', 'recent changes to config.rs'."
+        description = "Show the git commit history for a specific file. Returns a list of commits that touched the file, along with statistics like author breakdown and churn rate (commits/month). Best for: 'who has worked on this file?', 'how often does this file change?', 'recent changes to config.rs'.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn file_history(
         &self,
@@ -2457,7 +2580,13 @@ impl BobbinMcpServer {
 
     /// Show index status and statistics
     #[tool(
-        description = "Show the current index status and statistics for the bobbin instance. Returns file/chunk counts, dependency stats, repository list, and optionally a per-language breakdown. Best for: 'is the index up to date?', 'how many files are indexed?', 'what languages are in the codebase?'."
+        description = "Show the current index status and statistics for the bobbin instance. Returns file/chunk counts, dependency stats, repository list, and optionally a per-language breakdown. Best for: 'is the index up to date?', 'how many files are indexed?', 'what languages are in the codebase?'.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn status(
         &self,
@@ -2526,7 +2655,13 @@ impl BobbinMcpServer {
 
     /// Search git commits semantically to find commits by what they did
     #[tool(
-        description = "Search git commit history using natural language. Finds commits by what they did, not just by message keywords. Best for: 'when was authentication added?', 'commits that changed the parser', 'who refactored the database layer?'. Filter by author or file path. Requires commits to be indexed (enabled by default in bobbin index)."
+        description = "Search git commit history using natural language. Finds commits by what they did, not just by message keywords. Best for: 'when was authentication added?', 'commits that changed the parser', 'who refactored the database layer?'. Filter by author or file path. Requires commits to be indexed (enabled by default in bobbin index).",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn commit_search(
         &self,
@@ -2644,7 +2779,13 @@ impl BobbinMcpServer {
 
     /// Submit feedback on a bobbin context injection
     #[tool(
-        description = "Submit feedback on a bobbin context injection. Rate injections as 'useful' (helped with task), 'noise' (irrelevant to current work), or 'harmful' (actively misleading). Reference the injection_id shown in [injection_id: inj-xxx] from the context injection output. Supports both standard (inj-xxx) and reaction (inj-react-xxx) injection IDs."
+        description = "Submit feedback on a bobbin context injection. Rate injections as 'useful' (helped with task), 'noise' (irrelevant to current work), or 'harmful' (actively misleading). Reference the injection_id shown in [injection_id: inj-xxx] from the context injection output. Supports both standard (inj-xxx) and reaction (inj-react-xxx) injection IDs.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn feedback_submit(
         &self,
@@ -2701,7 +2842,13 @@ impl BobbinMcpServer {
 
     /// List recent bobbin feedback records
     #[tool(
-        description = "List recent bobbin injection feedback records. Filter by rating (useful/noise/harmful) and/or agent name. Use to review feedback trends and identify problematic injections."
+        description = "List recent bobbin injection feedback records. Filter by rating (useful/noise/harmful) and/or agent name. Use to review feedback trends and identify problematic injections.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn feedback_list(
         &self,
@@ -2750,7 +2897,13 @@ impl BobbinMcpServer {
 
     /// Get bobbin feedback statistics
     #[tool(
-        description = "Get aggregated bobbin injection feedback statistics — total injections, feedback count, coverage rate, and rating breakdown (useful/noise/harmful). Use group_by='bundle' or group_by='bead' to see per-bundle or per-bead breakdowns."
+        description = "Get aggregated bobbin injection feedback statistics — total injections, feedback count, coverage rate, and rating breakdown (useful/noise/harmful). Use group_by='bundle' or group_by='bead' to see per-bundle or per-bead breakdowns.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn feedback_stats(
         &self,
@@ -2834,7 +2987,13 @@ impl BobbinMcpServer {
 
     /// Record a lineage action linking feedback to a fix (commit, bead, config change)
     #[tool(
-        description = "Record a lineage action that ties bobbin feedback to a concrete fix. Links one or more feedback records (by ID) to a commit, bead, or config change. This closes the feedback loop — proving that feedback led to action. Use after fixing an issue that feedback identified. Action types: 'code_fix', 'config_change', 'tag_effect', 'access_rule', 'exclusion_rule'."
+        description = "Record a lineage action that ties bobbin feedback to a concrete fix. Links one or more feedback records (by ID) to a commit, bead, or config change. This closes the feedback loop — proving that feedback led to action. Use after fixing an issue that feedback identified. Action types: 'code_fix', 'config_change', 'tag_effect', 'access_rule', 'exclusion_rule'.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn feedback_lineage_store(
         &self,
@@ -2901,7 +3060,13 @@ impl BobbinMcpServer {
 
     /// List lineage records showing how feedback was acted on
     #[tool(
-        description = "List lineage records showing how bobbin feedback was acted on. Each record links feedback IDs to a concrete action (code fix, config change, etc.) with optional bead and commit references. Filter by feedback_id, bead, or commit_hash. Use to audit the feedback-to-fix pipeline and verify that feedback is being closed."
+        description = "List lineage records showing how bobbin feedback was acted on. Each record links feedback IDs to a concrete action (code fix, config change, etc.) with optional bead and commit references. Filter by feedback_id, bead, or commit_hash. Use to audit the feedback-to-fix pipeline and verify that feedback is being closed.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn feedback_lineage_list(
         &self,
@@ -2958,7 +3123,13 @@ impl BobbinMcpServer {
 
     /// Search archive records (HLA chat logs, Pensieve agent memory)
     #[tool(
-        description = "Search archive records using natural language. Archives include HLA (IRC/Telegram chat logs) and Pensieve (agent memory/snapshots). Filter by source ('hla' or 'pensieve'), name/channel, and date range. Best for: 'recent deploy discussions', 'what did goldblum decide about auth?', 'telegram messages about cert renewal'."
+        description = "Search archive records using natural language. Archives include HLA (IRC/Telegram chat logs) and Pensieve (agent memory/snapshots). Filter by source ('hla' or 'pensieve'), name/channel, and date range. Best for: 'recent deploy discussions', 'what did goldblum decide about auth?', 'telegram messages about cert renewal'.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn archive_search(
         &self,
@@ -3093,7 +3264,13 @@ impl BobbinMcpServer {
 
     /// List recent archive records
     #[tool(
-        description = "List recent archive records by date. Returns records from HLA (chat logs) or Pensieve (agent memory) after a specified date. Best for: 'what happened in chat today?', 'recent agent decisions', 'show me today's Pensieve entries'."
+        description = "List recent archive records by date. Returns records from HLA (chat logs) or Pensieve (agent memory) after a specified date. Best for: 'what happened in chat today?', 'recent agent decisions', 'show me today's Pensieve entries'.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn archive_recent(
         &self,
@@ -3162,567 +3339,6 @@ impl BobbinMcpServer {
         }
 
         Ok(CallToolResult::success(vec![Content::text(text)]))
-    }
-
-    // ── Quipu knowledge graph tools ───────────────────────────────
-
-    /// Whether quipu's write-time SHACL validation is compiled into this build.
-    ///
-    /// It IS, since the quipu bump to 0.3.23 (rev 37bfc06a): Cargo.toml
-    /// declares the quipu dependency with `features = ["shacl"]`, so
-    /// `tool_knot`'s `#[cfg(feature = "shacl")]` validation is compiled in and
-    /// every knowledge write is checked against the stored shapes before
-    /// commit. The chrono clash that used to make this impossible
-    /// (rudof_lib needed `chrono ^0.4.42` while arrow-array 53 capped at
-    /// `<0.4.40` — the old bobbin-di7 gap) was dissolved by the
-    /// lancedb 0.27 / arrow 57 bump that landed with it.
-    ///
-    /// It stays a constant rather than a `cfg!` because bobbin cannot inspect
-    /// its dependency's features at compile time; this mirrors the manifest.
-    /// **A gate compiled out is indistinguishable from a gate that passed
-    /// unless something says so** — which is why the field is reported on
-    /// every write. Flip this in the same change that changes the quipu
-    /// dependency's `shacl` feature; never on its own.
-    const KNOWLEDGE_SHACL_ENABLED: bool = true;
-
-    #[tool(
-        description = "Export a scoped slice from the configured remote Quipu using Quipu's canonical RDF serializer. Returns the exact RDF text plus its SHA-256 identity, or only the digest when digest_only=true. Requires an explicit scope and never reads Bobbin's separate embedded code graph."
-    )]
-    async fn knowledge_export(
-        &self,
-        Parameters(req): Parameters<KnowledgeExportRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        #[cfg(feature = "knowledge")]
-        {
-            let base = self.quipu_remote_url().ok_or_else(|| {
-                McpError::invalid_request(
-                    "knowledge_export requires quipu_endpoint or BOBBIN_QUIPU_REMOTE",
-                    None,
-                )
-            })?;
-            let scope = Self::share_scope(req.scope_kind, req.scope_value).map_err(|e| {
-                McpError::invalid_params(format!("invalid export scope: {e}"), None)
-            })?;
-            let mut body = Self::export_scope(scope);
-            body["format"] = serde_json::json!(req.format.unwrap_or_else(|| "ntriples".into()));
-            let result = Self::quipu_export_post(
-                &base,
-                body,
-                req.max_bytes,
-                req.digest_only.unwrap_or(false),
-            )
-            .await
-            .map_err(|e| McpError::internal_error(format!("Quipu export failed: {e:#}"), None))?;
-            Ok(CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&result).unwrap(),
-            )]))
-        }
-        #[cfg(not(feature = "knowledge"))]
-        {
-            let _ = req;
-            Err(McpError::internal_error(
-                "Knowledge graph tools require the 'knowledge' feature",
-                None,
-            ))
-        }
-    }
-
-    #[tool(
-        description = "Produce a canonical v1 share bundle through the configured remote Quipu. Returns Quipu's manifest and exact files unchanged; Bobbin does not reserialize RDF, synthesize a manifest, or calculate a competing share identity. Requires an explicit scope."
-    )]
-    async fn knowledge_share(
-        &self,
-        Parameters(req): Parameters<KnowledgeShareRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        #[cfg(feature = "knowledge")]
-        {
-            let base = self.quipu_remote_url().ok_or_else(|| {
-                McpError::invalid_request(
-                    "knowledge_share requires quipu_endpoint or BOBBIN_QUIPU_REMOTE",
-                    None,
-                )
-            })?;
-            let scope = Self::share_scope(req.scope_kind, req.scope_value)
-                .map_err(|e| McpError::invalid_params(format!("invalid share scope: {e}"), None))?;
-            let body = serde_json::json!({
-                "scope": scope, "shapes": req.shapes.unwrap_or_default(),
-                "no_shapes": req.no_shapes.unwrap_or(false), "parent_share": req.parent_share,
-                "turtle_view": req.turtle_view.unwrap_or(false), "max_bytes": req.max_bytes,
-            });
-            let result = Self::quipu_share_post(&base, "/share", body, false)
-                .await
-                .map_err(|e| {
-                    McpError::internal_error(format!("Quipu share failed: {e:#}"), None)
-                })?;
-            Ok(CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&result).unwrap(),
-            )]))
-        }
-        #[cfg(not(feature = "knowledge"))]
-        {
-            let _ = req;
-            Err(McpError::internal_error(
-                "Knowledge graph tools require the 'knowledge' feature",
-                None,
-            ))
-        }
-    }
-
-    #[tool(
-        description = "Verify and stage a canonical v1 share bundle in the configured remote Quipu. NEVER PROMOTES. Returns Quipu's full result unchanged, including resolution candidates, validation, quarantine blockers, staging graph, and promotion eligibility. An unchanged outcome is success."
-    )]
-    async fn knowledge_import(
-        &self,
-        Parameters(req): Parameters<KnowledgeImportRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        #[cfg(feature = "knowledge")]
-        {
-            let base = self.quipu_remote_url().ok_or_else(|| {
-                McpError::invalid_request(
-                    "knowledge_import requires quipu_endpoint or BOBBIN_QUIPU_REMOTE",
-                    None,
-                )
-            })?;
-            let body = serde_json::json!({
-                "manifest": req.manifest, "export_ntriples": req.export_ntriples,
-                "shapes_turtle": req.shapes_turtle.unwrap_or_default(),
-                "source": req.source, "actor": req.actor,
-            });
-            let result = Self::quipu_share_post(&base, "/import", body, true)
-                .await
-                .map_err(|e| {
-                    McpError::internal_error(format!("Quipu import failed: {e:#}"), None)
-                })?;
-            Ok(CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&result).unwrap(),
-            )]))
-        }
-        #[cfg(not(feature = "knowledge"))]
-        {
-            let _ = req;
-            Err(McpError::internal_error(
-                "Knowledge graph tools require the 'knowledge' feature",
-                None,
-            ))
-        }
-    }
-
-    #[tool(
-        description = "Explicitly promote an eligible, already-staged Quipu share into ROOT. This is separate from knowledge_import so quarantine and review cannot be bypassed accidentally. Returns Quipu's promotion result unchanged."
-    )]
-    async fn knowledge_import_promote(
-        &self,
-        Parameters(req): Parameters<KnowledgeImportPromoteRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        #[cfg(feature = "knowledge")]
-        {
-            let base = self.quipu_remote_url().ok_or_else(|| {
-                McpError::invalid_request(
-                    "knowledge_import_promote requires quipu_endpoint or BOBBIN_QUIPU_REMOTE",
-                    None,
-                )
-            })?;
-            let body = serde_json::json!({ "share_id": req.share_id, "actor": req.actor });
-            let result = Self::quipu_share_post(&base, "/import/promote", body, true)
-                .await
-                .map_err(|e| {
-                    McpError::internal_error(format!("Quipu promotion failed: {e:#}"), None)
-                })?;
-            Ok(CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&result).unwrap(),
-            )]))
-        }
-        #[cfg(not(feature = "knowledge"))]
-        {
-            let _ = req;
-            Err(McpError::internal_error(
-                "Knowledge graph tools require the 'knowledge' feature",
-                None,
-            ))
-        }
-    }
-
-    /// Query the knowledge graph for entities relevant to a topic
-    #[tool(
-        description = "Find entities and facts relevant to a topic across BOTH knowledge graphs this deployment has. \
-Returns two clearly separated sections. 'ontology': the organisation knowledge graph on a remote Quipu (semantic search, then each \
-matching entity's facts fetched individually) — this is where infrastructure, ownership and operational facts live. \
-'local_code_graph': bobbin's own embedded graph of code entities and file-coupling from git history (IRIs under http://aegis.gastown.local/ontology/code/). \
-ALWAYS read the 'store' field: if ontology.consulted is false the ontology was NOT ASKED (no remote configured), and if it carries \
-an 'error' that is a TRANSPORT FAILURE — neither is evidence a fact is absent. Best for: 'who owns X?', 'what runs on Y?', \
-'which files change together with Z?'"
-    )]
-    async fn knowledge_context(
-        &self,
-        Parameters(req): Parameters<KnowledgeContextRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        #[cfg(feature = "knowledge")]
-        {
-            let store = self.open_quipu_store().map_err(|e| {
-                McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None)
-            })?;
-
-            let input = serde_json::json!({
-                "query": req.query,
-                "max_entities": req.max_entities.unwrap_or(20),
-                "expand_links": req.expand_links.unwrap_or(true),
-            });
-
-            let local = quipu::tool_context(&store, &input).map_err(|e| {
-                McpError::internal_error(format!("Knowledge graph query failed: {e}"), None)
-            })?;
-
-            // The ontology leg is TWO calls on purpose (aegis-rwozs, measured):
-            // /context is a LABEL/text match and returns 0 entities for a natural-language
-            // question, while /search (semantic) finds them. So: semantic search for the
-            // entities, then fetch each one's facts.
-            //
-            // Every hit is fetched INDIVIDUALLY rather than relying on owl:sameAs to pull a
-            // twin's facts in: sameAs is INERT on the deployed quipu (aegis-yro9m, dearing),
-            // so an entity with a sameAs twin silently yields less than it appears to. Reading
-            // each returned entity directly is what makes the answer whole.
-            let ontology = match self.quipu_remote_url() {
-                None => serde_json::json!({
-                    "consulted": false,
-                    "reason": "no ontology Quipu configured (quipu_endpoint / BOBBIN_QUIPU_REMOTE unset)",
-                }),
-                Some(base) => {
-                    let max = req.max_entities.unwrap_or(20).min(25);
-                    match Self::quipu_remote_post(
-                        &base,
-                        "/search",
-                        serde_json::json!({"query": req.query}),
-                    )
-                    .await
-                    {
-                        Err(e) => serde_json::json!({
-                            "consulted": true,
-                            "error": format!("{e:#}"),
-                            "warning": "The ontology could NOT be reached. TRANSPORT FAILURE, \
-                        not an empty result — do not read it as 'the fact is absent'.",
-                        }),
-                        Ok(hits) => {
-                            let mut entities = Vec::new();
-                            let empty = Vec::new();
-                            let results = hits
-                                .get("results")
-                                .and_then(|r| r.as_array())
-                                .unwrap_or(&empty);
-                            for hit in results.iter().take(max) {
-                                let Some(iri) = hit.get("entity").and_then(|v| v.as_str()) else {
-                                    continue;
-                                };
-                                let facts = Self::quipu_remote_post(
-                                    &base,
-                                    "/query",
-                                    serde_json::json!({"query": format!(
-                                        "SELECT ?p ?o WHERE {{ <{iri}> ?p ?o }}")}),
-                                )
-                                .await
-                                .ok();
-                                entities.push(serde_json::json!({
-                                    "iri": iri,
-                                    "score": hit.get("score"),
-                                    "facts": facts.as_ref()
-                                        .and_then(|f| f.get("rows")).cloned()
-                                        .unwrap_or(serde_json::Value::Null),
-                                    "fact_count": facts.as_ref()
-                                        .and_then(|f| f.get("count")).cloned()
-                                        .unwrap_or(serde_json::Value::Null),
-                                }));
-                            }
-                            serde_json::json!({
-                                "consulted": true,
-                                "count": entities.len(),
-                                "entities": entities,
-                            })
-                        }
-                    }
-                }
-            };
-
-            // The ontology is the answer to the question asked; the local code graph
-            // is context. Trim the context harder so it cannot bury the answer.
-            let mut ontology = ontology;
-            let mut local = local;
-            Self::trim_payload(&mut ontology, 600, 40);
-            Self::trim_payload(&mut local, 200, 8);
-
-            let result = serde_json::json!({
-                "ontology": ontology,
-                "local_code_graph": local,
-                "store": self.knowledge_store_info(),
-            });
-
-            Ok(CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string()),
-            )]))
-        }
-        #[cfg(not(feature = "knowledge"))]
-        {
-            let _ = req;
-            Err(McpError::internal_error(
-                "Knowledge graph tools require the 'knowledge' feature. Rebuild with: cargo build --features knowledge".to_string(),
-                None,
-            ))
-        }
-    }
-
-    /// Write facts into the local knowledge graph.
-    #[tool(
-        description = "Write facts into bobbin's LOCAL embedded knowledge graph as RDF Turtle. \
-ALWAYS READ THE 'shacl_validated' FIELD IN THE RESULT. When true, the write was checked against the configured \
-SHACL shapes before being committed and a violating write would have been refused. When FALSE, validation was \
-NOT COMPILED IN and the facts were stored UNCHECKED — a success does not mean they are conformant, only that they \
-were accepted. Do not treat an unvalidated success as evidence of well-formedness. \
-This writes only to the local graph — it never writes to the remote ontology Quipu, which is read-only from here. \
-Pass 'actor' and 'source' whenever you have them: a fact whose origin is unrecorded cannot be assessed later."
-    )]
-    async fn knowledge_knot(
-        &self,
-        Parameters(req): Parameters<KnowledgeKnotRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        #[cfg(feature = "knowledge")]
-        {
-            let mut store = self.open_quipu_store().map_err(|e| {
-                McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None)
-            })?;
-
-            let mut input = serde_json::json!({ "turtle": req.turtle });
-            // Only set the optional keys when present. quipu's knot body is
-            // free-form JSON with no unknown-field rejection, so a null here
-            // would be indistinguishable from a value it chose to ignore.
-            if let Some(actor) = &req.actor {
-                input["actor"] = serde_json::json!(actor);
-            }
-            if let Some(source) = &req.source {
-                input["source"] = serde_json::json!(source);
-            }
-            if let Some(shapes) = &req.shapes {
-                input["shapes"] = serde_json::json!(shapes);
-            }
-
-            let result = quipu::tool_knot(&mut store, &input).map_err(|e| {
-                McpError::internal_error(format!("Knowledge write refused: {e}"), None)
-            })?;
-
-            // A SHACL refusal arrives from current quipu as `Ok` with
-            // `conforms: false` (plus violations/issues), NOT as an `Err`.
-            // Surfacing it as a tool error rather than a success-with-a-field
-            // is deliberate: a refused write that returns success is the
-            // failure mode this whole subsystem exists to prevent.
-            if result.get("conforms").and_then(|v| v.as_bool()) == Some(false) {
-                return Err(McpError::internal_error(
-                    format!(
-                        "Knowledge write refused by SHACL validation: {}",
-                        serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string())
-                    ),
-                    None,
-                ));
-            }
-
-            // The honesty field. quipu's write-time SHACL check is
-            // `#[cfg(feature = "shacl")]` on ITS side, so when bobbin builds
-            // quipu without that feature the validation silently does not run
-            // and a write returns success either way. Reporting it means an
-            // unvalidated write is legible as one instead of being
-            // indistinguishable from a validated one.
-            let payload = serde_json::json!({
-                "written": result,
-                "shacl_validated": Self::KNOWLEDGE_SHACL_ENABLED,
-                "store": self.knowledge_store_info(),
-            });
-            Ok(CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string()),
-            )]))
-        }
-        #[cfg(not(feature = "knowledge"))]
-        {
-            let _ = req;
-            Err(McpError::internal_error(
-                "Knowledge graph tools require the 'knowledge' feature. Rebuild with: cargo build --features knowledge".to_string(),
-                None,
-            ))
-        }
-    }
-
-    /// Run the quarantined-track inferred extractor over markdown prose.
-    #[tool(
-        description = "Extract CANDIDATE entities and relationships from markdown prose via bobbin's inferred-track \
-extractor seam (currently the deterministic backtick-coderef heuristic — NOT a language model, and honestly labeled as such). \
-Everything returned is a CLAIM at quarantined standing, never an observation: the response envelope carries the \
-camayoc crew:inferred plane, trust rank 0, and sourceKind=inferred — treat the facts accordingly. \
-With push=true the stamped facts also land in the quarantine plane via a graph-routed /knot write, each fact carrying \
-quipu:derivedBy (extractor+params) and aegis:sourceKind=inferred; the write REFUSES if the embedded quipu cannot \
-enforce graph routing (facts would masquerade in ROOT) or the plane is unregistered. \
-Promotion out of quarantine is camayoc's authority-gated plane-promotion flow, never this tool's."
-    )]
-    async fn knowledge_inferred_extract(
-        &self,
-        Parameters(req): Parameters<KnowledgeInferredExtractRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        #[cfg(feature = "knowledge")]
-        {
-            use crate::knowledge::inferred::{BacktickCoderefExtractor, InferredExtractor};
-            use crate::knowledge::quarantine;
-
-            let repo = req.repo.unwrap_or_else(|| "adhoc".to_string());
-            let file_path = req.file_path.unwrap_or_else(|| "adhoc.md".to_string());
-            let chunk = crate::types::Chunk {
-                id: format!("{file_path}:1"),
-                file_path,
-                chunk_type: crate::types::ChunkType::Section,
-                name: None,
-                start_line: 1,
-                end_line: req.text.lines().count().max(1) as u32,
-                content: req.text,
-                language: "markdown".to_string(),
-                tags: String::new(),
-            };
-            let extractor = BacktickCoderefExtractor::default();
-            let extraction = extractor.extract(std::slice::from_ref(&chunk), &repo);
-            let stamped = quarantine::QuarantinedFacts::stamp(&extractor, &extraction, &repo);
-
-            let mut facts = serde_json::json!({
-                "extractor": { "id": extractor.id(), "params": extractor.params() },
-                "entities": extraction.entities,
-                "relations": extraction.relations,
-                "quarantine": {
-                    "graph": stamped.graph_iri(),
-                    "snapshot": stamped.snapshot_key(),
-                    "turtle": stamped.turtle(),
-                },
-            });
-
-            if req.push.unwrap_or(false) {
-                let mut store = self.open_quipu_store().map_err(|e| {
-                    McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None)
-                })?;
-                let (tx_id, count) =
-                    quarantine::push_inferred(&mut store, &stamped).map_err(|e| {
-                        McpError::internal_error(format!("Quarantine push refused: {e:#}"), None)
-                    })?;
-                facts["pushed"] = serde_json::json!({ "tx_id": tx_id, "count": count });
-            }
-
-            // The envelope rule: inferred facts are NEVER served bare.
-            let payload = quarantine::serve_quarantined(facts);
-            Ok(CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string()),
-            )]))
-        }
-        #[cfg(not(feature = "knowledge"))]
-        {
-            let _ = req;
-            Err(McpError::internal_error(
-                "Knowledge graph tools require the 'knowledge' feature. Rebuild with: cargo build --features knowledge".to_string(),
-                None,
-            ))
-        }
-    }
-
-    /// Resolve chunk mention literals against the live entity graph.
-    #[tool(
-        description = "Run the idempotent chunk→entity mention reconcile pass over bobbin's LOCAL knowledge graph. \
-Resolves weak `bobbin:mentions \"SymbolName\"` literals on Chunk facts into typed Ref edges against the live \
-entity graph, and reports every mention honestly as resolved (exactly one match — edge written), dangling \
-(no match — literal left in place for a later run), or ambiguous (multiple matches — left unresolved, never \
-guessed). Safe to re-run: an unchanged store yields the identical classification with edges_written = 0. \
-Run it after new entities land in the graph to pick up previously dangling mentions."
-    )]
-    async fn knowledge_reconcile_mentions(
-        &self,
-        Parameters(req): Parameters<KnowledgeReconcileRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        #[cfg(feature = "knowledge")]
-        {
-            let mut store = self.open_quipu_store().map_err(|e| {
-                McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None)
-            })?;
-
-            let timestamp = chrono::Utc::now().to_rfc3339();
-            let report = crate::knowledge::mentions::reconcile_mentions(&mut store, &timestamp)
-                .map_err(|e| {
-                    McpError::internal_error(format!("Mention reconcile failed: {e}"), None)
-                })?;
-
-            let max_details = req.max_details.unwrap_or(50);
-            let total_details = report.details.len();
-            let details: Vec<_> = report.details.iter().take(max_details).collect();
-            let payload = serde_json::json!({
-                "resolved": report.resolved,
-                "dangling": report.dangling,
-                "ambiguous": report.ambiguous,
-                "edges_written": report.edges_written,
-                "details": details,
-                "details_truncated": total_details > max_details,
-                "store": self.knowledge_store_info(),
-            });
-            Ok(CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string()),
-            )]))
-        }
-        #[cfg(not(feature = "knowledge"))]
-        {
-            let _ = req;
-            Err(McpError::internal_error(
-                "Knowledge graph tools require the 'knowledge' feature. Rebuild with: cargo build --features knowledge".to_string(),
-                None,
-            ))
-        }
-    }
-
-    /// Run a SPARQL query against the knowledge graph
-    #[tool(
-        description = "Execute a SPARQL SELECT against BOTH knowledge graphs and return each result separately. \
-'ontology': the organisation knowledge graph on a remote Quipu (infrastructure, ownership, operational facts). \
-'local_code_graph': bobbin's own embedded graph (code entities and file-coupling from git history, IRIs under http://aegis.gastown.local/ontology/code/). \
-The SAME query runs against both, so an IRI that exists in only one returns rows in only that section. \
-ALWAYS read the 'store' field: ontology.consulted=false means NOT ASKED (no remote configured) and an 'error' means TRANSPORT \
-FAILURE — an empty section is NEVER by itself evidence the fact does not exist. Supports valid_at and tx for temporal queries. \
-Example: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10'"
-    )]
-    async fn knowledge_query(
-        &self,
-        Parameters(req): Parameters<KnowledgeQueryRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        #[cfg(feature = "knowledge")]
-        {
-            let store = self.open_quipu_store().map_err(|e| {
-                McpError::internal_error(format!("Failed to open knowledge graph: {e}"), None)
-            })?;
-
-            let input = serde_json::json!({
-                "query": req.query,
-                "valid_at": req.valid_at,
-                "tx": req.tx,
-            });
-
-            let local = quipu::tool_query(&store, &input)
-                .map_err(|e| McpError::internal_error(format!("SPARQL query failed: {e}"), None))?;
-            let mut ontology = self.ontology_sparql_section(input.clone()).await;
-            let mut local = local;
-            Self::trim_payload(&mut ontology, 600, 60);
-            Self::trim_payload(&mut local, 200, 20);
-
-            let result = serde_json::json!({
-                "ontology": ontology,
-                "local_code_graph": local,
-                "store": self.knowledge_store_info(),
-            });
-
-            Ok(CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string()),
-            )]))
-        }
-        #[cfg(not(feature = "knowledge"))]
-        {
-            let _ = req;
-            Err(McpError::internal_error(
-                "Knowledge graph tools require the 'knowledge' feature. Rebuild with: cargo build --features knowledge".to_string(),
-                None,
-            ))
-        }
     }
 }
 
