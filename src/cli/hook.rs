@@ -2609,6 +2609,11 @@ struct PostToolUseInput {
     /// Claude Code session ID
     #[serde(default)]
     session_id: String,
+    /// What the tool actually FOUND. Claude Code has always sent this; the field was
+    /// simply never declared, so serde dropped it silently (bobbin issue #51 F1).
+    /// `#[serde(default)]` keeps every existing payload parsing to `Value::Null`.
+    #[serde(default)]
+    tool_response: serde_json::Value,
     #[serde(default)]
     grounding: Option<NaGroundingRef>,
 }
@@ -4717,42 +4722,12 @@ fn is_meaningful_search_query(query: &str) -> bool {
     true
 }
 
-/// Check if a file path points to source code (where symbol refs are useful).
-fn is_source_code_file(path: &str) -> bool {
-    let ext = Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
-    matches!(
-        ext,
-        "rs" | "go"
-            | "py"
-            | "ts"
-            | "tsx"
-            | "js"
-            | "jsx"
-            | "java"
-            | "c"
-            | "cpp"
-            | "h"
-            | "hpp"
-            | "cs"
-            | "rb"
-            | "swift"
-            | "kt"
-            | "scala"
-            | "zig"
-            | "lua"
-            | "ex"
-            | "exs"
-            | "erl"
-            | "hs"
-            | "ml"
-            | "mli"
-            | "fs"
-            | "fsi"
-    )
-}
+#[path = "hook_tool_response.rs"]
+mod hook_tool_response;
+pub(crate) use hook_tool_response::{
+    classify_dispatch, extract_files_from_tool_response, merge_coupling_for_seeds,
+    render_discovered_coupling, resolve_discovered_files, DispatchMode,
+};
 
 /// PostToolUse handler: Smart dispatch based on tool type.
 /// - Edit/Write: hybrid search for related files (tests, snapshots, configs)
@@ -4864,106 +4839,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
         serde_json::from_reader(std::io::stdin().lock()).context("Failed to parse stdin JSON")?;
 
     // 2. Dispatch based on tool type
-    enum DispatchMode {
-        EditRelated { file_path: String },
-        SearchQuery { query: String, original_cmd: String },
-        RefsOnly { file_path: String },
-        ReactionsOnly, // Unknown tool — only reactions, no built-in dispatch
-    }
-
-    let mode = match input.tool_name.as_str() {
-        "Edit" | "Write" => {
-            let file_path = input
-                .tool_input
-                .get("file_path")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            if file_path.is_empty() {
-                DispatchMode::ReactionsOnly
-            } else {
-                DispatchMode::EditRelated { file_path }
-            }
-        }
-        "Bash" => {
-            let command = input
-                .tool_input
-                .get("command")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            match extract_search_query_from_bash(command) {
-                Some(query) if is_meaningful_search_query(&query) => DispatchMode::SearchQuery {
-                    query,
-                    original_cmd: command.to_string(),
-                },
-                _ => DispatchMode::ReactionsOnly,
-            }
-        }
-        "Grep" => {
-            // Claude Code's built-in Grep tool
-            let pattern = input
-                .tool_input
-                .get("pattern")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if pattern.len() < 2 {
-                DispatchMode::ReactionsOnly
-            } else {
-                let cleaned = clean_regex_for_search(pattern);
-                if cleaned.is_empty() || !is_meaningful_search_query(&cleaned) {
-                    DispatchMode::ReactionsOnly
-                } else {
-                    DispatchMode::SearchQuery {
-                        query: cleaned,
-                        original_cmd: format!("Grep: {}", pattern),
-                    }
-                }
-            }
-        }
-        "Glob" => {
-            let pattern = input
-                .tool_input
-                .get("pattern")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if pattern.len() < 2 {
-                DispatchMode::ReactionsOnly
-            } else {
-                // Strip glob wildcards for semantic search, keeping meaningful path segments
-                let cleaned = pattern
-                    .replace("**", " ")
-                    .replace("*.", "")
-                    .replace(".*", "")
-                    .replace('*', " ")
-                    .replace('/', " ")
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                if cleaned.len() < 2 || !is_meaningful_search_query(&cleaned) {
-                    DispatchMode::ReactionsOnly
-                } else {
-                    DispatchMode::SearchQuery {
-                        query: cleaned,
-                        original_cmd: format!("Glob: {}", pattern),
-                    }
-                }
-            }
-        }
-        "Read" => {
-            let file_path = input
-                .tool_input
-                .get("file_path")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            if file_path.is_empty() || !is_source_code_file(&file_path) {
-                DispatchMode::ReactionsOnly
-            } else {
-                DispatchMode::RefsOnly { file_path }
-            }
-        }
-        _ => DispatchMode::ReactionsOnly,
-    };
+    let mode = classify_dispatch(&input.tool_name, &input.tool_input);
 
     // 2b. Build ToolEvent for reaction matching
     let tool_event = ToolEvent {
@@ -4985,6 +4861,36 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
 
     let config = Config::load(&Config::config_path(&repo_root)).unwrap_or_default();
     let budget = args.budget.unwrap_or(config.hooks.budget / 2); // Use half budget for post-tool
+
+    // 3a'. Upgrade a search dispatch to DiscoveredFiles when the tool_response named
+    // files that really exist here. This runs after repo_root because "is this a file
+    // in this repo" is the filter that makes the Bash arm usable at all. If nothing
+    // resolves, the mode is left exactly as it was — no existing behaviour changes.
+    let mode = match mode {
+        DispatchMode::SearchQuery {
+            query,
+            original_cmd,
+        } => {
+            let files = resolve_discovered_files(
+                extract_files_from_tool_response(&input.tool_name, &input.tool_response),
+                &cwd,
+                &repo_root,
+            );
+            if files.is_empty() {
+                DispatchMode::SearchQuery {
+                    query,
+                    original_cmd,
+                }
+            } else {
+                DispatchMode::DiscoveredFiles {
+                    files,
+                    query,
+                    original_cmd,
+                }
+            }
+        }
+        other => other,
+    };
 
     let metrics_source = crate::metrics::resolve_source(
         None,
@@ -5038,7 +4944,9 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             let q = format!("files related to {}", rel);
             (q, Some(rel), true, false, false)
         }
-        DispatchMode::SearchQuery { query, .. } => (query.clone(), None, false, false, false),
+        DispatchMode::SearchQuery { query, .. } | DispatchMode::DiscoveredFiles { query, .. } => {
+            (query.clone(), None, false, false, false)
+        }
         DispatchMode::RefsOnly { file_path } => {
             let abs_path = if Path::new(file_path.as_str()).is_absolute() {
                 PathBuf::from(file_path)
@@ -5071,10 +4979,19 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     // delivered and nothing it produced could be rated.
     let dispatch_query = match &mode {
         DispatchMode::EditRelated { file_path } => file_path.clone(),
-        DispatchMode::SearchQuery { query, .. } => query.clone(),
+        DispatchMode::SearchQuery { query, .. } | DispatchMode::DiscoveredFiles { query, .. } => {
+            query.clone()
+        }
         DispatchMode::RefsOnly { file_path } => file_path.clone(),
         DispatchMode::ReactionsOnly => input.tool_name.clone(),
     };
+    // The files the search actually FOUND (empty for every other dispatch mode), used
+    // both as coupling seeds and as the switch for the budget split below.
+    let discovered_files: Vec<String> = match &mode {
+        DispatchMode::DiscoveredFiles { files, .. } => files.clone(),
+        _ => Vec::new(),
+    };
+
     let mut turn = InjectionTurn::open(
         &repo_root,
         &input.session_id,
@@ -5102,24 +5019,18 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 Err(_) => break 'builtin None,
             };
 
-            // 6. Query coupled files (only for Edit mode — coupling is file-based)
-            let coupled: Vec<(String, f32)> = if let Some(ref rp) = rel_path {
-                let coupled_raw = metadata_store.get_coupling(rp, 5).unwrap_or_default();
-                coupled_raw
-                    .iter()
-                    .filter(|c| c.score >= 0.1)
-                    .map(|c| {
-                        let other = if c.file_a == *rp {
-                            c.file_b.clone()
-                        } else {
-                            c.file_a.clone()
-                        };
-                        (other, c.score)
-                    })
-                    .collect()
-            } else {
-                vec![]
-            };
+            // 6. Query coupled files. Coupling is file-based, so the seeds are the
+            //    edited file (Edit mode) and/or the files the search actually FOUND
+            //    (DiscoveredFiles, issue #51 F1 — previously there were no seeds at all
+            //    for a search dispatch, so a search got no coupling).
+            let coupling_seeds: Vec<String> = rel_path
+                .iter()
+                .cloned()
+                .chain(discovered_files.iter().cloned())
+                .collect();
+            let coupled = merge_coupling_for_seeds(&coupling_seeds, |seed| {
+                metadata_store.get_coupling(seed, 5).unwrap_or_default()
+            });
 
             // 7. Hybrid search — uses calibrated config for search quality.
             let calibration = crate::cli::calibrate::load_calibration(&repo_root);
@@ -5269,7 +5180,8 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
             } else if !search_files.is_empty() {
                 // Only show search results header if we have results above the score gate
                 let original_cmd = match &mode {
-                    DispatchMode::SearchQuery { original_cmd, .. } => original_cmd.as_str(),
+                    DispatchMode::SearchQuery { original_cmd, .. }
+                    | DispatchMode::DiscoveredFiles { original_cmd, .. } => original_cmd.as_str(),
                     _ => "search",
                 };
                 let _ = writeln!(context, "## Bobbin Semantic Matches");
@@ -5281,9 +5193,18 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                 lines_used += 3;
             }
 
+            // Budget split (#51 F1): when the response named files, semantic matches
+            // get 60% and the coupling of what was actually found gets the rest. With
+            // no discovered files this is the whole budget, i.e. the previous behaviour.
+            let search_budget = if discovered_files.is_empty() {
+                budget
+            } else {
+                budget * 60 / 100
+            };
+
             if !search_files.is_empty() {
                 for f in &search_files {
-                    if lines_used >= budget {
+                    if lines_used >= search_budget {
                         break;
                     }
                     let f_rel = Path::new(&f.path)
@@ -5293,6 +5214,26 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                     let _ = writeln!(context, "- `{}`", f_rel);
                     lines_used += 1;
                 }
+            }
+
+            // 8b. Coupling for the files the search FOUND, as opposed to the files
+            //     the query merely resembles. This is the whole point of reading
+            //     tool_response: "related to what you found", not "related to what
+            //     you asked for".
+            if !discovered_files.is_empty() && lines_used < budget {
+                let fresh: Vec<(String, f32)> = coupled
+                    .iter()
+                    .filter(|(file, _)| turn.claim_file(file))
+                    .cloned()
+                    .collect();
+                let (section, section_lines) = render_discovered_coupling(
+                    &discovered_files,
+                    &fresh,
+                    budget.saturating_sub(lines_used),
+                    lines_used > 0,
+                );
+                context.push_str(&section);
+                lines_used += section_lines;
             }
 
             Some(()) // end of labeled block
@@ -5640,7 +5581,8 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     if context.is_empty() {
         let dispatch_label = match &mode {
             DispatchMode::EditRelated { file_path } => file_path.clone(),
-            DispatchMode::SearchQuery { original_cmd, .. } => original_cmd.clone(),
+            DispatchMode::SearchQuery { original_cmd, .. }
+            | DispatchMode::DiscoveredFiles { original_cmd, .. } => original_cmd.clone(),
             DispatchMode::RefsOnly { file_path } => file_path.clone(),
             DispatchMode::ReactionsOnly => input.tool_name.clone(),
         };
@@ -5689,7 +5631,8 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
     // 12. Emit metric
     let dispatch_label = match &mode {
         DispatchMode::EditRelated { file_path } => file_path.clone(),
-        DispatchMode::SearchQuery { original_cmd, .. } => original_cmd.clone(),
+        DispatchMode::SearchQuery { original_cmd, .. }
+        | DispatchMode::DiscoveredFiles { original_cmd, .. } => original_cmd.clone(),
         DispatchMode::RefsOnly { file_path } => file_path.clone(),
         DispatchMode::ReactionsOnly => input.tool_name.clone(),
     };

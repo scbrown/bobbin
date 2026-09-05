@@ -106,23 +106,6 @@ fn test_is_meaningful_search_query() {
 }
 
 #[test]
-fn test_is_source_code_file() {
-    // Source code files — refs are useful
-    assert!(is_source_code_file("src/main.rs"));
-    assert!(is_source_code_file("/home/user/project/handler.go"));
-    assert!(is_source_code_file("app.py"));
-    assert!(is_source_code_file("components/Button.tsx"));
-
-    // Non-source files — refs not useful
-    assert!(!is_source_code_file("README.md"));
-    assert!(!is_source_code_file("config.toml"));
-    assert!(!is_source_code_file("package.json"));
-    assert!(!is_source_code_file("styles.css"));
-    assert!(!is_source_code_file("Makefile"));
-    assert!(!is_source_code_file("data.yaml"));
-}
-
-#[test]
 fn test_strip_system_tags() {
     // System reminder blocks
     assert_eq!(

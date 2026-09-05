@@ -1,6 +1,13 @@
 # Bobbin: Tool-Result Context + Breadcrumb System
 
-> **Implementation status (2026-09-02):** 🟨 **Breadcrumb core landed; hooks remain planned.** `src/breadcrumb.rs` provides the typed store and corruption-safe JSON persistence; `src/cli/breadcrumb.rs` provides `bc create/list/recall/delete`, with top-level `mark` and `recall` aliases. Recall currently returns the stored query and pinned files and records usage. Tool-result parsing, context assembly on recall, keyword triggers, session discovery, pruning, and Desire Path error capture remain later slices of GitHub issue #51.
+> **Implementation status (2026-09-05):** 🟨 **Feature 1 and the breadcrumb core have landed; triggers remain planned.**
+> `src/breadcrumb.rs` provides the typed store and corruption-safe JSON persistence; `src/cli/breadcrumb.rs` provides `bc create/list/recall/delete`, with top-level `mark` and `recall` aliases. Recall currently returns the stored query and pinned files and records usage.
+>
+> **Feature 1 (tool-response-driven context) is done**, in `src/cli/hook_tool_response.rs`: `PostToolUseInput` declares `tool_response`, per-tool extractors turn it into repo-relative paths, and a `DiscoveredFiles` dispatch looks up the coupling of the files a search actually FOUND under a 60/40 budget split. Verified end to end against an indexed fixture repo: with `tool_response` the injection gains a `## Related to What You Found` section naming a co-changing file the semantic search did not surface; with the field absent the output is byte-identical to before.
+>
+> **Phase 1 step 2 below is obsolete, not skipped.** It says to log response shapes to metrics first because the JSON Claude Code sends was unconfirmed. It was already confirmable: desire-path captures every PostToolUse payload, `tool_response` included, so the extractors were written against measured shapes. The measurement immediately contradicted the obvious implementation — Grep in `content` mode returns `filenames: []` and hides every path inside `content` as `path:line:text`, so an extractor reading only `filenames` finds nothing in the mode Grep is most often called in, and finds it silently.
+>
+> Context assembly on recall, keyword triggers, session discovery, pruning, and Desire Path error capture remain later slices of GitHub issue #51.
 
 ## Context
 
