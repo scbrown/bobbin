@@ -21,6 +21,18 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.16.0](https://github.com/scbrown/bobbin/compare/v0.15.0...v0.16.0) (2026-09-05)
+
+
+### Features
+
+* **mcp:** annotate all 35 tools, and guard that they stay annotated ([48fa6e4](https://github.com/scbrown/bobbin/commit/48fa6e4e779118caaf952771ddccee61cf2fc757))
+
+
+### Bug Fixes
+
+* **mcp:** make the knowledge helpers reachable from the split tool modules ([ff4f405](https://github.com/scbrown/bobbin/commit/ff4f405aa5b197e62b3c0df0545151a7afa477a4))
+
 ## [0.15.0](https://github.com/scbrown/bobbin/compare/v0.14.0...v0.15.0) (2026-09-05)
 
 
