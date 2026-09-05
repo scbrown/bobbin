@@ -14,13 +14,37 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  VERSION: ${{ inputs.version || github.ref_name }}
+
+# NOTE: VERSION is deliberately NOT set here. Workflow-level `env` cannot read the
+# `needs` context, and on the release-merge path the version comes from the
+# release-please job's tag_name output (github.ref_name is `main` there, which
+# would name every asset "bobbin-main-..."). It is set per-job below instead.
 
 jobs:
   build:
     name: Build ${{ matrix.target }}
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    needs: release-please
+    # ⚠ A TAG PUSH IS NOT ENOUGH, AND THAT IS NOT A BUG IN THIS FILE (aegis-g2gpw5).
+    #
+    # release-please creates the tag and a DRAFT release using GITHUB_TOKEN, and
+    # GitHub deliberately does not re-trigger workflows from token-authored tag
+    # pushes. So the `on: push: tags` arm never fired: measured 0 of the last 100
+    # Release runs were tag-triggered, and every published bobbin release was a
+    # human running workflow_dispatch on the tag by hand (aegis-ttk1y).
+    #
+    # The fix is the one yupana and quipu already use (aegis-e8j3hh): build in the
+    # SAME RUN as release-please, gated on its releases_created output, rather than
+    # on a trigger that cannot fire. `always()` is required because release-please
+    # is SKIPPED on the tag-push and workflow_dispatch arms, which would otherwise
+    # skip this job with it.
+    if: >-
+      always() &&
+      (startsWith(github.ref, 'refs/tags/') ||
+       github.event_name == 'workflow_dispatch' ||
+       needs.release-please.outputs.releases_created == 'true')
     runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || needs.release-please.outputs.tag_name }}
     permissions:
       # Each matrix leg publishes its own archive as soon as it is ready.  Do
       # not put this permission on the workflow globally: only build and the
@@ -53,8 +77,15 @@ jobs:
             ort_version: "1.23.2"
 
     steps:
+      # ref: the resolved VERSION tag, not the trigger ref. On the release-merge
+      # path the ref is `main`, and a binary labelled v0.x.y that was built from a
+      # later main is a mislabelled binary. fetch-depth: 0 so the tag created
+      # moments earlier in this same run is present locally.
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ env.VERSION }}
+          fetch-depth: 0
 
       - name: Install protoc
         uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3
@@ -288,8 +319,18 @@ jobs:
 
   release:
     name: Create release
-    needs: [build, checksums]
+    needs: [release-please, build, checksums]
+    # `always()` because release-please is SKIPPED on the tag-push and
+    # workflow_dispatch arms, and a skipped dependency would otherwise skip this
+    # job with it. The explicit result checks keep the ordinary main push (where
+    # build itself is skipped) from finalizing a release that was never built.
+    if: >-
+      always() &&
+      needs.build.result == 'success' &&
+      needs.checksums.result == 'success'
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || needs.release-please.outputs.tag_name }}
     permissions:
       contents: write
     steps:
@@ -361,7 +402,14 @@ jobs:
     permissions:
       pull-requests: write
       contents: write
+    # Exported so `build` can run IN THIS SAME RUN when the release PR merge
+    # creates a release. See the trigger note on `build` for why a tag push
+    # cannot be relied on to do it.
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
