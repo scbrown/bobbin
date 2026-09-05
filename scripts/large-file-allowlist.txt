@@ -29,7 +29,7 @@ src/index/embedder.rs 1091
 src/index/git.rs 2002
 src/index/parser.rs 1572
 src/index/resolver.rs 530
-src/mcp/server.rs 3762
+src/mcp/server.rs 3765
 src/mcp/tools.rs 1410
 src/reactions.rs 2397
 src/search/context.rs 3149

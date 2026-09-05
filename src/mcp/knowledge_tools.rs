@@ -43,7 +43,7 @@ impl BobbinMcpServer {
     /// unless something says so** — which is why the field is reported on
     /// every write. Flip this in the same change that changes the quipu
     /// dependency's `shacl` feature; never on its own.
-    const KNOWLEDGE_SHACL_ENABLED: bool = true;
+    pub(super) const KNOWLEDGE_SHACL_ENABLED: bool = true;
 
     #[tool(
         description = "Export a scoped slice from the configured remote Quipu using Quipu's canonical RDF serializer. Returns the exact RDF text plus its SHA-256 identity, or only the digest when digest_only=true. Requires an explicit scope and never reads Bobbin's separate embedded code graph.",

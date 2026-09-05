@@ -122,7 +122,7 @@ impl BobbinMcpServer {
     /// there is no way to have one working while the other silently is not.
     /// `BOBBIN_QUIPU_REMOTE` overrides it for testing. Unset => local graph only.
     #[cfg(feature = "knowledge")]
-    fn quipu_remote_url(&self) -> Option<String> {
+    pub(super) fn quipu_remote_url(&self) -> Option<String> {
         std::env::var("BOBBIN_QUIPU_REMOTE")
             .ok()
             .or_else(|| {
@@ -136,7 +136,7 @@ impl BobbinMcpServer {
 
     /// POST a JSON body to a path on the remote Quipu and return the parsed reply.
     #[cfg(feature = "knowledge")]
-    async fn quipu_remote_post(
+    pub(super) async fn quipu_remote_post(
         base: &str,
         path: &str,
         body: serde_json::Value,
@@ -165,7 +165,7 @@ impl BobbinMcpServer {
     /// POST a canonical share operation, authenticating writes and returning
     /// Quipu's JSON without reshaping it.
     #[cfg(feature = "knowledge")]
-    async fn quipu_share_post(
+    pub(super) async fn quipu_share_post(
         base: &str,
         path: &str,
         body: serde_json::Value,
@@ -201,7 +201,7 @@ impl BobbinMcpServer {
     }
 
     #[cfg(feature = "knowledge")]
-    async fn quipu_export_post(
+    pub(super) async fn quipu_export_post(
         base: &str,
         body: serde_json::Value,
         max_bytes: Option<usize>,
@@ -252,7 +252,7 @@ impl BobbinMcpServer {
     }
 
     #[cfg(feature = "knowledge")]
-    fn share_scope(
+    pub(super) fn share_scope(
         kind: KnowledgeShareScopeKind,
         value: Option<String>,
     ) -> Result<serde_json::Value> {
@@ -272,7 +272,7 @@ impl BobbinMcpServer {
     }
 
     #[cfg(feature = "knowledge")]
-    fn export_scope(scope: serde_json::Value) -> serde_json::Value {
+    pub(super) fn export_scope(scope: serde_json::Value) -> serde_json::Value {
         let kind = scope["kind"].as_str().unwrap_or("root");
         let value = scope["value"].clone();
         match kind {
@@ -296,7 +296,7 @@ impl BobbinMcpServer {
     /// Silent truncation would be the same defect this whole area keeps hitting:
     /// a well-formed reply that quietly answers less than it appears to.
     #[cfg(feature = "knowledge")]
-    fn trim_payload(v: &mut serde_json::Value, max_str: usize, max_arr: usize) {
+    pub(super) fn trim_payload(v: &mut serde_json::Value, max_str: usize, max_arr: usize) {
         use serde_json::Value;
         match v {
             Value::String(s) => {
@@ -334,7 +334,7 @@ impl BobbinMcpServer {
     /// absence, and this deployment has two Quipu graphs with disjoint contents
     /// (aegis-rwozs). Every knowledge response carries this.
     #[cfg(feature = "knowledge")]
-    fn knowledge_store_info(&self) -> serde_json::Value {
+    pub(super) fn knowledge_store_info(&self) -> serde_json::Value {
         serde_json::json!({
             "local_code_graph": {
                 "path": self.quipu_store_path().to_string_lossy(),
@@ -363,7 +363,10 @@ impl BobbinMcpServer {
     /// into an empty result set — the whole defect this fixes was an empty answer
     /// that was indistinguishable from a real absence.
     #[cfg(feature = "knowledge")]
-    async fn ontology_sparql_section(&self, body: serde_json::Value) -> serde_json::Value {
+    pub(super) async fn ontology_sparql_section(
+        &self,
+        body: serde_json::Value,
+    ) -> serde_json::Value {
         let Some(base) = self.quipu_remote_url() else {
             return serde_json::json!({
                 "consulted": false,
@@ -389,7 +392,7 @@ impl BobbinMcpServer {
 
     /// Open the Quipu knowledge graph store
     #[cfg(feature = "knowledge")]
-    fn open_quipu_store(&self) -> Result<quipu::Store> {
+    pub(super) fn open_quipu_store(&self) -> Result<quipu::Store> {
         let db_path = self.quipu_store_path();
         // Ensure parent directory exists.
         if let Some(parent) = db_path.parent() {
