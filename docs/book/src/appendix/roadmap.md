@@ -58,7 +58,7 @@ See `docs/plans/production-hardening.md` for details.
 - [x] Clean up tambour references (bobbin-7pn)
 - [x] Fix production unwrap() calls (bobbin-ehp)
 - [x] Integration test foundation (bobbin-ul6)
-- [ ] Add missing MCP tools — deps, history, status (bobbin-tnt)
+- [x] Add MCP tools — `dependencies`, `file_history`, `status` (bobbin-tnt)
 - [x] Add missing HTTP endpoints (bobbin-pid)
 - [x] Wire up incremental indexing (bobbin-thb)
 - [x] CI pipeline — GitHub Actions (bobbin-ola)

@@ -398,8 +398,8 @@ fn reindex_after_delete_clears_chunk_edges() {
 fn the_ignored_set_is_exactly_the_three_known_failures() {
     let mut ignores = Vec::new();
     for file in ["tests/cli_index.rs", "tests/cli_index_sources.rs"] {
-        let source = std::fs::read_to_string(file)
-            .unwrap_or_else(|e| panic!("cannot read {file}: {e}"));
+        let source =
+            std::fs::read_to_string(file).unwrap_or_else(|e| panic!("cannot read {file}: {e}"));
         ignores.extend(
             source
                 .lines()
