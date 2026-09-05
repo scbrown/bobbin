@@ -421,6 +421,27 @@ jobs:
                      | sed 's/^v//' | sort -V | tail -1)"
           mine="${version#v}"
 
+          # A PRERELEASE must never claim `latest`, whatever it sorts against.
+          # Two reasons, the second being why this is not merely tidiness
+          # (wu, reviewing aegis-egqrv4; quipu hit the same shape in #142):
+          #   * `latest` is what the deploy timer resolves, so a prerelease
+          #     claiming it would be DEPLOYED — the exact inversion this guard
+          #     exists to stop, arriving by another route.
+          #   * `sort -V` is not semver-aware about prereleases: it ranks
+          #     0.17.0-rc1 ABOVE both 0.16.0 and 0.17.0, where semver puts a
+          #     prerelease BELOW its own final. Excluding prereleases on both
+          #     sides means that disagreement can never decide anything;
+          #     `--exclude-pre-releases` above covers the other side.
+          # Reachable with an arbitrary tag via workflow_dispatch, so not
+          # hypothetical.
+          case "$mine" in
+            *-*)
+              echo "publishing $version WITHOUT --latest: it is a PRERELEASE."
+              gh release edit "$version" --repo "${{ github.repository }}" --draft=false --latest=false
+              exit 0
+              ;;
+          esac
+
           if [ -z "$highest" ] || [ "$(printf '%s\n%s\n' "$highest" "$mine" | sort -V | tail -1)" = "$mine" ]; then
             echo "publishing $version as latest (highest published: ${highest:-none})"
             gh release edit "$version" --repo "${{ github.repository }}" --draft=false --latest

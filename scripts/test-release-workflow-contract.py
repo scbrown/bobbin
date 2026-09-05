@@ -129,6 +129,12 @@ assert "--exclude-drafts" in release and "--exclude-pre-releases" in release, (
     "the highest published version must ignore drafts and prereleases — a draft "
     "is the NORMAL state for most of a release's ~80-minute build"
 )
+# A prerelease must never claim latest: `sort -V` ranks 0.17.0-rc1 above both
+# 0.16.0 AND 0.17.0, and `latest` is what the deploy timer resolves.
+assert "it is a PRERELEASE" in release, (
+    "the publish step must refuse --latest for a prerelease; sort -V ranks a "
+    "prerelease above its own final release (aegis-egqrv4)"
+)
 # `--latest` must never appear without a decision around it. Every occurrence
 # lives in one of the two branches, so both spellings are present.
 assert release.count("--latest") >= 2, (

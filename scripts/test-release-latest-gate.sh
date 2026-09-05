@@ -14,6 +14,7 @@ decide() {
   local mine_raw="$1"; shift
   local highest; highest="$(printf '%s\n' "$@" | sed 's/^v//' | sort -V | tail -1)"
   local mine="${mine_raw#v}"
+  case "$mine" in *-*) echo "not-latest"; return ;; esac
   if [ -z "$highest" ] || [ "$(printf '%s\n%s\n' "$highest" "$mine" | sort -V | tail -1)" = "$mine" ]; then
     echo "latest"
   else
@@ -36,6 +37,9 @@ check not-latest  "0.9.0 while 0.10.0 published"      v0.9.0  v0.10.0
 check latest      "0.10.0 while 0.9.0 published"      v0.10.0 v0.9.0
 check latest      "1.0.0 over 0.99.0"                 v1.0.0  v0.99.0
 check not-latest  "0.16.0 while 1.0.0 published"      v0.16.0 v1.0.0
+check not-latest  "PRERELEASE never claims latest"      v0.17.0-rc1 v0.16.0
+check not-latest  "prerelease below its own final"     v0.17.0-rc1 v0.17.0
+check latest      "the final release after an rc"      v0.17.0     v0.16.0
 echo
 [ $fails -eq 0 ] && echo "ALL PASS" || echo "FAILURES"
 exit $fails
