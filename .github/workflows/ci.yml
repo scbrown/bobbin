@@ -15,6 +15,16 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      # A listed hook is not proof it executes: require both a benign control
+      # and synthetic private-key refusals before scanning the tracked tree.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install private-key scanner
+        run: python3 -m pip install pre-commit==4.6.1
+      - name: Private-key refusal controls and tracked-file scan
+        run: python3 scripts/check-private-keys.py
+
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler cmake g++
 
