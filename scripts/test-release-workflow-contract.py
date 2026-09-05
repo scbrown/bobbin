@@ -8,6 +8,7 @@ their ordering with only the Python standard library.
 """
 
 import json
+import re
 from pathlib import Path
 
 
@@ -18,7 +19,10 @@ checksums_start = workflow.index("  checksums:\n")
 release_start = workflow.index("  release:\n")
 build = workflow[build_start:checksums_start]
 checksums = workflow[checksums_start:release_start]
-release = workflow[release_start:]
+release_please_start = workflow.index("  release-please:\n")
+# Bounded: this used to run to EOF and swallow the release-please job, so every
+# assertion "about the release job" was really about both.
+release = workflow[release_start:release_please_start]
 release_please = json.loads(Path("release-please-config.json").read_text())
 
 required_build_fragments = (
@@ -61,7 +65,36 @@ assert build.index("Build repository index pack") < build.index(
     "Publish Linux deploy archive immediately"
 ), "verified repository pack must exist before the early Linux upload"
 assert "needs: build" in checksums, "full checksums must still wait for every target"
-assert "needs: [build, checksums]" in release, "finalizer must retain the full-build gate"
+# THE FULL-BUILD GATE IS A PROPERTY, NOT A SPELLING (aegis-g2gpw5).
+#
+# This used to assert the literal "needs: [build, checksums]". That pinned one
+# way of writing the gate rather than the gate itself, so it failed a change that
+# made the gate STRICTER -- adding release-please to `needs` and requiring both
+# results to be 'success' -- while its own message says only that the full-build
+# gate must be retained. A guard that fails a strengthening of the property it
+# names will be silenced by whoever hits it, which costs more than it protects.
+#
+# What actually must hold: the finalizer cannot publish unless build AND
+# checksums both ran and both succeeded.
+release_needs = re.search(r"^    needs:\s*(.+)$", release, re.M)
+assert release_needs, "finalizer must declare `needs`"
+needed = set(re.findall(r"[A-Za-z][\w-]*", release_needs.group(1)))
+assert {"build", "checksums"} <= needed, (
+    f"finalizer must wait for build and checksums; needs = {sorted(needed)}"
+)
+
+# `always()` severs the implicit success requirement that a bare `needs` carries,
+# so where it is present the success check must be explicit. Without this, a job
+# could gain always() and publish a release whose assets never built -- the exact
+# assetless release this whole contract exists to prevent.
+release_if = re.search(r"^    if: (.+?)^    [a-z]", release, re.M | re.S)
+release_if = release_if.group(1) if release_if else ""
+if "always()" in release_if:
+    for job in ("build", "checksums"):
+        assert f"needs.{job}.result == 'success'" in release_if, (
+            f"finalizer uses always(), so it must require needs.{job}.result == 'success' "
+            "explicitly -- always() means a failed or skipped dependency no longer blocks it"
+        )
 assert "Finalize GitHub Release assets and checksums" in release
 assert "find . -maxdepth 1 -type f ! -name SHA256SUMS.txt" in release
 assert 'name "*.bbpack"' in checksums
