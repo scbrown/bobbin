@@ -46,7 +46,7 @@ async fn push_with_token(
     let snapshot = format!("bobbin-chunks:{repo_name}");
     let content_hash = sha256(turtle.as_bytes());
     let upload_id = sha256(format!("{snapshot}\n{content_hash}").as_bytes());
-    let parts: Vec<&[u8]> = turtle.as_bytes().chunks(PART_BYTES).collect();
+    let parts = snapshot_parts(&turtle);
     anyhow::ensure!(!parts.is_empty(), "refusing an empty chunk snapshot upload");
     let client = reqwest::Client::builder()
         .timeout(TIMEOUT)
@@ -54,15 +54,21 @@ async fn push_with_token(
         .context("building remote Quipu client")?;
     let base = endpoint.trim_end_matches('/');
 
-    for (part_number, bytes) in parts.iter().enumerate() {
-        let payload = std::str::from_utf8(bytes).context("chunk snapshot is not UTF-8")?;
+    for (part_number, payload) in parts.iter().enumerate() {
         let body = serde_json::json!({
             "upload_id": upload_id, "snapshot": snapshot, "content_hash": content_hash,
             "total_parts": parts.len(), "total_bytes": turtle.len(),
-            "part_number": part_number, "part_hash": sha256(bytes), "payload": payload,
+            "part_number": part_number, "part_hash": sha256(payload.as_bytes()), "payload": payload,
             "actor": "bobbin", "source": format!("bobbin chunk index: {repo_name}"),
         });
-        post_with_retries(&client, &format!("{base}/knot/stage"), token, &body).await?;
+        post_with_retries(&client, &format!("{base}/knot/stage"), token, &body)
+            .await
+            .with_context(|| {
+                format!(
+                    "staging chunk snapshot for repository {repo_name}, part {part_number}/{} ({} bytes)",
+                    parts.len(), payload.len()
+                )
+            })?;
     }
 
     let promote_url = format!("{base}/knot/promote");
@@ -95,6 +101,22 @@ async fn push_with_token(
         result["tx_id"].as_i64().unwrap_or(-1),
         result["count"].as_u64().unwrap_or(0) as usize,
     ))
+}
+
+fn snapshot_parts(mut turtle: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    while !turtle.is_empty() {
+        let mut end = turtle.len().min(PART_BYTES);
+        // Parts are JSON strings: never split a UTF-8 character or replace its
+        // bytes, since promotion verifies the hash of the original snapshot.
+        while !turtle.is_char_boundary(end) {
+            end -= 1;
+        }
+        let (part, remaining) = turtle.split_at(end);
+        parts.push(part);
+        turtle = remaining;
+    }
+    parts
 }
 
 fn sha256(bytes: &[u8]) -> String {
@@ -199,6 +221,42 @@ mod tests {
         }
     }
 
+    #[test]
+    fn snapshot_parts_preserve_bytes_at_multibyte_boundaries() {
+        for ch in ['é', '界', '🦀'] {
+            for split in 1..ch.len_utf8() {
+                let snapshot = format!(
+                    "{}{}{}{}tail",
+                    "a".repeat(PART_BYTES - split),
+                    ch,
+                    "b".repeat(PART_BYTES - ch.len_utf8() - 1),
+                    ch
+                );
+                let parts = snapshot_parts(&snapshot);
+                assert!(parts.len() >= 3);
+                assert!(parts.iter().all(|p| !p.is_empty() && p.len() <= PART_BYTES));
+                assert_eq!(parts.concat(), snapshot);
+                assert_eq!(
+                    sha256(parts.concat().as_bytes()),
+                    sha256(snapshot.as_bytes())
+                );
+            }
+        }
+        assert!(snapshot_parts("").is_empty());
+        for size in [
+            1,
+            PART_BYTES - 1,
+            PART_BYTES,
+            PART_BYTES + 1,
+            PART_BYTES * 2,
+        ] {
+            let snapshot = "a".repeat(size);
+            let parts = snapshot_parts(&snapshot);
+            assert_eq!(parts.len(), size.div_ceil(PART_BYTES));
+            assert_eq!(parts.concat(), snapshot);
+        }
+    }
+
     #[tokio::test]
     async fn snapshot_is_authenticated_and_bounded() {
         #[derive(Clone, Default)]
@@ -231,18 +289,38 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut large_chunk = chunk();
+        large_chunk.name = Some("界".repeat(PART_BYTES));
+        let chunks = [large_chunk];
+        let expected = super::super::generate_chunk_turtle(&chunks, &[], "repo");
         assert_eq!(
-            push_with_token(&[chunk()], &[], "repo", &format!("http://{addr}"), "secret")
+            push_with_token(&chunks, &[], "repo", &format!("http://{addr}"), "secret")
                 .await
                 .unwrap(),
             (42, 7)
         );
         let guard = seen.0.lock().unwrap();
-        assert_eq!(guard.len(), 2);
+        assert!(guard.len() > 2);
+        let stages = &guard[..guard.len() - 1];
+        let mut reconstructed = String::new();
+        for (number, (_, body)) in stages.iter().enumerate() {
+            let payload = body["payload"].as_str().unwrap();
+            assert!(payload.len() <= PART_BYTES);
+            assert_eq!(body["part_number"], number);
+            assert_eq!(body["total_parts"], stages.len());
+            assert_eq!(body["total_bytes"], expected.len());
+            assert_eq!(body["part_hash"], sha256(payload.as_bytes()));
+            assert_eq!(body["content_hash"], sha256(expected.as_bytes()));
+            reconstructed.push_str(payload);
+        }
+        assert_eq!(reconstructed, expected);
         let headers = &guard[0].0;
         assert_eq!(headers["authorization"], "Bearer secret");
         assert_eq!(headers["x-quipu-client"], QUIPU_CLIENT);
-        assert_eq!(guard[1].1["upload_id"], guard[0].1["upload_id"]);
+        assert_eq!(
+            guard.last().unwrap().1["upload_id"],
+            guard[0].1["upload_id"]
+        );
         drop(guard);
 
         async fn stalled() -> Json<serde_json::Value> {
