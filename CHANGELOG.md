@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.16.1](https://github.com/scbrown/bobbin/compare/v0.16.0...v0.16.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* **knowledge:** preserve UTF-8 across snapshot upload parts ([b1bc5ff](https://github.com/scbrown/bobbin/commit/b1bc5ff8fb86263954cffca4c45a72867bbc885a))
+
 ## [0.16.0](https://github.com/scbrown/bobbin/compare/v0.15.0...v0.16.0) (2026-09-05)
 
 
