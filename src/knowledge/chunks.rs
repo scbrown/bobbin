@@ -31,6 +31,8 @@ use anyhow::{Context, Result};
 use crate::iri::ONTOLOGY_NS;
 use crate::types::{Chunk, ChunkEdge, ChunkEdgeType, ChunkType};
 
+#[cfg(test)]
+mod collision_tests;
 mod remote;
 pub use remote::push_chunks_to_remote_quipu;
 pub(crate) use remote::quipu_auth_token;
@@ -62,6 +64,7 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
             .cmp(&b.file_path)
             .then(a.start_line.cmp(&b.start_line))
             .then(b.end_line.cmp(&a.end_line))
+            .then(a.id.cmp(&b.id))
     });
 
     // The remote ontology enforces the code-entities SHACL vocabulary. Assert
@@ -147,6 +150,18 @@ pub(crate) fn generate_chunk_turtle(chunks: &[Chunk], edges: &[ChunkEdge], repo:
             ));
             governed_type = None;
             iri = chunk_iri(repo, &chunk.file_path, chunk.start_line);
+        }
+
+        // Anonymous callbacks and demoted symbols can share a start line.
+        // Keep the original line IRI for the first span, then claim distinct
+        // suffixes; each span must own exactly one chunkOrder and edge endpoint.
+        if governed_type.is_none() {
+            let base = iri.clone();
+            let mut occurrence = 1;
+            while !claimed_iris.insert(iri.clone()) {
+                occurrence += 1;
+                iri = format!("{base}-{occurrence}");
+            }
         }
 
         match governed_type {

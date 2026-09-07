@@ -1,3 +1,5 @@
+mod semantic;
+
 use anyhow::Result;
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser as CmarkParser, Tag, TagEnd};
 use std::path::Path;
@@ -117,7 +119,14 @@ impl Parser {
 
         let mut chunks = Vec::new();
         let root = tree.root_node();
-        self.extract_chunks(&root, content, path, lang, &mut chunks);
+        self.extract_chunks(
+            &root,
+            content,
+            path,
+            lang,
+            &mut chunks,
+            &mut Default::default(),
+        );
 
         // If no semantic chunks found, fall back to line-based
         if chunks.is_empty() {
@@ -519,43 +528,6 @@ impl Parser {
         }
 
         chunks
-    }
-
-    /// Extract semantic chunks from a syntax tree
-    fn extract_chunks(
-        &self,
-        node: &Node,
-        content: &str,
-        path: &Path,
-        language: &str,
-        chunks: &mut Vec<Chunk>,
-    ) {
-        let chunk_type = self.node_to_chunk_type(node, language);
-
-        if let Some(chunk_type) = chunk_type {
-            let name = self.extract_name(node, content, language);
-            let start_line = node.start_position().row as u32 + 1;
-            let end_line = node.end_position().row as u32 + 1;
-            let node_content = &content[node.byte_range()];
-
-            chunks.push(Chunk {
-                id: generate_chunk_id(path, start_line, end_line),
-                file_path: path.to_string_lossy().to_string(),
-                chunk_type,
-                name,
-                start_line,
-                end_line,
-                content: node_content.to_string(),
-                language: language.to_string(),
-                tags: String::new(),
-            });
-        }
-
-        // Recurse into children
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            self.extract_chunks(&child, content, path, language, chunks);
-        }
     }
 
     /// Map a tree-sitter node to a chunk type
