@@ -26,6 +26,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install package build dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler cmake g++
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
       - uses: ./.github/actions/crates-publish

@@ -46,10 +46,9 @@ guard() {
         *-*) echo "REFUSED: ${actual} is a prerelease version." >&2; return 1 ;;
     esac
 
-    # docs/RELEASING.md tells you to rehearse by pushing a throwaway tag. Doing
-    # exactly that on 2026-09-05 fired the publish workflow for real (run
-    # 33959092337); it failed only because TP was unconfigured. Named here so
-    # the documented rehearsal stays harmless after that stops being true.
+    # The reference Quipu lane once attempted publication from a rehearsal tag
+    # (run 33959092337), stopped only by missing Trusted Publishing setup.
+    # Refuse such refs independently of registry authorization here.
     case "$ref" in
         rehearsal-*|*-rehearsal|test-*|*/rehearsal-*|*/test-*)
             echo "REFUSED: ref ${ref} looks like a rehearsal." >&2; return 1 ;;
