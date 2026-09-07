@@ -200,8 +200,8 @@ pub struct ImportDependency {
 /// impl→trait, test→function, method→containing impl, etc.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChunkEdge {
-    /// Source chunk ID (`hex(sha256("path:start_line:end_line"))[..16]`,
-    /// as produced by the parser's chunk ID generator)
+    /// Source chunk ID from the parser. Ordinary IDs hash the path and line
+    /// range; colliding syntax spans carry a byte-range suffix. Treat IDs as opaque.
     pub source_chunk: String,
     /// Target chunk ID
     pub target_chunk: String,

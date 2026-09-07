@@ -27,7 +27,7 @@ src/config.rs 1103
 src/http/client.rs 1242
 src/index/embedder.rs 1091
 src/index/git.rs 2002
-src/index/parser.rs 1572
+src/index/parser.rs 1544
 src/index/resolver.rs 530
 src/mcp/server.rs 3765
 src/mcp/tools.rs 1410
