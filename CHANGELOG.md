@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.16.2](https://github.com/scbrown/bobbin/compare/v0.16.1...v0.16.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* **index:** preserve distinct same-line chunk identities ([#91](https://github.com/scbrown/bobbin/issues/91)) ([d98cba5](https://github.com/scbrown/bobbin/commit/d98cba545d196d8d19978e456d0b0382984a184d))
+
 ## [0.16.1](https://github.com/scbrown/bobbin/compare/v0.16.0...v0.16.1) (2026-09-06)
 
 
