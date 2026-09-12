@@ -35,14 +35,21 @@ trim = true
 # Order matters: the paren-aware rules run first so a co-located "(ID, #NN)" keeps
 # its PR number. Prefixes match the internal trackers; the shape is <prefix>-<id>.
 commit_preprocessors = [
+    # Keep a leading tracker-style subject as a release entry.
+    { pattern = '^(?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6}(?:\.[0-9]+)*:[ \t]*', replace = "other: " },
     # "(ID, rest)" -> "(rest)"   e.g. (proj-1a2b, #36/#37) -> (#36/#37)
-    { pattern = '\((?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6},[ \t]*', replace = "(" },
+    { pattern = '\((?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6}(?:\.[0-9]+)*,[ \t]*', replace = "(" },
     # "(rest, ID)" -> "(rest)"
-    { pattern = ',[ \t]*(?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6}\)', replace = ")" },
+    { pattern = ',[ \t]*(?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6}(?:\.[0-9]+)*\)', replace = ")" },
     # " (ID)" standalone paren -> removed   e.g. ... shape (proj-1a2b) -> ... shape
-    { pattern = '[ \t]*\((?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6}\)', replace = "" },
+    { pattern = '[ \t]*\((?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6}(?:\.[0-9]+)*\)', replace = "" },
+    # a RUN of bracketed refs -> removed   e.g. ... dirs [proj-1a2b] [proj-3c4d]
+    { pattern = '(?:[ \t]*\[(?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6}(?:\.[0-9]+)*\])+', replace = "" },
+    # "[ID, rest]" -> "[rest]" and "[rest, ID]" -> "[rest]", mirroring the parens
+    { pattern = '\[(?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6}(?:\.[0-9]+)*,[ \t]*', replace = "[" },
+    { pattern = ',[ \t]*(?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6}(?:\.[0-9]+)*\]', replace = "]" },
     # any bare leftover " ID"
-    { pattern = '[ \t]*\b(?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6}\b', replace = "" },
+    { pattern = '[ \t]*\b(?:aegis|hq|gassy|qp|bobbin)-[a-z0-9]{3,6}(?:\.[0-9]+)*\b', replace = "" },
 ]
 conventional_commits = true
 filter_unconventional = true
@@ -53,6 +60,7 @@ tag_pattern = "v[0-9].*"
 sort_commits = "oldest"
 
 commit_parsers = [
+    { message = "^other", group = "Other" },
     { message = "^feat", group = "Added" },
     { message = "^fix", group = "Fixed" },
     { message = "^refactor", group = "Changed" },

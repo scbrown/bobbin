@@ -189,3 +189,7 @@ eval-judge run_id="":
 # Setup eval prerequisites
 eval-setup:
     cd eval && bash setup-eval.sh
+
+# Exercise the real changelog renderer on synthetic release commits.
+test-changelog:
+    python3 scripts/test_changelog_scrub.py
