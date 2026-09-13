@@ -1,0 +1,82 @@
+name: Publish bobbin-ai to crates.io
+description: Guard the intended version, publish it, and verify registry visibility.
+inputs:
+  expected-version:
+    description: Independently declared stable version, without a leading v.
+    required: true
+  dry-run:
+    description: Publish nothing and explicitly report a rehearsal.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Refuse a rehearsal, a prerelease, or the wrong version
+      shell: bash
+      env:
+        EXPECTED: ${{ inputs.expected-version }}
+        REF_NAME: ${{ github.ref_name }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        set -euo pipefail
+        case "$DRY_RUN" in true|false) ;; *) echo "Invalid dry-run value" >&2; exit 1 ;; esac
+        ACTUAL=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "bobbin-ai") | .version')
+        bash scripts/ci/crates-publish-guard.sh "$EXPECTED" "$ACTUAL" "$REF_NAME"
+
+    - name: Record whether this exact version is published
+      id: before
+      shell: bash
+      env:
+        EXPECTED: ${{ inputs.expected-version }}
+      run: |
+        set -euo pipefail
+        if bash scripts/ci/crates-registry-version.sh "$EXPECTED"; then
+          echo 'already=true' >> "$GITHUB_OUTPUT"
+          echo "::notice::crates.io already serves ${EXPECTED}; publication is unnecessary."
+        else
+          rc=$?
+          if [ "$rc" -ne 1 ]; then exit "$rc"; fi
+          echo 'already=false' >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Verify package
+      shell: bash
+      run: cargo package --no-verify
+
+    - name: Publish (dry run)
+      if: inputs.dry-run == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo '::notice::DRY RUN: nothing will be published; registry visibility is not certified.'
+        echo 'DRY RUN: no registry publication requested.' >> "$GITHUB_STEP_SUMMARY"
+        cargo publish --dry-run
+
+    - name: Authenticate with crates.io
+      if: inputs.dry-run != 'true' && steps.before.outputs.already != 'true'
+      id: crates-auth
+      uses: rust-lang/crates-io-auth-action@b7e9a28eded4986ec6b1fa40eeee8f8f165559ec # v1
+
+    - name: Publish to crates.io
+      if: inputs.dry-run != 'true' && steps.before.outputs.already != 'true'
+      shell: bash
+      run: cargo publish
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
+
+    - name: Verify crates.io serves the intended version
+      if: inputs.dry-run != 'true'
+      shell: bash
+      env:
+        EXPECTED: ${{ inputs.expected-version }}
+      run: |
+        set -euo pipefail
+        for attempt in $(seq 1 10); do
+          if bash scripts/ci/crates-registry-version.sh "$EXPECTED"; then
+            echo "::notice::Verified crates.io serves ${EXPECTED}."
+            echo "Registry publication verified: ${EXPECTED}." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$attempt" -lt 10 ]; then sleep 15; fi
+        done
+        echo "::error::Registry visibility of ${EXPECTED} was not established."
+        exit 1
