@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.16.3](https://github.com/scbrown/bobbin/compare/v0.16.2...v0.16.3) (2026-09-13)
+
+
+### Bug Fixes
+
+* **release:** scrub complete tracker references from changelogs ([3a74009](https://github.com/scbrown/bobbin/commit/3a74009b1605ab2e2c6c537aa0b6af7cf51b21d1))
+
 ## [0.16.2](https://github.com/scbrown/bobbin/compare/v0.16.1...v0.16.2) (2026-09-07)
 
 
