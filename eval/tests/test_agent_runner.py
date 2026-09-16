@@ -6,6 +6,7 @@ Uses mocks for subprocess and shutil.which since we don't invoke real claude CLI
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -293,6 +294,58 @@ class TestRunAgent:
         cmd = mock_claude.call_args[0][0]
         assert "--settings" not in cmd
 
+    def test_excludes_user_settings_via_setting_sources(
+        self, mock_claude: MagicMock, tmp_path: Path
+    ):
+        """aegis-nt4rap: user-level settings are excluded per-process, by flag."""
+        mock_claude.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=self._stream_stdout(), stderr="",
+        )
+
+        run_agent(str(tmp_path), "Fix it")
+
+        cmd = mock_claude.call_args[0][0]
+        assert "--setting-sources" in cmd
+        idx = cmd.index("--setting-sources")
+        # "user" must NOT be among the loaded sources -- that is the whole point.
+        assert "user" not in cmd[idx + 1].split(",")
+
+    def test_does_not_touch_the_shared_global_settings(
+        self, mock_claude: MagicMock, tmp_path: Path, monkeypatch
+    ):
+        """aegis-nt4rap regression: the REAL ~/.claude/settings.json is never moved.
+
+        Before the fix this file was renamed to .json.eval-bak for the duration of
+        every agent run, which strips hooks and guards from every other user of a
+        shared host.  This test fails against that implementation.
+        """
+        fake_home = tmp_path / "home"
+        (fake_home / ".claude").mkdir(parents=True)
+        settings = fake_home / ".claude" / "settings.json"
+        settings.write_text('{"hooks": {}}')
+        before = settings.read_text()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+
+        observed = {}
+
+        def _spy(*args, **kwargs):
+            # state DURING the subprocess call is what matters, not after
+            observed["exists_during_run"] = settings.exists()
+            observed["bak_during_run"] = (
+                fake_home / ".claude" / "settings.json.eval-bak"
+            ).exists()
+            return subprocess.CompletedProcess(
+                args=[], returncode=0, stdout=self._stream_stdout(), stderr="",
+            )
+
+        mock_claude.side_effect = _spy
+
+        run_agent(str(tmp_path), "Fix it")
+
+        assert observed["exists_during_run"] is True
+        assert observed["bak_during_run"] is False
+        assert settings.read_text() == before
+
     def test_custom_model_and_budget(self, mock_claude: MagicMock, tmp_path: Path):
         mock_claude.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout=self._stream_stdout(), stderr="",
@@ -396,3 +449,28 @@ class TestRunAgent:
 
         call_kwargs = mock_claude.call_args[1]
         assert call_kwargs["cwd"] == tmp_path
+
+
+class TestSettingSourcesIsSupportedByTheRealBinary:
+    """aegis-nt4rap follow-up (wu): the suite mocks the claude binary.
+
+    Every other test here asserts --setting-sources lands in argv, which stays
+    true even against a claude version that REJECTS the flag -- the mock never
+    runs it. That would leave user settings loading again with a green suite,
+    which is the same shape as the bug being fixed. This test asks the real
+    binary, and skips rather than fails where it is absent (CI images, sandboxes).
+    """
+
+    def test_installed_claude_advertises_setting_sources(self):
+        claude = shutil.which("claude")
+        if claude is None:
+            pytest.skip("claude CLI not installed in this environment")
+
+        proc = subprocess.run(
+            [claude, "--help"], capture_output=True, text=True, timeout=60,
+        )
+        assert "--setting-sources" in (proc.stdout + proc.stderr), (
+            "the installed claude does not advertise --setting-sources; the "
+            "per-process settings isolation in agent_runner would silently "
+            "fall back to loading the user's global settings"
+        )

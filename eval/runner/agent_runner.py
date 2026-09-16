@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 import os
@@ -16,7 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 def _recover_global_settings() -> None:
-    """Restore settings.json if a previous eval run was killed mid-flight."""
+    """Repair a host left broken by the PRE-aegis-nt4rap isolation behaviour.
+
+    Until aegis-nt4rap this module renamed the real, SHARED ~/.claude/settings.json
+    aside for the duration of every agent run.  A run killed between the rename and
+    its restore left the whole machine without global settings -- on a shared host
+    that strips hooks and guards from every other user.  The rename is gone (the
+    subprocess now passes --setting-sources instead), but a stale .eval-bak may
+    still exist from an older version, so this repair runs once per invocation and
+    is deliberately kept.
+    """
     global_settings = Path.home() / ".claude" / "settings.json"
     backup = global_settings.with_suffix(".json.eval-bak")
     if not global_settings.exists() and backup.exists():
@@ -25,37 +33,6 @@ def _recover_global_settings() -> None:
             backup, global_settings,
         )
         backup.rename(global_settings)
-
-
-@contextlib.contextmanager
-def _isolate_global_settings():
-    """Temporarily move ~/.claude/settings.json aside during eval runs.
-
-    Claude Code's ``--settings`` flag is additive — it merges with the
-    global settings rather than replacing them.  This means global hooks
-    (like a user's personal bobbin hook) would fire alongside the eval
-    settings, contaminating results.
-
-    This context manager renames the global settings to a .bak file
-    before the agent runs and restores it afterward.
-    """
-    _recover_global_settings()
-
-    global_settings = Path.home() / ".claude" / "settings.json"
-    backup = global_settings.with_suffix(".json.eval-bak")
-
-    if global_settings.exists():
-        logger.info("Isolating global settings: %s → %s", global_settings, backup)
-        global_settings.rename(backup)
-    else:
-        backup = None  # type: ignore[assignment]
-
-    try:
-        yield
-    finally:
-        if backup and backup.exists():
-            logger.info("Restoring global settings: %s → %s", backup, global_settings)
-            backup.rename(global_settings)
 
 
 class AgentRunnerError(Exception):
@@ -176,6 +153,8 @@ def run_agent(
         timed_out     — whether the process was killed for timeout
         tool_use_summary — dict with by_tool, tool_sequence, first_edit_turn, bobbin_commands
     """
+    _recover_global_settings()  # repair a host left broken by pre-nt4rap versions
+
     claude = _find_claude()
     ws = Path(workspace)
 
@@ -187,6 +166,15 @@ def run_agent(
         "--model", model,
         "--max-budget-usd", str(max_budget_usd),
         "--permission-mode", permission_mode,
+        # aegis-nt4rap: exclude the USER-level ~/.claude/settings.json for THIS
+        # subprocess only.  Claude Code's --settings flag is additive, so global
+        # hooks would otherwise fire alongside the eval settings and contaminate
+        # results.  This previously worked by renaming the real shared
+        # ~/.claude/settings.json aside for the duration of the run, which strips
+        # hooks and guards from every other user of the machine -- unacceptable on
+        # a shared multi-agent host.  --setting-sources scopes the exclusion to
+        # this process and mutates nothing.
+        "--setting-sources", "project,local",
     ]
 
     if settings_file:
@@ -208,29 +196,28 @@ def run_agent(
     agent_env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
     agent_env["BOBBIN_SERVER"] = ""
 
-    with _isolate_global_settings():
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=ws,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                env=agent_env,
-            )
-            exit_code = proc.returncode
-            stdout = proc.stdout
-            stderr = proc.stderr
-        except subprocess.TimeoutExpired as exc:
-            timed_out = True
-            exit_code = -1
-            stdout = exc.stdout or ""
-            stderr = exc.stderr or ""
-            if isinstance(stdout, bytes):
-                stdout = stdout.decode("utf-8", errors="replace")
-            if isinstance(stderr, bytes):
-                stderr = stderr.decode("utf-8", errors="replace")
-            logger.warning("Agent timed out after %ds in %s", timeout, ws)
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=ws,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=agent_env,
+        )
+        exit_code = proc.returncode
+        stdout = proc.stdout
+        stderr = proc.stderr
+    except subprocess.TimeoutExpired as exc:
+        timed_out = True
+        exit_code = -1
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        logger.warning("Agent timed out after %ds in %s", timeout, ws)
 
     duration = time.monotonic() - start
 
