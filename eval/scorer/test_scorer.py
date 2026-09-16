@@ -33,6 +33,13 @@ def _parse_pytest_output(output: str) -> dict:
     if not match:
         return {}
 
+    # aegis-mzdcm0: every group in this pattern is optional, so the trailing
+    # "in <float>s" alone is enough to match -- and cargo's "finished in 0.00s"
+    # satisfies exactly that.  A match that captured NO counts is not a pytest
+    # summary; claiming it shadows the correct parser and reports total=0.
+    if not any(match.group(i) for i in range(1, 5)):
+        return {}
+
     passed = int(match.group(1) or 0)
     failed = int(match.group(2) or 0)
     errors = int(match.group(3) or 0)
@@ -84,7 +91,9 @@ def _parse_cargo_test_output(output: str) -> dict:
 
 def _parse_output(output: str) -> dict:
     """Try each parser and return the first match."""
-    for parser in (_parse_pytest_output, _parse_cargo_test_output):
+    # aegis-mzdcm0: cargo first. Its summary line is unambiguous, whereas the
+    # pytest pattern is permissive enough to match other frameworks' output.
+    for parser in (_parse_cargo_test_output, _parse_pytest_output):
         result = parser(output)
         if result:
             return result
@@ -143,10 +152,21 @@ def run_tests(workspace: str, test_command: str, *, timeout: int = 600) -> dict:
     failures = parsed.get("failed", 0) if parsed else (0 if exit_code == 0 else -1)
     total = parsed.get("total", 0)
 
+    # aegis-mzdcm0: a run in which ZERO tests executed is NOT a pass.  The
+    # verdict used to be `exit_code == 0` alone, and `cargo test` with a filter
+    # that matches nothing exits 0 -- so "no test ran" was indistinguishable
+    # from "every test passed", and an agent that changed nothing scored the
+    # same as one that fixed the bug.  A success metric that cannot fail is not
+    # a measurement.  Only assert this when the output PARSED: an unrecognised
+    # format tells us nothing about how many tests ran, so it keeps the old
+    # exit-code behaviour rather than failing every unsupported framework.
+    no_tests_executed = bool(parsed) and total == 0
+
     return {
-        "passed": exit_code == 0,
+        "passed": exit_code == 0 and not no_tests_executed,
         "total": total,
         "failures": failures,
+        "no_tests_executed": no_tests_executed,
         "output": output,
         "exit_code": exit_code,
         "timed_out": timed_out,
