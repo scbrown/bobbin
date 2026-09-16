@@ -13,6 +13,7 @@ import pytest
 
 from scorer.test_scorer import (
     _parse_cargo_test_output,
+    _parse_output,
     _parse_pytest_output,
     run_tests,
 )
@@ -218,3 +219,63 @@ class TestRunTests:
 
         call_kwargs = mock_subprocess.call_args[1]
         assert call_kwargs["timeout"] == 120
+
+
+class TestZeroTestsExecutedIsNotAPass:
+    """aegis-mzdcm0: a run in which no test executed must not score PASS.
+
+    Measured case: `cargo test -p ruff_python_formatter -- except_handler`
+    matched nothing, printed "0 passed; 0 failed; ... 53 filtered out",
+    exited 0, and was recorded as passed=True with framework="pytest".
+    """
+
+    CARGO_ZERO = (
+        "\nrunning 0 tests\n\n"
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; "
+        "53 filtered out; finished in 0.00s\n"
+    )
+
+    def test_pytest_parser_rejects_cargo_output(self):
+        # every group in the pytest pattern is optional, so "in 0.00s" alone
+        # used to be enough to match and shadow the cargo parser
+        assert _parse_pytest_output(self.CARGO_ZERO) == {}
+
+    def test_cargo_output_is_detected_as_cargo(self):
+        assert _parse_output(self.CARGO_ZERO)["framework"] == "cargo-test"
+
+    def test_zero_tests_with_exit_zero_is_not_a_pass(self, tmp_path: Path):
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=self.CARGO_ZERO, stderr="",
+        )
+        with patch("subprocess.run", return_value=completed):
+            result = run_tests(str(tmp_path), "cargo test -- nomatch")
+
+        # assert the BEHAVIOUR first: against the pre-fix scorer this line is
+        # what fails, not a KeyError on the new bookkeeping field below
+        assert result["passed"] is False  # the whole point
+        assert result["exit_code"] == 0
+        assert result["total"] == 0
+        assert result["no_tests_executed"] is True
+
+    def test_real_passing_run_still_passes(self, tmp_path: Path):
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="test result: ok. 7 passed; 0 failed; 0 ignored;\n", stderr="",
+        )
+        with patch("subprocess.run", return_value=completed):
+            result = run_tests(str(tmp_path), "cargo test")
+
+        assert result["passed"] is True
+        assert result["total"] == 7
+        assert result["no_tests_executed"] is False
+
+    def test_unparseable_output_keeps_exit_code_behaviour(self, tmp_path: Path):
+        """An unrecognised format says nothing about how many tests ran."""
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="some bespoke runner: all good\n", stderr="",
+        )
+        with patch("subprocess.run", return_value=completed):
+            result = run_tests(str(tmp_path), "./run-my-tests")
+
+        assert result["no_tests_executed"] is False
+        assert result["passed"] is True
