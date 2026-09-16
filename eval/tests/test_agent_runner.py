@@ -6,6 +6,7 @@ Uses mocks for subprocess and shutil.which since we don't invoke real claude CLI
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -448,3 +449,28 @@ class TestRunAgent:
 
         call_kwargs = mock_claude.call_args[1]
         assert call_kwargs["cwd"] == tmp_path
+
+
+class TestSettingSourcesIsSupportedByTheRealBinary:
+    """aegis-nt4rap follow-up (wu): the suite mocks the claude binary.
+
+    Every other test here asserts --setting-sources lands in argv, which stays
+    true even against a claude version that REJECTS the flag -- the mock never
+    runs it. That would leave user settings loading again with a green suite,
+    which is the same shape as the bug being fixed. This test asks the real
+    binary, and skips rather than fails where it is absent (CI images, sandboxes).
+    """
+
+    def test_installed_claude_advertises_setting_sources(self):
+        claude = shutil.which("claude")
+        if claude is None:
+            pytest.skip("claude CLI not installed in this environment")
+
+        proc = subprocess.run(
+            [claude, "--help"], capture_output=True, text=True, timeout=60,
+        )
+        assert "--setting-sources" in (proc.stdout + proc.stderr), (
+            "the installed claude does not advertise --setting-sources; the "
+            "per-process settings isolation in agent_runner would silently "
+            "fall back to loading the user's global settings"
+        )
