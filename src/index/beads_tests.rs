@@ -262,3 +262,96 @@ fn fetch_bead_with_an_unmatched_rig_touches_nothing() {
         .unwrap();
     assert!(chunks.is_empty());
 }
+
+/// One table of cases through BOTH visibility rule sets.
+///
+/// The Dolt backend pushes visibility down as a `WHERE` clause; the JSONL
+/// backend has nothing to push into and applies `bead_visible`. Two rule sets
+/// over one rig is how two backends quietly build different corpora, so a
+/// change to either side has to break this.
+#[test]
+fn visibility_rules_agree_with_the_sql_clause() {
+    use super::keys::bead_visible;
+
+    let recent = chrono::Utc::now().to_rfc3339();
+    let ancient = "2020-01-01T00:00:00Z";
+
+    // (include_closed, max_age_days) -> expectations per (status, created_at)
+    let cases: &[(bool, u32, &str, &str, bool)] = &[
+        // Deleted is never visible, under any configuration.
+        (false, 0, "deleted", ancient, false),
+        (true, 0, "deleted", ancient, false),
+        (true, 90, "deleted", &recent, false),
+        // Open is always visible, regardless of age.
+        (false, 0, "open", ancient, true),
+        (false, 90, "open", ancient, true),
+        (true, 90, "in_progress", ancient, true),
+        // Closed depends on include_closed...
+        (false, 0, "closed", &recent, false),
+        (true, 0, "closed", ancient, true),
+        // ...and then on the age bound.
+        (true, 90, "closed", &recent, true),
+        (true, 90, "closed", ancient, false),
+    ];
+
+    for (include_closed, max_age_days, status, created_at, expected) in cases {
+        let config = BeadsConfig {
+            enabled: true,
+            databases: vec!["beads_aegis".into()],
+            include_closed: *include_closed,
+            max_age_days: *max_age_days,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            bead_visible(&config, status, Some(created_at)),
+            *expected,
+            "predicate: include_closed={include_closed} max_age_days={max_age_days} \
+             status={status} created_at={created_at}"
+        );
+
+        // The clause side, structurally: the same three rules, in SQL.
+        let clause = issues_where_clause(&config, None);
+        assert!(
+            clause.contains("deleted"),
+            "every clause must exclude deleted rows: {clause}"
+        );
+        assert_eq!(
+            clause.contains("status NOT IN ('closed', 'deleted')")
+                && !clause.contains("status != 'deleted'"),
+            !*include_closed,
+            "closed-bead admission must track include_closed: {clause}"
+        );
+        assert_eq!(
+            clause.contains("created_at >= DATE_SUB"),
+            *max_age_days > 0,
+            "the age bound must appear exactly when max_age_days > 0: {clause}"
+        );
+        if *max_age_days > 0 {
+            // The age bound is OR'd with "not closed" — it bounds closed beads
+            // only, which is the asymmetry `bead_visible` also encodes.
+            assert!(
+                clause.contains("(status NOT IN ('closed', 'deleted') OR created_at >="),
+                "the age bound must apply to CLOSED beads only: {clause}"
+            );
+        }
+    }
+}
+
+/// An unreadable `created_at` must not silently drop a bead.
+#[test]
+fn an_unparseable_created_at_is_treated_as_unbounded() {
+    use super::keys::bead_visible;
+
+    let config = BeadsConfig {
+        enabled: true,
+        include_closed: true,
+        max_age_days: 1,
+        ..Default::default()
+    };
+    // The age bound exists to trim old CLOSED work. A row whose age cannot be
+    // read is a row we know nothing about, and dropping it would be a silent
+    // deletion from the corpus — the failure this whole change exists to fix.
+    assert!(bead_visible(&config, "closed", None));
+    assert!(bead_visible(&config, "closed", Some("not-a-timestamp")));
+}

@@ -23,7 +23,7 @@ src/cli/search.rs 751
 src/cli/status.rs 629
 src/cli/tour.rs 528
 src/cli/watch.rs 789
-src/config.rs 1103
+src/config.rs 1133
 src/http/client.rs 1242
 src/index/embedder.rs 1091
 src/index/git.rs 2002

@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use super::OutputConfig;
 use crate::config::{Config, ContextualEmbeddingConfig};
-use crate::index::{embedder, resolver, Embedder, Parser};
+use crate::index::{beads, embedder, resolver, Embedder, Parser};
 use crate::storage::{LockWait, MaintenanceOutcome, MetadataStore, VectorStore};
 use crate::types::{Chunk, ImportDependency, ImportEdge};
 
@@ -129,7 +129,7 @@ pub struct IndexArgs {
     #[arg(long)]
     pub(super) source: Option<PathBuf>,
 
-    /// Also index beads (issues) from Dolt
+    /// Also index beads (issues) from the configured bead store
     #[arg(long)]
     pub(super) include_beads: bool,
 
@@ -1138,11 +1138,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     profile.git_commits_ms = t_commits.elapsed().as_millis();
 
-    // Index beads from Dolt if enabled
     let mut beads_indexed: usize = 0;
     if include_beads {
         if !output.quiet && !output.json {
-            println!("  Indexing beads from Dolt...");
+            let src = beads::source_label(&config.beads);
+            println!("  Indexing beads from {src}...");
         }
 
         let mut beads_config = config.beads.clone();
@@ -1421,7 +1421,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         }
 
         if beads_indexed > 0 {
-            println!("  Beads: {} indexed from Dolt", beads_indexed);
+            println!("  Beads: {} indexed", beads_indexed);
         }
         if sql_indexed > 0 {
             println!("  SQL: {} rows indexed", sql_indexed);

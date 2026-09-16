@@ -674,7 +674,7 @@ fn print_human_output(query: &str, mode: SearchMode, results: &[SearchResult], v
                 match_info
             );
         } else if chunk.chunk_type == ChunkType::Issue {
-            // Issue-specific display (beads from Dolt)
+            // Issue-specific display (beads from the configured store)
             let name_display = chunk
                 .name
                 .as_ref()

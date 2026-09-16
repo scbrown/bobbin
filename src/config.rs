@@ -616,20 +616,48 @@ impl HooksConfig {
     }
 }
 
-/// Configuration for beads (Dolt issue tracker) integration
+/// Which store bead content is read from.
+///
+/// `Dolt` is the original MySQL-protocol backend. `Jsonl` reads the br store's
+/// exported `issues.jsonl`, which is what the crew store became at the clbx2
+/// cutover (2026-08-29) — see aegis-205llh, where bobbin was found still
+/// answering bead search out of the frozen Dolt snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum BeadsSource {
+    /// Dolt / MySQL protocol (`host`, `port`, `user`, `databases`).
+    #[default]
+    Dolt,
+    /// br JSONL export, one path per configured database (`jsonl_paths`).
+    Jsonl,
+}
+
+/// Configuration for beads (issue tracker) integration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BeadsConfig {
     /// Enable beads indexing
     pub enabled: bool,
+    /// Which store to read beads from (default: `dolt`)
+    pub source: BeadsSource,
     /// Dolt server hostname
     pub host: String,
     /// Dolt server port
     pub port: u16,
     /// Dolt user
     pub user: String,
-    /// Database names to index (e.g., ["beads_aegis", "beads_gastown"])
+    /// Database names to index (e.g., ["beads_aegis", "beads_gastown"]).
+    ///
+    /// This is the rig identity for BOTH sources, not a Dolt-only field: chunk
+    /// keys are `beads:<rig>:<id>` with `rig` derived from these names, so the
+    /// list must stay the same across a source switch or the whole corpus
+    /// re-keys and the removal sweep deletes the old rows.
     pub databases: Vec<String>,
+    /// For `source = "jsonl"`: database name -> path of that rig's
+    /// `issues.jsonl`. Every entry in `databases` must have one; a missing
+    /// path is an error rather than an empty rig, because "indexed zero beads"
+    /// and "this rig is not configured" are indistinguishable downstream.
+    pub jsonl_paths: std::collections::BTreeMap<String, String>,
     /// Include comments in indexed content
     pub include_comments: bool,
     /// Include closed beads
@@ -646,10 +674,12 @@ impl Default for BeadsConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            source: BeadsSource::default(),
             host: "localhost".into(),
             port: 3306,
             user: "root".into(),
             databases: vec![],
+            jsonl_paths: std::collections::BTreeMap::new(),
             include_comments: true,
             include_closed: false,
             max_age_days: 90,
