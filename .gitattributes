@@ -1,3 +1,12 @@
 
-# Use bd merge for beads JSONL files
+# Three-way merge for beads JSONL. The driver is `merge.beads`, defined by
+# aegis scripts/install-beads-merge-driver.sh (aegis-h7xuql) and implemented by
+# scripts/beads-jsonl-merge-driver.py.
+#
+# It is NOT `bd merge`: bd was retired in the 2026-08-29 clbx2 cutover, and neither
+# bd nor br has ever had a `merge` subcommand (`br merge` -> unrecognized subcommand).
+# If `merge.beads` is undefined, git does NOT warn -- it silently falls back to its
+# TEXT merge and writes CONFLICT MARKERS into this file, which `br sync --import-only`
+# then rejects under a guard that cannot be bypassed. Check with:
+#     git config --get merge.beads.driver
 .beads/issues.jsonl merge=beads
