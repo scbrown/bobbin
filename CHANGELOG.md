@@ -21,6 +21,14 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.16.4](https://github.com/scbrown/bobbin/compare/v0.16.3...v0.16.4) (2026-09-16)
+
+
+### Bug Fixes
+
+* **eval:** a run with ZERO tests executed is not a pass ([#99](https://github.com/scbrown/bobbin/issues/99)) ([16300d3](https://github.com/scbrown/bobbin/commit/16300d3258f1c407ab32b016993fd76668394cc6))
+* **eval:** scope settings isolation to the subprocess, not the whole host ([#98](https://github.com/scbrown/bobbin/issues/98)) ([5fd5d41](https://github.com/scbrown/bobbin/commit/5fd5d416afe3892fc67b604cbf2df60781c4d78c))
+
 ## [0.16.3](https://github.com/scbrown/bobbin/compare/v0.16.2...v0.16.3) (2026-09-13)
 
 
