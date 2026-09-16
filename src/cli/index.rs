@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use super::OutputConfig;
 use crate::config::{Config, ContextualEmbeddingConfig};
-use crate::index::{embedder, resolver, Embedder, Parser};
+use crate::index::{beads, embedder, resolver, Embedder, Parser};
 use crate::storage::{LockWait, MaintenanceOutcome, MetadataStore, VectorStore};
 use crate::types::{Chunk, ImportDependency, ImportEdge};
 
@@ -1138,14 +1138,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     profile.git_commits_ms = t_commits.elapsed().as_millis();
 
-    // Index beads from the configured store if enabled
     let mut beads_indexed: usize = 0;
     if include_beads {
         if !output.quiet && !output.json {
-            println!(
-                "  Indexing beads from {}...",
-                crate::index::beads::source_label(&config.beads)
-            );
+            let src = beads::source_label(&config.beads);
+            println!("  Indexing beads from {src}...");
         }
 
         let mut beads_config = config.beads.clone();
