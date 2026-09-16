@@ -21,6 +21,19 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.17.0](https://github.com/scbrown/bobbin/compare/v0.16.4...v0.17.0) (2026-09-16)
+
+
+### Features
+
+* **beads:** read beads from a br JSONL export, not only Dolt ([493bbdf](https://github.com/scbrown/bobbin/commit/493bbdf44865736bba5c319dc77823bd56bd8f77))
+* **beads:** read beads from a br JSONL export, not only Dolt ([db67da3](https://github.com/scbrown/bobbin/commit/db67da36383389c845276f726d6f12db9d6b55ba))
+
+
+### Bug Fixes
+
+* **ci:** keep index.rs at its ceiling; raise config.rs's deliberately ([bf33846](https://github.com/scbrown/bobbin/commit/bf3384612f4c43d95e5e0d05c983e9fa771a8c6e))
+
 ## [0.16.4](https://github.com/scbrown/bobbin/compare/v0.16.3...v0.16.4) (2026-09-16)
 
 
