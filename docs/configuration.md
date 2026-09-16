@@ -176,9 +176,14 @@ enabled = true
 resolve_imports = true
 
 [beads]
-# Index beads (Dolt issue tracker) content
+# Index beads (issue tracker) content
 enabled = false
 
+# Which store to read beads from: "dolt" (MySQL protocol) or "jsonl" (a br
+# store's exported .beads/issues.jsonl). Defaults to "dolt".
+source = "dolt"
+
+# --- source = "dolt" ---
 # Dolt server hostname
 host = "dolt.example"
 
@@ -189,7 +194,16 @@ port = 3306
 user = "root"
 
 # Database names to index (e.g. ["beads_aegis", "beads_gastown"]). None by default.
+# This is the RIG IDENTITY for both sources, not a Dolt-only field: chunk keys
+# are `beads:<rig>:<id>` with the rig derived from these names, so the list must
+# stay the same across a source switch or the whole corpus re-keys.
 databases = []
+
+# --- source = "jsonl" ---
+# One path per configured database. Every entry in `databases` needs one;
+# a configured database with no path is an ERROR, not an empty rig.
+# [beads.jsonl_paths]
+# beads_aegis = "/var/lib/bobbin/repos/aegis/.beads/issues.jsonl"
 
 # Include bead comments in indexed content
 include_comments = true
@@ -402,15 +416,18 @@ Controls dependency extraction and import resolution.
 
 ### `[beads]`
 
-Indexes beads (the Dolt issue tracker) as searchable content.
+Indexes beads (the issue tracker) as searchable content, from either a Dolt
+server or a br store's JSONL export.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | bool | `false` | Index beads content |
-| `host` | string | `"dolt.example"` | Dolt server hostname |
-| `port` | int | `3306` | Dolt server port |
-| `user` | string | `"root"` | Dolt user |
-| `databases` | string[] | `[]` | Database names to index (e.g. `["beads_aegis"]`) |
+| `source` | string | `"dolt"` | Which store to read: `"dolt"` or `"jsonl"` |
+| `host` | string | `"dolt.example"` | Dolt server hostname (`source = "dolt"`) |
+| `port` | int | `3306` | Dolt server port (`source = "dolt"`) |
+| `user` | string | `"root"` | Dolt user (`source = "dolt"`) |
+| `databases` | string[] | `[]` | Database names to index (e.g. `["beads_aegis"]`). Rig identity for BOTH sources |
+| `jsonl_paths` | table | `{}` | `source = "jsonl"`: database name → path of that rig's `issues.jsonl`. Required for every entry in `databases` |
 | `include_comments` | bool | `true` | Include bead comments in indexed content |
 | `include_closed` | bool | `false` | Include closed beads |
 | `max_age_days` | int | `90` | Skip beads older than this many days (`0` = no limit) |
@@ -461,3 +478,28 @@ Top-level key (not a table). Quipu knowledge-graph endpoint (e.g. `"http://quipu
 ### `quipu_push_chunks`
 
 Top-level key (not a table). Default `false`. When `true` (and bobbin is built with the `knowledge` feature), each index run publishes a governed code-entity graph as a diffed snapshot replacement under the producer key `bobbin-chunks:{repo}` — `CodeModule`, `CodeSymbol`, `Document`, and `Section` facts plus chunk identity, membership, order, and adjacency, never chunk content. When `quipu_endpoint` is configured, Bobbin sends the snapshot to its authenticated `/knot` endpoint using `QUIPU_AUTH_TOKEN`, `QUIPU_AUTH_TOKEN_FILE`, or `~/.config/aegis/quipu_token` (in that order); without a remote endpoint, Bobbin uses its embedded Quipu store. The target must support `replace_snapshot`; Bobbin refuses a response that does not confirm replacement rather than letting facts accumulate per run. A failed publication reports `dropped_pushes=1` and makes the index command exit nonzero, without retrying an abandoned request. Remote requests carry `X-Quipu-Client: ingest-cron`.
+
+#### Choosing a source
+
+`source = "dolt"` talks to a Dolt server over the MySQL protocol.
+`source = "jsonl"` reads a br store's `.beads/issues.jsonl` — a plain file, so
+it needs no credential, no network, and no server: a host that already clones
+the rig's repo for code indexing has the bead corpus on disk already.
+
+Both produce the same chunks. `databases` still names the rigs (chunk keys are
+`beads:<rig>:<id>`), so switching sources does **not** re-key the corpus, and
+`include_closed`, `max_age_days` and `exclude_labels` apply identically —
+the JSONL reader applies them as a predicate where the Dolt reader pushes them
+down as a `WHERE` clause, and one test walks both rule sets through the same
+table of cases.
+
+A JSONL export only moves when its producer writes it, and a producer that has
+stopped is as quiet as a dead server. Every indexing run therefore prints the
+path **and its age**:
+
+```
+  Indexing beads from br JSONL (/var/lib/bobbin/repos/aegis/.beads/issues.jsonl [12m old])...
+```
+
+Watch that number. bobbin once answered bead search from a store that had
+stopped receiving writes and reported nothing unusual for 18 days.

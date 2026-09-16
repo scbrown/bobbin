@@ -1839,9 +1839,9 @@ impl BobbinMcpServer {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    /// Search indexed beads (issues) semantically, with optional live Dolt enrichment
+    /// Search indexed beads (issues) semantically, with optional live store enrichment
     #[tool(
-        description = "Search for beads (issues/tasks from the Dolt issue tracker) using natural language. Finds issues related to your query by semantic similarity. Filter by priority, status, assignee, rig, issue_type, or label. Results are enriched with live Dolt metadata by default (set enrich=false for faster indexed-only results). Compact mode (default) omits snippets to save tokens. Requires beads to be indexed first via `bobbin index --include-beads`.",
+        description = "Search for beads (issues/tasks from the bead tracker) using natural language. Finds issues related to your query by semantic similarity. Filter by priority, status, assignee, rig, issue_type, or label. Results are enriched with live metadata from the bead store by default (set enrich=false for faster indexed-only results). Compact mode (default) omits snippets to save tokens. Requires beads to be indexed first via `bobbin index --include-beads`. NOTE: this searches the index built by the last reindex, not the store live — a bead created since then will not be found.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -1890,7 +1890,7 @@ impl BobbinMcpServer {
             filtered.retain(|r| r.chunk.file_path.starts_with(&prefix));
         }
 
-        // Fetch live metadata from Dolt before filtering (so filters use fresh data)
+        // Fetch live metadata from the bead store before filtering (so filters use fresh data)
         let live_metadata = if should_enrich && config.beads.enabled {
             let bead_ids: Vec<(String, String)> = filtered
                 .iter()

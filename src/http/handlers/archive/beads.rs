@@ -42,7 +42,7 @@ pub(crate) struct SearchBeadsParams {
     label: Option<String>,
     /// Max results (default 10)
     limit: Option<usize>,
-    /// Enrich with live Dolt data (default true)
+    /// Enrich with live bead-store data (default true)
     enrich: Option<bool>,
     /// Compact mode - omit snippet (default true)
     compact: Option<bool>,
@@ -111,7 +111,7 @@ pub(crate) async fn search_beads(
         filtered.retain(|r| r.chunk.file_path.starts_with(&prefix));
     }
 
-    // Fetch live metadata from Dolt
+    // Fetch live metadata from the bead store
     let live_metadata = if should_enrich && state.config.beads.enabled {
         let bead_ids: Vec<(String, String)> = filtered
             .iter()

@@ -817,3 +817,39 @@ include = ["**/*.py", "**/*.go"]
     // Arrays are replaced wholesale, not merged
     assert_eq!(config.index.include, vec!["**/*.py", "**/*.go"]);
 }
+
+/// The `[beads]` block must parse both sources, and must keep defaulting to
+/// Dolt so an existing config is unchanged by this field appearing.
+#[test]
+fn beads_source_defaults_to_dolt_and_parses_jsonl() {
+    use crate::config::BeadsSource;
+
+    let dolt: crate::config::BeadsConfig = toml::from_str(
+        r#"
+enabled = true
+host = "dolt.example"
+port = 3306
+databases = ["beads_aegis"]
+"#,
+    )
+    .expect("a config with no source field must still parse");
+    assert_eq!(dolt.source, BeadsSource::Dolt);
+    assert!(dolt.jsonl_paths.is_empty());
+
+    let jsonl: crate::config::BeadsConfig = toml::from_str(
+        r#"
+enabled = true
+source = "jsonl"
+databases = ["beads_aegis"]
+
+[jsonl_paths]
+beads_aegis = "/var/lib/bobbin/repos/aegis/.beads/issues.jsonl"
+"#,
+    )
+    .expect("source = \"jsonl\" must parse");
+    assert_eq!(jsonl.source, BeadsSource::Jsonl);
+    assert_eq!(
+        jsonl.jsonl_paths.get("beads_aegis").map(String::as_str),
+        Some("/var/lib/bobbin/repos/aegis/.beads/issues.jsonl")
+    );
+}

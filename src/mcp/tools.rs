@@ -743,7 +743,7 @@ pub struct ReviewChangedFile {
     pub removed_lines: usize,
 }
 
-/// Request for searching beads (issues from Dolt)
+/// Request for searching beads (issues from the configured bead store)
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchBeadsRequest {
     /// Natural language search query
@@ -786,9 +786,9 @@ pub struct SearchBeadsRequest {
     #[schemars(description = "Maximum number of results to return (default: 10)")]
     pub limit: Option<usize>,
 
-    /// Enrich results with live Dolt data (default: true)
+    /// Enrich results with live store data (default: true)
     #[schemars(
-        description = "If true (default), enrich results with live status/priority/assignee from Dolt. Set to false for faster indexed-only results."
+        description = "If true (default), enrich results with live status/priority/assignee read from the bead store itself. Set to false for faster indexed-only results."
     )]
     pub enrich: Option<bool>,
 

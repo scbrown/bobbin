@@ -85,3 +85,62 @@ pub(crate) fn issues_where_clause(config: &BeadsConfig, only_id: Option<&str>) -
         format!(" WHERE {}", conditions.join(" AND "))
     }
 }
+
+/// The same visibility rules as [`issues_where_clause`], as a predicate over an
+/// already-fetched row.
+///
+/// A backend that cannot push a `WHERE` clause down to its store — the br JSONL
+/// reader reads a flat file — must still admit and reject exactly the rows the
+/// SQL backend does, or the two would build different corpora from the same
+/// rig. The SQL string and this predicate sit side by side deliberately, and
+/// `visibility_rules_agree_with_the_sql_clause` in the tests walks one table of
+/// cases through both — asserting this predicate's verdict and, for the same
+/// config, that the clause does or does not carry the matching condition.
+/// There is no SQL engine in that test, so the clause side is checked
+/// structurally; it exists to make a change to ONE of the two rule sets fail
+/// rather than pass quietly.
+///
+/// `created_at` is an RFC3339-ish timestamp as the store writes it; an
+/// unparseable or missing value is treated as UNBOUNDED (visible), because the
+/// age bound exists to trim old CLOSED work and a row whose age cannot be read
+/// must not be silently dropped.
+pub(crate) fn bead_visible(config: &BeadsConfig, status: &str, created_at: Option<&str>) -> bool {
+    if status == "deleted" {
+        return false;
+    }
+    let closed = status == "closed";
+    if closed && !config.include_closed {
+        return false;
+    }
+    if config.max_age_days > 0 && closed {
+        // Only CLOSED beads are age-bounded — the same asymmetry the SQL
+        // clause encodes, and for the same reason (an OPEN bead is active work
+        // regardless of age).
+        if let Some(age_days) = age_in_days(created_at) {
+            if age_days > f64::from(config.max_age_days) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Whole days between `created_at` and now, or `None` when it cannot be read.
+fn age_in_days(created_at: Option<&str>) -> Option<f64> {
+    let raw = created_at?;
+    let parsed = chrono::DateTime::parse_from_rfc3339(raw)
+        .ok()
+        .map(|d| d.with_timezone(&chrono::Utc))
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%d %H:%M:%S")
+                .ok()
+                .map(|n| n.and_utc())
+        })
+        .or_else(|| {
+            chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d")
+                .ok()
+                .and_then(|d| d.and_hms_opt(0, 0, 0))
+                .map(|n| n.and_utc())
+        })?;
+    Some((chrono::Utc::now() - parsed).num_seconds() as f64 / 86_400.0)
+}
