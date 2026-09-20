@@ -8,6 +8,17 @@
 #   scripts/check-file-size.sh --update-allowlist
 #
 # Shrinking this file is the point. Remove entries by splitting files.
+#
+# Raised deliberately for aegis-wbbycq (MCP remote proxying):
+#   src/mcp/server.rs   3386 -> 3580  (+194)
+#   src/http/client.rs  1242 -> 1256  (+14)
+# server.rs's growth is 24 four-line `if let Some(remote) = self.remote()`
+# dispatch branches, one per tool. A macro would collapse them and hide the
+# one thing a reviewer of this change has to see: WHICH tools proxy, which
+# refuse, and under what condition. client.rs is +14 net after routing
+# feedback_submit and lineage_store through the new post_value helper.
+# The proxy itself is src/mcp/remote/, which is SPLIT to stay under the
+# 500-line limit rather than listed here — no new entries.
 src/access.rs 616
 src/analysis/complexity.rs 783
 src/analysis/impact.rs 667
@@ -24,12 +35,12 @@ src/cli/status.rs 629
 src/cli/tour.rs 528
 src/cli/watch.rs 789
 src/config.rs 1133
-src/http/client.rs 1242
+src/http/client.rs 1256
 src/index/embedder.rs 1091
 src/index/git.rs 2002
 src/index/parser.rs 1544
 src/index/resolver.rs 530
-src/mcp/server.rs 3386
+src/mcp/server.rs 3580
 src/mcp/tools.rs 1410
 src/reactions.rs 2397
 src/search/context.rs 3149
