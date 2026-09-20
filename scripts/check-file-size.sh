@@ -44,7 +44,7 @@
 #
 # Usage:
 #   scripts/check-file-size.sh                     # staged .rs files
-#   scripts/check-file-size.sh --all               # all tracked .rs files
+#   scripts/check-file-size.sh --all               # all .rs files (tracked + untracked)
 #   scripts/check-file-size.sh --update-allowlist  # tighten (never loosens)
 
 set -euo pipefail
@@ -104,7 +104,7 @@ if [ "$mode" = "update" ]; then
             lines="$recorded"
         fi
         printf '%s %s\n' "$file" "$lines" >> "$tmp"
-    done <<< "$(git ls-files '*.rs')"
+    done <<< "$(git ls-files --cached --others --exclude-standard '*.rs' | sort -u)"
     {
         echo "# Grandfathered large files — frozen at the line count recorded here."
         echo "#"
@@ -125,9 +125,26 @@ if [ "$mode" = "update" ]; then
 fi
 
 if [ "$mode" = "all" ]; then
-    files=$(git ls-files '*.rs')
+    # TRACKED **AND UNTRACKED-BUT-NOT-IGNORED** (aegis-wbbycq).
+    #
+    # This used to be `git ls-files '*.rs'` alone, which sees only TRACKED
+    # files — so a brand-new source file is invisible to this gate until it is
+    # staged, and a new file is exactly the case where an author has no ceiling
+    # to compare against and is most likely to be over the limit.
+    #
+    # Measured: a new 897-line src/mcp/remote.rs was written, this script was
+    # run with --all and reported "0 error(s)", the author took that as a pass,
+    # and CI caught it minutes later — on a checkout where the file WAS tracked.
+    # The local gate and the CI gate were reading different file sets and only
+    # the slow one could see the problem, which is the worst arrangement of the
+    # two. `--others --exclude-standard` adds untracked files while still
+    # honouring .gitignore, so build output and scratch files stay out.
+    files=$(git ls-files --cached --others --exclude-standard '*.rs' | sort -u)
 else
-    files=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
+    # Staged changes, plus untracked files for the same reason. A pre-commit
+    # run must be able to see a file the author has written but not yet added.
+    files=$( { git diff --cached --name-only --diff-filter=ACM -- '*.rs'
+               git ls-files --others --exclude-standard '*.rs'; } | sort -u )
 fi
 
 warnings=0
