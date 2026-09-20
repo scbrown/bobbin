@@ -5,6 +5,7 @@
 
 mod knowledge_tools;
 mod local_graph_tools;
+mod remote;
 mod server;
 mod tool_annotations;
 mod tools;

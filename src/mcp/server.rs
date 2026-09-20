@@ -4,6 +4,7 @@
 //! and analysis capabilities to AI agents via the Model Context Protocol.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use regex::Regex;
@@ -18,6 +19,7 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler};
 
+use super::remote::RemoteBackend;
 use super::tools::*;
 use crate::analysis::backend::{IndexBackend, StructuralBackend};
 use crate::analysis::complexity::ComplexityAnalyzer;
@@ -38,6 +40,11 @@ use crate::types::{ChunkType, MatchType, SearchResult};
 #[derive(Clone)]
 pub struct BobbinMcpServer {
     repo_root: PathBuf,
+    /// A configured remote bobbin server, resolved exactly as the CLI
+    /// resolves it. When `Some`, every tool with a server endpoint answers
+    /// from that server and no local index is required to start. See
+    /// `mcp::remote` for what `bobbin serve` did before (aegis-wbbycq).
+    remote: Option<Arc<RemoteBackend>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -64,18 +71,50 @@ impl BobbinMcpServer {
     }
 
     pub fn new(repo_root: PathBuf) -> Result<Self> {
-        let config_path = Config::config_path(&repo_root);
-        if !config_path.exists() {
-            anyhow::bail!(
-                "Bobbin not initialized in {}. Run `bobbin init` first.",
-                repo_root.display()
-            );
+        Self::with_remote(repo_root, None, "default".to_string())
+    }
+
+    /// Build the server, optionally proxying to a remote bobbin server.
+    ///
+    /// With a remote the local-index check is deliberately skipped: requiring
+    /// `bobbin init` in order to proxy is what made `bobbin serve` unusable on
+    /// a machine that only ever talks to the fleet index. Without one the
+    /// original check stands — a server with neither can answer nothing.
+    pub fn with_remote(
+        repo_root: PathBuf,
+        remote_url: Option<String>,
+        role: String,
+    ) -> Result<Self> {
+        let remote = remote_url.map(|url| Arc::new(RemoteBackend::new(url, role)));
+
+        if remote.is_none() {
+            let config_path = Config::config_path(&repo_root);
+            if !config_path.exists() {
+                anyhow::bail!(
+                    "Bobbin not initialized in {}. Run `bobbin init` first, or configure a \
+                     server with `bobbin connect <url> --global` so this MCP server can proxy \
+                     to it.",
+                    repo_root.display()
+                );
+            }
         }
 
         Ok(Self {
             repo_root,
+            remote,
             tool_router: Self::build_router(),
         })
+    }
+
+    /// The configured remote, if any. Tools call this first.
+    fn remote(&self) -> Option<&RemoteBackend> {
+        self.remote.as_deref()
+    }
+
+    /// Whether a local index is available. Used only by the tools the remote
+    /// server has no endpoint for.
+    fn has_local_index(&self) -> bool {
+        Config::config_path(&self.repo_root).exists()
     }
 
     /// Open the metadata store (for coupling queries)
@@ -396,6 +435,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.search(&req).await;
+        }
+
         let limit = req.limit.unwrap_or(10);
         let mode = req.mode.as_deref().unwrap_or("hybrid");
 
@@ -537,6 +580,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<GrepRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.grep(&req).await;
+        }
+
         let limit = req.limit.unwrap_or(10);
         let ignore_case = req.ignore_case.unwrap_or(false);
         let use_regex = req.regex.unwrap_or(false);
@@ -694,6 +741,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<ContextRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.context(&req).await;
+        }
+
         let config_path = Config::config_path(&self.repo_root);
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -844,6 +895,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<RelatedRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.related(&req).await;
+        }
+
         let limit = req.limit.unwrap_or(10);
         let threshold = req.threshold.unwrap_or(0.0);
 
@@ -946,6 +1001,16 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<TestCoverageRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if !self.has_local_index() {
+            if let Some(remote) = self.remote() {
+                return Err(remote.local_only(
+                    "test_coverage",
+                    "it infers test<->source links from the git co-change history of the \
+                 checkout it runs in",
+                ));
+            }
+        }
+
         let limit = req.limit.unwrap_or(10);
         let threshold = req.threshold.unwrap_or(0.0);
 
@@ -1014,6 +1079,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<FindRefsRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.find_refs(&req).await;
+        }
+
         let limit = req.limit.unwrap_or(20);
 
         let mut vector_store = self
@@ -1074,6 +1143,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<ListSymbolsRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.list_symbols(&req).await;
+        }
+
         let mut vector_store = self
             .open_vector_store()
             .await
@@ -1121,6 +1194,15 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<ChunkNeighborsRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if !self.has_local_index() {
+            if let Some(remote) = self.remote() {
+                return Err(remote.local_only(
+                    "chunk_neighbors",
+                    "it walks chunk relationships inside the local vector store by chunk id",
+                ));
+            }
+        }
+
         let vector_store = self
             .open_vector_store()
             .await
@@ -1263,6 +1345,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<ReadChunkRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.read_chunk(&req).await;
+        }
+
         let context = req.context.unwrap_or(0);
 
         let (content, actual_start, actual_end) = self
@@ -1299,6 +1385,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<HotspotsRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.hotspots(&req).await;
+        }
+
         let since = req.since.as_deref().unwrap_or("1 year ago");
         let limit = req.limit.unwrap_or(20);
         let threshold = req.threshold.unwrap_or(0.0);
@@ -1394,6 +1484,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<ImpactRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.impact(&req).await;
+        }
+
         let depth = req.depth.unwrap_or(1);
         let mode_str = req.mode.as_deref().unwrap_or("combined");
         let limit = req.limit.unwrap_or(15);
@@ -1489,6 +1583,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<ReviewRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return Err(remote.review_unavailable());
+        }
+
         let config_path = Config::config_path(&self.repo_root);
         let config = Config::load(&config_path)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -1658,6 +1756,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<SimilarRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.similar(&req).await;
+        }
+
         let scan = req.scan.unwrap_or(false);
         let limit = req.limit.unwrap_or(10);
         let cross_repo = req.cross_repo.unwrap_or(false);
@@ -1791,6 +1893,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<PrimeRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.prime(&req).await;
+        }
+
         const PRIMER: &str = include_str!("../../docs/primer.md");
 
         let primer_text = if let Some(ref section) = req.section {
@@ -1853,6 +1959,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<SearchBeadsRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.search_beads(&req).await;
+        }
+
         let limit = req.limit.unwrap_or(10);
         let should_enrich = req.enrich.unwrap_or(true);
         let compact = req.compact.unwrap_or(true);
@@ -2109,6 +2219,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<DependenciesRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.dependencies(&req).await;
+        }
+
         let reverse = req.reverse.unwrap_or(false);
         let both = req.both.unwrap_or(false);
         let show_imports = !reverse || both;
@@ -2187,6 +2301,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<FileHistoryRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.file_history(&req).await;
+        }
+
         let limit = req.limit.unwrap_or(20);
 
         let git = GitAnalyzer::new(&self.repo_root)
@@ -2256,6 +2374,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<StatusRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.status(&req).await;
+        }
+
         let vector_store = self
             .open_vector_store()
             .await
@@ -2331,6 +2453,15 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<CommitSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if !self.has_local_index() {
+            if let Some(remote) = self.remote() {
+                return Err(remote.local_only(
+                    "commit_search",
+                    "it searches the commit index of the checkout it runs in",
+                ));
+            }
+        }
+
         let limit = req.limit.unwrap_or(10);
 
         let config_path = Config::config_path(&self.repo_root);
@@ -2483,6 +2614,16 @@ impl BobbinMcpServer {
             )]));
         }
 
+        if let Some(remote) = self.remote() {
+            let forwarded = FeedbackSubmitRequest {
+                injection_id: injection_id.clone(),
+                rating: req.rating.clone(),
+                agent: Some(agent.clone()),
+                reason: Some(reason.clone()),
+            };
+            return remote.feedback_submit(&forwarded, &agent).await;
+        }
+
         let input = crate::storage::feedback::FeedbackInput {
             injection_id: injection_id.clone(),
             agent,
@@ -2518,6 +2659,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<FeedbackListRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.feedback_list(&req).await;
+        }
+
         let store = self
             .open_feedback_store()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -2573,6 +2718,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<FeedbackStatsRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.feedback_stats(&req).await;
+        }
+
         let store = self
             .open_feedback_store()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -2683,11 +2832,15 @@ impl BobbinMcpServer {
             ))]));
         }
 
-        let agent = req.agent.unwrap_or_else(|| {
+        let agent = req.agent.clone().unwrap_or_else(|| {
             std::env::var("GT_ROLE")
                 .or_else(|_| std::env::var("BD_ACTOR"))
                 .unwrap_or_else(|_| "unknown".to_string())
         });
+
+        if let Some(remote) = self.remote() {
+            return remote.feedback_lineage_store(&req, &agent).await;
+        }
 
         let input = crate::storage::feedback::LineageInput {
             feedback_ids: req.feedback_ids.clone(),
@@ -2736,6 +2889,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<FeedbackLineageListRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.feedback_lineage_list(&req).await;
+        }
+
         let store = self
             .open_feedback_store()
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -2799,6 +2956,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<ArchiveSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.archive_search(&req).await;
+        }
+
         let limit = req.limit.unwrap_or(10);
         let mode = req.mode.as_deref().unwrap_or("hybrid");
 
@@ -2940,6 +3101,10 @@ impl BobbinMcpServer {
         &self,
         Parameters(req): Parameters<ArchiveRecentRequest>,
     ) -> Result<CallToolResult, McpError> {
+        if let Some(remote) = self.remote() {
+            return remote.archive_recent(&req).await;
+        }
+
         let limit = req.limit.unwrap_or(20);
 
         let config_path = Config::config_path(&self.repo_root);
@@ -3190,10 +3355,19 @@ impl ServerHandler for BobbinMcpServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
         if request.uri == "bobbin://index/stats" {
-            let stats_json = self
-                .get_stats_json()
-                .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            // Same backend as the `status` tool: a resource reporting the
+            // local index while the tools answer from the remote would be
+            // aegis-wbbycq in miniature.
+            let stats_json = if let Some(remote) = self.remote() {
+                remote
+                    .stats_json()
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            } else {
+                self.get_stats_json()
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            };
 
             Ok(ReadResourceResult {
                 contents: vec![ResourceContents::text(stats_json, &request.uri)],
@@ -3289,11 +3463,20 @@ fn describe_diff_spec(spec: &crate::index::git::DiffSpec) -> String {
 }
 
 /// Run the MCP server on stdio transport
-pub async fn run_server(repo_root: PathBuf) -> Result<()> {
+pub async fn run_server(
+    repo_root: PathBuf,
+    remote_url: Option<String>,
+    role: String,
+) -> Result<()> {
     use rmcp::transport::stdio;
     use rmcp::ServiceExt;
 
-    let server = BobbinMcpServer::new(repo_root)?;
+    if let Some(ref url) = remote_url {
+        // stderr, not stdout — stdout is the MCP transport.
+        eprintln!("Bobbin MCP server proxying to {}", url);
+    }
+
+    let server = BobbinMcpServer::with_remote(repo_root, remote_url, role)?;
 
     let service = server.serve(stdio()).await?;
 
@@ -3303,7 +3486,12 @@ pub async fn run_server(repo_root: PathBuf) -> Result<()> {
 }
 
 /// Run the MCP server over Streamable HTTP transport (network-accessible).
-pub async fn run_http_server(repo_root: PathBuf, port: u16) -> Result<()> {
+pub async fn run_http_server(
+    repo_root: PathBuf,
+    port: u16,
+    remote_url: Option<String>,
+    role: String,
+) -> Result<()> {
     use rmcp::transport::{
         streamable_http_server::{
             session::local::LocalSessionManager, tower::StreamableHttpService,
@@ -3314,16 +3502,22 @@ pub async fn run_http_server(repo_root: PathBuf, port: u16) -> Result<()> {
     use tokio_util::sync::CancellationToken;
 
     // Validate config before binding
-    let _ = BobbinMcpServer::new(repo_root.clone())?;
+    let _ = BobbinMcpServer::with_remote(repo_root.clone(), remote_url.clone(), role.clone())?;
 
     let ct = CancellationToken::new();
 
     let root = repo_root.clone();
+    let remote_for_factory = remote_url.clone();
+    let role_for_factory = role.clone();
     let service: StreamableHttpService<BobbinMcpServer, LocalSessionManager> =
         StreamableHttpService::new(
             move || {
-                BobbinMcpServer::new(root.clone())
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+                BobbinMcpServer::with_remote(
+                    root.clone(),
+                    remote_for_factory.clone(),
+                    role_for_factory.clone(),
+                )
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
             },
             Arc::new(LocalSessionManager::default()),
             StreamableHttpServerConfig {

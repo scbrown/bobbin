@@ -973,30 +973,16 @@ impl Client {
         reason: &str,
         agent: &str,
     ) -> Result<serde_json::Value> {
-        let url = format!("{}/feedback", self.base_url);
-        let body = serde_json::json!({
-            "injection_id": injection_id,
-            "rating": rating,
-            "reason": reason,
-            "agent": agent,
-        });
-        let resp = self
-            .http
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .context("Failed to submit feedback")?;
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body: ErrorBody = resp.json().await.unwrap_or(ErrorBody {
-                error: format!("HTTP {}", status),
-            });
-            anyhow::bail!("Server error ({}): {}", status, body.error);
-        }
-        resp.json()
-            .await
-            .context("Failed to parse feedback response")
+        self.post_value(
+            "/feedback",
+            &serde_json::json!({
+                "injection_id": injection_id,
+                "rating": rating,
+                "reason": reason,
+                "agent": agent,
+            }),
+        )
+        .await
     }
 
     /// List feedback records via the remote server.
@@ -1047,32 +1033,20 @@ impl Client {
         description: &str,
         agent: Option<&str>,
     ) -> Result<LineageRecord> {
-        let url = format!("{}/feedback/lineage", self.base_url);
-        let body = serde_json::json!({
-            "feedback_ids": feedback_ids,
-            "action_type": action_type,
-            "bead": bead,
-            "commit_hash": commit_hash,
-            "description": description,
-            "agent": agent,
-        });
-        let resp = self
-            .http
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .context("Failed to store lineage")?;
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body: ErrorBody = resp.json().await.unwrap_or(ErrorBody {
-                error: format!("HTTP {}", status),
-            });
-            anyhow::bail!("Server error ({}): {}", status, body.error);
-        }
-        resp.json()
-            .await
-            .context("Failed to parse lineage response")
+        let value = self
+            .post_value(
+                "/feedback/lineage",
+                &serde_json::json!({
+                    "feedback_ids": feedback_ids,
+                    "action_type": action_type,
+                    "bead": bead,
+                    "commit_hash": commit_hash,
+                    "description": description,
+                    "agent": agent,
+                }),
+            )
+            .await?;
+        serde_json::from_value(value).context("Failed to parse lineage response")
     }
 
     /// List lineage records via the remote server.
@@ -1112,6 +1086,46 @@ impl Client {
     pub async fn injection_detail(&self, injection_id: &str) -> Result<serde_json::Value> {
         let url = format!("{}/injections/{}", self.base_url, injection_id);
         self.get_json(&url, &[]).await
+    }
+
+    /// GET an endpoint and return the server's own JSON, untouched.
+    ///
+    /// For `mcp::remote`. The typed helpers above model only the fields and
+    /// params the CLI exposes, so routing an MCP tool through one of them
+    /// would silently narrow both the request and the response (aegis-wbbycq).
+    pub async fn get_value(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+    ) -> Result<serde_json::Value> {
+        let url = format!("{}{}", self.base_url, path);
+        self.get_json(&url, params).await
+    }
+
+    /// POST a JSON body to an endpoint and return the server's own JSON.
+    pub async fn post_value(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let resp = self
+            .http
+            .post(&url)
+            .json(body)
+            .send()
+            .await
+            .context("Failed to connect to bobbin server")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body: ErrorBody = resp.json().await.unwrap_or(ErrorBody {
+                error: format!("HTTP {}", status),
+            });
+            anyhow::bail!("Server error ({}): {}", status, body.error);
+        }
+
+        resp.json().await.context("Failed to parse server response")
     }
 
     /// Internal helper: GET with query params, parse JSON response.
