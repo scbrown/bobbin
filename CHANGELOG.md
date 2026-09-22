@@ -21,6 +21,14 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.17.1](https://github.com/scbrown/bobbin/compare/v0.17.0...v0.17.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* **ci:** the size gate could not see an untracked file (aegis-wbbycq) ([#106](https://github.com/scbrown/bobbin/issues/106)) ([2410b9a](https://github.com/scbrown/bobbin/commit/2410b9aeb7de2b864629c1aabb206405c7fef056))
+* **mcp:** serve the configured remote, not an empty local index (aegis-wbbycq) ([#104](https://github.com/scbrown/bobbin/issues/104)) ([23e09d1](https://github.com/scbrown/bobbin/commit/23e09d192aa38bdc11155e48721a8dc1260b24b5))
+
 ## [0.17.0](https://github.com/scbrown/bobbin/compare/v0.16.4...v0.17.0) (2026-09-16)
 
 
