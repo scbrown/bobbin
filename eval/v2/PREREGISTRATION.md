@@ -51,6 +51,28 @@ patch is `git diff <commit>^ <commit>`.
 
 A task whose gold file set is empty after exclusion is dropped from L0 and reported by id.
 
+## Contamination
+
+Every task is a public fix in a public repository, so a model may have seen the fix, or text about it, in training. This is recorded rather than assumed away:
+
+* **Fix dates are fixed now.** `eval/v2/task-fix-dates.tsv` holds each task's fixing-commit
+  committer date, from the GitHub API. Range: 2025-06-03 to 2026-02-15, 22 of 40 in 2026.
+* **The model's training cutoff comes from the model provider's published documentation**, is
+  written into each L1 run manifest, and is never inferred from model behaviour. A task whose fix
+  predates the cutoff is flagged `possibly-seen`.
+* **Primary L1 analyses use all tasks, as registered.** In addition, if at least 10 tasks postdate
+  the cutoff, the primary L1 outcome is repeated on that subset as a sensitivity analysis. If fewer
+  than 10 do, the report states that contamination cannot be excluded for this task set, and no
+  claim is framed as out-of-distribution.
+* **L0 cannot be contaminated.** It involves no model; retrieval is deterministic over the
+  checked-out tree.
+* **Our own public repositories** (bobbin, quipu and the rest of the stack) are **excluded from
+  every confirmatory task set.** Their fixes, docs and discussions are public and written with the
+  same tools under test, so a task drawn from them fails both contamination and independence. None
+  of the 40 current tasks uses them; L2 must keep it that way.
+* L2's SWE-bench Verified subset carries the same date rule; its public prominence makes
+  exposure more likely, and that is stated wherever L2 results appear.
+
 ## L0 — offline retrieval
 
 ### Procedure
