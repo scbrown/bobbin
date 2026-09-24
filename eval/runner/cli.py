@@ -1776,7 +1776,7 @@ def l0(tasks_dir, task_ids, arms, budgets, out_path, workdir, index_timeout):
     import subprocess as _sp
 
     from runner import l0 as L0
-    from runner.bobbin_setup import _find_bobbin
+    from runner.bobbin_setup import _find_bobbin, setup_bobbin
     from runner.workspace import checkout_parent, clone_repo
 
     arm_list = list(L0.ALL_ARMS) if arms == "all" else [a.strip() for a in arms.split(",") if a.strip()]
@@ -1826,9 +1826,11 @@ def l0(tasks_dir, task_ids, arms, budgets, out_path, workdir, index_timeout):
         setup_bobbin(str(ws), timeout=index_timeout, config_overrides=overrides)
 
     for task in tasks:
-        ws = scratch / task["id"]
+        # clone_repo creates <dest>/<owner>--<name> and returns it; use that path,
+        # and reuse an already-indexed checkout on a re-run.
+        ws = scratch / task["id"] / task["repo"].replace("/", "--")
         if not (ws / ".bobbin").exists():
-            clone_repo(task["repo"], str(ws))
+            ws = clone_repo(task["repo"], str(scratch / task["id"]))
             checkout_parent(ws, task["commit"])
             index(ws)
         scores = L0.run_task(task, ws, arm_list, budget_list, bobbin, env, index)
