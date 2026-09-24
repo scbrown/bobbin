@@ -276,3 +276,9 @@ changed rule are labelled as such.
   both `error_max_turns` and terminal reason `max_turns`; timeouts, unattributed
   responses and other errors still stop further spend. Existing results are not
   rewritten or repeated by this correction, and no limits or sample sizes change.
+- 2026-09-24, before full L1: new GPU runs require an extracted-library SHA256
+  lock derived from the already pinned wheel archives. Run-start verification
+  hashes every pinned library and probes the ORT/CUDA loader for unlisted
+  dependencies before preparation/indexing. The wrapper and paid-cell boundary
+  repeat verification and retain receipts. See [RUNTIME-LOCK.md](RUNTIME-LOCK.md).
+  Historical campaigns remain unchanged; this adds no full-study authorization.

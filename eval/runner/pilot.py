@@ -23,6 +23,7 @@ from pathlib import Path
 from runner.agent_runner import _find_claude, parse_stream_json
 from runner.bobbin_setup import _find_bobbin, setup_bobbin
 from runner.l0 import _TEST_FILE, _TEST_PATH, SEED, gold_for_commit
+from runner.runtime_lock import verify_and_record
 from runner.task_loader import load_task_by_id
 from runner.workspace import checkout_parent, clone_repo
 from scorer.attribution import serving_model_from_usage
@@ -243,6 +244,9 @@ def main():
     args = parser.parse_args()
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
+    runtime = json.loads(args.gpu_runtime.read_text()) if args.gpu_runtime else None
+    runtime_receipt = (verify_and_record(runtime, out / 'runtime-verification.json')
+                       if runtime is not None else None)
     tasks = (ROOT / "v2/pilot-tasks.txt").read_text().splitlines()
     tasks = [t.strip() for t in tasks if t.strip() and not t.startswith("#")]
     assert len(tasks) == 30 and len(set(tasks)) == 30
@@ -253,11 +257,10 @@ def main():
     pinned.mkdir()
     shutil.copy2(bobbin, pinned / "bobbin")
     binary_hash = hashlib.sha256((pinned / "bobbin").read_bytes()).hexdigest()
-    runtime = None
     if args.gpu_runtime:
-        runtime = json.loads(args.gpu_runtime.read_text())
         (pinned / "bobbin").rename(pinned / "bobbin.real")
         shutil.copy2(ROOT / "runner/gpu_guard.py", pinned / "bobbin")
+        shutil.copy2(ROOT / "runner/runtime_lock.py", pinned / "runtime_lock.py")
         (pinned / "bobbin").chmod(0o755)
         write_json(pinned / "gpu-runtime.json", runtime)
     bobbin = str(pinned / "bobbin")
@@ -269,6 +272,8 @@ def main():
         "harness_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "bobbin_sha256": binary_hash,
         "embedding_runtime": runtime,
+        "runtime_verification": runtime_receipt,
+        "runtime_verifier_sha256": hashlib.sha256((pinned / "runtime_lock.py").read_bytes()).hexdigest() if runtime is not None else None,
         "gpu_guard_sha256": hashlib.sha256(Path(bobbin).read_bytes()).hexdigest() if runtime else None,
     })
     for task_id in tasks:
@@ -293,6 +298,8 @@ def main():
                 for _, cell in (pair for pair in order if pair[0] == task_id):
                     cell_out = task_out / cell
                     cell_out.mkdir()
+                    if runtime is not None:
+                        verify_and_record(runtime, cell_out / 'runtime-verification.json')
                     # Bobbin's local repo identity can derive from the directory
                     # name. Keep it identical to the indexed source in every cell.
                     cell_root = scratch / cell

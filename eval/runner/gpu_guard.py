@@ -8,12 +8,17 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import signal
 import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
+
+if __package__:
+    from runner.runtime_lock import verify_and_record
+else:
+    from runtime_lock import verify_and_record
 
 PROOF = "ONNX session using CUDA GPU acceleration"
 
@@ -29,10 +34,14 @@ def held(config):
         return True
 
 
-def supervise(command, config, *, require_proof=False, interval=2):
+def supervise(command, config, *, require_proof=False, interval=2, receipt_path=None):
     while held(config):
         print("GPU paused: hold active or unreadable", file=sys.stderr, flush=True)
         time.sleep(interval)
+    # Check AFTER any hold, immediately before the child can index/search.
+    if receipt_path is None:
+        raise ValueError('runtime verification receipt path is required')
+    verify_and_record(config, receipt_path)
     env = dict(os.environ, **config["environment"])
     env["BOBBIN_GPU"] = "1"
     proc = subprocess.Popen(command, env=env, stderr=subprocess.PIPE, start_new_session=True)
@@ -96,8 +105,11 @@ def supervise(command, config, *, require_proof=False, interval=2):
 def main():
     root = Path(__file__).resolve().parent
     config = json.loads((root / "gpu-runtime.json").read_text())
+    receipts = root / 'runtime-checks'
+    receipts.mkdir(exist_ok=True)
     return supervise([str(root / "bobbin.real"), *sys.argv[1:]], config,
-                     require_proof="index" in sys.argv[1:], interval=config.get("poll_seconds", 2))
+                     require_proof="index" in sys.argv[1:], interval=config.get("poll_seconds", 2),
+                     receipt_path=receipts / f'{time.time_ns()}-{os.getpid()}.json')
 
 
 if __name__ == "__main__":
