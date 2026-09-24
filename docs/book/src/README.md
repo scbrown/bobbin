@@ -25,7 +25,7 @@ Bobbin indexes the structure, history, and meaning of your codebase, then delive
 ## Quick Start
 
 ```bash
-cargo install bobbin
+cargo install bobbin-ai   # installs the `bobbin` command
 cd your-project
 bobbin init && bobbin index
 bobbin search "error handling"

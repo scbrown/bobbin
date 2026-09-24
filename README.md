@@ -98,7 +98,7 @@ Related to src/auth/middleware.rs:
 **1. Install**
 
 ```bash
-cargo install bobbin
+cargo install bobbin-ai   # the command it installs is `bobbin`
 ```
 
 **2. Index your codebase**
