@@ -21,6 +21,14 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.18.1](https://github.com/scbrown/bobbin/compare/v0.18.0...v0.18.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **eval:** enforce preregistered pilot cells and grading controls ([#118](https://github.com/scbrown/bobbin/issues/118)) ([cd8a270](https://github.com/scbrown/bobbin/commit/cd8a270221faf6664d0380d6a27d43fe31863f73))
+* **eval:** l0 uses the workspace clone_repo returns, and imports setup_bobbin ([#115](https://github.com/scbrown/bobbin/issues/115)) ([13ebca0](https://github.com/scbrown/bobbin/commit/13ebca0256c68075c67e6e010fe2dee8a932ae5e))
+
 ## [0.18.0](https://github.com/scbrown/bobbin/compare/v0.17.1...v0.18.0) (2026-09-24)
 
 
