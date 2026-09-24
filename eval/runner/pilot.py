@@ -224,6 +224,8 @@ def main():
     parser.add_argument("--budget", type=float, default=2.0)
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--max-turns", type=int, default=40)
+    parser.add_argument("--gpu-runtime", type=Path, help="Pinned runtime/hold configuration")
+    parser.add_argument("--bobbin", type=Path, help="Explicit executable to pin")
     args = parser.parse_args()
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -231,11 +233,19 @@ def main():
     tasks = [t.strip() for t in tasks if t.strip() and not t.startswith("#")]
     assert len(tasks) == 30 and len(set(tasks)) == 30
     order = schedule(tasks)
-    bobbin, claude = _find_bobbin(), _find_claude()
+    bobbin, claude = str(args.bobbin) if args.bobbin else _find_bobbin(), _find_claude()
     # Freeze the binary: a host CLI updater must not change the treatment mid-study.
     pinned = out / "bin"
     pinned.mkdir()
     shutil.copy2(bobbin, pinned / "bobbin")
+    binary_hash = hashlib.sha256((pinned / "bobbin").read_bytes()).hexdigest()
+    runtime = None
+    if args.gpu_runtime:
+        runtime = json.loads(args.gpu_runtime.read_text())
+        (pinned / "bobbin").rename(pinned / "bobbin.real")
+        shutil.copy2(ROOT / "runner/gpu_guard.py", pinned / "bobbin")
+        (pinned / "bobbin").chmod(0o755)
+        write_json(pinned / "gpu-runtime.json", runtime)
     bobbin = str(pinned / "bobbin")
     write_json(out / "manifest.json", {
         "kind": "pilot", "schedule": order, "model": MODEL,
@@ -243,7 +253,9 @@ def main():
         "budget_per_run": args.budget, "timeout": args.timeout, "max_turns": args.max_turns,
         "preregistration_sha256": hashlib.sha256((ROOT / "v2/PREREGISTRATION.md").read_bytes()).hexdigest(),
         "harness_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-        "bobbin_sha256": hashlib.sha256(Path(bobbin).read_bytes()).hexdigest(),
+        "bobbin_sha256": binary_hash,
+        "embedding_runtime": runtime,
+        "gpu_guard_sha256": hashlib.sha256(Path(bobbin).read_bytes()).hexdigest() if runtime else None,
     })
     for task_id in tasks:
         task = load_task_by_id(task_id, ROOT / "tasks")
@@ -258,7 +270,10 @@ def main():
                 shutil.copy2(scratch / "controls.json", task_out / "controls.json")
                 # One index at the pre-fix tree; all cells receive identical copies.
                 with process_env(env):
-                    setup_bobbin(str(ws), timeout=args.timeout)
+                    index_metadata = setup_bobbin(str(ws), timeout=args.timeout)
+                write_json(task_out / "index.json", index_metadata)
+                if runtime and not index_metadata.get("gpu_acceleration_proven"):
+                    raise RuntimeError("GPU index receipt missing; pilot stopped before spend")
                 shutil.rmtree(ws / ".claude")  # setup's v1 arm-specific instructions
                 gold = gold_for_commit(ws, task["commit"])
                 for _, cell in (pair for pair in order if pair[0] == task_id):

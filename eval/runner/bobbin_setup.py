@@ -221,6 +221,7 @@ def setup_bobbin(
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
         logger.warning("Could not capture bobbin status: %s", exc)
 
+    metadata["gpu_acceleration_proven"] = "ONNX session using CUDA GPU acceleration" in "\n".join(stderr_lines)
     logger.info("Bobbin setup complete for %s (indexed in %.1fs)", ws, index_duration)
     return metadata
 

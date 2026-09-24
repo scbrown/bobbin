@@ -249,3 +249,22 @@ changed rule are labelled as such.
   and reuses an index only after a completion marker matches the source commit,
   executable hash and index overrides. An interrupted `.bobbin` directory is not
   evidence that indexing finished. No metric or arm definition changed.
+- 2026-09-24, before the first paid L1 cell: the initial pilot was paused during
+  CPU indexing with zero agent streams/results. At the study owner's direction,
+  the replacement pilot uses CUDA on one fixed NVIDIA RTX 4070 Ti SUPER across
+  all four cells. The device is part of the embedding configuration: ONNX Runtime
+  GPU 1.23.2 (ort API 23), CUDA 12 runtime 12.8.90, cuBLAS 12.8.4.1, cuDNN
+  9.8.0.87, cuFFT 11.3.3.83, cuRAND 10-series and nvJitLink 12.8.93. The exact
+  cuRAND package version is pinned in the runtime manifest (its four-component
+  version resembles a private IPv4 address to the public-repository scrub guard).
+  The manifest
+  records artifact SHA256s, device UUID/driver, library environment and wrapper hash.
+  The original executable is retained and hashed. The incomplete CPU attempt is
+  archived separately; none of its indexes or outcomes enter the replacement.
+  Every task index must emit `ONNX session using CUDA GPU acceleration`; CPU
+  fallback or missing proof fails the run. All cells inherit the same GPU wrapper.
+  A configured gaming-hold probe gates launches and pauses active GPU processes;
+  unknown state also pauses. Held wall time is not evidence of poor retrieval or
+  task failure; any affected agent timeout is reported as an interrupted run.
+  Every eval unit is bounded at four CPU cores and 6 GiB memory. Task sample,
+  model, arms, metrics, per-cell budget and repetition count remain unchanged.
