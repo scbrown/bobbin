@@ -26,6 +26,18 @@ from runner.bobbin_setup import (
 )
 
 
+def test_l0_no_coupling_override_changes_index_config(tmp_path):
+    import tomllib
+
+    config = tmp_path / ".bobbin" / "config.toml"
+    config.parent.mkdir()
+    config.write_text("[git]\ncoupling_enabled = true\ncoupling_depth = 7\n")
+    apply_config_overrides(str(tmp_path), {"git.coupling_enabled": "false"})
+    parsed = tomllib.loads(config.read_text())
+    assert parsed["git"]["coupling_enabled"] is False
+    assert parsed["git"]["coupling_depth"] == 7
+
+
 class TestFindBobbin:
     def test_found_on_path(self):
         with patch("runner.bobbin_setup.shutil.which", return_value="/usr/bin/bobbin"):

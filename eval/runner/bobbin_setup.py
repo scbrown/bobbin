@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # blame_bridging maps to [hooks] show_docs as a proxy — full support requires
 # a Rust-side config toggle (see docs/tasks/).
 OVERRIDE_MAP: dict[str, tuple[str, str, type]] = {
+    "git.coupling_enabled": ("git", "coupling_enabled", bool),
     "semantic_weight": ("search", "semantic_weight", float),
     "coupling_depth": ("git", "coupling_depth", int),
     "gate_threshold": ("hooks", "gate_threshold", float),
