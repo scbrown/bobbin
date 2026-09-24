@@ -71,3 +71,24 @@ The `docs.yml` workflow runs on doc changes (PRs and pushes to main):
 - Markdown linting via markdownlint-cli2
 - Style checking via Vale
 - mdbook build and deploy to GitHub Pages
+
+### Refresh the verified installation example
+
+The README and book installation page intentionally pin a release whose archive
+and first-success output have been verified. Publishing a release does **not**
+automatically update these examples. The release owner must include this check
+in the release follow-up:
+
+1. Update the version, archive name, extracted directory and release link in
+   `README.md` and `docs/book/src/getting-started/installation.md` together.
+2. In a fresh HOME, download that release, verify `SHA256SUMS.txt`, extract the
+   complete archive and run the documented installation commands.
+3. Replace the documented `bobbin --version` output with the observed output,
+   including its commit ID. Run the README's three-command fixture and compare
+   its final stdout with the expected block. Keep the book quick start in sync.
+4. Run the local link checker, Markdown lint and book build; submit the docs
+   update with the command output as evidence and wait for Docs CI.
+
+If the new release cannot pass the example, retain the last verified pin and
+record the release blocker explicitly. Do not silently substitute an unverified
+version or expected output.

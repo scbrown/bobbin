@@ -5,6 +5,8 @@ on:
     paths:
       - 'docs/**'
       - 'README.md'
+      - 'scripts/check-md-links.py'
+      - '.pre-commit-config.yaml'
       - 'CONTRIBUTING.md'
       - '.markdownlint-cli2.yaml'
       - '.vale.ini'
@@ -15,6 +17,8 @@ on:
     paths:
       - 'docs/**'
       - 'README.md'
+      - 'scripts/check-md-links.py'
+      - '.pre-commit-config.yaml'
       - 'CONTRIBUTING.md'
       - '.markdownlint-cli2.yaml'
       - '.vale.ini'
@@ -31,6 +35,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check published documentation links
+        run: python3 scripts/check-md-links.py
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

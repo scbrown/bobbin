@@ -28,3 +28,10 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+
+      - id: markdown-local-links
+        name: Published documentation links
+        entry: python3 scripts/check-md-links.py
+        language: system
+        files: ^(README\.md|CONTRIBUTING\.md|docs/book/src/.*\.md|scripts/check-md-links\.py)$
+        pass_filenames: false

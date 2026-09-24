@@ -1,67 +1,85 @@
 ---
 title: Installation
-description: Installing bobbin from source or pre-built binaries
+description: Verify a release checksum and install Bobbin, or build from source
 tags: [installation, setup]
-status: draft
+status: published
 category: getting-started
 related: [getting-started/quick-start.md, cli/init.md]
 ---
 
 # Installation
 
-Bobbin is a Rust application distributed via Cargo. It runs entirely locally — no API keys, no cloud services, no data leaves your machine.
+## Release binaries
 
-## Requirements
-
-- **Rust toolchain** (1.75+): Install via [rustup](https://rustup.rs/)
-- **Git**: Required for temporal coupling analysis
-- **C compiler**: Required by tree-sitter build (usually pre-installed on Linux/macOS)
-
-## Install from Source
+Releases with checksums support Linux and macOS on x86-64 and ARM64. For Linux
+x86-64, with `curl`, `tar` and `sha256sum` installed:
 
 ```bash
-cargo install bobbin-ai
-```
-
-The crate is published as `bobbin-ai` (the plain `bobbin` name on crates.io is an unrelated
-project); the installed command is still `bobbin`. This builds an optimized release binary with LTO enabled and installs it to `~/.cargo/bin/bobbin`.
-
-## Build from Repository
-
-```bash
-git clone https://github.com/scbrown/bobbin.git
-cd bobbin
-cargo build --release
-```
-
-The binary is at `target/release/bobbin`.
-
-## First-Run Behavior
-
-On first use, bobbin automatically downloads the embedding model (`all-MiniLM-L6-v2`, ~23 MB) to a local cache directory. This is a one-time download — subsequent runs use the cached model.
-
-The model cache location follows platform conventions:
-
-- **Linux**: `~/.cache/bobbin/models/`
-- **macOS**: `~/Library/Caches/bobbin/models/`
-
-## Verify Installation
-
-```bash
+mkdir -p bobbin-download && cd bobbin-download
+base=https://github.com/scbrown/bobbin/releases/download/v0.18.1
+asset=bobbin-v0.18.1-x86_64-unknown-linux-gnu.tar.gz
+curl -fLO "$base/$asset" && curl -fLO "$base/SHA256SUMS.txt"
+sha256sum --check --ignore-missing SHA256SUMS.txt && tar xzf "$asset"
+export PATH="$PWD/bobbin-v0.18.1-x86_64-unknown-linux-gnu:$PATH"
 bobbin --version
 ```
 
-## Shell Completions
+Keep the extracted directory intact: its `lib/` contains ONNX Runtime.
+The pinned release reports:
 
-Generate completions for your shell:
-
-```bash
-bobbin completions bash > ~/.local/share/bash-completion/completions/bobbin
-bobbin completions zsh > ~/.zfunc/_bobbin
-bobbin completions fish > ~/.config/fish/completions/bobbin.fish
+```text
+bobbin 0.18.1 (bc246f84003f89eec07618e8c341bb6835500f58)
 ```
 
-## Next Steps
+For [other platforms and runtime prerequisites](#choose-your-platform),
+use the matching release asset. With the Rust build prerequisites installed,
+`cargo install bobbin-ai --locked` builds from source and installs `bobbin`.
+Run `bobbin --version`; if it reports an older version, check `command -v bobbin`
+for another installation earlier in `PATH`.
 
-- [Quick Start](quick-start.md) — initialize and search your first repository
-- [Agent Setup](agent-setup.md) — connect bobbin to Claude Code, Cursor, or other AI tools
+## Choose your platform
+
+Download the archive and `SHA256SUMS.txt` from the
+[v0.18.1 release](https://github.com/scbrown/bobbin/releases/tag/v0.18.1).
+
+| System | Archive suffix |
+|---|---|
+| Linux x86-64 | `x86_64-unknown-linux-gnu.tar.gz` |
+| Linux ARM64 | `aarch64-unknown-linux-gnu.tar.gz` |
+| macOS Intel | `x86_64-apple-darwin.tar.gz` |
+| macOS Apple Silicon | `aarch64-apple-darwin.tar.gz` |
+
+Every filename starts with `bobbin-v0.18.1-`. On macOS, use `shasum -a 256`
+and compare the archive's digest with its entry in `SHA256SUMS.txt` before
+extracting. Add the extracted directory to your shell's `PATH`.
+
+Linux releases target GNU C library, not musl/Alpine. The archive includes ONNX
+Runtime in `lib/`; keep it beside the executable. If loading fails, confirm
+that you extracted the entire archive and selected your CPU architecture.
+
+## Build from source
+
+Install stable Rust, a C++ compiler, `cmake` and `protoc` (Protocol Buffers).
+The crate is named `bobbin-ai`; the executable it installs is `bobbin`.
+
+```bash
+cargo install bobbin-ai --locked
+bobbin --version
+```
+
+For repository development, install `just` and follow
+[Contributing](../../../../CONTRIBUTING.md). `just build` includes the
+`knowledge` feature for Quipu integration; a default Cargo install does not.
+
+## First-run behavior
+
+Local indexing downloads its embedding model on first use. Allow network
+access for this step; subsequent searches use the cached model and local index.
+Indexing time depends on repository size, model, hardware and enabled analysis.
+Git history supplies temporal coupling; a new repository has no history yet.
+A GPU is optional. Set `BOBBIN_GPU=0` to explicitly use the CPU.
+
+## Next steps
+
+- [Quick start](quick-start.md) — build a tiny index and verify the result.
+- [Agent setup](agent-setup.md) — connect your coding assistant.
