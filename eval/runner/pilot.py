@@ -168,7 +168,7 @@ def grade_tests_from_source(source, ws, commit, paths, env):
 
 
 def prepare(task, directory, env, timeout):
-    ws = clone_repo(task["repo"], str(directory))
+    ws = clone_repo(task["repo"], str(directory), cache_dir=directory.parent / "repos")
     parent = checkout_parent(ws, task["commit"])
     run(["git", "config", "core.hooksPath", "/dev/null"], ws, env)
     if task.get("setup_command"):
@@ -198,6 +198,7 @@ def invoke(task, cell, ws, out, env, bobbin, claude, budget, timeout, turns):
     cmd = [claude, "-p", prompt, "--model", MODEL, "--output-format", "stream-json",
            "--verbose", "--max-budget-usd", str(budget), "--max-turns", str(turns),
            "--permission-mode", "bypassPermissions", "--setting-sources", "",
+           "--tools", "Bash,Read,Write,Edit,Glob,Grep",
            "--settings", str(out / "settings.json"), "--strict-mcp-config",
            "--mcp-config", str(out / "mcp.json"), "--disallowedTools", *denied]
     start = time.monotonic()
