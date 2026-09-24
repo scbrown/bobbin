@@ -32,11 +32,11 @@ use std::process::Command;
 const PLACEHOLDER_ACCOUNTS: &[&str] = &["user", "you", "alice", "bob", "example", "someone"];
 
 fn patterns() -> Vec<(&'static str, regex::Regex)> {
+    // Hostnames (.lan / .svc and bare node names) and crew names are NOT here any
+    // more: Stiwi ruled 2026-09-24 that they are fine in public repos, while secrets
+    // and personal data are still scrubbed (quipu Directive
+    // public-repos-allow-hostnames-and-crew-names; aegis-0mhzqo).
     vec![
-        (
-            "internal hostname",
-            regex::Regex::new(r"\b[a-z0-9][a-z0-9-]*\.(?:lan|svc)\b").unwrap(),
-        ),
         (
             "private address",
             regex::Regex::new(
@@ -47,14 +47,6 @@ fn patterns() -> Vec<(&'static str, regex::Regex)> {
         (
             "operator home path",
             regex::Regex::new(r"/home/([a-z][a-z0-9_-]*)/").unwrap(),
-        ),
-        (
-            // Bare place-name hosts, no .lan/.svc TLD. Word-anchored, and that is
-            // measured not stylistic: unanchored, one of these matches ordinary
-            // English (derivative, activation) for dozens of false positives —
-            // the cry-wolf that gets a guard deleted.
-            "internal node name",
-            regex::Regex::new(r"\b(kota|luvu|vati|koror|palau|yap)\b").unwrap(),
         ),
     ]
 }
@@ -128,11 +120,8 @@ fn the_ratchet_catches_each_class() {
     // function returning an empty vector, and it looks exactly like a clean repo.
     let pats = patterns();
     for (expect, sample) in [
-        ("internal hostname", "connect to db.lan now"),
-        ("internal hostname", "http://thing.svc/mcp"),
         ("private address", "addr 192.168.0.1"),
         ("operator home path", "/home/jsmith/src/x"),
-        ("internal node name", "rebuilt on koror overnight"),
     ] {
         let caught = pats.iter().any(|(label, rx)| {
             *label == expect && rx.captures_iter(sample).any(|c| is_real_hit(label, &c))
@@ -156,5 +145,23 @@ fn placeholders_and_public_addresses_are_allowed() {
             let hit = rx.captures_iter(ok).any(|c| is_real_hit(label, &c));
             assert!(!hit, "{label} wrongly flagged an allowed sample: {ok:?}");
         }
+    }
+}
+
+/// The ruling is pinned, not just applied: hostnames, node names and crew names
+/// pass (aegis-0mhzqo). If a hostname class comes back, this fails and says why.
+#[test]
+fn hostnames_and_crew_names_are_allowed() {
+    let pats = patterns();
+    for sample in [
+        "connect to db.lan now",
+        "http://thing.svc/mcp",
+        "rebuilt on koror overnight",
+        "ask sattler or dearing",
+    ] {
+        let flagged = pats
+            .iter()
+            .any(|(label, rx)| rx.captures_iter(sample).any(|c| is_real_hit(label, &c)));
+        assert!(!flagged, "a hostname or crew name was flagged: {sample:?}");
     }
 }
