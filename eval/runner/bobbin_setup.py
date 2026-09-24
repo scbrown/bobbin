@@ -70,7 +70,7 @@ def _find_bobbin() -> str:
     cargo_bin = Path.home() / ".cargo" / "bin" / "bobbin"
     if cargo_bin.exists():
         return str(cargo_bin)
-    raise BobbinSetupError("bobbin binary not found. Install with: cargo install bobbin")
+    raise BobbinSetupError("bobbin binary not found. Install with: cargo install bobbin-ai")
 
 
 def _parse_profile(output: str) -> dict[str, Any] | None:

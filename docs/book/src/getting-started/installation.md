@@ -20,10 +20,11 @@ Bobbin is a Rust application distributed via Cargo. It runs entirely locally —
 ## Install from Source
 
 ```bash
-cargo install bobbin
+cargo install bobbin-ai
 ```
 
-This builds an optimized release binary with LTO enabled and installs it to `~/.cargo/bin/bobbin`.
+The crate is published as `bobbin-ai` (the plain `bobbin` name on crates.io is an unrelated
+project); the installed command is still `bobbin`. This builds an optimized release binary with LTO enabled and installs it to `~/.cargo/bin/bobbin`.
 
 ## Build from Repository
 
