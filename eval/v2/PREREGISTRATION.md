@@ -39,7 +39,9 @@ patch is `git diff <commit>^ <commit>`.
 
 **Gold definitions (fixed now):**
 
-* **gold files**: files the fixing commit modifies, excluding test files (`test`/`tests` path
+* **gold files**: files the fixing commit modifies that exist at `<commit>^` (a file the commit
+  *creates* is not in the tree the agent or the retriever sees, so it cannot be retrieved and is
+  not gold), excluding test files (`test`/`tests` path
   components or `_test`/`test_` file-name affixes), lockfiles and changelogs. Test files are
   excluded because the hidden tests are the grader, not context an agent should be shown.
 * **gold hunks**: for each gold file, the *pre-image* line ranges of the fixing commit's hunks
@@ -155,8 +157,10 @@ Every task runs in all four cells; the analysis is paired by task, so task diffi
 ### Pilot (approved)
 
 * **30 tasks x 4 cells x 1 rep = 120 runs**, `claude-sonnet-5`. The 30 are chosen by seeded
-  shuffle (seed 20260924) stratified to keep all 8 repos represented; the ids are written to
-  `eval/v2/pilot-tasks.txt` before the first pilot run.
+  shuffle (seed 20260924) stratified to keep all 8 repos represented, and are fixed in
+  `eval/v2/pilot-tasks.txt` (committed with this file). Procedure: order the 40 task ids, shuffle
+  with `random.Random(20260924)`, then take tasks round-robin across the 8 repos in shuffled order
+  until 30 are chosen — every repo contributes 3 or 4.
 * Purpose: prove the harness end to end and **measure** the quantities that size the full study:
   per-cell pass rates, the discordant-pair rates for each contrast, per-run cost and wall time.
 * **The pilot makes no confirmatory claim.** Its results are reported descriptively with CIs and
