@@ -262,3 +262,45 @@ def test_isolated_env_drops_bobbin_vars(tmp_path, monkeypatch):
     env = l0.isolated_env(tmp_path)
     assert "BOBBIN_SERVER" not in env
     assert env["XDG_CONFIG_HOME"].startswith(str(tmp_path))
+
+
+def test_l0_cli_uses_the_path_clone_repo_returns(tmp_path, monkeypatch):
+    # clone_repo creates <dest>/<owner>--<name>; the first L0 run used <dest>
+    # itself and died with "not a git repository" after a full clone.
+    from click.testing import CliRunner
+
+    from runner import cli as cli_mod
+    from runner import workspace as ws_mod
+    from runner import bobbin_setup as bs_mod
+
+    tasks = tmp_path / "tasks"
+    tasks.mkdir()
+    (tasks / "demo-001.yaml").write_text(
+        "id: demo-001\nrepo: owner/demo\ncommit: abc1234def\n"
+        "description: fix the thing in the demo\nsetup_command: 'true'\n"
+        "test_command: 'true'\nlanguage: python\ndifficulty: easy\ntags: [x]\n"
+    )
+    seen = {}
+
+    def fake_clone(repo, dest, **kw):
+        path = Path(dest) / repo.replace("/", "--")
+        path.mkdir(parents=True)
+        return path
+
+    monkeypatch.setattr(ws_mod, "clone_repo", fake_clone)
+    monkeypatch.setattr(ws_mod, "checkout_parent", lambda ws, c: seen.setdefault("checkout", ws))
+    monkeypatch.setattr(bs_mod, "setup_bobbin", lambda ws, **kw: seen.setdefault("index", Path(ws)))
+    monkeypatch.setattr(bs_mod, "_find_bobbin", lambda: "true")
+    monkeypatch.setattr(l0, "run_task", lambda task, ws, *a, **k: seen.setdefault("score", ws) and [])
+
+    out = tmp_path / "scores.jsonl"
+    result = CliRunner().invoke(
+        cli_mod.cli,
+        ["l0", "--tasks-dir", str(tasks), "--arms", "full", "--budgets", "300",
+         "--out", str(out), "--workdir", str(tmp_path / "work")],
+    )
+    assert result.exit_code == 0, result.output
+    expected = tmp_path / "work" / "demo-001" / "owner--demo"
+    assert seen["checkout"] == expected
+    assert seen["index"] == expected
+    assert seen["score"] == expected
