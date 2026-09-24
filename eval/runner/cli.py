@@ -1801,11 +1801,22 @@ def l0(tasks_dir, task_ids, arms, budgets, out_path, workdir, index_timeout):
         del os.environ[k]
     os.environ["XDG_CONFIG_HOME"] = env["XDG_CONFIG_HOME"]
     bobbin = _find_bobbin()
+    # Pin the actual executable for a long campaign. Host release automation
+    # may replace the installed CLI while later tasks are still being indexed.
+    pinned_dir = scratch / "bin"
+    pinned_dir.mkdir(exist_ok=True)
+    pinned_bobbin = pinned_dir / "bobbin"
+    if not pinned_bobbin.exists():
+        shutil.copy2(bobbin, pinned_bobbin)
+    bobbin = str(pinned_bobbin.resolve())
+    env["PATH"] = str(pinned_dir.resolve()) + os.pathsep + env["PATH"]
+    os.environ["PATH"] = env["PATH"]
 
     out = Path(out_path)
     prereg = Path(__file__).resolve().parent.parent / "v2" / "PREREGISTRATION.md"
     manifest = {
         "kind": "manifest",
+        "bobbin_sha256": __import__("hashlib").sha256(Path(bobbin).read_bytes()).hexdigest(),
         "started_at": datetime.now(timezone.utc).isoformat(),
         "bobbin": _sp.run([bobbin, "--version"], capture_output=True, text=True, env=env).stdout.strip(),
         "harness_commit": _sp.run(
@@ -1823,16 +1834,25 @@ def l0(tasks_dir, task_ids, arms, budgets, out_path, workdir, index_timeout):
         fh.write(json.dumps(manifest) + "\n")
 
     def index(ws: Path, overrides=None):
-        setup_bobbin(str(ws), timeout=index_timeout, config_overrides=overrides)
+        fingerprint = {
+            "head": _sp.check_output(["git", "rev-parse", "HEAD"], cwd=ws, text=True).strip(),
+            "bobbin_sha256": manifest["bobbin_sha256"], "overrides": overrides,
+        }
+        marker = ws / ".bobbin" / "eval-index-complete.json"
+        if marker.exists() and json.loads(marker.read_text()) == fingerprint:
+            return
+        setup_bobbin(str(ws), timeout=index_timeout, config_overrides=overrides,
+                     initialize=not (ws / ".bobbin/config.toml").exists())
+        marker.write_text(json.dumps(fingerprint))
 
     for task in tasks:
         # clone_repo creates <dest>/<owner>--<name> and returns it; use that path,
         # and reuse an already-indexed checkout on a re-run.
         ws = scratch / task["id"] / task["repo"].replace("/", "--")
-        if not (ws / ".bobbin").exists():
+        if not (ws / ".git").exists():
             ws = clone_repo(task["repo"], str(scratch / task["id"]))
-            checkout_parent(ws, task["commit"])
-            index(ws)
+        checkout_parent(ws, task["commit"])
+        index(ws)
         scores = L0.run_task(task, ws, arm_list, budget_list, bobbin, env, index)
         L0.write_jsonl(out, scores)
         by = {}
