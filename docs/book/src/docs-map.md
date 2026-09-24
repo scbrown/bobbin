@@ -45,7 +45,7 @@ Historical plans describe proposals at the time they were written, not guarantee
 
 ## Designs
 
-- [designs/bobbin-desirepath-integration.md](https://github.com/scbrown/bobbin/blob/main/docs/designs/bobbin-desirepath-integration.md) — **Historical** — Design: Bobbin Integration with Desirepath.
+- [designs/bobbin-desirepath-integration.md](https://github.com/scbrown/bobbin/blob/main/docs/designs/bobbin-desirepath-integration.md) — **Historical** — Design: Bobbin Integration with Desire Path.
 - [designs/bobbin-tags-annotations.md](https://github.com/scbrown/bobbin/blob/main/docs/designs/bobbin-tags-annotations.md) — **Historical** — Bobbin Tags & Annotations.
 - [designs/context-bundles.md](https://github.com/scbrown/bobbin/blob/main/docs/designs/context-bundles.md) — **Historical** — Context Bundles: Stable, Addressable Knowledge Anchors for Bobbin.
 - [designs/query-grouping.md](https://github.com/scbrown/bobbin/blob/main/docs/designs/query-grouping.md) — **Historical** — Parenthesised and Nested Boolean Query Grouping.
@@ -61,7 +61,7 @@ Historical plans describe proposals at the time they were written, not guarantee
 - [plans/breadcrumb-system.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/breadcrumb-system.md) — **Historical** — Bobbin: Tool-Result Context + Breadcrumb System.
 - [plans/calibration-sweep-results.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/calibration-sweep-results.md) — **Historical** — Calibration Sweep Results.
 - [plans/documentation-strategy.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/documentation-strategy.md) — **Historical** — Plan: Comprehensive Documentation Strategy (bo-rd42).
-- [plans/eval-charts-storage.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/eval-charts-storage.md) — **Historical** — Plan: Eval Results Preservation + Matplotlib Charts.
+- [plans/eval-charts-storage.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/eval-charts-storage.md) — **Historical** — Plan: Eval Results Preservation + evaluation charts.
 - [plans/eval-framework.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/eval-framework.md) — **Historical** — Bobbin Eval Framework.
 - [plans/eval-metrics-gate-tuning.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/eval-metrics-gate-tuning.md) — **Historical** — Eval Framework Improvements: Metrics, Gate Tuning & Agent Guidance.
 - [plans/eval-results-mdbook.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/eval-results-mdbook.md) — **Historical** — Plan: Eval Results in mdbook + New Language Tasks.
@@ -70,7 +70,7 @@ Historical plans describe proposals at the time they were written, not guarantee
 - [plans/hooks-integration.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/hooks-integration.md) — **Historical** — Bobbin Hooks Integration Plan.
 - [plans/injection-quality-assessment.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/injection-quality-assessment.md) — **Historical** — Injection Context Quality Assessment.
 - [plans/native-metrics.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/native-metrics.md) — **Historical** — Plan: Bobbin Native Metrics & Eval Observability.
-- [plans/paper-arxiv-submission.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/paper-arxiv-submission.md) — **Historical** — arXiv submission plan — bobbin-58.
+- [plans/paper-arxiv-submission.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/paper-arxiv-submission.md) — **Historical** — paper submission plan — bobbin-58.
 - [plans/paper-measurement-validity.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/paper-measurement-validity.md) — **Historical** — Which paper measurements survive — bobbin-53.
 - [plans/paper-statistics.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/paper-statistics.md) — **Historical** — Significance and power for the ablation arms — bobbin-55.
 - [plans/ppr-ranking-signal.md](https://github.com/scbrown/bobbin/blob/main/docs/plans/ppr-ranking-signal.md) — **Historical** — 🧠 Personalized PageRank Ranking Signal.
@@ -82,7 +82,7 @@ Historical plans describe proposals at the time they were written, not guarantee
 
 ## Tasks
 
-- [tasks/completions-1-clap-complete-dependency.md](https://github.com/scbrown/bobbin/blob/main/docs/tasks/completions-1-clap-complete-dependency.md) — **Historical** — Task: Add clap_complete dependency and completions subcommand.
+- [tasks/completions-1-clap-complete-dependency.md](https://github.com/scbrown/bobbin/blob/main/docs/tasks/completions-1-clap-complete-dependency.md) — **Historical** — Task: Add `clap_complete` dependency and completions subcommand.
 - [tasks/completions-2-install-docs.md](https://github.com/scbrown/bobbin/blob/main/docs/tasks/completions-2-install-docs.md) — **Historical** — Task: Add shell completion installation documentation.
 - [tasks/context-1-vectorstore-get-chunks.md](https://github.com/scbrown/bobbin/blob/main/docs/tasks/context-1-vectorstore-get-chunks.md) — **Historical** — Task: Add `get_chunks_for_file` to VectorStore.
 - [tasks/context-2-assembler-module.md](https://github.com/scbrown/bobbin/blob/main/docs/tasks/context-2-assembler-module.md) — **Historical** — Task: Create Context Assembler Module.

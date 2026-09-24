@@ -38,7 +38,7 @@ for measured retrieval quality and its limits.
 
 ## Quick Start
 
-Start with a [checksummed release](getting-started/installation.md), then run
+Start with a [release with checksum verification](getting-started/installation.md), then run
 the [three-command fixture](getting-started/quick-start.md) to verify your index
 before using your own repository.
 

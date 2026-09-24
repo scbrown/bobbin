@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install a checksummed release or build Bobbin from source
+description: Verify a release checksum and install Bobbin, or build from source
 tags: [installation, setup]
 status: published
 category: getting-started
@@ -11,7 +11,7 @@ related: [getting-started/quick-start.md, cli/init.md]
 
 ## Release binaries
 
-Checksummed releases support Linux and macOS on x86-64 and ARM64. For Linux
+Releases with checksums support Linux and macOS on x86-64 and ARM64. For Linux
 x86-64, with `curl`, `tar` and `sha256sum` installed:
 
 ```bash
@@ -53,13 +53,13 @@ Every filename starts with `bobbin-v0.18.1-`. On macOS, use `shasum -a 256`
 and compare the archive's digest with its entry in `SHA256SUMS.txt` before
 extracting. Add the extracted directory to your shell's `PATH`.
 
-Linux releases target GNU libc, not musl/Alpine. The archive includes ONNX
+Linux releases target GNU C library, not musl/Alpine. The archive includes ONNX
 Runtime in `lib/`; keep it beside the executable. If loading fails, confirm
 that you extracted the entire archive and selected your CPU architecture.
 
 ## Build from source
 
-Install stable Rust, a C++ compiler, CMake and `protoc` (Protocol Buffers).
+Install stable Rust, a C++ compiler, `cmake` and `protoc` (Protocol Buffers).
 The crate is named `bobbin-ai`; the executable it installs is `bobbin`.
 
 ```bash

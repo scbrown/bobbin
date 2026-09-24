@@ -171,3 +171,4 @@ xcode
 Yupana
 Yupana's
 zsh
+Camayoc
