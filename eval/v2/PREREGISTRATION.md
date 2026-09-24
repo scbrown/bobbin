@@ -268,3 +268,11 @@ changed rule are labelled as such.
   task failure; any affected agent timeout is reported as an interrupted run.
   Every eval unit is bounded at four CPU cores and 6 GiB memory. Task sample,
   model, arms, metrics, per-cell budget and repetition count remain unchanged.
+- 2026-09-24, after partial pilot execution: a correctly attributed model reached
+  the configured 40-turn limit and the CLI returned `error_max_turns`, exit 1.
+  The runner had conflated that bounded failure with model unavailability and
+  stopped the campaign. Such a receipt remains an unsuccessful cell; only the
+  campaign-stop decision changes. Continuation requires the pinned model plus
+  both `error_max_turns` and terminal reason `max_turns`; timeouts, unattributed
+  responses and other errors still stop further spend. Existing results are not
+  rewritten or repeated by this correction, and no limits or sample sizes change.
