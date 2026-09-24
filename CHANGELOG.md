@@ -21,6 +21,19 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.18.0](https://github.com/scbrown/bobbin/compare/v0.17.1...v0.18.0) (2026-09-24)
+
+
+### Features
+
+* **eval:** v2 L0 offline retrieval harness ([#109](https://github.com/scbrown/bobbin/issues/109)) ([2b752f8](https://github.com/scbrown/bobbin/commit/2b752f8007c92425d08981ccdfe0371c13b68669))
+* **http:** /status lists the indexed repos ([#113](https://github.com/scbrown/bobbin/issues/113)) ([f013017](https://github.com/scbrown/bobbin/commit/f013017121f9f96aa2bb7f8954557a2f928881b3))
+
+
+### Bug Fixes
+
+* **ort:** resolve symlinks before locating the bundled ONNX Runtime ([#107](https://github.com/scbrown/bobbin/issues/107)) ([d14adae](https://github.com/scbrown/bobbin/commit/d14adaee56eeb1525199b25eca28a21977b29ff4))
+
 ## [0.17.1](https://github.com/scbrown/bobbin/compare/v0.17.0...v0.17.1) (2026-09-20)
 
 
