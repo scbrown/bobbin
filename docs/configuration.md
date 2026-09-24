@@ -497,7 +497,7 @@ A JSONL export only moves when its producer writes it, and a producer that has
 stopped is as quiet as a dead server. Every indexing run therefore prints the
 path **and its age**:
 
-```
+```text
   Indexing beads from br JSONL (/var/lib/bobbin/repos/aegis/.beads/issues.jsonl [12m old])...
 ```
 

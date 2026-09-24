@@ -285,22 +285,35 @@ def test_l0_cli_uses_the_path_clone_repo_returns(tmp_path, monkeypatch):
     def fake_clone(repo, dest, **kw):
         path = Path(dest) / repo.replace("/", "--")
         path.mkdir(parents=True)
+        (path / ".git").mkdir()
         return path
 
     monkeypatch.setattr(ws_mod, "clone_repo", fake_clone)
     monkeypatch.setattr(ws_mod, "checkout_parent", lambda ws, c: seen.setdefault("checkout", ws))
-    monkeypatch.setattr(bs_mod, "setup_bobbin", lambda ws, **kw: seen.setdefault("index", Path(ws)))
-    monkeypatch.setattr(bs_mod, "_find_bobbin", lambda: "true")
+    def fake_index(ws, **kw):
+        seen["index"] = Path(ws)
+        (Path(ws) / ".bobbin").mkdir(exist_ok=True)
+
+    monkeypatch.setattr(bs_mod, "setup_bobbin", fake_index)
+    monkeypatch.setattr(bs_mod, "_find_bobbin", lambda: __import__("shutil").which("true"))
+    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "abc-parent\n")
     monkeypatch.setattr(l0, "run_task", lambda task, ws, *a, **k: seen.setdefault("score", ws) and [])
 
     out = tmp_path / "scores.jsonl"
-    result = CliRunner().invoke(
-        cli_mod.cli,
-        ["l0", "--tasks-dir", str(tasks), "--arms", "full", "--budgets", "300",
-         "--out", str(out), "--workdir", str(tmp_path / "work")],
-    )
+    monkeypatch.setenv("PATH", __import__("os").environ["PATH"])
+    args = ["l0", "--tasks-dir", str(tasks), "--arms", "full", "--budgets", "300",
+            "--out", str(out), "--workdir", str(tmp_path / "work")]
+    result = CliRunner().invoke(cli_mod.cli, args)
     assert result.exit_code == 0, result.output
     expected = tmp_path / "work" / "demo-001" / "owner--demo"
     assert seen["checkout"] == expected
     assert seen["index"] == expected
     assert seen["score"] == expected
+    seen.pop("index")
+    result = CliRunner().invoke(cli_mod.cli, args)
+    assert result.exit_code == 0, result.output
+    assert "index" not in seen  # a completed index with identical inputs is reused
+    (expected / ".bobbin/eval-index-complete.json").unlink()
+    result = CliRunner().invoke(cli_mod.cli, args)
+    assert result.exit_code == 0, result.output
+    assert seen["index"] == expected  # .bobbin alone cannot certify completion
