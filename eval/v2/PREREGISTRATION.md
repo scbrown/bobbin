@@ -229,8 +229,10 @@ abstain when no chunk is relevant, better than that single cosine threshold.
 **Arm J4.**
 * Candidates: the `-gate` arm's chunks at budget 600, in the hook's own order, first 20 at most.
   `-gate` is used so the cosine gate does not pre-filter what J4 judges.
-* Judgement: one Jev `noul` per candidate (camayoc `scripts/jev.py`, model `jev-latest`; the
-  model version each response reports is recorded). State, fixed now:
+* Judgement: one Jev `noul` per candidate, model **pinned to `jev-1.13.0`** by name (the
+  API accepts a pinned version and refuses an unknown one; measured 2026-09-24). Every response's
+  reported model is recorded, and **a run in which any response reports a different version is
+  refused, not scored**. Calibration and evaluation must be judged by the same version. State, fixed now:
   `Task: <task description>` then a blank line, then `Passage (<path>:<start>-<end>):`
   and the passage text, cut at 120 lines. Question, fixed now: *"Does this passage contain code or
   text that a developer would need to read or change to complete the task?"*
@@ -239,12 +241,19 @@ abstain when no chunk is relevant, better than that single cosine threshold.
   and `error`. An abstention has undefined density and chunk precision. It is never scored as 0
   and never as a perfect score. It is counted by the coverage metrics below and excluded from
   every mean that would otherwise be undefined.
-* A Jev failure (no key, HTTP error) is `error`, never a silent fallback to admitting.
+* **Failures and retries, fixed now.** A failed judgement (no key, transport or HTTP error, an
+  answer without a noul) is retried at most 2 more times, 5 s apart. If any candidate of a task
+  still has no judgement, the whole task is `error` for J4. It is never partially judged and never
+  falls back to admitting. Errors are counted and reported per set, and they are excluded from
+  both the numerator and the denominator of every rate below; the counts appear next to each rate.
+* **No confirmatory result from an incomplete evaluation set.** If any evaluation task, positive
+  or negative, ends as `error`, J4's test below is reported as *not run (incomplete)* with the
+  count, not as a pass or a fail.
 
-**Negative set (answer absent by construction).** Each task's description is run against a
+**Negative set (wrong-repository stress set).** Each task's description is run against a
 workspace from a *different* repository: the task with index i in repo R, against the task with
 the same index in the next repo of the fixed cycle cargo -> django -> go -> nushell -> pandas ->
-polars -> ruff -> typst -> cargo. The correct outcome is to abstain. **Caveat, reported
+polars -> ruff -> typst -> cargo. The intended outcome is to abstain. **Caveat, reported
 wherever this set is:** a generic fix can transfer across repositories, so a non-abstention on a
 negative is not proof of an error. Admitted chunks on negatives are listed per task, so a
 reader can judge them.
@@ -259,6 +268,13 @@ every J4 number reported as a result comes from evaluation only.
 **Learning the floor.** Grid 0.05, 0.10, ..., 0.95. On the calibration positives, choose the
 floor that maximises mean density subject to mean hunk recall >= `full`'s mean hunk recall on
 the same tasks minus 0.02. A tie goes to the lower floor. The whole grid curve is reported.
+* **Abstentions and recall:** an abstained positive task counts in mean hunk recall with recall
+  0 (its gold hunks exist and were not shown). Density may exclude abstentions; recall never
+  does.
+* **No admissible floor:** a grid point whose mean density is undefined (it abstains on every
+  calibration positive) is not admissible. If no grid point is admissible and meets the recall
+  constraint, the result is **no admissible floor, and J4 has no candidate to test**. The
+  constraint is never relaxed to find one.
 
 **Comparator: the shipped cosine gate.** Arm `G(t)`: the hook as shipped with
 `--gate-threshold=t`, for t in 0.30, 0.35, ..., 0.70, on both sets. It abstains or injects
