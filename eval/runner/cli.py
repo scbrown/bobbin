@@ -1757,5 +1757,107 @@ def calibrate(
         click.echo("\nNo results collected.")
 
 
+@cli.command("l0")
+@click.option("--tasks-dir", default="tasks", help="Directory containing task YAML files.")
+@click.option("--task", "task_ids", multiple=True, help="Restrict to these task ids (repeatable).")
+@click.option("--arms", default="all", help="Comma-separated arms, or 'all'. See eval/v2/PREREGISTRATION.md.")
+@click.option("--budgets", default="100,300,600", help="Comma-separated line budgets (300 is primary).")
+@click.option("--out", "out_path", required=True, help="JSONL file to append arm scores to.")
+@click.option("--workdir", default=None, help="Where to clone task repos (default: a temp dir).")
+@click.option("--index-timeout", default=1800, type=int, help="Bobbin index timeout in seconds.")
+def l0(tasks_dir, task_ids, arms, budgets, out_path, workdir, index_timeout):
+    """Eval v2 L0: offline retrieval through the production injection hook.
+
+    No agent and no LLM calls. Scores each arm's would-be injection against the
+    gold hunks of the task's fixing commit. Every bobbin call runs with no
+    BOBBIN_* variables and an empty XDG config, so nothing can route to a
+    shared server.
+    """
+    import subprocess as _sp
+
+    from runner import l0 as L0
+    from runner.bobbin_setup import _find_bobbin
+    from runner.workspace import checkout_parent, clone_repo
+
+    arm_list = list(L0.ALL_ARMS) if arms == "all" else [a.strip() for a in arms.split(",") if a.strip()]
+    unknown = [a for a in arm_list if a not in L0.ALL_ARMS]
+    if unknown:
+        click.echo(f"Error: unknown arms {unknown}; known: {list(L0.ALL_ARMS)}", err=True)
+        sys.exit(2)
+    budget_list = [int(b) for b in budgets.split(",")]
+
+    tasks_path = _resolve_tasks_dir(tasks_dir)
+    try:
+        tasks = [load_task_by_id(t, tasks_path) for t in task_ids] if task_ids else load_all_tasks(tasks_path)
+    except TaskLoadError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    scratch = Path(workdir) if workdir else L0.new_scratch()
+    scratch.mkdir(parents=True, exist_ok=True)
+    env = L0.isolated_env(scratch)
+    # setup_bobbin inherits the process environment, so isolate it too.
+    for k in [k for k in os.environ if k.startswith("BOBBIN_")]:
+        del os.environ[k]
+    os.environ["XDG_CONFIG_HOME"] = env["XDG_CONFIG_HOME"]
+    bobbin = _find_bobbin()
+
+    out = Path(out_path)
+    prereg = Path(__file__).resolve().parent.parent / "v2" / "PREREGISTRATION.md"
+    manifest = {
+        "kind": "manifest",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "bobbin": _sp.run([bobbin, "--version"], capture_output=True, text=True, env=env).stdout.strip(),
+        "harness_commit": _sp.run(
+            ["git", "rev-parse", "HEAD"], cwd=Path(__file__).parent, capture_output=True, text=True
+        ).stdout.strip(),
+        "preregistration_sha256": __import__("hashlib").sha256(prereg.read_bytes()).hexdigest()
+        if prereg.exists()
+        else None,
+        "arms": arm_list,
+        "budgets": budget_list,
+        "tasks": [t["id"] for t in tasks],
+    }
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("a") as fh:
+        fh.write(json.dumps(manifest) + "\n")
+
+    def index(ws: Path, overrides=None):
+        setup_bobbin(str(ws), timeout=index_timeout, config_overrides=overrides)
+
+    for task in tasks:
+        ws = scratch / task["id"]
+        if not (ws / ".bobbin").exists():
+            clone_repo(task["repo"], str(ws))
+            checkout_parent(ws, task["commit"])
+            index(ws)
+        scores = L0.run_task(task, ws, arm_list, budget_list, bobbin, env, index)
+        L0.write_jsonl(out, scores)
+        by = {}
+        for s in scores:
+            by.setdefault(s.outcome, 0)
+            by[s.outcome] += 1
+        click.echo(f"{task['id']}: {by}")
+
+
+@cli.command("l0-report")
+@click.argument("scores_path")
+@click.option("--budget", default=300, type=int, help="Budget to report (300 is primary).")
+def l0_report(scores_path, budget):
+    """Preregistered L0 comparison: paired vs `full`, bootstrap CI, Wilcoxon, Holm."""
+    from runner import l0 as L0
+
+    rows = [
+        json.loads(line)
+        for line in Path(scores_path).read_text().splitlines()
+        if line.strip() and json.loads(line).get("kind") != "manifest"
+    ]
+    scores = []
+    for d in rows:
+        d["chunks"] = [tuple(c) for c in d.get("chunks", [])]
+        scores.append(L0.ArmScore(**d))
+    click.echo(json.dumps(L0.summarize(scores, budget), indent=2))
+
+
 if __name__ == "__main__":
     cli()
