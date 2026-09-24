@@ -218,8 +218,16 @@ def invoke(task, cell, ws, out, env, bobbin, claude, budget, timeout, turns):
     parsed = parse_stream_json((out / "stream.jsonl").read_text())
     result = parsed["result_line"] or {}
     model = serving_model_from_usage(result.get("modelUsage"))
+    # The CLI uses exit 1/is_error for an exhausted turn budget too. That
+    # remains an unsuccessful cell, but is not model unavailability. Require
+    # both model attribution and the explicit terminal receipt before allowing
+    # the campaign to continue; unrelated errors still stop further spending.
+    turn_limit = (rc == 1 and model == MODEL
+                  and result.get("subtype") == "error_max_turns"
+                  and result.get("terminal_reason") == "max_turns")
     return {"exit_code": rc, "duration_seconds": time.monotonic() - start,
             "serving_model": model, "result": result,
+            "turn_limit_reached": turn_limit,
             "tool_use_summary": parsed["tool_use_summary"],
             "valid": rc == 0 and model == MODEL and not result.get("is_error", True)}
 
@@ -306,7 +314,7 @@ def main():
                     write_json(cell_out / "result.json", result)
                     print(f"{task_id} {cell}: success={result['success']}", flush=True)
                     shutil.rmtree(cell_root)
-                    if not agent["valid"]:
+                    if not agent["valid"] and not agent["turn_limit_reached"]:
                         raise RuntimeError("agent unavailable/misattributed; pilot stopped before further spend")
             except ValueError as exc:
                 if (scratch / "controls.json").exists():

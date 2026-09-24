@@ -106,3 +106,24 @@ def test_cell_checkout_preserves_ignored_paths_after_guidance_removal(tmp_path):
         '.gitignore', 'ignored.py', 'literal[1].py'}
     assert (dest / "cache/index").read_text() == 'prepared untracked index'
     assert not (dest / '.claude').exists()
+
+
+@pytest.mark.parametrize('model,subtype,terminal,rc,limited', [
+    (pilot.MODEL, 'error_max_turns', 'max_turns', 1, True),
+    ('wrong-model', 'error_max_turns', 'max_turns', 1, False),
+    (pilot.MODEL, 'error_during_execution', 'max_turns', 1, False),
+    (pilot.MODEL, 'error_max_turns', None, 1, False),
+    (pilot.MODEL, 'error_max_turns', 'max_turns', -1, False),
+])
+def test_turn_limit_is_failed_cell_without_false_unavailability(
+        tmp_path, monkeypatch, model, subtype, terminal, rc, limited):
+    receipt = {'type': 'result', 'is_error': True, 'subtype': subtype,
+               'terminal_reason': terminal, 'modelUsage': {model: {}}}
+    monkeypatch.setattr(pilot, 'parse_stream_json', lambda _: {
+        'result_line': receipt, 'tool_use_summary': {}})
+    monkeypatch.setattr(pilot.subprocess, 'run', lambda *a, **kw:
+                        subprocess.CompletedProcess([], rc))
+    result = pilot.invoke({'repo': 'fixture', 'description': 'Fix bug'}, 'none',
+                          tmp_path, tmp_path, {}, '/bin/bobbin', '/bin/claude', 2, 900, 40)
+    assert result['valid'] is False
+    assert result['turn_limit_reached'] is limited
