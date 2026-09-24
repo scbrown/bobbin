@@ -30,6 +30,10 @@ pub(super) async fn healthz() -> Json<serde_json::Value> {
 pub(super) struct StatusResponse {
     status: String,
     index: crate::types::IndexStats,
+    /// Every repository in the index. The MCP `status` tool always reported
+    /// this; `/status` did not, so an HTTP caller asking "is repo X indexed
+    /// here?" got no answer (aegis-m8beqp).
+    repos: Vec<String>,
     sources: crate::config::SourcesConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
     repo_path_prefix: Option<String>,
@@ -47,9 +51,15 @@ pub(super) async fn status(
         .await
         .map_err(|e| internal_error(e.into()))?;
 
+    let repos = store
+        .get_all_repos()
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+
     Ok(Json(StatusResponse {
         status: "ok".to_string(),
         index: stats,
+        repos,
         sources: state.resolved_sources.clone(),
         repo_path_prefix: state.config.server.repo_path_prefix.clone(),
         quipu_endpoint: state.config.quipu_endpoint.clone(),
