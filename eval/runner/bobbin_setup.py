@@ -118,6 +118,7 @@ def setup_bobbin(
     *,
     timeout: int = 1800,
     config_overrides: dict[str, str] | None = None,
+    initialize: bool = True,
 ) -> dict[str, Any]:
     """Run bobbin init and index on the given workspace.
 
@@ -138,18 +139,19 @@ def setup_bobbin(
     ws = Path(workspace)
     bobbin = _find_bobbin()
 
-    logger.info("Initializing bobbin in %s", ws)
-    try:
-        subprocess.run(
-            [bobbin, "init"],
-            cwd=ws,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.CalledProcessError as exc:
-        raise BobbinSetupError(f"bobbin init failed: {exc.stderr.strip()}") from exc
+    if initialize:
+        logger.info("Initializing bobbin in %s", ws)
+        try:
+            subprocess.run(
+                [bobbin, "init"],
+                cwd=ws,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise BobbinSetupError(f"bobbin init failed: {exc.stderr.strip()}") from exc
 
     # Apply config overrides between init and index so that index-time
     # parameters (coupling_depth) take effect.

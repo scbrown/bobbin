@@ -110,10 +110,20 @@ class TestSetupBobbin:
     def test_workspace_used_as_cwd(self, mock_bobbin, tmp_path: Path):
         mock_run, mock_popen = mock_bobbin
         setup_bobbin(str(tmp_path))
-
         for c in mock_run.call_args_list:
             assert c[1]["cwd"] == tmp_path
         assert mock_popen.call_args[1]["cwd"] == tmp_path
+
+    def test_resume_indexes_without_reinitializing_config(self, mock_bobbin, tmp_path):
+        mock_run, mock_popen = mock_bobbin
+        config = tmp_path / ".bobbin/config.toml"
+        config.parent.mkdir()
+        config.write_text("[git]\ncoupling_enabled = false\n")
+        setup_bobbin(str(tmp_path), initialize=False)
+        assert mock_run.call_count == 1
+        assert mock_run.call_args.args[0] == ["/usr/bin/bobbin", "status", "--json"]
+        mock_popen.assert_called_once()
+        assert config.read_text() == "[git]\ncoupling_enabled = false\n"
 
     def test_init_failure_raises(self, mock_bobbin, tmp_path: Path):
         mock_run, mock_popen = mock_bobbin

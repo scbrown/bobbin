@@ -1841,7 +1841,8 @@ def l0(tasks_dir, task_ids, arms, budgets, out_path, workdir, index_timeout):
         marker = ws / ".bobbin" / "eval-index-complete.json"
         if marker.exists() and json.loads(marker.read_text()) == fingerprint:
             return
-        setup_bobbin(str(ws), timeout=index_timeout, config_overrides=overrides)
+        setup_bobbin(str(ws), timeout=index_timeout, config_overrides=overrides,
+                     initialize=not (ws / ".bobbin/config.toml").exists())
         marker.write_text(json.dumps(fingerprint))
 
     for task in tasks:
