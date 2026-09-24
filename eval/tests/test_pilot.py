@@ -80,3 +80,29 @@ def test_isolation_copies_credentials_without_real_home_writes(tmp_path, monkeyp
     copy.write_text("changed")
     assert cred.stat().st_mtime_ns == before
     assert env["HOME"] == str(sandbox)
+
+
+def test_cell_checkout_preserves_ignored_paths_after_guidance_removal(tmp_path):
+    import shutil
+
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+    source, dest = tmp_path / "source", tmp_path / "cell"
+    source.mkdir()
+    pilot.run(["git", "init", "-q"], source, env)
+    pilot.run(["git", "config", "core.hooksPath", "/dev/null"], source, env)
+    (source / ".claude").mkdir()
+    (source / ".claude/settings.json").write_text('{}')
+    (source / ".gitignore").write_text('ignored.py\ncache/\n')
+    (source / "ignored.py").write_text('tracked despite ignore\n')
+    (source / "literal[1].py").write_text('literal path\n')
+    pilot.run(["git", "add", "--force", "."], source, env)
+    pilot.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+               "commit", "-qm", "parent"], source, env)
+    shutil.rmtree(source / ".claude")
+    (source / "cache").mkdir()
+    (source / "cache/index").write_text('prepared untracked index')
+    pilot.cell_checkout(source, dest, env)
+    assert set(pilot.run(["git", "ls-files"], dest, env).stdout.splitlines()) == {
+        '.gitignore', 'ignored.py', 'literal[1].py'}
+    assert (dest / "cache/index").read_text() == 'prepared untracked index'
+    assert not (dest / '.claude').exists()

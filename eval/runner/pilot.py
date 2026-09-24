@@ -149,10 +149,16 @@ def install_tests(ws, commit, paths, env):
 def cell_checkout(source, dest, env):
     """Keep the parent files and prepared index, but remove the answer's history."""
     tracked = run(["git", "ls-files", "-z"], source, env).stdout
+    # Preparation deliberately removes agent guidance for every experimental
+    # arm, including repositories that track it. Preserve every other path
+    # literally, even when it is ignored or contains pathspec metacharacters.
+    tracked = "".join(path + "\0" for path in tracked.split("\0")
+                      if path and path != ".claude" and not path.startswith(".claude/"))
     shutil.copytree(source, dest, symlinks=True, ignore=shutil.ignore_patterns(".git"))
     run(["git", "init", "-q"], dest, env)
     run(["git", "config", "core.hooksPath", "/dev/null"], dest, env)
-    subprocess.run(["git", "add", "--pathspec-from-file=-", "--pathspec-file-nul"],
+    subprocess.run(["git", "--literal-pathspecs", "add", "--force",
+                    "--pathspec-from-file=-", "--pathspec-file-nul"],
                    input=tracked, cwd=dest, env=env, text=True, check=True, capture_output=True)
     run(["git", "-c", "user.name=Eval", "-c", "user.email=eval@example.invalid",
          "commit", "-qm", "Evaluation starting tree"], dest, env)
