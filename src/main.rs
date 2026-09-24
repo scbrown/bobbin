@@ -65,7 +65,9 @@ fn find_ort_dylib() -> Option<std::path::PathBuf> {
     };
 
     // 1. Next to executable: <exe_dir>/lib/
-    if let Ok(exe) = std::env::current_exe() {
+    // Resolve symlinks first: on macOS current_exe() returns the invoked path, so a
+    // ~/.cargo/bin/bobbin symlink would search ~/.cargo/bin/lib instead of the bundle.
+    if let Ok(exe) = std::env::current_exe().map(|p| std::fs::canonicalize(&p).unwrap_or(p)) {
         if let Some(exe_dir) = exe.parent() {
             // Check lib/ subdirectory (release bundle layout)
             let lib_dir = exe_dir.join("lib");
