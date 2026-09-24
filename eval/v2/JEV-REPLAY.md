@@ -1,4 +1,4 @@
-# J1/J3 offline replay contract (exploratory, not a registered campaign)
+# J1–J3 offline replay contract (exploratory, not a registered campaign)
 
 `runner.jev_replay.replay` evaluates a frozen candidate capture without changing
 `l0`, `ALL_ARMS`, or the production injection hook. No service calls happen at
@@ -7,7 +7,7 @@ configured with the same explicit model revision passed to replay. Tests supply
 a mock and consume no inference budget.
 
 This is an evaluation seam, not a completed J1–J7 implementation. Candidate
-capture in the production pipeline, J2 packing/trimming/semantic dedup, the
+capture in the production pipeline, neighbor-window trimming, the
 human-labelled calibration set, campaign execution and a deployment decision
 remain outstanding. A passing fixture test is not evidence of a density win.
 
@@ -28,7 +28,7 @@ or questions. Only scoring reads it. The audit hash covers every selection input
 including baseline and capture provenance. Store the gold/scorer version alongside
 the returned record when running an experiment.
 
-The three opt-in arms are:
+The opt-in arms are:
 
 - `jev-j1`: one batch of relevance nouls, one per candidate. Max-normalize fused
   scores within the capture, blend `(1-alpha)*fused + alpha*relevance`, stable-sort,
@@ -41,7 +41,7 @@ The three opt-in arms are:
   candidate batch. This prevents candidate code from biasing the prompt decision
   and avoids spending on relevance after a negative gate.
 
-J1 currently uses top-order budget filling, not J2 knapsack. Candidate text may
+J1 uses top-order budget filling; J2 uses the proposal/recheck algorithm below. Candidate text may
 include neighboring windows only when the capture records their true source
 ranges. No model-generated text is injected. Exact line ranges let the existing
 L0 scorer measure density and recall. Its character/4 token estimate is retained;
@@ -78,11 +78,57 @@ There is no graph promotion or live hook integration.
 4. Compare at equal budgets on the same captures; require density improvement at
    equal recall, with predeclared uncertainty and multiplicity handling, before
    any hook integration. No such result is claimed by this module.
-5. J2 needs its own registered selection/novelty/trim contract. Novelty depends on
-   already selected chunks, so a fixed-score 0/1 knapsack cannot honestly claim
-   a globally optimal semantic packing. Document and test the chosen bounded
-   approximation rather than calling a greedy sorter a knapsack.
+5. Freeze the exploratory J2 proposal/recheck contract below before collecting
+   model judgments. Neither synthetic optimizer tests nor model density scores
+   are measured gains; selection-dependent novelty precludes a global-optimum claim.
 
 Focused verification: `PYTHONPATH=eval python -m pytest
  eval/tests/test_jev_replay.py eval/tests/test_l0.py`. These tests run no model,
 indexer, agent, or benchmark campaign.
+
+## J2 proposal/recheck algorithm
+
+`jev-j2` first batches relevance and density questions for all candidates. Density
+asks whether a uniformly sampled source line bears on the prompt; its noul is an
+inferred fraction estimate, not measured ground truth. Drop candidates whose
+estimated density is below 0.5 and those longer than the remaining line budget.
+Do not truncate them to a fabricated window. Neighbor-window capture is future work.
+
+For each round, one batched novelty query asks which remaining chunks add useful
+information beyond the already selected chunks and supplied `prior_context`.
+Utilities are relevance × density × novelty; novelty below 0.5 means utility zero.
+Solve the current 0/1 knapsack exactly, accept the first member of its solution
+in frozen candidate order, then re-evaluate novelty against the new selection.
+Remove exact overlapping source ranges regardless of the model answer. Disjoint
+ranges in a file remain eligible. Stop when no positive-utility chunk fits.
+
+This is a bounded sequential approximation to semantic packing, **not** a global
+optimum of the changing novelty objective. Each fixed-score subproblem is exact,
+verified against exhaustive subsets across 150 deterministic generated examples.
+The maximum is one relevance/density batch plus 30 novelty batches. Unlike J1,
+J2 does not claim one-call cost or the same latency. Record all usage and calls.
+
+`jev-j1-j2-j3` adds the prompt-only gate and orders candidates by the J1 blend
+before the same J2 procedure. A failed later batch discards the partial selection
+and returns the whole baseline as degraded fallback. No incomplete result is
+scored as a successful arm. J2 supports budgets up to 600 lines; the entire
+selected+remaining+prior-context state must remain within the character bound.
+
+## Executable replay without network access
+
+From the evaluation directory:
+
+```sh
+python -m runner.jev_replay capture.json --responses responses.json --out result.json
+```
+
+The capture is a JSON object containing the `replay` keyword arguments, with
+candidate dictionaries and an `ArmScore` baseline dictionary. Responses are an
+ordered list of `{state, questions, response}` records. Each saved state/question
+pair must exactly match the request generated during replay. The CLI never
+imports a provider, reads an API key, or makes a model call. It refuses to overwrite
+an existing output. Exit 0 means an evaluated/baseline-floor result; 1 means the
+arm errored/degraded and was recorded; 2 means invalid input or output refusal.
+Retain full audit records; these nested JSON artifacts are distinct from ordinary
+L0 score-only JSONL. Do not feed them directly into `l0-report` and silently drop
+availability information.

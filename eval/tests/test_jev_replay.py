@@ -8,8 +8,7 @@ from runner.jev_replay import Candidate, replay
 from runner.l0 import ArmScore
 
 
-@pytest.fixture
-def data():
+def make_data():
     return dict(  # noqa: C408 -- mirrors the replay keyword arguments
         task_id="fixture",
         prompt="repair parsing",
@@ -35,6 +34,11 @@ def data():
             "candidate_stage": "post-adjustment-pre-packing",
         },
     )
+
+
+@pytest.fixture
+def data():
+    return make_data()
 
 
 def fake(values, calls):
@@ -158,3 +162,33 @@ def test_combined_batches_candidates_only_after_positive_gate(data):
     assert calls[0][0] == {"prompt": "repair parsing"}
     assert "candidates" in calls[1][0]
     assert set(calls[1][1]) == {"relevance_0", "relevance_1"}
+
+
+def test_recorded_cli_requires_exact_request_and_refuses_overwrite(data, tmp_path):
+    import json
+    from dataclasses import asdict
+
+    from runner.jev_replay import main, request
+
+    data["arm"] = "jev-j1"
+    data["baseline"] = asdict(data["baseline"])
+    state, questions = request(data["prompt"], data["candidates"], data["arm"])
+    data["candidates"] = [asdict(c) for c in data["candidates"]]
+    capture, responses, out = [
+        tmp_path / name for name in ("capture.json", "responses.json", "out.json")
+    ]
+    capture.write_text(json.dumps(data))
+    response = fake({}, [])(state, questions)
+    records = [{"state": state, "questions": questions, "response": response}]
+    responses.write_text(json.dumps(records))
+    args = [str(capture), "--responses", str(responses), "--out", str(out)]
+    assert main(args) == 0
+    assert json.loads(out.read_text())["status"] == "evaluated"
+    before = out.read_bytes()
+    assert main(args) == 2
+    assert out.read_bytes() == before
+    records[0]["state"] = {"prompt": "another question"}
+    responses.write_text(json.dumps(records))
+    args[-1] = str(tmp_path / "mismatch.json")
+    assert main(args) == 1
+    assert json.loads((tmp_path / "mismatch.json").read_text())["status"] == "degraded"
