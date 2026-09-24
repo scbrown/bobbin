@@ -1,314 +1,147 @@
+<p align="center"><img src="assets/bobbin-header.svg" width="100%" alt="Bobbin"/></p>
+<p align="center"><img src="assets/bobbin-spool.svg" width="200" alt="Thread bobbin spool"/></p>
+<h1 align="center">bobbin</h1>
+<p align="center"><em>🧶 Find the code your next change needs.</em></p>
 <p align="center">
-  <img src="assets/bobbin-header.svg" alt="BOBBIN" width="700"/>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache-2.0 license"/></a>
+  <a href="https://github.com/scbrown/bobbin/actions/workflows/ci.yml"><img src="https://github.com/scbrown/bobbin/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+  <a href="https://github.com/scbrown/caboodle"><img src="https://img.shields.io/badge/stack-quipu-8B5E3C.svg" alt="Quipu stack"/></a>
 </p>
 
-<p align="center">
-  <img src="assets/bobbin-spool.svg" alt="Thread bobbin spool" width="360"/>
-</p>
+**Bobbin gives developers and coding agents search and context over their
+repositories. Use its command line, Model Context Protocol (MCP) server, or
+agent hooks to find code by meaning, search exact words, and discover files
+that change together. Local indexing and search need no API key.**
 
-**Local-first code context engine.** Semantic search, keyword search, and git coupling analysis — all running on your machine. No API keys. No cloud. Sub-100ms queries.
+## Why you would want it
 
-> *Your codebase has structure, history, and meaning. Bobbin indexes all three.*
+- Find relevant functions even when you do not know their names.
+- Give your agent a context bundle that fits a line or token budget.
+- See related files that imports alone do not reveal, using Git history.
 
-## See It In Action
+Read [how Bobbin combines these signals](docs/book/src/README.md).
+
+## Install
+
+Checksummed releases support Linux and macOS on x86-64 and ARM64. For Linux
+x86-64, with `curl`, `tar` and `sha256sum` installed:
+
+```bash
+mkdir -p bobbin-download && cd bobbin-download
+base=https://github.com/scbrown/bobbin/releases/download/v0.18.1
+asset=bobbin-v0.18.1-x86_64-unknown-linux-gnu.tar.gz
+curl -fLO "$base/$asset" && curl -fLO "$base/SHA256SUMS.txt"
+sha256sum --check --ignore-missing SHA256SUMS.txt && tar xzf "$asset"
+export PATH="$PWD/bobbin-v0.18.1-x86_64-unknown-linux-gnu:$PATH"
+bobbin --version
+```
+
+Keep the extracted directory intact: its `lib/` contains ONNX Runtime.
+The pinned release reports:
 
 ```text
-$ bobbin search "authentication middleware"
-✓ Found 8 results for: authentication middleware (hybrid)
-
-1. src/auth/middleware.rs:14 (verify_token)
-   function rust · lines 14-47 · score 0.8923 [hybrid]
-
-2. src/auth/session.rs:88 (create_session)
-   function rust · lines 88-121 · score 0.8541 [semantic]
-
-3. src/handlers/login.rs:31 (handle_login)
-   function rust · lines 31-62 · score 0.7892 [keyword]
+bobbin 0.18.1 (bc246f84003f89eec07618e8c341bb6835500f58)
 ```
+
+For [other platforms and runtime prerequisites](docs/book/src/getting-started/installation.md),
+use the matching release asset. With the Rust build prerequisites installed,
+`cargo install bobbin-ai --locked` builds from source and installs `bobbin`.
+Run `bobbin --version`; if it reports an older version, check `command -v bobbin`
+for another installation earlier in `PATH`.
+
+## First success in three commands
+
+Run in a shell with Python 3 and Git installed. This creates a disposable project;
+initial indexing downloads the embedding model and runs locally on the CPU.
+
+```bash
+mkdir -p bobbin-demo && cd bobbin-demo && git init -q && printf 'def greeting(name):\n    return "Hello, " + name\n' > greeting.py
+bobbin init --quiet && BOBBIN_GPU=0 bobbin index --quiet --skip-calibrate
+bobbin grep greeting --json | python3 -c 'import json,sys; r=json.load(sys.stdin)["results"][0]; print("{}:{}-{}".format(r["name"], r["start_line"], r["end_line"]))'
+```
+
+The final command prints:
 
 ```text
-$ bobbin context "fix the login bug"
-✓ Context for: fix the login bug
-  6 files, 14 chunks (487/500 lines)
-
---- src/auth/middleware.rs [direct, score: 0.8923] ---
-  verify_token (function), lines 14-47
---- src/handlers/login.rs [direct, score: 0.7892] ---
-  handle_login (function), lines 31-62
---- src/auth/session.rs [coupled via src/auth/middleware.rs] ---
-  create_session (function), lines 88-121
+greeting:1-2
 ```
 
-```text
-$ bobbin related src/auth/middleware.rs
-Related to src/auth/middleware.rs:
-1. src/auth/session.rs (score: 0.85) - Co-changed 23 times
-2. src/handlers/login.rs (score: 0.72) - Co-changed 18 times
-3. tests/auth_test.rs (score: 0.68) - Co-changed 15 times
-```
+Bobbin found a parsed function, with its source range, in the index you just built.
+See the [quick start](docs/book/src/getting-started/quick-start.md) for semantic search.
 
-## Why Bobbin?
+## On your own code
 
-|  | **ripgrep** | **Sourcegraph** | **Bobbin** |
-|--|:-----------:|:---------------:|:----------:|
-| Keyword search          | ✅ | ✅ | ✅ |
-| Semantic search         | ❌ | ✅ | ✅ |
-| Git coupling analysis   | ❌ | ❌ | ✅ |
-| Task-aware context      | ❌ | ❌ | ✅ |
-| MCP server (AI agents)  | ❌ | ❌ | ✅ |
-| Knowledge graph          | ❌ | ❌ | ✅ |
-| Runs 100% locally       | ✅ | ❌ | ✅ |
-| No API keys required    | ✅ | ❌ | ✅ |
-| Sub-100ms queries       | ✅ | ❌ | ✅ |
+Run `bobbin init` and `bobbin index` from your repository first.
 
-## Features
+| Question | Command |
+|---|---|
+| Where is error handling implemented? | `bobbin search "error handling"` |
+| What context would help fix login? | `bobbin context "fix the login bug"` |
+| Where does an exact name appear? | `bobbin grep greeting` |
+| What changes alongside this file? | `bobbin related greeting.py` |
+| What is indexed? | `bobbin status` |
 
-🔍 **Hybrid Search** — Semantic + keyword results fused via [Reciprocal Rank Fusion](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf). Ask in natural language or grep by pattern.
+See the [CLI reference](docs/book/src/cli/overview.md) for flags and additional commands.
 
-🌳 **Structure-Aware Parsing** — Tree-sitter extracts functions, classes, structs, traits, and more from 6 languages (Rust, TypeScript, Python, Go, Java, C++). Markdown parsed into sections, tables, and code blocks; other languages use line-based chunking.
+## Wire it into your agent
 
-🔗 **Git Temporal Coupling** — Analyzes commit history to find files that change together. `bobbin related src/auth.rs` reveals hidden dependencies no import graph can see.
-
-📦 **Task-Aware Context** — `bobbin context "fix the login bug"` builds a budget-controlled bundle from search results + coupled files. Feed it straight to an AI agent.
-
-🤖 **MCP Server** — `bobbin serve` exposes 35 tools to Claude Code, Cursor, and any MCP-compatible agent (26 always available; nine `knowledge_*` tools require the `knowledge` build feature).
-
-🧠 **Knowledge Graph (Quipu)** — Optional integration with [Quipu](https://github.com/scbrown/quipu) for structured knowledge alongside code. SPARQL queries, SHACL-validated writes, vector search, and canonical share transport are exposed as `knowledge_*` MCP tools. Feature-gated behind `knowledge`.
-
-🔁 **Versioned Share Contract** — Knowledge builds produce canonical Quipu exports and share bundles through `knowledge_export` and `knowledge_share`, then stage and explicitly promote them through `knowledge_import` and `knowledge_import_promote`. Bobbin delegates serialization, identity, validation, quarantine, and promotion to Quipu rather than defining a parallel bundle dialect.
-
-🧵 **Governed Chunk Ontology** — Knowledge builds can publish each index run as a replaceable snapshot, so a reindex diffs rather than accumulates. A named code chunk or document section is published as a single node carrying both `bobbin:Chunk` and its governed code-entity type, under the same identity an external code-graph producer would mint for it, so the two graphs join instead of describing the same symbol twice. Anonymous spans keep their own chunk identity. Publication is opt-in via `quipu_push_chunks`; set `quipu_endpoint` for authenticated remote `/knot` delivery, or leave it unset and the snapshot lands in the embedded store.
-
-🧪 **Quarantined Inferred Extraction** — A deterministic extractor mines candidate entities and relationships from markdown prose. Candidates are claims, not observations, and the distinction is structural: every fact carries its extractor and parameters as the derivation method, lands only in a quarantined trust-rank-0 plane via graph-routed writes (the push refuses stores that cannot route graphs strictly), and is served only inside a quarantine envelope. Promotion out of quarantine belongs to the governing ontology, never the writer. Opt-in via `quipu_push_inferred` or the `knowledge_inferred_extract` MCP tool.
-
-🌐 **Multi-Repo** — Index multiple repositories into one database. Search across all or filter by name.
-
-⚡ **Fast & Private** — ONNX embeddings (all-MiniLM-L6-v2), LanceDB vector storage, SQLite for coupling. Everything on your machine.
-
-🚀 **GPU Accelerated** — Automatic CUDA detection for 10-25x faster indexing on NVIDIA GPUs. Index 57K chunks in under 5 minutes. Falls back to CPU seamlessly.
-
-🪝 **Claude Code Hooks** — Automatic context injection on every prompt via `UserPromptSubmit` hook. Session primer via `SessionStart` hook. Reactive context via `PostToolUse` hook (inject related files when code is edited). Smart gating skips injection when context is irrelevant.
-
-🔄 **Feedback Loop** — Agents rate injections as useful/noise/harmful. Lineage tracking ties feedback to fixes (commits, beads, config changes). Metrics close the loop between search quality and real-world impact.
-
-🛡️ **FTS Churn Recovery** — Keyword and hybrid searches survive transient index churn: a failed full-text query triggers a bounded rebuild-and-retry cycle with backoff, and only a request that exhausts it surfaces an error — the original cause, not a synthesised one. `/metrics` exposes `bobbin_fts_rebuild_total` and mode-labelled `bobbin_search_errors_total{reason="fts"}` counters, so how often this happens is measurable rather than anecdotal. Indexing gets the same honesty: a Lance FTS compaction panic triggers a full index rebuild and one retried compaction, and a maintenance failure fails `bobbin index` instead of exiting 0.
-
-## Quick Start
-
-**1. Install**
-
-```bash
-cargo install bobbin-ai   # the command it installs is `bobbin`
-```
-
-**2. Index your codebase**
-
-```bash
-cd your-project
-bobbin init && bobbin index
-```
-
-**3. Search**
-
-```bash
-bobbin search "error handling"         # Semantic + keyword hybrid
-bobbin context "fix the login bug"     # Task-aware context bundle
-bobbin related src/auth.rs             # Git coupling analysis
-```
-
-## GPU Acceleration
-
-Bobbin automatically detects NVIDIA CUDA GPUs and accelerates embedding inference. No configuration needed — if a GPU is available, it's used.
-
-| Metric | CPU | GPU (RTX 4070S) |
-|--------|-----|-----------------|
-| Embed throughput | ~100 chunks/s | ~2,400 chunks/s |
-| Index ruff (57K chunks) | >30 min | ~4 min |
-
-**Setup** (optional — CPU works out of the box):
-
-```bash
-# Install ONNX Runtime GPU (requires CUDA toolkit)
-# See docs for full setup: https://scbrown.github.io/bobbin/config/gpu.html
-
-# Force CPU even when GPU is available:
-BOBBIN_GPU=0 bobbin index
-```
-
-## AI Agent Integration
-
-Bobbin ships an MCP server that gives AI agents direct access to your codebase:
-
-```bash
-bobbin serve
-```
-
-Add to your Claude Code or Cursor MCP config:
+From the indexed repository, `bobbin serve` starts an MCP server on standard input/output.
+Configure your MCP client to run it in that repository:
 
 ```json
-{
-  "mcpServers": {
-    "bobbin": {
-      "command": "bobbin",
-      "args": ["serve"]
-    }
-  }
-}
+{"mcpServers":{"bobbin":{"command":"bobbin","args":["serve"]}}}
 ```
 
-Exposes 26 core tools including `search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `chunk_neighbors`, `hotspots`, `impact`, `review`, `similar`, `prime`, `search_beads`, `dependencies`, `file_history`, `test_coverage`, `status`, `commit_search`, `feedback_submit`, `feedback_list`, `feedback_stats`, `feedback_lineage_store`, `feedback_lineage_list`, `archive_search`, and `archive_recent`. Knowledge builds add `knowledge_context`, `knowledge_query`, `knowledge_knot`, `knowledge_reconcile_mentions`, `knowledge_inferred_extract`, `knowledge_export`, `knowledge_share`, `knowledge_import`, and `knowledge_import_promote`.
+For automatic Claude Code context injection, run `bobbin hook install` in the
+repository; it updates that project's `.claude/settings.json`.
+See [agent setup](docs/book/src/getting-started/agent-setup.md) for client configuration
+and [hooks](docs/book/src/guides/hooks.md) for gating, deduplication and removal.
+Prefer MCP when available, then the CLI; the [HTTP API](docs/book/src/mcp/http-mode.md)
+is the transport fallback.
 
-For agents, prefer this interface order: use MCP tools when a Bobbin server is
-available, use the equivalent `bobbin` CLI command next, and use the documented
-HTTP API as a transport fallback. For example, the search fallback is
-`GET /search?q=...`; it is not a JSON `POST` endpoint.
+## Before you start
 
-### Claude Code Hooks
+| Requirement | What to expect |
+|---|---|
+| Platform | Release binaries for Linux and macOS, x86-64 and ARM64 |
+| Network | Needed to download releases and the model; local search then uses the cached index |
+| Parsing | Rust, TypeScript, Python, Go, Java and C++ use tree-sitter; Markdown has section-aware parsing; other text uses line chunks |
+| Git | Commit history enables temporal coupling; a new repository has none yet |
+| GPU | Optional; CPU indexing works without CUDA |
+| Knowledge graph | Optional Quipu integration requires a build with the `knowledge` feature |
 
-For automatic context injection without MCP, run `bobbin hook install` (the source
-of truth), which writes **four** hooks to `.claude/settings.json`:
+See [installation](docs/book/src/getting-started/installation.md) for system libraries
+and source-build requirements, and [language support](docs/book/src/architecture/languages.md).
 
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [{
-      "hooks": [{
-        "command": "bobbin hook inject-context || true",
-        "timeout": 10,
-        "type": "command"
-      }]
-    }],
-    "SessionStart": [{
-      "matcher": "compact",
-      "hooks": [{
-        "command": "bobbin hook session-context || true",
-        "timeout": 10,
-        "type": "command"
-      }]
-    }],
-    "PostToolUse": [{
-      "matcher": "Write|Edit|Bash|Grep|Glob|Read",
-      "hooks": [{
-        "command": "bobbin hook post-tool-use || true",
-        "timeout": 10,
-        "type": "command"
-      }]
-    }],
-    "PostToolUseFailure": [{
-      "hooks": [{
-        "command": "bobbin hook post-tool-use-failure || true",
-        "timeout": 10,
-        "type": "command"
-      }]
-    }]
-  }
-}
-```
+## What's next
 
-The `inject-context` hook embeds your prompt, searches the index, and injects the
-most relevant code snippets. A relevance gate skips injection when the best match
-is too weak, and session dedup avoids re-injecting unchanged context. The
-`SessionStart` hook restores context after compaction, and the reactive
-`PostToolUse` / `PostToolUseFailure` hooks inject related files when code is
-edited or a tool call fails.
+- [Read the Bobbin book](docs/book/src/README.md).
+- [Find every document in the docs map](docs/book/src/docs-map.md).
+- [Build useful context for a task](docs/book/src/guides/context-assembly.md).
 
-## Architecture
+## 🧺 The stack
 
-```text
-                    Agent / Claude Code
-                           │
-            ┌──────────────┼──────────────┐
-            │              │              │
-       ┌────┴────┐    ┌────┴────┐   ┌────┴────┐
-       │ Bobbin  │    │ Unified │   │  Quipu  │
-       │  Code   │    │ Context │   │Knowledge│
-       │ Search  │    │ Pipeline│   │  Graph  │
-       └────┬────┘    └────┬────┘   └────┬────┘
-            │              │              │
-       ┌────┴────┐         │         ┌────┴────┐
-       │ LanceDB │         │         │ SQLite  │
-       │ vectors │         │         │  EAVT   │
-       │ + FTS   │         │         │+ vectors│
-       └─────────┘         │         └─────────┘
-                           │
-                  ┌────────┴────────┐
-                  │  ONNX Embedder  │
-                  │ (shared session)│
-                  └─────────────────┘
-```
+Caboodle installs these together and proves each one works; every tool also stands alone.
 
-Bobbin handles code indexing and search (LanceDB vectors + FTS, tree-sitter parsing, git coupling). The optional Quipu layer adds a knowledge graph (EAVT fact store, SPARQL, SHACL validation) for structured knowledge alongside code. Both share a single ONNX embedding session and are exposed through one MCP server.
+| tool | what it gives your agents |
+|---|---|
+| [caboodle](https://github.com/scbrown/caboodle) | one wizard that installs the stack and proves it works |
+| [quipu](https://github.com/scbrown/quipu) | a knowledge graph that refuses facts that break its rules |
+| [camayoc](https://github.com/scbrown/camayoc) | the starter vocabulary, and how new knowledge earns its way in |
+| [bobbin](https://github.com/scbrown/bobbin) **(you are here)** | search and context over your repositories, served over MCP |
+| [yupana](https://github.com/scbrown/yupana) | which code calls which: the blast radius before an edit |
+| [desire-path](https://github.com/scbrown/desire-path) | the tool calls your agents get wrong, so you can fix them |
 
-See the [Architecture docs](https://scbrown.github.io/bobbin/architecture/overview.html) and [Quipu integration plan](docs/plans/quipu-integration.md) for details.
-
-## Supported Languages
-
-| Language   | Parser        | Extracted Units |
-|------------|---------------|-----------------|
-| Rust       | Tree-sitter   | functions, impl blocks, structs, enums, traits, modules |
-| TypeScript | Tree-sitter   | functions, methods, classes, interfaces |
-| Python     | Tree-sitter   | functions, classes |
-| Go         | Tree-sitter   | functions, methods, type declarations |
-| Java       | Tree-sitter   | methods, constructors, classes, interfaces, enums |
-| C++        | Tree-sitter   | functions, classes, structs, enums |
-| C          | Line-based    | detected and indexed, line-based chunking |
-| JavaScript | Line-based    | detected and indexed, line-based chunking |
-| Markdown   | pulldown-cmark| sections, tables, code blocks, YAML frontmatter |
-
-Other file types use line-based chunking with overlap.
-
-## Development
-
-All development uses `just` as the command runner:
+## Contributing
 
 ```bash
-just build           # Build (quiet output by default)
-just test            # Run tests
-just check           # Type check
-just lint            # Clippy lints
-just docs build      # Build mdbook documentation
-just docs check      # Lint + validate + build docs
+just build
+just test
+just check
 ```
 
-The `knowledge` feature gate enables Quipu integration:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites and documentation checks.
 
-```bash
-cargo build --features knowledge
-```
+## 📜 License
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup and code quality standards.
-
-## Releases
-
-Bobbin v0.7.1 introduced bounded FTS churn recovery and its operational counters.
-v0.7.2 added remote chunk-snapshot publication and aligned code and document entity
-IRIs with the code graph they are meant to join. v0.7.3 extended FTS recovery to
-index-time compaction and made maintenance failures fail the index run instead of
-masquerading as success. v0.8.0 added verified, faction-scoped grounding injection
-for the Neural Amplifier harness. v0.9.0 wired the advanced query parser into
-`bobbin search` and made `+` a real required-term operator, with `/search` echoing the
-parsed query so a caller can see how their input was interpreted rather than inferring
-it from the results; it also added `GET /deps` and `GET /history` for HTTP/MCP parity,
-`bobbin index-bead <id>` for single-bead incremental reindexing, and surfaced governed
-path boundaries in injected context.
-
-Tagged releases are built by the GitHub Actions release matrix and published as
-checksummed platform artifacts. The release artifacts are the supported binary
-delivery lane; deployments should consume a pinned tag and verify its checksum.
-A commit on `main` is deliberately not deployable until a release is published.
-
-## Documentation
-
-📚 **[The Bobbin Book](https://scbrown.github.io/bobbin/)** — Comprehensive guides, CLI reference, architecture, and more
-
-- [Getting Started](https://scbrown.github.io/bobbin/getting-started/quick-start.html) — Installation and first index
-- [CLI Reference](https://scbrown.github.io/bobbin/cli/overview.html) — All commands, flags, and examples
-- [MCP Tools](https://scbrown.github.io/bobbin/mcp/overview.html) — AI agent integration reference
-- [Configuration](https://scbrown.github.io/bobbin/config/reference.html) — `.bobbin/config.toml` reference
-- [Architecture](https://scbrown.github.io/bobbin/architecture/overview.html) — System design, data flow, storage schema
-- [Evaluation](https://scbrown.github.io/bobbin/eval/overview.html) — Methodology, results, and metrics
-- [Contributing](CONTRIBUTING.md) — Build, test, and development setup
-
-## License
-
-Licensed under the Apache License, Version 2.0 (see [LICENSE](LICENSE)). Releases before 2026-09-24 were MIT-licensed.
+[Apache License, Version 2.0](LICENSE). Releases before 2026-09-24 were MIT-licensed.

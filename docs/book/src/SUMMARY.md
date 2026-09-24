@@ -101,6 +101,8 @@
 
 # Appendix
 
+- [The stack](stack.md)
+- [Docs map](docs-map.md)
 - [Vision](appendix/vision.md)
 - [Roadmap](appendix/roadmap.md)
 - [Changelog](appendix/changelog.md)

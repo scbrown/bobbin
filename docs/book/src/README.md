@@ -2,13 +2,14 @@
 title: Introduction
 description: Bobbin — the local-first code context engine for AI-assisted development
 tags: [overview, introduction]
+status: published
 category: getting-started
 related: [getting-started/installation.md, getting-started/quick-start.md]
 ---
 
 # Bobbin
 
-**Local-first code context engine.** Semantic search, keyword search, and git coupling analysis — all running on your machine. No API keys. No cloud. Sub-100ms queries.
+**Local-first code context engine.** Semantic search, keyword search, and git coupling analysis — all running on your machine. Local indexing and search need no API keys. The first run downloads the model; subsequent searches use the cached model and index.
 
 Bobbin indexes the structure, history, and meaning of your codebase, then delivers precisely the right context when you (or your AI agent) need it.
 
@@ -20,18 +21,26 @@ Bobbin indexes the structure, history, and meaning of your codebase, then delive
 - **MCP server** — `bobbin serve` exposes tools to Claude Code, Cursor, and any MCP-compatible agent.
 - **Knowledge graph** — optional [Quipu](https://github.com/scbrown/quipu) integration adds structured knowledge (SPARQL, SHACL) alongside code search, exposed as `knowledge_context` and `knowledge_query` MCP tools.
 - **Claude Code hooks** — automatically injects relevant code context into every prompt, and primes new sessions with project overview and index stats.
-- **GPU-accelerated indexing** — CUDA support for 10-25x faster embedding on NVIDIA GPUs. Index 57K chunks in under 5 minutes.
+- **GPU-accelerated indexing** — Optional CUDA inference on NVIDIA GPUs; CPU indexing remains available. Throughput depends on the model, hardware and repository.
+
+## Choosing a search path
+
+| Need | Start with | Evidence it uses |
+|---|---|---|
+| A literal name or pattern | `bobbin grep` | Indexed text |
+| Code described in natural language | `bobbin search` | Embeddings and keyword matches |
+| Related files for a task | `bobbin context` | Search results and Git coupling |
+| Who calls a symbol | [Yupana](https://github.com/scbrown/yupana) | A structural code graph |
+
+Git coupling describes files that changed together; it does not establish
+that one function calls another. Consult the [evaluation methodology](eval/overview.md)
+for measured retrieval quality and its limits.
 
 ## Quick Start
 
-```bash
-cargo install bobbin-ai   # installs the `bobbin` command
-cd your-project
-bobbin init && bobbin index
-bobbin search "error handling"
-```
-
-See [Installation](getting-started/installation.md) and [Quick Start](getting-started/quick-start.md) for full setup instructions.
+Start with a [checksummed release](getting-started/installation.md), then run
+the [three-command fixture](getting-started/quick-start.md) to verify your index
+before using your own repository.
 
 ## Navigate This Book
 
@@ -44,3 +53,9 @@ See [Installation](getting-started/installation.md) and [Quick Start](getting-st
 | [Configuration](config/reference.md) | Full `.bobbin/config.toml` reference |
 | [Architecture](architecture/overview.md) | System design, storage, embedding pipeline |
 | [Evaluation](eval/overview.md) | Methodology, results across ruff/flask/polars, metrics |
+
+## Go deeper
+
+- [The stack](stack.md) explains how Bobbin fits with the other tools.
+- [Docs map](docs-map.md) routes the design notes, plans and research outside this book.
+- [Evaluation](eval/overview.md) explains how retrieval quality is measured.
