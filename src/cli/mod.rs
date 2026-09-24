@@ -8,6 +8,8 @@ mod connect;
 mod context;
 mod coverage;
 mod deps;
+#[cfg(test)]
+mod eval_v2_calibration_fixture_tests;
 mod feedback;
 mod grep;
 mod history;
