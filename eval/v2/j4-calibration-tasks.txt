@@ -1,0 +1,19 @@
+# J4 calibration split (PREREGISTRATION amendment A1). Frozen before any J4 scoring.
+# 2 tasks per repo: ONE random.Random(20260924), repos in sorted order, each drawing
+# rng.sample(sorted(ids of the repo), 2). The other 24 tasks are the evaluation split.
+cargo-001
+cargo-002
+django-001
+django-005
+go-003
+go-004
+nushell-003
+nushell-004
+pandas-003
+pandas-005
+polars-003
+polars-004
+ruff-002
+ruff-005
+typst-001
+typst-003
