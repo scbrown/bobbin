@@ -161,3 +161,65 @@ def test_no_admissible_floor_is_reported_never_relaxed():
     rows = [(rec_with([0.0, 0.9]), gold)]  # the gold chunk is below every grid floor
     floor, _curve = j4.choose_floor(rows, full_mean_recall=1.0, score=_score)
     assert floor is None
+
+
+# --- the offline report ---------------------------------------------------------
+
+
+def _rec(tid, set_name, probs, hook_full_chunks, outcome="injected", model=j4.JEV_MODEL):
+    cands = [["a.py", 10 * i + 1, 10 * i + 10] for i in range(len(probs))]
+    hook = {
+        "full": {
+            "outcome": "injected" if hook_full_chunks else "skipped",
+            "detail": "",
+            "chunks": hook_full_chunks,
+        }
+    }
+    for t in j4.GATE_GRID:
+        hook[f"G({t})"] = {"outcome": "injected", "detail": "", "chunks": [["a.py", 1, 20]]}
+    return {
+        "kind": "judged",
+        "task_id": tid,
+        "set": set_name,
+        "workspace_task": tid,
+        "candidate_outcome": outcome,
+        "candidates": cands,
+        "probs": list(probs),
+        "model": model,
+        "detail": "",
+        "hook": hook,
+    }
+
+
+def test_report_learns_on_calibration_and_scores_evaluation_only():
+    gold = {"cal-001": {"a.py": [(1, 10)]}, "ev-001": {"a.py": [(1, 10)]}}
+    recs = [
+        _rec("cal-001", "positive", [0.9, 0.3], [["a.py", 1, 20]]),
+        _rec("ev-001", "positive", [0.8, 0.2], [["a.py", 1, 20]]),
+        _rec("ev-001", "negative", [0.1, 0.2], [["a.py", 1, 20]]),
+    ]
+    out = j4.report(recs, gold, calibration=["cal-001"])
+    assert out["floor"] == 0.35  # lowest floor that drops the 0.3 noise chunk
+    a = out["arms"]["J4"]
+    assert a["n_positive"] == 1 and a["n_negative"] == 1  # calibration never reaches the result
+    assert a["mean_density"] == 1.0 and a["chunk_p_at_5"] == 1.0
+    assert a["abstention_coverage"] == 1.0 and a["false_abstention"] == 0.0
+    assert out["arms"]["full"]["abstention_coverage"] == 0.0  # the gate injected on the negative
+    assert out["test"] == "see l0 paired analysis" and out["negative_admissions"] == []
+
+
+def test_report_refuses_mixed_models_and_flags_an_incomplete_set():
+    gold = {"cal-001": {"a.py": [(1, 10)]}, "ev-001": {"a.py": [(1, 10)]}}
+    mixed = [
+        _rec("cal-001", "positive", [0.9], [["a.py", 1, 10]]),
+        _rec("ev-001", "positive", [0.9], [["a.py", 1, 10]], model="jev-1.14.0"),
+    ]
+    with pytest.raises(ValueError):
+        j4.report(mixed, gold, calibration=["cal-001"])
+    broken = [
+        _rec("cal-001", "positive", [0.9], [["a.py", 1, 10]]),
+        _rec("ev-001", "positive", [], [["a.py", 1, 10]], outcome="error"),
+    ]
+    out = j4.report(broken, gold, calibration=["cal-001"])
+    assert out["test"].startswith("not run (incomplete")
+    assert out["arms"]["J4"]["errors"]["positive"] == 1
