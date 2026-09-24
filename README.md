@@ -311,4 +311,4 @@ A commit on `main` is deliberately not deployable until a release is published.
 
 ## License
 
-[MIT](LICENSE)
+Licensed under the Apache License, Version 2.0 (see [LICENSE](LICENSE)). Releases before 2026-09-24 were MIT-licensed.
