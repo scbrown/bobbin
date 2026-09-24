@@ -264,7 +264,11 @@ def main():
                 for _, cell in (pair for pair in order if pair[0] == task_id):
                     cell_out = task_out / cell
                     cell_out.mkdir()
-                    cell_ws = scratch / cell
+                    # Bobbin's local repo identity can derive from the directory
+                    # name. Keep it identical to the indexed source in every cell.
+                    cell_root = scratch / cell
+                    cell_root.mkdir()
+                    cell_ws = cell_root / ws.name
                     baseline = cell_checkout(ws, cell_ws, env)
                     agent = invoke(task, cell, cell_ws, cell_out, env, bobbin, claude,
                                    args.budget, args.timeout, args.max_turns)
@@ -280,7 +284,7 @@ def main():
                               "file_f1": 2 * precision * recall / (precision + recall) if precision + recall else 0}
                     write_json(cell_out / "result.json", result)
                     print(f"{task_id} {cell}: success={result['success']}", flush=True)
-                    shutil.rmtree(cell_ws)
+                    shutil.rmtree(cell_root)
                     if not agent["valid"]:
                         raise RuntimeError("agent unavailable/misattributed; pilot stopped before further spend")
             except ValueError as exc:
