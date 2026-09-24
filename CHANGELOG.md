@@ -21,6 +21,20 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.19.0](https://github.com/scbrown/bobbin/compare/v0.18.1...v0.19.0) (2026-09-24)
+
+
+### Features
+
+* **eval:** add explicit offline Jev rerank and prompt-gate replay ([b1bf482](https://github.com/scbrown/bobbin/commit/b1bf482414860f0d40e97c39b11fb25d0548ce28))
+* **eval:** add semantic knapsack replay and recorded-response CLI ([681e739](https://github.com/scbrown/bobbin/commit/681e739916f02c1fa4c6ee0daf9a90036a649413))
+* **eval:** offline Jev rerank, semantic packing and prompt-gate replay ([0ff34c1](https://github.com/scbrown/bobbin/commit/0ff34c1c37a546629effcb68b220c2ce5406597c))
+
+
+### Bug Fixes
+
+* **eval:** distinguish turn exhaustion from unavailable agents ([40b850c](https://github.com/scbrown/bobbin/commit/40b850c9b2100d9cf36b9bcddbbf83861634f590))
+
 ## [0.18.1](https://github.com/scbrown/bobbin/compare/v0.18.0...v0.18.1) (2026-09-24)
 
 
