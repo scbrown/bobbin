@@ -1861,5 +1861,107 @@ def l0_report(scores_path, budget):
     click.echo(json.dumps(L0.summarize(scores, budget), indent=2))
 
 
+@cli.command("j4")
+@click.option("--tasks-dir", default="tasks", help="Directory containing task YAML files.")
+@click.option("--task", "task_ids", multiple=True, help="Restrict to these task ids (repeatable).")
+@click.option("--out", "out_path", required=True, help="JSONL file to append J4 records to.")
+@click.option(
+    "--workdir",
+    required=True,
+    help="J4's OWN clone directory. Never an L0 run's: the hook writes into it.",
+)
+@click.option("--index-timeout", default=1800, type=int, help="Bobbin index timeout in seconds.")
+def j4_cmd(tasks_dir, task_ids, out_path, workdir, index_timeout):
+    """Eval v2 J4 (PREREGISTRATION amendment A1): judge candidates once and record everything.
+
+    Calls Jev (pinned model) once per candidate, for each task's positive set and its
+    wrong-repository pairing, and records the hook's `full` and G(t) outcomes beside them.
+    Scoring is `j4-report`, offline. Needs TYPESAFE_API_KEY or TYPESAFE_API_KEY_FILE.
+    """
+    import subprocess as _sp
+
+    from runner import j4 as J4
+    from runner import l0 as L0
+    from runner.bobbin_setup import _find_bobbin, setup_bobbin
+    from runner.workspace import checkout_parent, clone_repo
+
+    judge = J4.jev_judge()  # fails loud before any work if there is no key
+    tasks_path = _resolve_tasks_dir(tasks_dir)
+    all_tasks = load_all_tasks(tasks_path)
+    all_ids = [t["id"] for t in all_tasks]
+    tasks = [t for t in all_tasks if not task_ids or t["id"] in task_ids]
+
+    scratch = Path(workdir)
+    scratch.mkdir(parents=True, exist_ok=True)
+    env = L0.isolated_env(scratch)
+    for k in [k for k in os.environ if k.startswith("BOBBIN_")]:
+        del os.environ[k]
+    os.environ["XDG_CONFIG_HOME"] = env["XDG_CONFIG_HOME"]
+    bobbin = _find_bobbin()
+
+    needed = {t["id"] for t in tasks} | {
+        p for t in tasks if (p := J4.negative_partner(t["id"], all_ids))
+    }
+    by_id = {t["id"]: t for t in all_tasks}
+    workspaces: dict[str, Path] = {}
+    for tid in sorted(needed):
+        task = by_id[tid]
+        ws = scratch / tid / task["repo"].replace("/", "--")
+        if not (ws / ".bobbin").exists():
+            ws = clone_repo(task["repo"], str(scratch / tid))
+            checkout_parent(ws, task["commit"])
+            setup_bobbin(str(ws), timeout=index_timeout)
+        workspaces[tid] = ws
+
+    prereg = Path(__file__).resolve().parent.parent / "v2" / "PREREGISTRATION.md"
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "kind": "manifest",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "bobbin": _sp.run(
+            [bobbin, "--version"], capture_output=True, text=True, env=env, check=False
+        ).stdout.strip(),
+        "harness_commit": _sp.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip(),
+        "preregistration_sha256": __import__("hashlib").sha256(prereg.read_bytes()).hexdigest(),
+        "judge_model": J4.JEV_MODEL,
+        "tasks": [t["id"] for t in tasks],
+    }
+    with out.open("a") as fh:
+        fh.write(json.dumps(manifest) + "\n")
+    for task in tasks:
+        gold = L0.gold_for_commit(workspaces[task["id"]], task["commit"])
+        records = J4.run_j4_task(task, workspaces, all_ids, env, bobbin, judge)
+        with out.open("a") as fh:
+            fh.write(json.dumps({"kind": "gold", "task_id": task["id"], "gold": gold}) + "\n")
+            for r in records:
+                fh.write(json.dumps(r) + "\n")
+        click.echo(
+            f"{task['id']}: "
+            + ", ".join(f"{r['set']}={r.get('candidate_outcome', r['kind'])}" for r in records)
+        )
+
+
+@cli.command("j4-report")
+@click.argument("records_path")
+def j4_report(records_path):
+    """A1's registered J4 analysis, offline, from recorded judgements. Refuses mixed models."""
+    from runner import j4 as J4
+
+    rows = [json.loads(ln) for ln in Path(records_path).read_text().splitlines() if ln.strip()]
+    gold = {
+        r["task_id"]: {p: [tuple(x) for x in rs] for p, rs in r["gold"].items()}
+        for r in rows
+        if r.get("kind") == "gold"
+    }
+    click.echo(json.dumps(J4.report(rows, gold, J4.calibration_ids()), indent=2))
+
+
 if __name__ == "__main__":
     cli()
