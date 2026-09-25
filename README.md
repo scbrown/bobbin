@@ -19,7 +19,7 @@ that change together. Local indexing and search need no API key.**
 - Give your agent a context bundle that fits a line or token budget.
 - See related files that imports alone do not reveal, using Git history.
 
-Read [how Bobbin combines these signals](docs/book/src/README.md).
+Read [how Bobbin combines these signals](https://scbrown.github.io/bobbin/).
 
 ## Install
 
@@ -43,7 +43,7 @@ The pinned release reports:
 bobbin 0.18.1 (bc246f84003f89eec07618e8c341bb6835500f58)
 ```
 
-For [other platforms and runtime prerequisites](docs/book/src/getting-started/installation.md),
+For [other platforms and runtime prerequisites](https://scbrown.github.io/bobbin/getting-started/installation.html),
 use the matching release asset. With the Rust build prerequisites installed,
 `cargo install bobbin-ai --locked` builds from source and installs `bobbin`.
 Run `bobbin --version`; if it reports an older version, check `command -v bobbin`
@@ -67,7 +67,7 @@ greeting:1-2
 ```
 
 Bobbin found a parsed function, with its source range, in the index you just built.
-See the [quick start](docs/book/src/getting-started/quick-start.md) for semantic search.
+See the [quick start](https://scbrown.github.io/bobbin/getting-started/quick-start.html) for semantic search.
 
 ## On your own code
 
@@ -81,7 +81,7 @@ Run `bobbin init` and `bobbin index` from your repository first.
 | What changes alongside this file? | `bobbin related greeting.py` |
 | What is indexed? | `bobbin status` |
 
-See the [CLI reference](docs/book/src/cli/overview.md) for flags and additional commands.
+See the [CLI reference](https://scbrown.github.io/bobbin/cli/overview.html) for flags and additional commands.
 
 ## Wire it into your agent
 
@@ -94,9 +94,9 @@ Configure your MCP client to run it in that repository:
 
 For automatic Claude Code context injection, run `bobbin hook install` in the
 repository; it updates that project's `.claude/settings.json`.
-See [agent setup](docs/book/src/getting-started/agent-setup.md) for client configuration
-and [hooks](docs/book/src/guides/hooks.md) for gating, deduplication and removal.
-Prefer MCP when available, then the CLI; the [HTTP API](docs/book/src/mcp/http-mode.md)
+See [agent setup](https://scbrown.github.io/bobbin/getting-started/agent-setup.html) for client configuration
+and [hooks](https://scbrown.github.io/bobbin/guides/hooks.html) for gating, deduplication and removal.
+Prefer MCP when available, then the CLI; the [HTTP API](https://scbrown.github.io/bobbin/mcp/http-mode.html)
 is the transport fallback.
 
 ## Before you start
@@ -110,14 +110,14 @@ is the transport fallback.
 | GPU | Optional; CPU indexing works without CUDA |
 | Knowledge graph | Optional Quipu integration requires a build with the `knowledge` feature |
 
-See [installation](docs/book/src/getting-started/installation.md) for system libraries
-and source-build requirements, and [language support](docs/book/src/architecture/languages.md).
+See [installation](https://scbrown.github.io/bobbin/getting-started/installation.html) for system libraries
+and source-build requirements, and [language support](https://scbrown.github.io/bobbin/architecture/languages.html).
 
 ## What's next
 
-- [Read the Bobbin book](docs/book/src/README.md).
-- [Find every document in the docs map](docs/book/src/docs-map.md).
-- [Build useful context for a task](docs/book/src/guides/context-assembly.md).
+- [Read the Bobbin book](https://scbrown.github.io/bobbin/).
+- [Find every document in the docs map](https://scbrown.github.io/bobbin/docs-map.html).
+- [Build useful context for a task](https://scbrown.github.io/bobbin/guides/context-assembly.html).
 
 ## 🧺 The stack
 
