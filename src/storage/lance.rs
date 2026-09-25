@@ -6,8 +6,6 @@ use arrow::array::{
 use arrow::datatypes::{DataType, Field, FieldRef, Schema, SchemaRef};
 use futures::TryStreamExt;
 use lance_index::scalar::FullTextSearchQuery;
-use lancedb::index::scalar::FtsIndexBuilder;
-use lancedb::index::Index;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::table::{CompactionOptions, Duration, OptimizeAction};
 use lancedb::{connect, Connection, Table};
@@ -238,6 +236,9 @@ pub struct VectorStore {
     embedding_dim: i32,
     /// Whether FTS index has been created for this session
     fts_indexed: AtomicBool,
+    /// Whole-corpus FTS builds THIS store asked Lance for (the global metric is
+    /// `bobbin_fts_build_attempts_total`; this one is per store, for tests).
+    fts_build_attempts: AtomicU64,
     /// The dataset directory, for the cross-process maintenance lock file.
     db_path: PathBuf,
     /// Baseline for the read-path compaction throttle.
@@ -469,6 +470,7 @@ impl VectorStore {
             entities_table,
             embedding_dim,
             fts_indexed: AtomicBool::new(false),
+            fts_build_attempts: AtomicU64::new(0),
             db_path: path.to_path_buf(),
             opened_at: std::time::Instant::now(),
             last_compact_secs: AtomicU64::new(0),
@@ -755,45 +757,6 @@ impl VectorStore {
         }
 
         self.fts_indexed.store(false, Ordering::Relaxed);
-        Ok(())
-    }
-
-    /// Ensure FTS index exists on the content column.
-    ///
-    /// LanceDB 0.17 does not support multi-column (composite) FTS indexes,
-    /// so we index only the `content` column which contains the actual code text.
-    ///
-    /// Uses `replace(false)` to skip rebuilding if the index already exists on
-    /// disk. This makes repeated calls (e.g., from hooks) fast since the FTS
-    /// index persists across processes.
-    pub async fn ensure_fts_index(&self) -> Result<()> {
-        if self.fts_indexed.load(Ordering::Relaxed) {
-            return Ok(());
-        }
-
-        let table = match &self.table {
-            Some(t) => t,
-            None => return Ok(()),
-        };
-
-        // Try without replace first — if index exists on disk, this errors
-        // but that's success for us (index is already ready).
-        let result = table
-            .create_index(&["content"], Index::FTS(FtsIndexBuilder::default()))
-            .replace(false)
-            .execute()
-            .await;
-
-        match result {
-            Ok(()) => {}
-            Err(_) => {
-                // Index likely already exists. Verify by trying replace=true
-                // only if the error isn't "index already exists".
-                // For now, assume existing index is usable.
-            }
-        }
-
-        self.fts_indexed.store(true, Ordering::Relaxed);
         Ok(())
     }
 
@@ -1239,24 +1202,6 @@ impl VectorStore {
             .try_collect()
             .await
             .context("Failed to collect FTS results")
-    }
-
-    /// Force-(re)build the FTS index over the `content` column, replacing any
-    /// existing index. Used to self-heal a missing/stale index.
-    pub async fn rebuild_fts_index(&self) -> Result<()> {
-        let table = match &self.table {
-            Some(t) => t,
-            None => return Ok(()),
-        };
-        table
-            .create_index(&["content"], Index::FTS(FtsIndexBuilder::default()))
-            .replace(true)
-            .execute()
-            .await
-            .context("Failed to (re)build FTS index")?;
-        crate::operational_metrics::record_fts_rebuild();
-        self.fts_indexed.store(true, Ordering::Relaxed);
-        Ok(())
     }
 
     /// Combine repo and extra filter into a single SQL WHERE clause.
@@ -3366,6 +3311,9 @@ fn str_to_chunk_type(s: &str) -> ChunkType {
         _ => ChunkType::Other,
     }
 }
+
+#[path = "lance_fts.rs"]
+mod fts;
 
 #[cfg(test)]
 #[path = "lance_tests.rs"]
