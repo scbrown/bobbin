@@ -58,3 +58,12 @@ redirect
 # Local doctor reports and legacy proxied database state
 .doctor/
 proxieddb/
+
+# br's SQLite store FILE. metadata.json names the store "dolt" (a legacy value), so br
+# creates .beads/dolt as a regular file. A trailing-slash `dolt/` rule matches only a
+# directory and misses it. A local store must never be committed.
+/dolt
+/dolt-shm
+/dolt-wal
+/dolt-wal-cert*
+/dolt.fsqlite-migration-state
