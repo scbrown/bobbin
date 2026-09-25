@@ -238,6 +238,9 @@ pub struct VectorStore {
     embedding_dim: i32,
     /// Whether FTS index has been created for this session
     fts_indexed: AtomicBool,
+    /// Whole-corpus FTS builds THIS store asked Lance for (the global metric is
+    /// `bobbin_fts_build_attempts_total`; this one is per store, for tests).
+    fts_build_attempts: AtomicU64,
     /// The dataset directory, for the cross-process maintenance lock file.
     db_path: PathBuf,
     /// Baseline for the read-path compaction throttle.
@@ -469,6 +472,7 @@ impl VectorStore {
             entities_table,
             embedding_dim,
             fts_indexed: AtomicBool::new(false),
+            fts_build_attempts: AtomicU64::new(0),
             db_path: path.to_path_buf(),
             opened_at: std::time::Instant::now(),
             last_compact_secs: AtomicU64::new(0),
@@ -763,9 +767,16 @@ impl VectorStore {
     /// LanceDB 0.17 does not support multi-column (composite) FTS indexes,
     /// so we index only the `content` column which contains the actual code text.
     ///
-    /// Uses `replace(false)` to skip rebuilding if the index already exists on
-    /// disk. This makes repeated calls (e.g., from hooks) fast since the FTS
-    /// index persists across processes.
+    /// ASK FIRST, BUILD ONLY WHEN ABSENT. `create_index(..).replace(false)` is not a
+    /// cheap probe: Lance trains the whole-corpus inverted index BEFORE it
+    /// discovers one already exists, then fails the commit and discards the work.
+    /// Measured on the production server (aegis-mgpp28): `Starting index training
+    /// job ... Training index 0/204607` inside ordinary searches, which together
+    /// with a fresh `VectorStore` per request (so `fts_indexed` never persists)
+    /// drove memory bursts past the unit's MemoryHigh and hung the service. So an
+    /// existing index is detected with `list_indices`, and only a genuinely
+    /// missing one is built. If listing fails, fall through to the build path:
+    /// that is the pre-fix behaviour, never worse.
     pub async fn ensure_fts_index(&self) -> Result<()> {
         if self.fts_indexed.load(Ordering::Relaxed) {
             return Ok(());
@@ -776,8 +787,15 @@ impl VectorStore {
             None => return Ok(()),
         };
 
-        // Try without replace first — if index exists on disk, this errors
-        // but that's success for us (index is already ready).
+        if Self::has_content_fts_index(table).await {
+            self.fts_indexed.store(true, Ordering::Relaxed);
+            return Ok(());
+        }
+
+        // No FTS index on `content`: build one. An error here most likely means a
+        // concurrent builder won the race; the existing index is then usable.
+        crate::operational_metrics::record_fts_build_attempt();
+        self.fts_build_attempts.fetch_add(1, Ordering::Relaxed);
         let result = table
             .create_index(&["content"], Index::FTS(FtsIndexBuilder::default()))
             .replace(false)
@@ -795,6 +813,29 @@ impl VectorStore {
 
         self.fts_indexed.store(true, Ordering::Relaxed);
         Ok(())
+    }
+
+    /// Whole-corpus FTS builds this store has requested (tests read it; production
+    /// reads the global `bobbin_fts_build_attempts_total`).
+    #[cfg(test)]
+    pub(crate) fn fts_build_attempts(&self) -> u64 {
+        self.fts_build_attempts.load(Ordering::Relaxed)
+    }
+
+    /// Whether an FTS (inverted) index already covers the `content` column.
+    /// Reads the table manifest only; trains nothing. `false` on a listing error,
+    /// which sends the caller down the pre-fix build path.
+    async fn has_content_fts_index(table: &Table) -> bool {
+        table
+            .list_indices()
+            .await
+            .map(|indices| {
+                indices.iter().any(|index| {
+                    index.index_type == lancedb::index::IndexType::FTS
+                        && index.columns.iter().any(|c| c == "content")
+                })
+            })
+            .unwrap_or(false)
     }
 
     /// Try to take the cross-process maintenance lock (advisory flock on a
@@ -1248,6 +1289,8 @@ impl VectorStore {
             Some(t) => t,
             None => return Ok(()),
         };
+        crate::operational_metrics::record_fts_build_attempt();
+        self.fts_build_attempts.fetch_add(1, Ordering::Relaxed);
         table
             .create_index(&["content"], Index::FTS(FtsIndexBuilder::default()))
             .replace(true)

@@ -2016,3 +2016,93 @@ async fn test_entities_empty_search() {
         .unwrap();
     assert!(results.is_empty());
 }
+
+/// aegis-mgpp28: a store opened on a table that ALREADY has an FTS index must not
+/// ask Lance to build one. The server opens a fresh `VectorStore` per request, so
+/// `fts_indexed` never survives between requests; before the fix every such store
+/// trained the whole-corpus index before discovering it existed.
+#[tokio::test]
+async fn a_fresh_store_over_an_existing_fts_index_never_rebuilds_it() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("vectors");
+
+    let mut first = VectorStore::open(&path).await.unwrap();
+    first
+        .insert(
+            &[sample_chunk("c1", "authenticate")],
+            &[sample_embedding()],
+            &no_contexts(1),
+            "repo",
+            "h",
+            "100",
+        )
+        .await
+        .unwrap();
+    first.rebuild_fts_index().await.unwrap();
+    assert!(
+        first.fts_build_attempts() >= 1,
+        "fixture: the first store builds the index"
+    );
+
+    // A second store on the same table: the per-request shape in production.
+    let mut fresh = VectorStore::open(&path).await.unwrap();
+    let found = fresh.search_fts("authenticate", 10, None).await.unwrap();
+    assert_eq!(found.len(), 1, "the existing index answers");
+    // A write resets the store's flag; the re-check must still find the index.
+    fresh
+        .insert(
+            &[sample_chunk("c2", "authorize")],
+            &[sample_embedding()],
+            &no_contexts(1),
+            "repo",
+            "h",
+            "101",
+        )
+        .await
+        .unwrap();
+    let again = fresh.search_fts("authenticate", 10, None).await.unwrap();
+    assert_eq!(again.len(), 1);
+    let new_row = fresh.search_fts("authorize", 10, None).await.unwrap();
+    assert_eq!(
+        new_row.len(),
+        1,
+        "rows added after the index are still searchable"
+    );
+    assert_eq!(
+        fresh.fts_build_attempts(),
+        0,
+        "a store over an existing FTS index must never train a new one"
+    );
+}
+
+/// Negative control: with NO FTS index, `ensure_fts_index` must still build one,
+/// so the detection above cannot be passing by never building at all.
+#[tokio::test]
+async fn a_store_without_an_fts_index_still_builds_it_once() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("vectors");
+    let mut store = VectorStore::open(&path).await.unwrap();
+    store
+        .insert(
+            &[sample_chunk("c1", "authenticate")],
+            &[sample_embedding()],
+            &no_contexts(1),
+            "repo",
+            "h",
+            "100",
+        )
+        .await
+        .unwrap();
+    // Whatever insert did, ask a FRESH store: if no index exists it must build.
+    let fresh = VectorStore::open(&path).await.unwrap();
+    let had_index = VectorStore::has_content_fts_index(fresh.table.as_ref().unwrap()).await;
+    fresh.ensure_fts_index().await.unwrap();
+    assert_eq!(fresh.fts_build_attempts(), if had_index { 0 } else { 1 });
+    let again = VectorStore::open(&path).await.unwrap();
+    assert!(
+        VectorStore::has_content_fts_index(again.table.as_ref().unwrap()).await,
+        "an index exists afterwards"
+    );
+    again.ensure_fts_index().await.unwrap();
+    assert_eq!(again.fts_build_attempts(), 0, "and is then never rebuilt");
+}
