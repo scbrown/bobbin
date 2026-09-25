@@ -213,6 +213,14 @@ changed rule are labelled as such.
 
 ## Amendment log
 
+- 2026-09-25: [L2 dataset preparation](SWE_BENCH_VERIFIED.md) freezes 23 external
+  SWE-bench Verified instances from 12 repositories by a pre-outcome, fixed-seed
+  selection. Gold/test records remain evaluator-only. This is exploratory dataset
+  preparation, not a run or a change to the registered L1 pilot. Future L2 comparisons
+  report the curated in-house tasks as a separate secondary set. Source task timestamps
+  do not establish fix dates or absence of training exposure; the linked contamination
+  note governs L2 claims.
+
 - 2026-09-24: list markers normalized for Markdown lint only; no design or analysis change.
   First L0 manifest preserves the pre-formatting registration hash.
 - 2026-09-24, before any L1 task run: implementing the pilot exposed two gaps in the
@@ -297,26 +305,27 @@ per-chunk relevance judgement can (a) drop the irrelevant chunks from an injecti
 abstain when no chunk is relevant, better than that single cosine threshold.
 
 **Arm J4.**
-* Candidates: the `-gate` arm's chunks at budget 600, in the hook's own order, first 20 at most.
+
+- Candidates: the `-gate` arm's chunks at budget 600, in the hook's own order, first 20 at most.
   `-gate` is used so the cosine gate does not pre-filter what J4 judges.
-* Judgement: one Jev `noul` per candidate, model **pinned to `jev-1.13.0`** by name (the
+- Judgement: one Jev `noul` per candidate, model **pinned to `jev-1.13.0`** by name (the
   API accepts a pinned version and refuses an unknown one; measured 2026-09-24). Every response's
   reported model is recorded, and **a run in which any response reports a different version is
   refused, not scored**. Calibration and evaluation must be judged by the same version. State, fixed now:
   `Task: <task description>` then a blank line, then `Passage (<path>:<start>-<end>):`
   and the passage text, cut at 120 lines. Question, fixed now: *"Does this passage contain code or
   text that a developer would need to read or change to complete the task?"*
-* Admission: keep candidates with noul >= floor, in candidate order, until the 300-line budget.
-* If none is kept, the outcome is **`abstained`**: a typed NO CONTEXT, distinct from `skipped`
+- Admission: keep candidates with noul >= floor, in candidate order, until the 300-line budget.
+- If none is kept, the outcome is **`abstained`**: a typed NO CONTEXT, distinct from `skipped`
   and `error`. An abstention has undefined density and chunk precision. It is never scored as 0
   and never as a perfect score. It is counted by the coverage metrics below and excluded from
   every mean that would otherwise be undefined.
-* **Failures and retries, fixed now.** A failed judgement (no key, transport or HTTP error, an
+- **Failures and retries, fixed now.** A failed judgement (no key, transport or HTTP error, an
   answer without a noul) is retried at most 2 more times, 5 s apart. If any candidate of a task
   still has no judgement, the whole task is `error` for J4. It is never partially judged and never
   falls back to admitting. Errors are counted and reported per set, and they are excluded from
   both the numerator and the denominator of every rate below; the counts appear next to each rate.
-* **No confirmatory result from an incomplete evaluation set.** If any evaluation task, positive
+- **No confirmatory result from an incomplete evaluation set.** If any evaluation task, positive
   or negative, ends as `error`, J4's test below is reported as *not run (incomplete)* with the
   count, not as a pass or a fail.
 
@@ -338,10 +347,11 @@ every J4 number reported as a result comes from evaluation only.
 **Learning the floor.** Grid 0.05, 0.10, ..., 0.95. On the calibration positives, choose the
 floor that maximises mean density subject to mean hunk recall >= `full`'s mean hunk recall on
 the same tasks minus 0.02. A tie goes to the lower floor. The whole grid curve is reported.
-* **Abstentions and recall:** an abstained positive task counts in mean hunk recall with recall
+
+- **Abstentions and recall:** an abstained positive task counts in mean hunk recall with recall
   0 (its gold hunks exist and were not shown). Density may exclude abstentions; recall never
   does.
-* **No admissible floor:** a grid point whose mean density is undefined (it abstains on every
+- **No admissible floor:** a grid point whose mean density is undefined (it abstains on every
   calibration positive) is not admissible. If no grid point is admissible and meets the recall
   constraint, the result is **no admissible floor, and J4 has no candidate to test**. The
   constraint is never relaxed to find one.
@@ -352,11 +362,12 @@ whole. J4 and G are compared as curves of abstention coverage against false abst
 evaluation split.
 
 **Added metrics (all arms, secondary unless stated).**
-* **chunk P@k**, k = 5 and 10: of the first k chunks an arm injects (fewer if it injects fewer),
+
+- **chunk P@k**, k = 5 and 10: of the first k chunks an arm injects (fewer if it injects fewer),
   the fraction overlapping a gold hunk. Undefined when nothing is injected.
-* **abstention coverage**: on the negative set, the fraction of tasks with outcome `abstained`
+- **abstention coverage**: on the negative set, the fraction of tasks with outcome `abstained`
   or `skipped`.
-* **false abstention**: on the positive set, the fraction of tasks with outcome `abstained` or
+- **false abstention**: on the positive set, the fraction of tasks with outcome `abstained` or
   `skipped`.
 
 **J4's test (evaluation split, paired with `full` on the same 24 tasks).** This uses the

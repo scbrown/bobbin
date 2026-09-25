@@ -1,0 +1,178 @@
+{
+  "dataset": "SWE-bench/SWE-bench_Verified",
+  "evaluator_sha256": "81e6fdf2bd725e28b4f264305c661cb7059a4d1d74e0d6a22f8183d131d680ac",
+  "instances": [
+    {
+      "base_commit": "a3f4ae6cd24d5ecdf49f213d77b3513dd509a06c",
+      "created_at": "2023-03-09T11:08:51Z",
+      "instance_id": "astropy__astropy-14508",
+      "record_sha256": "8e5cc18ca0589a52ba01457c407a8250db162fab7d2a8e1f7d51c3dbebec6fd5",
+      "repo": "astropy/astropy"
+    },
+    {
+      "base_commit": "26d147868f8a891a6009a25cd6a8576d2e1bd747",
+      "created_at": "2018-02-07T15:05:31Z",
+      "instance_id": "astropy__astropy-7166",
+      "record_sha256": "f0d3769f0b71baa16ff2a8bf17aedff2b61dd149c286025157f29f636fed6ef4",
+      "repo": "astropy/astropy"
+    },
+    {
+      "base_commit": "415f50298f97fb17f841a9df38d995ccf347dfcc",
+      "created_at": "2021-01-04T17:44:23Z",
+      "instance_id": "django__django-13837",
+      "record_sha256": "439f9a32d7707323fa20ec128c153a339ec51eba5d0766e25dd0d493196aafa2",
+      "repo": "django/django"
+    },
+    {
+      "base_commit": "859a87d873ce7152af73ab851653b4e1c3ffea4c",
+      "created_at": "2022-03-12T06:22:37Z",
+      "instance_id": "django__django-15503",
+      "record_sha256": "0bb9b98a9c847b9f596d8ea751cb6092d676288b74f51dd2a4256b483494a419",
+      "repo": "django/django"
+    },
+    {
+      "base_commit": "a2a1b0a11b993fe5f8fab64b6161e99243a6393c",
+      "created_at": "2022-03-28T14:42:28Z",
+      "instance_id": "matplotlib__matplotlib-22719",
+      "record_sha256": "4a60e16c45d04d4783261d6c2c7e4a12c0c6c71810fd119b4d3740bc31f6f1ec",
+      "repo": "matplotlib/matplotlib"
+    },
+    {
+      "base_commit": "f06c2c3abdaf4b90285ce5ca7fedbb8ace715911",
+      "created_at": "2022-07-11T01:41:11Z",
+      "instance_id": "matplotlib__matplotlib-23412",
+      "record_sha256": "6a186bee158551cccc9fdfd9ee842f1fc0a9ba983bc1e33345d47bd9210f79fe",
+      "repo": "matplotlib/matplotlib"
+    },
+    {
+      "base_commit": "54cab15bdacfaa05a88fbc5502a5b322d99f148e",
+      "created_at": "2022-10-09T23:31:20Z",
+      "instance_id": "mwaskom__seaborn-3069",
+      "record_sha256": "c774ae2bd931c88e8e5545af4ce88a7478c0a1e5c4f0edcf4a365be23bd601f3",
+      "repo": "mwaskom/seaborn"
+    },
+    {
+      "base_commit": "22cdfb0c93f8ec78492d87edb810f10cb7f57a31",
+      "created_at": "2022-12-18T00:04:22Z",
+      "instance_id": "mwaskom__seaborn-3187",
+      "record_sha256": "b76714e9305b47f530fa6d946a6e7d0e2c29e70e4c74716532c245b3e60a1358",
+      "repo": "mwaskom/seaborn"
+    },
+    {
+      "base_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "created_at": "2023-03-04T18:36:21Z",
+      "instance_id": "pallets__flask-5014",
+      "record_sha256": "9817dce472e312337a4f5c3b5a2d8b1c0475105e889ef111edf0c4012d3e1f8a",
+      "repo": "pallets/flask"
+    },
+    {
+      "base_commit": "22623bd8c265b78b161542663ee980738441c307",
+      "created_at": "2013-01-25T05:19:16Z",
+      "instance_id": "psf__requests-1142",
+      "record_sha256": "5830c9fbffc7c588df6e49b4a0d414a1e73ff10ef54406e5c7441669002efd76",
+      "repo": "psf/requests"
+    },
+    {
+      "base_commit": "1ba83c47ce7b177efe90d5f51f7760680f72eda0",
+      "created_at": "2013-11-04T09:37:00Z",
+      "instance_id": "psf__requests-1724",
+      "record_sha256": "a2be5949df515ecb3e08c6ad60173a6253b601eafb1166a010eedcc3ca50f870",
+      "repo": "psf/requests"
+    },
+    {
+      "base_commit": "7c4e2ac83f7b4306296ff9b7b51aaf016e5ad614",
+      "created_at": "2019-04-17T21:52:37Z",
+      "instance_id": "pydata__xarray-2905",
+      "record_sha256": "546baeb1875844e75fe2273aafb0f9a5095537adc1ae7c07274ef7701e28a761",
+      "repo": "pydata/xarray"
+    },
+    {
+      "base_commit": "a41edc7bf5302f2ea327943c0c48c532b12009bc",
+      "created_at": "2020-11-30T23:06:17Z",
+      "instance_id": "pydata__xarray-4629",
+      "record_sha256": "4d3ff64d5cba029477d6dd4cc3653c458e1c04396bf74ba560488e58d5a83cff",
+      "repo": "pydata/xarray"
+    },
+    {
+      "base_commit": "99589b08de8c5a2c6cc61e13a37420a868c80599",
+      "created_at": "2021-06-07T15:14:31Z",
+      "instance_id": "pylint-dev__pylint-4551",
+      "record_sha256": "751bed17ee26ab137da087668683c00b470c93546b8d0fb66c4235d57ff4e68b",
+      "repo": "pylint-dev/pylint"
+    },
+    {
+      "base_commit": "ca80f03a43bc39e4cc2c67dc99817b3c9f13b8a6",
+      "created_at": "2022-06-09T19:43:36Z",
+      "instance_id": "pylint-dev__pylint-6903",
+      "record_sha256": "493b1bbced418137e31ffd6b20fb35fe66db97e1bf2856fc7ee5e3c593960f64",
+      "repo": "pylint-dev/pylint"
+    },
+    {
+      "base_commit": "aa55975c7d3f6c9f6d7f68accc41bb7cadf0eb9a",
+      "created_at": "2022-06-15T17:39:53Z",
+      "instance_id": "pytest-dev__pytest-10051",
+      "record_sha256": "efaad563742b3003ae721802cd11d792ffd4b8f51d15f0dfee06b54c86d220dc",
+      "repo": "pytest-dev/pytest"
+    },
+    {
+      "base_commit": "e6e300e729dd33956e5448d8be9a0b1540b4e53a",
+      "created_at": "2020-06-29T21:51:15Z",
+      "instance_id": "pytest-dev__pytest-7432",
+      "record_sha256": "c78bf695daf084b649b1f2446bbaba4d8cd984c59232aaa2c064f1b1edd62a8c",
+      "repo": "pytest-dev/pytest"
+    },
+    {
+      "base_commit": "dd69361a0d9c6ccde0d2353b00b86e0e7541a3e3",
+      "created_at": "2018-07-16T23:21:56Z",
+      "instance_id": "scikit-learn__scikit-learn-11578",
+      "record_sha256": "bd28d4437e7d3c9f5fab0c53794305348385ef5d7e594ce47d2cd6f495559242",
+      "repo": "scikit-learn/scikit-learn"
+    },
+    {
+      "base_commit": "37b0e66c871e8fb032a9c7086b2a1d5419838154",
+      "created_at": "2019-02-28T12:47:52Z",
+      "instance_id": "scikit-learn__scikit-learn-13328",
+      "record_sha256": "74eff0697f728cd319c9b8d1d4eb0c220b685356ace974756e398d6641b31c07",
+      "repo": "scikit-learn/scikit-learn"
+    },
+    {
+      "base_commit": "f1061c012e214f16fd8790dec3c283d787e3daa8",
+      "created_at": "2022-05-08T09:37:06Z",
+      "instance_id": "sphinx-doc__sphinx-10435",
+      "record_sha256": "165f34c98fd3683bc3d6c897eef0174681ebb15194c9e80c84bdc9a5209a6894",
+      "repo": "sphinx-doc/sphinx"
+    },
+    {
+      "base_commit": "2e506c5ab457cba743bb47eb5b8c8eb9dd51d23d",
+      "created_at": "2020-05-01T18:29:11Z",
+      "instance_id": "sphinx-doc__sphinx-7590",
+      "record_sha256": "07dba64b35e1e27185aab6f2f86df234ff59ac14e6689a3b97fcd66de687fdf5",
+      "repo": "sphinx-doc/sphinx"
+    },
+    {
+      "base_commit": "701441853569d370506514083b995d11f9a130bd",
+      "created_at": "2019-02-13T15:02:37Z",
+      "instance_id": "sympy__sympy-15976",
+      "record_sha256": "99fd240f7e6fe6b8d497101e2e55a9910b1498c8b8bf96696c23310580847f36",
+      "repo": "sympy/sympy"
+    },
+    {
+      "base_commit": "82298df6a51491bfaad0c6d1980e7e3ca808ae93",
+      "created_at": "2021-02-06T05:44:34Z",
+      "instance_id": "sympy__sympy-20916",
+      "record_sha256": "b426769cccfbfd2cccac1c6039fd09c3692ba2a6c31825bca892c80af876cd5b",
+      "repo": "sympy/sympy"
+    }
+  ],
+  "revision": "78f471bf655a3137b2e8a75af1501690ec009ec3",
+  "schema_version": 1,
+  "selected_rows": 23,
+  "selection": {
+    "algorithm": "per-repo sha256(seed + newline + instance_id), ascending",
+    "per_repo": 2,
+    "seed": "20260925"
+  },
+  "source_file": "data/test-00000-of-00001.parquet",
+  "source_rows": 500,
+  "source_sha256": "030cfd7f2a704c4c0226e7f104c725a3b41230b1d3517f9c915ad7ea5be3fa25"
+}
