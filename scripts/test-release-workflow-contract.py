@@ -48,8 +48,61 @@ for fragment in required_build_fragments:
 
 assert release_please["draft"] is True, "Release Please must not expose an assetless release"
 assert release_please["force-tag-creation"] is True, "draft release must still create the build trigger tag"
-assert build.count("\n          draft: true\n") == 2, "both early matrix upload paths must preserve draft status"
-assert release.count("\n          draft: true\n") == 1, "final asset upload must preserve draft status"
+
+
+def with_block_of(chunk):
+    """The step's `with:` block: that line plus the lines indented beneath it."""
+    lines = chunk[chunk.index("        with:\n"):].split("\n")
+    block = [lines[0]]
+    for line in lines[1:]:
+        if line.startswith("          "):
+            block.append(line)
+        else:
+            break
+    return "\n".join(block)
+
+
+def upload_steps(job):
+    """(name, id, with-block) for every softprops upload step in one job."""
+    steps = []
+    for chunk in re.split(r"^      - name: ", job, flags=re.M)[1:]:
+        if "        uses: softprops/action-gh-release@" not in chunk:
+            continue
+        name = chunk.splitlines()[0].strip()
+        step_id = re.search(r"^        id: (\S+)$", chunk, re.M)
+        with_block = with_block_of(chunk)
+        steps.append((name, step_id.group(1) if step_id else None, with_block))
+    return steps
+
+
+# EVERY upload preserves draft status -- a property, not a count. This used to
+# assert exactly two draft uploads in build and one in release, which failed the
+# addition of retry steps (aegis-25sovf) that are themselves draft uploads.
+build_uploads = upload_steps(build)
+release_uploads = upload_steps(release)
+assert len(build_uploads) >= 2 and len(release_uploads) >= 1, "upload steps missing"
+for name, _, with_block in build_uploads + release_uploads:
+    assert "\n          draft: true" in with_block, f"{name}: upload must preserve draft status"
+
+# A RETRY MUST BE THE SAME UPLOAD (aegis-25sovf). Each first attempt is
+# continue-on-error and is followed by a retry gated on its outcome; the retry
+# must carry a byte-identical `with:` block, or a transient failure would be
+# "recovered" by a DIFFERENT upload (e.g. one that drops draft or an asset).
+for uploads in (build_uploads, release_uploads):
+    firsts = {sid: w for _, sid, w in uploads if sid}
+    assert firsts, "each upload's first attempt must carry an id for its retry"
+    for sid, with_block in firsts.items():
+        gate = f"if: steps.{sid}.outcome == 'failure'"
+        retry_chunks = [
+            c for c in re.split(r"^      - name: ", build + release, flags=re.M)
+            if c.startswith("Retry ") and gate in c
+        ]
+        assert len(retry_chunks) == 1, f"{sid}: expected exactly one retry step"
+        retry_with = with_block_of(retry_chunks[0])
+        assert retry_with == with_block, f"{sid}: retry must repeat the identical upload"
+        assert "continue-on-error" not in retry_chunks[0], (
+            f"{sid}: the retry must NOT be continue-on-error, or a sustained failure passes"
+        )
 assert "- name: Publish complete GitHub Release" in release
 # The publish must clear the draft. It used to be pinned as one literal string
 # that ALSO baked in an unconditional `--latest`, so this contract was holding
