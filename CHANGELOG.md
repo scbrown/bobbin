@@ -21,6 +21,18 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.19.1](https://github.com/scbrown/bobbin/compare/v0.19.0...v0.19.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **eval:** verify pinned ORT and CUDA libraries before L1 work ([565a531](https://github.com/scbrown/bobbin/commit/565a53133433b199b9b2f9a873cc30126ce10ddb))
+* **eval:** verify pinned runtime libraries before L1 work ([91df480](https://github.com/scbrown/bobbin/commit/91df480912cb8ded567c225ece4a9c4bfcea51e4))
+* let beads manage its own ignore rules ([e77c31b](https://github.com/scbrown/bobbin/commit/e77c31bb27df729fcddbaf21638e46b0bebcab26))
+* let beads manage its own ignore rules ([8fccfb5](https://github.com/scbrown/bobbin/commit/8fccfb50b440ab37143f0b05e165d5322590d347))
+* **storage:** detect an existing FTS index instead of training one per request ([2bc9ca6](https://github.com/scbrown/bobbin/commit/2bc9ca667ef7101c8e1719f4873fc667fa8e27d2))
+* **storage:** detect an existing FTS index instead of training one per request (aegis-mgpp28) ([19bcdee](https://github.com/scbrown/bobbin/commit/19bcdee0cb046d7a9936818d653f35decb5e8c71))
+
 ## [0.19.0](https://github.com/scbrown/bobbin/compare/v0.18.1...v0.19.0) (2026-09-24)
 
 
