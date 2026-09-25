@@ -282,3 +282,90 @@ changed rule are labelled as such.
   dependencies before preparation/indexing. The wrapper and paid-cell boundary
   repeat verification and retain receipts. See [RUNTIME-LOCK.md](RUNTIME-LOCK.md).
   Historical campaigns remain unchanged; this adds no full-study authorization.
+
+### A1 (2026-09-24): J4, per-chunk admission with a learned floor, plus abstention metrics
+
+Added before any J4 scoring. It changes nothing above: the registered arms, metrics,
+confirmatory family and gate are untouched, and the L0 run in progress is not re-scored or
+re-labelled by this amendment. J1-J3 remain registered as above under their own bead; J4 is a
+separate arm under its own bead (aegis-4hhqoe.3).
+
+**Question.** The shipped quality gate is query-level: the hook compares the top raw cosine
+score against `gate_threshold` (plus an intent boost) and injects everything or nothing. A top-k
+retriever over a corpus with no answer still returns its nearest neighbours. J4 asks whether a
+per-chunk relevance judgement can (a) drop the irrelevant chunks from an injection and (b)
+abstain when no chunk is relevant, better than that single cosine threshold.
+
+**Arm J4.**
+* Candidates: the `-gate` arm's chunks at budget 600, in the hook's own order, first 20 at most.
+  `-gate` is used so the cosine gate does not pre-filter what J4 judges.
+* Judgement: one Jev `noul` per candidate, model **pinned to `jev-1.13.0`** by name (the
+  API accepts a pinned version and refuses an unknown one; measured 2026-09-24). Every response's
+  reported model is recorded, and **a run in which any response reports a different version is
+  refused, not scored**. Calibration and evaluation must be judged by the same version. State, fixed now:
+  `Task: <task description>` then a blank line, then `Passage (<path>:<start>-<end>):`
+  and the passage text, cut at 120 lines. Question, fixed now: *"Does this passage contain code or
+  text that a developer would need to read or change to complete the task?"*
+* Admission: keep candidates with noul >= floor, in candidate order, until the 300-line budget.
+* If none is kept, the outcome is **`abstained`**: a typed NO CONTEXT, distinct from `skipped`
+  and `error`. An abstention has undefined density and chunk precision. It is never scored as 0
+  and never as a perfect score. It is counted by the coverage metrics below and excluded from
+  every mean that would otherwise be undefined.
+* **Failures and retries, fixed now.** A failed judgement (no key, transport or HTTP error, an
+  answer without a noul) is retried at most 2 more times, 5 s apart. If any candidate of a task
+  still has no judgement, the whole task is `error` for J4. It is never partially judged and never
+  falls back to admitting. Errors are counted and reported per set, and they are excluded from
+  both the numerator and the denominator of every rate below; the counts appear next to each rate.
+* **No confirmatory result from an incomplete evaluation set.** If any evaluation task, positive
+  or negative, ends as `error`, J4's test below is reported as *not run (incomplete)* with the
+  count, not as a pass or a fail.
+
+**Negative set (wrong-repository stress set).** Each task's description is run against a
+workspace from a *different* repository: the task with index i in repo R, against the task with
+the same index in the next repo of the fixed cycle cargo -> django -> go -> nushell -> pandas ->
+polars -> ruff -> typst -> cargo. The intended outcome is to abstain. **Caveat, reported
+wherever this set is:** a generic fix can transfer across repositories, so a non-abstention on a
+negative is not proof of an error. Admitted chunks on negatives are listed per task, so a
+reader can judge them.
+
+**Calibration split, frozen before any J4 scoring.** `eval/v2/j4-calibration-tasks.txt` is
+committed with this amendment: 2 tasks per repo (16): one `random.Random(20260924)`, repos in sorted
+order, each drawing `rng.sample(sorted(task ids of the repo), 2)`. (A fresh generator per repo
+would pick the same positions in every repo, so it is one generator throughout.) The other 24 tasks are the evaluation split. A negative belongs to
+the split of the task whose description it uses. The floor is learned on calibration only, and
+every J4 number reported as a result comes from evaluation only.
+
+**Learning the floor.** Grid 0.05, 0.10, ..., 0.95. On the calibration positives, choose the
+floor that maximises mean density subject to mean hunk recall >= `full`'s mean hunk recall on
+the same tasks minus 0.02. A tie goes to the lower floor. The whole grid curve is reported.
+* **Abstentions and recall:** an abstained positive task counts in mean hunk recall with recall
+  0 (its gold hunks exist and were not shown). Density may exclude abstentions; recall never
+  does.
+* **No admissible floor:** a grid point whose mean density is undefined (it abstains on every
+  calibration positive) is not admissible. If no grid point is admissible and meets the recall
+  constraint, the result is **no admissible floor, and J4 has no candidate to test**. The
+  constraint is never relaxed to find one.
+
+**Comparator: the shipped cosine gate.** Arm `G(t)`: the hook as shipped with
+`--gate-threshold=t`, for t in 0.30, 0.35, ..., 0.70, on both sets. It abstains or injects
+whole. J4 and G are compared as curves of abstention coverage against false abstention, on the
+evaluation split.
+
+**Added metrics (all arms, secondary unless stated).**
+* **chunk P@k**, k = 5 and 10: of the first k chunks an arm injects (fewer if it injects fewer),
+  the fraction overlapping a gold hunk. Undefined when nothing is injected.
+* **abstention coverage**: on the negative set, the fraction of tasks with outcome `abstained`
+  or `skipped`.
+* **false abstention**: on the positive set, the fraction of tasks with outcome `abstained` or
+  `skipped`.
+
+**J4's test (evaluation split, paired with `full` on the same 24 tasks).** This uses the
+existing hook-change gate: a density improvement with Wilcoxon p < 0.05 (Holm across all Jev
+arms scored; the family is listed here when scoring starts) **and** a lower 95% bootstrap bound
+on the hunk recall difference above -0.02. Abstentions are excluded from density pairs and
+reported as a count. Passing the test changes no live behaviour by itself: shipping a floor is
+a separate decision.
+
+**Cost bound.** At most 20 Jev calls per task per set: 40 tasks x 2 sets x 20 = 1,600 calls,
+measured at ~0.4 s and ~300 input tokens for a one-line passage (up to ~120 lines per passage
+here).
