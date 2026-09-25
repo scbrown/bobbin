@@ -33,7 +33,6 @@ uv.lock
 .runtime/
 .claude/
 .logs/
-.beads/
 
 # mdbook build output
 # (the root `book/` mdbook tree was deleted 2026-08-25 — it declared a second,
@@ -49,5 +48,4 @@ book/_build/
 .dolt/
 *.db
 .beads-credential-key
-.beads/proxieddb/
 *.gate.lock*

@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # blame_bridging maps to [hooks] show_docs as a proxy — full support requires
 # a Rust-side config toggle (see docs/tasks/).
 OVERRIDE_MAP: dict[str, tuple[str, str, type]] = {
+    "git.coupling_enabled": ("git", "coupling_enabled", bool),
     "semantic_weight": ("search", "semantic_weight", float),
     "coupling_depth": ("git", "coupling_depth", int),
     "gate_threshold": ("hooks", "gate_threshold", float),
@@ -117,6 +118,7 @@ def setup_bobbin(
     *,
     timeout: int = 1800,
     config_overrides: dict[str, str] | None = None,
+    initialize: bool = True,
 ) -> dict[str, Any]:
     """Run bobbin init and index on the given workspace.
 
@@ -137,18 +139,19 @@ def setup_bobbin(
     ws = Path(workspace)
     bobbin = _find_bobbin()
 
-    logger.info("Initializing bobbin in %s", ws)
-    try:
-        subprocess.run(
-            [bobbin, "init"],
-            cwd=ws,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.CalledProcessError as exc:
-        raise BobbinSetupError(f"bobbin init failed: {exc.stderr.strip()}") from exc
+    if initialize:
+        logger.info("Initializing bobbin in %s", ws)
+        try:
+            subprocess.run(
+                [bobbin, "init"],
+                cwd=ws,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise BobbinSetupError(f"bobbin init failed: {exc.stderr.strip()}") from exc
 
     # Apply config overrides between init and index so that index-time
     # parameters (coupling_depth) take effect.
@@ -218,6 +221,7 @@ def setup_bobbin(
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
         logger.warning("Could not capture bobbin status: %s", exc)
 
+    metadata["gpu_acceleration_proven"] = "ONNX session using CUDA GPU acceleration" in "\n".join(stderr_lines)
     logger.info("Bobbin setup complete for %s (indexed in %.1fs)", ws, index_duration)
     return metadata
 

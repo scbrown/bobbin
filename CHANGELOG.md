@@ -21,6 +21,28 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.19.0](https://github.com/scbrown/bobbin/compare/v0.18.1...v0.19.0) (2026-09-24)
+
+
+### Features
+
+* **eval:** add explicit offline Jev rerank and prompt-gate replay ([b1bf482](https://github.com/scbrown/bobbin/commit/b1bf482414860f0d40e97c39b11fb25d0548ce28))
+* **eval:** add semantic knapsack replay and recorded-response CLI ([681e739](https://github.com/scbrown/bobbin/commit/681e739916f02c1fa4c6ee0daf9a90036a649413))
+* **eval:** offline Jev rerank, semantic packing and prompt-gate replay ([0ff34c1](https://github.com/scbrown/bobbin/commit/0ff34c1c37a546629effcb68b220c2ce5406597c))
+
+
+### Bug Fixes
+
+* **eval:** distinguish turn exhaustion from unavailable agents ([40b850c](https://github.com/scbrown/bobbin/commit/40b850c9b2100d9cf36b9bcddbbf83861634f590))
+
+## [0.18.1](https://github.com/scbrown/bobbin/compare/v0.18.0...v0.18.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **eval:** enforce preregistered pilot cells and grading controls ([#118](https://github.com/scbrown/bobbin/issues/118)) ([cd8a270](https://github.com/scbrown/bobbin/commit/cd8a270221faf6664d0380d6a27d43fe31863f73))
+* **eval:** l0 uses the workspace clone_repo returns, and imports setup_bobbin ([#115](https://github.com/scbrown/bobbin/issues/115)) ([13ebca0](https://github.com/scbrown/bobbin/commit/13ebca0256c68075c67e6e010fe2dee8a932ae5e))
+
 ## [0.18.0](https://github.com/scbrown/bobbin/compare/v0.17.1...v0.18.0) (2026-09-24)
 
 

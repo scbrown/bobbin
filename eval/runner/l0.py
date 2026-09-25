@@ -680,11 +680,11 @@ def run_task(
     nocoupling_ws: Path | None = None
     if "-coupling" in arms:
         nocoupling_ws = workspace.parent / (workspace.name + "-nocoupling")
-        if not (nocoupling_ws / ".bobbin").exists():
+        if not nocoupling_ws.exists():
             shutil.copytree(
                 workspace, nocoupling_ws, symlinks=True, ignore=shutil.ignore_patterns(".bobbin")
             )
-            index_workspace(nocoupling_ws, {"git.coupling_enabled": "false"})
+        index_workspace(nocoupling_ws, {"git.coupling_enabled": "false"})
     for budget in budgets:
         for arm in arms:
             base = ArmScore(task_id=task["id"], arm=arm, budget=budget, outcome="error")
