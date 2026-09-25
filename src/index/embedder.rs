@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use ndarray::Array2;
 use ort::ep::{ExecutionProvider, CUDA};
 use ort::session::Session;
 use ort::value::Tensor;
@@ -10,6 +9,8 @@ use tokenizers::Tokenizer;
 use std::time::Instant;
 
 use crate::config::{EmbeddingBackend, EmbeddingConfig};
+
+mod tokenize;
 
 /// Probe well-known locations for libonnxruntime.so and set ORT_DYLIB_PATH
 /// so the `load-dynamic` ort crate picks it up. When `prefer_gpu` is true,
@@ -497,7 +498,9 @@ impl OnnxEmbedder {
             if gpu_active {
                 eprintln!("ONNX session using CUDA GPU acceleration");
             } else {
-                eprintln!("warning: GPU requested but CUDA execution provider not available, falling back to CPU");
+                eprintln!(
+                    "warning: GPU requested but CUDA execution provider not available, falling back to CPU"
+                );
             }
         }
 
@@ -522,35 +525,9 @@ impl OnnxEmbedder {
         }
 
         let t_tok = Instant::now();
-        let encodings = self
-            .tokenizer
-            .encode_batch(texts.to_vec(), true)
-            .map_err(|e| anyhow::anyhow!("Tokenization failed: {}", e))?;
-
-        let batch_size = encodings.len();
-        let max_len = encodings
-            .iter()
-            .map(|e| e.get_ids().len())
-            .max()
-            .unwrap_or(0)
-            .min(self.max_seq);
-
-        let mut input_ids = Array2::<i64>::zeros((batch_size, max_len));
-        let mut attention_mask = Array2::<i64>::zeros((batch_size, max_len));
-        let mut token_type_ids = Array2::<i64>::zeros((batch_size, max_len));
-
-        for (i, encoding) in encodings.iter().enumerate() {
-            let ids = encoding.get_ids();
-            let mask = encoding.get_attention_mask();
-            let type_ids = encoding.get_type_ids();
-
-            let len = ids.len().min(max_len);
-            for j in 0..len {
-                input_ids[[i, j]] = ids[j] as i64;
-                attention_mask[[i, j]] = mask[j] as i64;
-                token_type_ids[[i, j]] = type_ids[j] as i64;
-            }
-        }
+        let (input_ids, attention_mask, token_type_ids) =
+            tokenize::model_inputs(&self.tokenizer, texts, self.max_seq)?;
+        let (batch_size, max_len) = input_ids.dim();
 
         // Keep a flat copy of attention mask for mean pooling
         let attention_mask_vec: Vec<i64> = attention_mask.iter().cloned().collect();
