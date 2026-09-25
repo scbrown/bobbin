@@ -272,8 +272,38 @@ jobs:
             "bobbin-${{ env.VERSION }}-repository.bbpack" \
             > SHA256SUMS.txt
 
+      # Every GitHub-mutating publish step below runs once, backs off, and
+      # retries ONCE on failure (aegis-25sovf). The first attempt is
+      # continue-on-error; the retry is not, so a sustained failure still fails
+      # the job. Retrying is safe because softprops/action-gh-release finds the
+      # release by tag (drafts included) and replaces same-named assets, so a
+      # second run converges the SAME draft instead of creating another. A single
+      # transient HttpError here once left a draft missing its deploy asset and
+      # stalled the deploy ~2h (aegis-ttk1y.1). Keep each retry's `with:` block
+      # identical to its first attempt.
       - name: Publish Linux deploy archive immediately
+        id: publish_deploy
         if: matrix.target == 'x86_64-unknown-linux-gnu'
+        continue-on-error: true
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          # Load-bearing: omitting this publishes the existing draft during
+          # the first matrix upload, before the deploy pair is complete.
+          draft: true
+          files: |
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+            bobbin-${{ env.VERSION }}-repository.bbpack
+            bobbin-${{ env.VERSION }}-repository.bbpack.sha256
+            SHA256SUMS.txt
+          fail_on_unmatched_files: true
+
+      - name: Back off before retrying publish Linux deploy archive immediately
+        if: steps.publish_deploy.outcome == 'failure'
+        run: sleep 30
+
+      - name: Retry publish Linux deploy archive immediately after a transient failure
+        if: steps.publish_deploy.outcome == 'failure'
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           tag_name: ${{ env.VERSION }}
@@ -288,7 +318,22 @@ jobs:
           fail_on_unmatched_files: true
 
       - name: Publish target archive immediately
+        id: publish_target
         if: matrix.target != 'x86_64-unknown-linux-gnu'
+        continue-on-error: true
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          draft: true
+          files: bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+          fail_on_unmatched_files: true
+
+      - name: Back off before retrying publish target archive immediately
+        if: steps.publish_target.outcome == 'failure'
+        run: sleep 30
+
+      - name: Retry publish target archive immediately after a transient failure
+        if: steps.publish_target.outcome == 'failure'
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           tag_name: ${{ env.VERSION }}
@@ -379,6 +424,22 @@ jobs:
           ls -la
 
       - name: Finalize GitHub Release assets and checksums
+        id: finalize_assets
+        continue-on-error: true
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          draft: true
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      - name: Back off before retrying finalize GitHub Release assets and checksums
+        if: steps.finalize_assets.outcome == 'failure'
+        run: sleep 30
+
+      - name: Retry finalize GitHub Release assets and checksums after a transient failure
+        if: steps.finalize_assets.outcome == 'failure'
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           tag_name: ${{ env.VERSION }}
@@ -415,10 +476,23 @@ jobs:
           set -euo pipefail
           version="${{ env.VERSION }}"
 
+          # Bounded retry for transient GitHub API failures (aegis-25sovf). Each
+          # call is idempotent: a list is a read, and `release edit` sets state.
+          retry() {
+            local attempt
+            for attempt in 1 2 3; do
+              "$@" && return 0
+              [ "$attempt" -lt 3 ] || break
+              echo "attempt $attempt failed: $*; retrying in $((attempt * 15))s" >&2
+              sleep $((attempt * 15))
+            done
+            return 1
+          }
+
           # Highest published (non-draft, non-prerelease) version, by semver.
           # `sort -V` is version-aware, so 0.9.0 sorts below 0.10.0 where a
           # lexical sort would not.
-          highest="$(gh release list --repo "${{ github.repository }}" \
+          highest="$(retry gh release list --repo "${{ github.repository }}" \
                        --exclude-drafts --exclude-pre-releases --limit 200 \
                        --json tagName --jq '.[].tagName' \
                      | sed 's/^v//' | sort -V | tail -1)"
@@ -440,19 +514,19 @@ jobs:
           case "$mine" in
             *-*)
               echo "publishing $version WITHOUT --latest: it is a PRERELEASE."
-              gh release edit "$version" --repo "${{ github.repository }}" --draft=false --latest=false
+              retry gh release edit "$version" --repo "${{ github.repository }}" --draft=false --latest=false
               exit 0
               ;;
           esac
 
           if [ -z "$highest" ] || [ "$(printf '%s\n%s\n' "$highest" "$mine" | sort -V | tail -1)" = "$mine" ]; then
             echo "publishing $version as latest (highest published: ${highest:-none})"
-            gh release edit "$version" --repo "${{ github.repository }}" --draft=false --latest
+            retry gh release edit "$version" --repo "${{ github.repository }}" --draft=false --latest
           else
             echo "publishing $version WITHOUT --latest: $highest is already published and is newer."
             echo "This is the aegis-egqrv4 guard. The release is still published and its"
             echo "assets are still available; it simply does not demote a newer release."
-            gh release edit "$version" --repo "${{ github.repository }}" --draft=false --latest=false
+            retry gh release edit "$version" --repo "${{ github.repository }}" --draft=false --latest=false
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
