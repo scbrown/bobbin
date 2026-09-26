@@ -25,6 +25,9 @@ jobs:
       - name: Private-key refusal controls and tracked-file scan
         run: python3 scripts/check-private-keys.py
 
+      - name: Release deploy checksum regression
+        run: bash scripts/test-deploy-from-release.sh
+
       - name: Crates publication contract
         run: python3 scripts/test-crates-workflow.py
 
