@@ -13,6 +13,7 @@ use crate::types::{ChunkType, FileCategory};
 /// Build a bundle of one-chunk files from `(path, score)` pairs.
 fn bundle_of(files: &[(&str, f32)]) -> ContextBundle {
     ContextBundle {
+        capture: None,
         query: "q".to_string(),
         files: files
             .iter()
