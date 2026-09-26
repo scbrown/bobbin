@@ -29,6 +29,9 @@ pub(super) fn write(
     let mut executable = std::fs::File::open(std::env::current_exe()?)?;
     let mut hash = Sha256::new();
     std::io::copy(&mut executable, &mut hash)?;
+    // Preserve the CLI serializer's f32 representation rather than expanding it
+    // through Value's f64 conversion; the paired baseline must match stdout.
+    let baseline: serde_json::Value = serde_json::from_str(&serde_json::to_string(bundle)?)?;
     let artifact = json!({
         "schema": "bobbin-assembly-capture-v1",
         "scope": "local-context-assembly-only",
@@ -43,7 +46,7 @@ pub(super) fn write(
             "index_snapshot": "not_pinned",
         },
         "capture": bundle.capture.as_ref().context("Assembly capture missing")?,
-        "baseline": bundle,
+        "baseline": baseline,
         "hook_gate": "not_run", "session_dedup": "not_run",
         "replay_ready": false,
         "limitations": [
