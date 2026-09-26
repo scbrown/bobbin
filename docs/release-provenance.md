@@ -30,6 +30,14 @@ the push-to-main run while checking out the resolved version tag. Checking out
 that tag does not change the workflow's signing identity. Tag-triggered recovery
 runs have a different identity and must not pass a verifier pinned to main.
 
+Identity pins the workflow and ref, not the triggering event. A manual dispatch
+against main can share that identity; consumers requiring push events exclusively
+must verify the event separately. See GitHub's [dispatch ref contract][dispatch]
+and [separate OIDC event and workflow claims][oidc].
+
+[dispatch]: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch
+[oidc]: https://docs.github.com/en/actions/reference/security/oidc
+
 Workflow tests exercise both checksum and finalizer shell bodies with synthetic
 archives for all four targets. Removing either metadata filename pattern must
 fail those tests. These tests prove packaging behavior, not GitHub OIDC signing:
