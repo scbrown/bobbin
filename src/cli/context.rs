@@ -1,3 +1,6 @@
+#[path = "context_capture.rs"]
+mod capture;
+
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use colored::Colorize;
@@ -15,6 +18,9 @@ use crate::tags::{build_tag_exclude_filter, build_tag_include_filter};
 
 #[derive(Args)]
 pub struct ContextArgs {
+    /// Write a private assembly diagnostic (not a hook replay), refusing overwrite
+    #[arg(long)]
+    capture_assembly: Option<PathBuf>,
     /// Natural language description of the task
     query: String,
 
@@ -120,6 +126,9 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
 
     let count = vector_store.count().await?;
     if count == 0 {
+        if args.capture_assembly.is_some() {
+            bail!("Cannot capture an empty index");
+        }
         if output.json {
             println!(
                 r#"{{"error": "empty_index", "message": "No indexed content. Run `bobbin index` first."}}"#
@@ -189,6 +198,7 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
     };
 
     let context_config = ContextConfig {
+        capture_candidates: args.capture_assembly.is_some(),
         budget_lines: args.budget,
         budget_unit: config.context.budget_unit,
         depth: args.depth,
@@ -281,6 +291,23 @@ pub async fn run(args: ContextArgs, output: OutputConfig) -> Result<()> {
     bundle
         .files
         .retain(|f| access_filter.is_allowed(RepoFilter::repo_from_path(&f.path)));
+
+    if let Some(path) = &args.capture_assembly {
+        let diagnostic = bundle
+            .capture
+            .as_mut()
+            .context("Assembly capture missing")?;
+        diagnostic
+            .candidates
+            .retain(|c| access_filter.is_allowed(RepoFilter::repo_from_path(&c.path)));
+        capture::write(
+            path,
+            &bundle,
+            &repo_root,
+            &config.embedding.model,
+            &output.role,
+        )?;
+    }
 
     if output.json {
         print_json_output(&bundle)?;
