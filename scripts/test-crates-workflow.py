@@ -80,7 +80,12 @@ sys.exit(int(os.environ.get('REGISTRY_EXIT','0')))
             self.assertNotIn('always()', step.get('if', ''))
             self.assertNotIn('continue-on-error', step)
         auth = next(step for step in steps if step.get('id') == 'crates-auth')
-        publish = next(step for step in steps if step.get('run') == 'cargo publish')
+        # The real publish is the one `cargo publish` step that is not the dry run,
+        # and it must build the committed lockfile (aegis-wvlb1i.3).
+        publish = next(step for step in steps
+                       if step.get('run', '').startswith('cargo publish')
+                       and '--dry-run' not in step.get('run', ''))
+        self.assertIn('--locked', publish['run'])
         self.assertEqual(auth['if'], publish['if'])
         self.assertIn("steps.before.outputs.already != 'true'", auth['if'])
         self.assertIn('DRY RUN', next(step['run'] for step in steps
