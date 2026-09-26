@@ -2,7 +2,7 @@
 
 On Linux x86_64, `bobbin index` detects an NVIDIA GPU through `nvidia-smi`.
 For the local ONNX backend, it installs a pinned ONNX Runtime 1.23.2 and CUDA 12
-userspace runtime in Bobbin's user data directory when a CUDA runtime is missing.
+user space runtime in Bobbin's user data directory when a CUDA runtime is missing.
 It never installs drivers, changes kernel modules, or runs a package manager.
 The first download is large; allow several GB of free disk space.
 
