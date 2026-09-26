@@ -21,6 +21,24 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.20.0](https://github.com/scbrown/bobbin/compare/v0.19.1...v0.20.0) (2026-09-26)
+
+
+### Features
+
+* automatically provision verified GPU runtime for local indexing ([7e5d91b](https://github.com/scbrown/bobbin/commit/7e5d91b87e5edfa2c80bbffe9f9b0e7d48db9b59))
+* **eval:** freeze a reproducible SWE-bench Verified L2 subset ([574c333](https://github.com/scbrown/bobbin/commit/574c333e1ea0da7108596a55ebdd3f5e597ccc79))
+* **eval:** prepare a frozen SWE-bench Verified L2 subset ([59c0b60](https://github.com/scbrown/bobbin/commit/59c0b609610875f9971639857e2ff096d51d7ce0))
+* provision a verified GPU runtime for local indexing ([f0b513d](https://github.com/scbrown/bobbin/commit/f0b513dcec10c5c89af7aaf29215ee0370025f2e))
+
+
+### Bug Fixes
+
+* **deps:** bump yanked chacha20 0.10.1 -&gt; 0.10.2 ([76f3929](https://github.com/scbrown/bobbin/commit/76f3929155631c550da24f8f7d77464b7db188cb))
+* **deps:** chacha20 0.10.1 (yanked) -&gt; 0.10.2 (aegis-vw9iek) ([868a781](https://github.com/scbrown/bobbin/commit/868a78144842954d4229d2db8022b67f73685241))
+* **index:** bound retained tokenizer overflow for long records ([538a584](https://github.com/scbrown/bobbin/commit/538a584e1a39b9d5b360f8ec57bd290faeef774a))
+* **index:** release unused token overflow between records ([8ae5664](https://github.com/scbrown/bobbin/commit/8ae5664ed7613a4f7596123e3dd28eaeb8ae836d))
+
 ## [0.19.1](https://github.com/scbrown/bobbin/compare/v0.19.0...v0.19.1) (2026-09-25)
 
 
