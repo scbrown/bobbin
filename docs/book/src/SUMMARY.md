@@ -22,6 +22,7 @@
 - [Feedback System](guides/feedback.md)
 - [Archive Integration](guides/archive.md)
 - [SQL Sources](guides/sql-sources.md)
+- [Automatic GPU Runtime](guides/gpu-runtime.md)
 - [Watch & Automation](guides/watch-automation.md)
 - [Hooks](guides/hooks.md)
 - [Access Control (RBAC)](guides/access-control.md)

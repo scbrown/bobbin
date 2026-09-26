@@ -93,7 +93,7 @@ anyhow = "1"
 thiserror = "2"
 
 # HTTP client for model downloads
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
 
 # Utilities
 walkdir = "2"
@@ -111,6 +111,7 @@ notify = "6"
 hex = "0.4"
 glob = "0.3"
 tar = "0.4"
+zip = { version = "4.6.1", default-features = false, features = ["deflate"] }
 tempfile = "3"
 zstd = "0.13"
 

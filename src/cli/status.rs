@@ -32,6 +32,8 @@ pub struct StatusArgs {
 
 #[derive(Serialize)]
 struct StatusOutput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gpu: Option<crate::gpu_runtime::Diagnostics>,
     status: String,
     path: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -113,6 +115,7 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
     if !config_path.exists() {
         if output.json {
             let json_output = StatusOutput {
+                gpu: Some(crate::gpu_runtime::diagnostics()),
                 status: "not_initialized".to_string(),
                 path: repo_root.display().to_string(),
                 repos: vec![],
@@ -124,6 +127,7 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
             };
             println!("{}", serde_json::to_string_pretty(&json_output)?);
         } else if !output.quiet {
+            crate::gpu_runtime::diagnostics().print();
             println!(
                 "{} Bobbin not initialized in {}",
                 "!".yellow(),
@@ -160,6 +164,7 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
 
     if output.json {
         let json_output = StatusOutput {
+            gpu: Some(crate::gpu_runtime::diagnostics()),
             status: "ready".to_string(),
             path: data_dir.display().to_string(),
             repos,
@@ -175,6 +180,8 @@ pub async fn run(args: StatusArgs, output: OutputConfig) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&json_output)?);
     } else if !output.quiet {
         println!("{} Bobbin status for {}", "✓".green(), repo_root.display());
+
+        crate::gpu_runtime::diagnostics().print();
 
         // --- Index section ---
         println!("\n{}", "Index".bold());
@@ -522,6 +529,7 @@ async fn run_remote(args: StatusArgs, output: OutputConfig, server_url: &str) ->
 
     if output.json {
         let json_output = StatusOutput {
+            gpu: None,
             status: resp.status,
             path: server_url.to_string(),
             repos: vec![],
@@ -585,45 +593,5 @@ async fn run_remote(args: StatusArgs, output: OutputConfig, server_url: &str) ->
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_freshness_head_newer_is_stale() {
-        // HEAD committed after the last index run => stale.
-        let f = Freshness::compute(2_000, Some(1_000));
-        assert!(f.stale);
-        assert_eq!(f.head_commit_time, 2_000);
-        assert_eq!(f.last_indexed, Some(1_000));
-    }
-
-    #[test]
-    fn test_freshness_head_older_is_fresh() {
-        // No commits since the last index (quiet repo) => not stale. This is
-        // the false-positive guard: age alone must not flag an idle repo.
-        let f = Freshness::compute(1_000, Some(2_000));
-        assert!(!f.stale);
-    }
-
-    #[test]
-    fn test_freshness_equal_is_fresh() {
-        let f = Freshness::compute(1_000, Some(1_000));
-        assert!(!f.stale);
-    }
-
-    #[test]
-    fn test_freshness_never_indexed_is_stale() {
-        let f = Freshness::compute(1_000, None);
-        assert!(f.stale);
-        assert_eq!(f.last_indexed, None);
-    }
-
-    #[test]
-    fn test_format_duration_units() {
-        assert_eq!(format_duration(30), "30s");
-        assert_eq!(format_duration(120), "2m");
-        assert_eq!(format_duration(7_200), "2h");
-        assert_eq!(format_duration(172_800), "2d");
-        assert_eq!(format_duration(-5), "0s");
-    }
-}
+#[path = "status_tests.rs"]
+mod tests;
