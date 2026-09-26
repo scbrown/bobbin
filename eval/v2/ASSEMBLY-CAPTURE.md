@@ -42,3 +42,7 @@ declare candidate selection and score normalization, and join gold only after
 capture. Human labels, a model/client revision and a preregistered protocol remain
 gates before a model-assisted run. This diagnostic makes those inputs inspectable;
 it is not evidence of a density or recall improvement.
+
+For an isolated execution of the actual remote hook against a frozen response,
+see [HOOK-REPLAY.md](HOOK-REPLAY.md). It exposes gate/dedup/render behavior but
+does not turn a local assembly capture into a production retrieval capture.
