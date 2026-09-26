@@ -2367,6 +2367,7 @@ fn apply_tag_effects(
 #[cfg(test)]
 mod tests {
     use super::*;
+    include!("context_budget_tests.rs");
 
     #[test]
     fn test_file_path_from_entity_iri_live_shapes() {
@@ -3051,7 +3052,3 @@ mod tests {
 #[cfg(test)]
 #[path = "context_content_tests.rs"]
 mod content_tests;
-
-#[cfg(test)]
-#[path = "context_budget_tests.rs"]
-mod budget_tests;
