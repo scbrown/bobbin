@@ -61,7 +61,9 @@ gh release download "$TAG" --repo "$REPO" -p "$tarball" -p 'SHA256SUMS.txt' -D "
 # EMPTY filter and `-c` then reports "no properly formatted checksum lines", which
 # is a FAILURE here rather than a pass. That is the case this whole script exists to
 # avoid, so it must not degrade to a warning.
-if ! grep -F "  $tarball" "$work/SHA256SUMS.txt" > "$work/want.sha256"; then
+# Compare the filename field exactly: signature/SBOM sidecars share its prefix.
+if ! awk -v asset="$tarball" '$2 == asset { print; found=1 } END { exit !found }' \
+    "$work/SHA256SUMS.txt" > "$work/want.sha256"; then
   echo "REFUSED: $tarball has no entry in SHA256SUMS.txt — nothing to verify against" >&2
   exit 1
 fi
