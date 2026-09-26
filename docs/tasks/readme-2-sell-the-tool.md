@@ -84,7 +84,7 @@ Add at the top:
 
 Standard markdown badge format:
 ```markdown
-[![Crates.io](https://img.shields.io/crates/v/bobbin.svg)](https://crates.io/crates/bobbin)
+[![Crates.io](https://img.shields.io/crates/v/bobbin-ai.svg)](https://crates.io/crates/bobbin-ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ```
 
