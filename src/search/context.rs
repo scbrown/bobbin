@@ -1,3 +1,6 @@
+#[path = "context_capture.rs"]
+pub mod capture;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -133,6 +136,8 @@ fn file_path_from_entity_iri(iri: &str) -> Option<String> {
 
 /// Configuration for context assembly
 pub struct ContextConfig {
+    /// Opt-in diagnostic capture; never enabled by the production hook.
+    pub capture_candidates: bool,
     pub budget_lines: usize,
     /// Unit the budget is enforced in: `Line` (count source lines) or `Token`
     /// (estimate tokens per chunk). When `Token`, `budget_lines` and all derived
@@ -219,6 +224,7 @@ pub struct ContextConfig {
 impl Default for ContextConfig {
     fn default() -> Self {
         Self {
+            capture_candidates: false,
             budget_lines: 500,
             budget_unit: BudgetUnit::Line,
             depth: 1,
@@ -268,6 +274,9 @@ pub enum ContentMode {
 /// The assembled context bundle
 #[derive(Debug, Serialize)]
 pub struct ContextBundle {
+    /// Private diagnostic state, excluded from the existing wire format.
+    #[serde(skip)]
+    pub capture: Option<capture::AssemblyCapture>,
     pub query: String,
     pub files: Vec<ContextFile>,
     pub budget: BudgetInfo,
@@ -1617,6 +1626,18 @@ fn assemble_bundle(
         seed_results
     };
 
+    let mut capture = config.capture_candidates.then(|| {
+        capture::snapshot(
+            config,
+            &seed_results,
+            &coupled_chunks,
+            &bridged_chunks,
+            &knowledge_chunks,
+            &neighbor_chunks,
+            &is_noise_path,
+        )
+    });
+
     // Partition into pinned and normal results
     let (pinned_results, normal_results): (Vec<SeedResult>, Vec<SeedResult>) =
         seed_results.into_iter().partition(|r| r.is_pinned);
@@ -1642,6 +1663,10 @@ fn assemble_bundle(
     } else {
         budget / 5
     };
+
+    if let Some(ref mut capture) = capture {
+        capture.policy["pin_budget_reserve"] = pin_budget_reserve.into();
+    }
 
     let mut context_files: Vec<ContextFile> = Vec::new();
 
@@ -2263,6 +2288,7 @@ fn assemble_bundle(
         .count();
 
     Ok(ContextBundle {
+        capture,
         query: query.to_string(),
         files: context_files,
         budget: BudgetInfo {
@@ -2341,6 +2367,7 @@ fn apply_tag_effects(
 #[cfg(test)]
 mod tests {
     use super::*;
+    include!("context_budget_tests.rs");
 
     #[test]
     fn test_file_path_from_entity_iri_live_shapes() {
@@ -2380,132 +2407,6 @@ mod tests {
             file_path_from_entity_iri("http://aegis.gastown.local/ontology/CodeModule"),
             None
         );
-    }
-
-    #[test]
-    fn test_content_mode_full() {
-        let result = format_content("line1\nline2\nline3\nline4\nline5", ContentMode::Full);
-        assert_eq!(
-            result,
-            Some("line1\nline2\nline3\nline4\nline5".to_string())
-        );
-    }
-
-    #[test]
-    fn test_content_mode_preview_long() {
-        let result = format_content("line1\nline2\nline3\nline4\nline5", ContentMode::Preview);
-        assert_eq!(result, Some("line1\nline2\nline3...".to_string()));
-    }
-
-    #[test]
-    fn test_content_mode_preview_short() {
-        let result = format_content("line1\nline2", ContentMode::Preview);
-        assert_eq!(result, Some("line1\nline2".to_string()));
-    }
-
-    #[test]
-    fn test_content_mode_none() {
-        let result = format_content("line1\nline2\nline3", ContentMode::None);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_budget_enforcement() {
-        let config = ContextConfig {
-            budget_lines: 10,
-            depth: 0,
-            max_coupled: 3,
-            coupling_threshold: 0.1,
-            semantic_weight: 0.7,
-            content_mode: ContentMode::Full,
-            search_limit: 20,
-            doc_demotion: 0.5,
-            rrf_k: 60.0,
-            recency_half_life_days: 0.0,
-            recency_weight: 0.0,
-            bridge_mode: BridgeMode::Inject,
-            bridge_boost_factor: 0.3,
-            extra_filter: None,
-            tags_config: None,
-            role: None,
-            file_type_rules: vec![],
-            repo_affinity: None,
-            repo_affinity_boost: 2.0,
-            ppr_weight: 0.0,
-            max_bridged_files: 3,
-            max_bridged_chunks_per_file: 2,
-            repo_path_prefix: None,
-            ..ContextConfig::default()
-        };
-
-        let seeds = vec![
-            make_seed("c1", "a.rs", 1, 6, 0.9), // 6 lines
-            make_seed("c2", "b.rs", 1, 8, 0.8), // 8 lines - won't fit (6+8 > 10)
-            make_seed("c3", "c.rs", 1, 3, 0.7), // 3 lines - fits (6+3 = 9 <= 10)
-        ];
-
-        let bundle =
-            assemble_bundle("test", &config, seeds, vec![], vec![], vec![], vec![]).unwrap();
-
-        assert!(bundle.budget.used_lines <= bundle.budget.max_lines);
-        assert_eq!(bundle.budget.max_lines, 10);
-    }
-
-    #[test]
-    fn test_estimate_tokens() {
-        assert_eq!(estimate_tokens(""), 0);
-        assert_eq!(estimate_tokens("a"), 1); // 1 char rounds up to 1 token
-        assert_eq!(estimate_tokens("abcd"), 1); // 4 chars => 1
-        assert_eq!(estimate_tokens("abcde"), 2); // 5 chars => ceil(5/4) = 2
-        assert_eq!(estimate_tokens(&"x".repeat(40)), 10); // 40 chars => 10
-    }
-
-    #[test]
-    fn test_budget_unit_roundtrip() {
-        for unit in [BudgetUnit::Line, BudgetUnit::Token] {
-            let s = unit.to_string();
-            let parsed: BudgetUnit = s.parse().unwrap();
-            assert_eq!(unit, parsed);
-        }
-        assert_eq!(BudgetUnit::default(), BudgetUnit::Line);
-    }
-
-    #[test]
-    fn test_token_budget_enforcement() {
-        // Token mode counts a chunk's cost from its *content* (~chars/4), not its
-        // line span. A chunk with a huge line span but tiny content is cheap.
-        let config = ContextConfig {
-            budget_lines: 20, // interpreted as 20 tokens here
-            budget_unit: BudgetUnit::Token,
-            depth: 0,
-            bridge_mode: BridgeMode::Inject,
-            ..ContextConfig::default()
-        };
-
-        // a.rs: 199-line span but only 32 chars => 8 tokens (admitted despite span)
-        let mut a = make_seed("c1", "a.rs", 1, 200, 0.9);
-        a.content = "x".repeat(32);
-        // b.rs: 40 chars => 10 tokens; 8 + 10 = 18 <= 20, fits
-        let mut b = make_seed("c2", "b.rs", 1, 5, 0.8);
-        b.content = "x".repeat(40);
-        // c.rs: 16 chars => 4 tokens; 18 + 4 = 22 > 20, dropped
-        let mut c = make_seed("c3", "c.rs", 1, 3, 0.7);
-        c.content = "x".repeat(16);
-
-        let bundle = assemble_bundle(
-            "test",
-            &config,
-            vec![a, b, c],
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-        )
-        .unwrap();
-
-        assert_eq!(bundle.budget.max_lines, 20);
-        assert_eq!(bundle.budget.used_lines, 18); // tokens, not lines
-        assert_eq!(bundle.summary.total_chunks, 2); // c dropped on budget
     }
 
     #[test]
@@ -3147,3 +3048,7 @@ mod tests {
         assert_eq!(bundle.files[0].path, "a.rs");
     }
 }
+
+#[cfg(test)]
+#[path = "context_content_tests.rs"]
+mod content_tests;
