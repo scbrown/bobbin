@@ -34,7 +34,7 @@ if value.get("fail"):
     sys.exit(3)
 if value.get("mutate"):
     with open(sys.argv[0], "a") as out: out.write("# changed\\n")
-if text:
+if text or "recorded" in value:
     data = json.dumps({"formatted_output": value.get("recorded", text)}).encode()
     urllib.request.urlopen(urllib.request.Request(url + "/injections", data=data)).close()
 sys.stdout.write(text)
@@ -69,6 +69,7 @@ def test_real_process_and_loopback_roundtrip_isolated(binary, monkeypatch):
     "response,match",
     [
         ({"output": "a", "recorded": "b"}, "disagree"),
+        ({"output": "", "recorded": "b"}, "disagree"),
         ({"unexpected": True}, "unsupported endpoint"),
         ({"fail": True}, "exited 3"),
         ({"mutate": True}, "changed during"),

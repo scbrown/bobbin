@@ -91,7 +91,7 @@ def validate_config(config: str) -> None:
     }
     for section, values in parsed.items():
         if not isinstance(values, dict):
-            raise ValueError("diagnostic config requires tables")
+            raise ValueError("diagnostic config requires tables")  # noqa: TRY004 -- invalid TOML schema
         for key, value in values.items():
             expected = allowed[section].get(key)
             if expected is None or type(value) is not expected:
@@ -183,7 +183,9 @@ def capture_hook(
         posts = [r["body"] for r in requests if r["method"] == "POST"]
         if result.returncode != 0:
             raise ValueError(f"hook exited {result.returncode}; no successful replay")
-        if result.stdout and (len(posts) != 1 or posts[0].get("formatted_output") != result.stdout):
+        if (result.stdout or posts) and (
+            len(posts) != 1 or posts[0].get("formatted_output") != result.stdout
+        ):
             raise ValueError("hook stdout and recorded injection disagree")
         return {
             "schema": "bobbin-hook-replay-v1",
