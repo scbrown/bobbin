@@ -5087,6 +5087,7 @@ async fn run_post_tool_use_inner(args: PostToolUseArgs) -> Result<()> {
                         return Ok(());
                     }
                     crate::search::context::ContextBundle {
+                        capture: None,
                         query: query.clone(),
                         files: vec![],
                         budget: crate::search::context::BudgetInfo {
@@ -7252,6 +7253,7 @@ mod tests {
     #[test]
     fn test_format_context_empty_bundle() {
         let bundle = ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![],
             budget: BudgetInfo {
@@ -7280,6 +7282,7 @@ mod tests {
     #[test]
     fn test_format_context_with_results() {
         let bundle = ContextBundle {
+            capture: None,
             query: "auth handler".to_string(),
             files: vec![ContextFile {
                 path: "src/auth.rs".to_string(),
@@ -7329,6 +7332,7 @@ mod tests {
     #[test]
     fn test_format_context_with_injection_id() {
         let bundle = ContextBundle {
+            capture: None,
             query: "auth handler".to_string(),
             files: vec![ContextFile {
                 path: "src/auth.rs".to_string(),
@@ -7396,6 +7400,7 @@ mod tests {
     #[test]
     fn test_format_context_threshold_filters() {
         let bundle = ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![ContextFile {
                 path: "src/low.rs".to_string(),
@@ -7616,6 +7621,7 @@ mod tests {
     fn test_format_context_for_injection_respects_budget() {
         // Build a bundle with many chunks that would exceed a small budget
         let bundle = ContextBundle {
+            capture: None,
             query: "auth".to_string(),
             files: vec![ContextFile {
                 path: "src/a.rs".to_string(),
@@ -7686,6 +7692,7 @@ mod tests {
     #[test]
     fn test_format_context_for_injection_score_format() {
         let bundle = ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![ContextFile {
                 path: "src/x.rs".to_string(),
@@ -7737,6 +7744,7 @@ mod tests {
     #[test]
     fn test_format_context_show_docs_false_excludes_doc_files() {
         let bundle = ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![
                 ContextFile {
@@ -7833,6 +7841,7 @@ mod tests {
     #[test]
     fn test_format_context_budget_zero() {
         let bundle = ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![ContextFile {
                 path: "src/a.rs".to_string(),
@@ -7884,6 +7893,7 @@ mod tests {
     fn test_format_context_no_content() {
         // Test formatting when content is None (ContentMode::None)
         let bundle = ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![ContextFile {
                 path: "src/a.rs".to_string(),
@@ -7929,49 +7939,7 @@ mod tests {
         assert!(result.contains("fn_a"));
     }
 
-    // Helper to create a standard test bundle for format mode tests.
-    fn make_format_test_bundle() -> ContextBundle {
-        ContextBundle {
-            query: "auth handler".to_string(),
-            files: vec![ContextFile {
-                path: "src/auth.rs".to_string(),
-                language: "rust".to_string(),
-                relevance: FileRelevance::Direct,
-                category: classify_file("src/auth.rs"),
-                score: 0.85,
-                coupled_to: vec![],
-                repo: None,
-                chunks: vec![ContextChunk {
-                    id: String::new(),
-                    name: Some("authenticate".to_string()),
-                    chunk_type: ChunkType::Function,
-                    start_line: 10,
-                    end_line: 25,
-                    score: 0.85,
-                    match_type: Some(MatchType::Hybrid),
-                    content: Some("fn authenticate() {\n    // check token\n}".to_string()),
-                }],
-            }],
-            budget: BudgetInfo {
-                max_lines: 150,
-                used_lines: 16,
-                pinned_lines: 0,
-            },
-            summary: ContextSummary {
-                structural_additions: 0,
-                total_files: 1,
-                total_chunks: 1,
-                direct_hits: 1,
-                coupled_additions: 0,
-                bridged_additions: 0,
-                source_files: 1,
-                doc_files: 0,
-                top_semantic_score: 0.85,
-                pinned_chunks: 0,
-                knowledge_additions: 0,
-            },
-        }
-    }
+    include!("hook_format_fixture.rs");
 
     #[test]
     fn test_format_mode_standard() {
@@ -8780,6 +8748,7 @@ mod tests {
     #[test]
     fn test_compute_session_id_deterministic() {
         let bundle = ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![ContextFile {
                 path: "src/a.rs".to_string(),
@@ -8841,6 +8810,7 @@ mod tests {
     #[test]
     fn test_compute_session_id_changes_with_different_chunks() {
         let make_bundle = |start: u32| ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![ContextFile {
                 path: "src/a.rs".to_string(),
@@ -8889,6 +8859,7 @@ mod tests {
     #[test]
     fn test_compute_session_id_filters_by_threshold() {
         let bundle = ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![ContextFile {
                 path: "src/a.rs".to_string(),
@@ -8951,6 +8922,7 @@ mod tests {
     #[test]
     fn test_compute_session_id_empty_bundle() {
         let bundle = ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![],
             budget: BudgetInfo {
@@ -8994,6 +8966,7 @@ mod tests {
             .collect();
 
         let bundle_all = ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![ContextFile {
                 path: "src/a.rs".to_string(),
@@ -9043,6 +9016,7 @@ mod tests {
             .collect();
 
         let bundle_ten = ContextBundle {
+            capture: None,
             query: "test".to_string(),
             files: vec![ContextFile {
                 path: "src/a.rs".to_string(),

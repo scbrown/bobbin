@@ -132,3 +132,7 @@ arm errored/degraded and was recorded; 2 means invalid input or output refusal.
 Retain full audit records; these nested JSON artifacts are distinct from ordinary
 L0 score-only JSONL. Do not feed them directly into `l0-report` and silently drop
 availability information.
+
+Local assembly diagnostics are available through `context --capture-assembly`;
+see [ASSEMBLY-CAPTURE.md](ASSEMBLY-CAPTURE.md). This freezes the packing inputs and
+assembly baseline, but does not supply the complete hook capture required above.
