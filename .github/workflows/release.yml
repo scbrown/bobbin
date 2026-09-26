@@ -50,6 +50,8 @@ jobs:
       # not put this permission on the workflow globally: only build and the
       # finalizer need to mutate release assets.
       contents: write
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -116,6 +118,11 @@ jobs:
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
+      - name: Install release metadata tools
+        run: |
+          cargo install cargo-auditable --version 0.7.6 --locked
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+
       - name: Build
         shell: bash
         env:
@@ -169,7 +176,7 @@ jobs:
           # silently compiled out (bobbin-jdlkh). Do not drop this flag.
           # --locked: build exactly the committed Cargo.lock. Without it cargo may
           # re-resolve and ship a dependency graph no one reviewed.
-          cargo build --release --locked --features knowledge --target ${{ matrix.target }}
+          cargo auditable build --release --locked --features knowledge --target ${{ matrix.target }}
 
       - name: Download ONNX Runtime
         shell: bash
@@ -216,6 +223,43 @@ jobs:
 
           tar czvf "${STAGING}.tar.gz" "$STAGING"
 
+      - name: Generate Rust dependency SBOM
+        shell: bash
+        run: |
+          cargo cyclonedx --format json --spec-version 1.5 --all \
+            --features knowledge --target "${{ matrix.target }}" \
+            --override-filename "bobbin-${{ env.VERSION }}-${{ matrix.target }}.cdx"
+          # Metadata generation must not silently re-resolve the release lockfile.
+          git diff --exit-code -- Cargo.lock
+          test -s "bobbin-${{ env.VERSION }}-${{ matrix.target }}.cdx.json"
+
+      # Production verification pins release.yml@refs/heads/main. The normal
+      # release-please path runs on main even though Checkout reads VERSION.
+      # Recovery runs from tags retain their own identity; do not rewrite it.
+      - name: Attest build provenance
+        id: provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+            target/${{ matrix.target }}/release/bobbin
+
+      - name: Attest Rust dependency SBOM
+        id: sbom
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+          sbom-path: bobbin-${{ env.VERSION }}-${{ matrix.target }}.cdx.json
+
+      - name: Preserve offline attestation bundles
+        shell: bash
+        env:
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.sbom.outputs.bundle-path }}
+        run: |
+          cp "$PROVENANCE_BUNDLE" "bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sigstore.json"
+          cp "$SBOM_BUNDLE" "bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sbom.sigstore.json"
+
       - name: Build repository index pack
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
@@ -250,6 +294,9 @@ jobs:
           name: bobbin-${{ matrix.target }}
           path: |
             bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.cdx.json
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sigstore.json
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sbom.sigstore.json
             bobbin-${{ env.VERSION }}-repository.bbpack
             bobbin-${{ env.VERSION }}-repository.bbpack.sha256
 
@@ -298,6 +345,9 @@ jobs:
           draft: true
           files: |
             bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.cdx.json
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sigstore.json
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sbom.sigstore.json
             bobbin-${{ env.VERSION }}-repository.bbpack
             bobbin-${{ env.VERSION }}-repository.bbpack.sha256
             SHA256SUMS.txt
@@ -317,6 +367,9 @@ jobs:
           draft: true
           files: |
             bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.cdx.json
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sigstore.json
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sbom.sigstore.json
             bobbin-${{ env.VERSION }}-repository.bbpack
             bobbin-${{ env.VERSION }}-repository.bbpack.sha256
             SHA256SUMS.txt
@@ -330,7 +383,11 @@ jobs:
         with:
           tag_name: ${{ env.VERSION }}
           draft: true
-          files: bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+          files: |
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.cdx.json
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sigstore.json
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sbom.sigstore.json
           fail_on_unmatched_files: true
 
       - name: Back off before retrying publish target archive immediately
@@ -343,7 +400,11 @@ jobs:
         with:
           tag_name: ${{ env.VERSION }}
           draft: true
-          files: bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+          files: |
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.cdx.json
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sigstore.json
+            bobbin-${{ env.VERSION }}-${{ matrix.target }}.${{ matrix.archive }}.sbom.sigstore.json
           fail_on_unmatched_files: true
 
   checksums:
@@ -359,7 +420,7 @@ jobs:
       - name: Generate SHA256 checksums
         run: |
           cd artifacts
-          find . -type f \( -name "*.tar.gz" -o -name "*.bbpack" -o -name "*.bbpack.sha256" \) -exec mv {} . \;
+          find . -type f \( -name "*.tar.gz" -o -name "*.bbpack" -o -name "*.bbpack.sha256" -o -name "*.cdx.json" -o -name "*.sigstore.json" \) -exec mv {} . \;
           rm -rf bobbin-*/
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
@@ -412,7 +473,7 @@ jobs:
             rm -rf "$ARM_DIR"
           fi
 
-          find . -type f \( -name "*.tar.gz" -o -name "*.bbpack" -o -name "*.bbpack.sha256" -o -name "SHA256SUMS.txt" -o -name "bobbin-linux-*" -o -name "libonnxruntime-linux-*.so" \) -exec mv {} . \; 2>/dev/null || true
+          find . -type f \( -name "*.tar.gz" -o -name "*.bbpack" -o -name "*.bbpack.sha256" -o -name "*.cdx.json" -o -name "*.sigstore.json" -o -name "SHA256SUMS.txt" -o -name "bobbin-linux-*" -o -name "libonnxruntime-linux-*.so" \) -exec mv {} . \; 2>/dev/null || true
           rm -rf bobbin-*/ checksums/
 
           # The checksums job runs before the standalone Linux binaries are
