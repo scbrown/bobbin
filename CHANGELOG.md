@@ -21,6 +21,14 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.20.1](https://github.com/scbrown/bobbin/compare/v0.20.0...v0.20.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **deploy:** match release checksum filenames exactly ([7dec602](https://github.com/scbrown/bobbin/commit/7dec602081110fb61cbc40c9a3e58d0b9168ba0a))
+* **deploy:** match release checksum filenames exactly ([9a027bb](https://github.com/scbrown/bobbin/commit/9a027bb70d5a40f58cbdfdd33343a2db8b1d059a))
+
 ## [0.20.0](https://github.com/scbrown/bobbin/compare/v0.19.1...v0.20.0) (2026-09-26)
 
 
