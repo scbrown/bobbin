@@ -8,6 +8,7 @@ mod cli;
 mod commands;
 pub mod config;
 mod errors;
+mod gpu_runtime;
 mod http;
 mod index;
 mod iri;
@@ -44,7 +45,7 @@ fn ensure_ort_dylib() {
         return;
     }
 
-    if let Some(path) = find_ort_dylib() {
+    if let Some(path) = find_ort_dylib().or_else(gpu_runtime::cached_ort) {
         std::env::set_var("ORT_DYLIB_PATH", &path);
     }
 }
@@ -200,10 +201,15 @@ mod ort_loader_tests {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+    cli.prepare_gpu()?;
     ensure_ort_dylib();
+    run(cli)
+}
 
+#[tokio::main]
+async fn run(cli: Cli) -> Result<()> {
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(
@@ -212,6 +218,5 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let cli = Cli::parse();
     cli.run().await
 }

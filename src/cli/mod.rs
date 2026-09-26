@@ -259,6 +259,21 @@ impl Commands {
 }
 
 impl Cli {
+    /// Provision only for a local index, before Tokio and the ORT singleton start.
+    pub fn prepare_gpu(&self) -> Result<()> {
+        if resolve_server_url(self.server.clone()).is_none() {
+            if let Commands::Index(args) = &self.command {
+                let path = crate::config::Config::config_path(&args.path);
+                if !path.is_file() {
+                    return Ok(());
+                }
+                let config = crate::config::Config::load(&path)?;
+                crate::gpu_runtime::prepare(&config.embedding)?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn run(self) -> Result<()> {
         let resolved_role = crate::access::RepoFilter::resolve_role(self.role.as_deref());
         // Resolve server URL: --server flag / BOBBIN_SERVER env > repo config > global config
