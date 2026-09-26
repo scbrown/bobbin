@@ -158,6 +158,8 @@ assert 'name "*.bbpack"' in release
 
 print("release workflow contract: ok")
 
+subprocess.run([sys.executable, "scripts/test-release-provenance.py"], check=True)
+
 
 # ── The `latest` marker must be DECIDED, not asserted (aegis-egqrv4) ──────────
 #
