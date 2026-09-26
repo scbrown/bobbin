@@ -843,6 +843,7 @@ dependencies = [
  "tree-sitter-typescript",
  "urlencoding",
  "walkdir",
+ "zip",
  "zstd",
 ]
 

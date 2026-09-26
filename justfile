@@ -144,9 +144,8 @@ eval_budget := "100.00"
 eval_timeout := "3600"
 eval_index_timeout := "600"
 
-# GPU env for bobbin index during evals (auto-detected, but ORT_DYLIB_PATH needed for GPU .so)
-export ORT_DYLIB_PATH := "/usr/local/lib/onnxruntime-gpu/libonnxruntime.so"
-export LD_LIBRARY_PATH := "/usr/local/cuda-12.8/lib64:/usr/local/lib/onnxruntime-gpu"
+# Runtime paths are discovered by Bobbin or supplied by the caller. Do not
+# override them globally: a host-specific path also breaks CPU-only tests.
 
 # Run a single eval task: just eval-task flask-001
 eval-task task_id:

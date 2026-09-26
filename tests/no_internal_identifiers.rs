@@ -61,7 +61,43 @@ fn patterns() -> Vec<(&'static str, regex::Regex)> {
 
 /// A hit is real unless it is a known placeholder. Split out so both the scan and
 /// its controls apply the identical rule.
-fn is_real_hit(label: &str, caps: &regex::Captures) -> bool {
+// This exact upstream package version resembles a private IPv4 address. Keep
+// the exception bound to its URL and checksum in one JSON artifact record.
+// The same digits outside that URL remain forbidden, even in the same record.
+const PUBLIC_PACKAGE_URL: &str = "https://files.pythonhosted.org/packages/fb/aa/6584b56dc84ebe9cf93226a5cde4d99080c8e90ab40f0c27bda7a0f29aa1/nvidia_curand_cu12-10.3.9.90-py3-none-manylinux_2_27_x86_64.whl";
+
+const PUBLIC_PACKAGE_SHA256: &str =
+    "b32331d4f4df5d6eefa0554c565b626c7216f87a06a4f56fab27c3b68a830ec9";
+
+fn is_real_hit(label: &str, caps: &regex::Captures, text: &str) -> bool {
+    if label == "private address" {
+        let hit = caps.get(0).unwrap();
+        // Inspect only the flat JSON object containing this match. A checksum
+        // elsewhere in the file cannot authorize another URL occurrence.
+        for object in regex::Regex::new(r"\{[^{}]*\}").unwrap().find_iter(text) {
+            if hit.start() < object.start() || hit.end() > object.end() {
+                continue;
+            }
+            let Ok(record) = serde_json::from_str::<serde_json::Value>(object.as_str()) else {
+                continue;
+            };
+            if record["url"].as_str() != Some(PUBLIC_PACKAGE_URL)
+                || record["sha256"].as_str() != Some(PUBLIC_PACKAGE_SHA256)
+            {
+                continue;
+            }
+            if object
+                .as_str()
+                .match_indices(PUBLIC_PACKAGE_URL)
+                .any(|(offset, url)| {
+                    let start = object.start() + offset;
+                    hit.start() >= start && hit.end() <= start + url.len()
+                })
+            {
+                return false;
+            }
+        }
+    }
     if label == "operator home path" {
         let account = caps.get(1).map_or("", |m| m.as_str());
         return !PLACEHOLDER_ACCOUNTS.contains(&account);
@@ -101,7 +137,10 @@ fn no_internal_identifiers_in_any_tracked_file() {
         };
         let text = String::from_utf8_lossy(&bytes);
         for (label, rx) in &pats {
-            if let Some(caps) = rx.captures_iter(&text).find(|c| is_real_hit(label, c)) {
+            if let Some(caps) = rx
+                .captures_iter(&text)
+                .find(|c| is_real_hit(label, c, &text))
+            {
                 let rel = path.strip_prefix(root()).unwrap_or(&path);
                 offenders.push(format!(
                     "{}: {} {:?}",
@@ -135,7 +174,10 @@ fn the_ratchet_catches_each_class() {
         ("internal node name", "rebuilt on koror overnight"),
     ] {
         let caught = pats.iter().any(|(label, rx)| {
-            *label == expect && rx.captures_iter(sample).any(|c| is_real_hit(label, &c))
+            *label == expect
+                && rx
+                    .captures_iter(sample)
+                    .any(|c| is_real_hit(label, &c, sample))
         });
         assert!(caught, "the ratchet missed a planted {expect}: {sample:?}");
     }
@@ -153,8 +195,41 @@ fn placeholders_and_public_addresses_are_allowed() {
         "the derivative activation of a motivation",
     ] {
         for (label, rx) in &pats {
-            let hit = rx.captures_iter(ok).any(|c| is_real_hit(label, &c));
+            let hit = rx.captures_iter(ok).any(|c| is_real_hit(label, &c, ok));
             assert!(!hit, "{label} wrongly flagged an allowed sample: {ok:?}");
         }
+    }
+}
+
+#[test]
+fn public_package_exception_does_not_hide_real_addresses() {
+    let (_, rx) = patterns()
+        .into_iter()
+        .find(|(label, _)| *label == "private address")
+        .unwrap();
+    let record = serde_json::json!({"url": PUBLIC_PACKAGE_URL, "sha256": PUBLIC_PACKAGE_SHA256});
+    let valid = record.to_string();
+    let mut wrong_sha = record.clone();
+    wrong_sha["sha256"] = "wrong".into();
+    let mut extra_address = record.clone();
+    extra_address["note"] = "connect to 10.3.9.90".into();
+    for (text, expected) in [
+        (valid.clone(), 0),
+        (PUBLIC_PACKAGE_URL.to_string(), 1),
+        (format!("{valid} connect to 10.3.9.90"), 1),
+        (extra_address.to_string(), 1),
+        (wrong_sha.to_string(), 1),
+        (format!("[{valid}, {wrong_sha}]"), 1),
+        (
+            valid.replace("files.pythonhosted.org", "example.invalid"),
+            1,
+        ),
+        ("version = 10.3.9.90".into(), 1),
+    ] {
+        let caught = rx
+            .captures_iter(&text)
+            .filter(|c| is_real_hit("private address", c, &text))
+            .count();
+        assert_eq!(caught, expected, "{text}");
     }
 }
