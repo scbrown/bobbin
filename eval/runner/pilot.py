@@ -92,14 +92,14 @@ def process_env(env):
         os.environ.update(old)
 
 
-def isolated_env(home):
+def isolated_env(home, *, copy_credentials=True):
     """Copy auth, never symlink or mutate the real user's configuration."""
     real_home = Path.home()
     home.mkdir(mode=0o700)
     config = home / ".claude"
     config.mkdir(mode=0o700)
     credentials = real_home / ".claude" / ".credentials.json"
-    if credentials.exists():
+    if copy_credentials and credentials.exists():
         shutil.copyfile(credentials, config / ".credentials.json")
         (config / ".credentials.json").chmod(0o600)
     env = {k: v for k, v in os.environ.items()
@@ -130,6 +130,14 @@ def grade(ws, command, env, timeout):
         m = re.search(r"Ran (\d+) tests? in", output)
         if m:
             counts = {"total": int(m[1]), "skipped": 0}
+    if not counts:
+        # Typst's custom harness has no cargo `test result:` prefix. Its
+        # explicit full summary proves execution; a bare exit zero does not.
+        summaries = re.findall(r"(?m)^(\d+) passed, (\d+) failed, (\d+) skipped\s*$", output)
+        if summaries:
+            executed = sum(int(passed) + int(failed) for passed, failed, _ in summaries)
+            skipped = sum(int(skipped) for _, _, skipped in summaries)
+            counts = {"total": executed + skipped, "skipped": skipped}
     executed = counts.get("total", 0) - counts.get("skipped", 0)
     return {"passed": rc == 0 and executed > 0, "valid": executed > 0,
             "executed": executed, "exit_code": rc, "output": output[-50000:],

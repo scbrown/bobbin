@@ -213,6 +213,22 @@ changed rule are labelled as such.
 
 ## Amendment log
 
+- 2026-09-27, after a partial pilot: conservative continuation must skip every
+  previously attempted task, including fixture failures and incomplete pairs. The
+  original run has two complete tasks (eight cells), one incomplete task (one of four
+  cells, turn-capped), and eight fixture exclusions. The incomplete task remains
+  explicitly incomplete. Original complete tasks may be reported alongside the
+  continuation as descriptive pilot data only when their pins verify byte-for-byte;
+  source-run labels remain visible. The 19 untouched tasks must all receive free
+  parent/fix controls first; failed controls are fixture exclusions, never arm outcomes.
+  A fresh runtime library lock must derive from the original verified archives, and
+  an exclusive continuation claim must prevent duplicate spending. The read-only
+  [recovery planner and fixture preflight](PILOT_RECOVERY.md) do not implement or
+  authorize paid continuation. Implementation review, complete checks and the posted
+  fixture-control report are required before any paid cell. Full-study approval is
+  unchanged. The grader now recognizes explicit custom Typst result counts; prior
+  recorded outcomes are preserved rather than silently rewritten.
+
 - 2026-09-25: [L2 dataset preparation](SWE_BENCH_VERIFIED.md) freezes 23 external
   SWE-bench Verified instances from 12 repositories by a pre-outcome, fixed-seed
   selection. Gold/test records remain evaluator-only. This is exploratory dataset
