@@ -82,6 +82,14 @@ Run a SPARQL query against the graph:
 
 With `quipu_push_chunks = true` (a top-level key in `.bobbin/config.toml`), every index run publishes the repository's governed code-entity graph as a **diffed snapshot replacement** under the producer key `bobbin-chunks:{repo}` — so a reindex diffs against the previous run rather than accumulating a copy per run. The snapshot carries `CodeModule`, `CodeSymbol`, `Document`, and `Section` facts plus chunk identity, membership, order, and adjacency — never chunk content.
 
+Incremental publication uses the complete stored graph for the repository's current file walk,
+including unchanged files and their edges. A changed-file delta is not a replacement snapshot:
+it would retract unchanged files remotely. No-change runs with source files also publish, so a
+previous failed publication can recover without forcing source re-embedding. Deleted or excluded
+files and non-file sources are left out. This adds stored-graph reads and upload work to those
+runs. Empty repositories retain the existing no-publication behavior; deleting the last file
+requires a separate snapshot-retirement operation.
+
 Where the snapshot goes depends on `quipu_endpoint`:
 
 - **Set** — the snapshot is delivered to that remote Quipu's authenticated `/knot` endpoint. The bearer token is resolved from `QUIPU_AUTH_TOKEN`, then `QUIPU_AUTH_TOKEN_FILE`, then `~/.config/aegis/quipu_token`; with no token available the push fails rather than sending unauthenticated.
