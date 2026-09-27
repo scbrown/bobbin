@@ -86,7 +86,8 @@
 # Evaluation
 
 - [Methodology](eval/overview.md)
-- [Results Summary](eval/summary.md)
+- [V2 Results and Status](eval/summary.md)
+- [Historical V1 Results](eval/summary-v1.md)
 - [Historical Trends](eval/trends.md)
 - [Project Catalog](eval/projects.md)
 - [Cargo (Rust)](eval/cargo.md)

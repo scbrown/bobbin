@@ -1,0 +1,291 @@
+{
+  "status": "partial",
+  "snapshot_at": "2026-09-27T03:44:14.862605+00:00",
+  "publication_gate": "Continuation must finish and its reviewed completion report must be recorded before final numbers are published.",
+  "model_calls_by_replay": 0,
+  "source_harness_commit": "3942a1f",
+  "l0": {
+    "status": "partial",
+    "source_sha256": "3146e219cb3f3108a9ab076cc388ac929455b92d607c74b68faa180090c5e909",
+    "replay_sha256": "b2ceb333c0840b3c455b7a2c43a80e63c3eafbd039246b44f008cea2cf081b68",
+    "manifest_segments": [
+      {
+        "harness_commit": "cfd7c42844bdedce159298e6c7220946db34cdd5",
+        "score_records": 0
+      },
+      {
+        "harness_commit": "1a6b531bba791f56267d498c05d968af82462445",
+        "score_records": 858
+      }
+    ],
+    "planned_tasks": 40,
+    "recorded_tasks": 26,
+    "score_records": 858,
+    "arms": 11,
+    "budgets": [
+      100,
+      300,
+      600
+    ],
+    "outcomes": {
+      "injected": 569,
+      "skipped": 212,
+      "error": 77
+    },
+    "quality_comparisons": null
+  },
+  "l1": {
+    "status": "partial",
+    "recorded_cells": 25,
+    "original_planned_tasks": 30,
+    "original_planned_cells": 120,
+    "continuation_approved_cells": 20,
+    "source_counts": {
+      "continuation": 16,
+      "original": 9
+    },
+    "original_fixture_exclusions": [
+      "typst-005",
+      "polars-001",
+      "nushell-002",
+      "go-004",
+      "pandas-001",
+      "django-001",
+      "typst-003",
+      "polars-002"
+    ],
+    "free_preflight_fixture_exclusions": [
+      "ruff-001",
+      "go-003",
+      "pandas-003",
+      "polars-005",
+      "nushell-004",
+      "ruff-003",
+      "go-005",
+      "pandas-002",
+      "django-004",
+      "polars-004",
+      "nushell-001",
+      "ruff-004",
+      "go-002",
+      "pandas-005"
+    ],
+    "streams_without_result": [
+      {
+        "cell": "tool",
+        "source": "continuation",
+        "task": "typst-004"
+      }
+    ],
+    "records": [
+      {
+        "source": "original",
+        "task": "ruff-002",
+        "cell": "none",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "1366118cb01ef6b51692eb61355d1576f2d7f025ce94e3833166724e4db7298d"
+      },
+      {
+        "source": "original",
+        "task": "ruff-002",
+        "cell": "tool",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "f24cf6441bfeeb1a6ea5672c27bba0705338ef4ca4913170e2e3c98c2eaeba14"
+      },
+      {
+        "source": "original",
+        "task": "ruff-002",
+        "cell": "inject",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "f1ecc5070fb1a724188a9844547a9aa11316c94bfa2c15a57d4017dfd73c739e"
+      },
+      {
+        "source": "original",
+        "task": "ruff-002",
+        "cell": "both",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "7cc8fb5fcbbd111058d57b0b937dbe13bb9fefe878b976921c327055c762cdb1"
+      },
+      {
+        "source": "original",
+        "task": "cargo-005",
+        "cell": "none",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "e31f70559cc98e0f6d899ced4712188fd8316c6df8687c1df4d9dce3cb3ffd7e"
+      },
+      {
+        "source": "original",
+        "task": "cargo-005",
+        "cell": "tool",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "6a3e1a0463a8f2408a89951db5c0cfa116b0b0f2b84f0ccc48cee11883658242"
+      },
+      {
+        "source": "original",
+        "task": "cargo-005",
+        "cell": "inject",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "792e5719ece962c3422b661b41c224b2b7b67ba25f876d009efc09ac812d789b"
+      },
+      {
+        "source": "original",
+        "task": "cargo-005",
+        "cell": "both",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "1f53263779a7bc4878a1f5dfbccbfc5e84b4f36ebd0fe0e80b6f0581efc925cb"
+      },
+      {
+        "source": "original",
+        "task": "nushell-005",
+        "cell": "none",
+        "agent_valid": false,
+        "test_valid": true,
+        "result_sha256": "34d72e154ed8cbcc5615f892878dca6019447074bf61c004880a610915a6381b"
+      },
+      {
+        "source": "continuation",
+        "task": "cargo-003",
+        "cell": "none",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "e1b3a4217970acb923cec8dfbd42093892f20c00870c13d85224a536f6403f3b"
+      },
+      {
+        "source": "continuation",
+        "task": "cargo-003",
+        "cell": "tool",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "b6145ef0e3dccf838a75121e5b2a3de15b595559594a446c67fd602963b7bc57"
+      },
+      {
+        "source": "continuation",
+        "task": "cargo-003",
+        "cell": "inject",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "c1f3d2101484f55cfa69b5aa61ccec0fe0714e097002917e34747bf10d3d8d63"
+      },
+      {
+        "source": "continuation",
+        "task": "cargo-003",
+        "cell": "both",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "956566f7a22282650cdeb3f5d1ba6c0204124be75e39e6f879391bd2401d7696"
+      },
+      {
+        "source": "continuation",
+        "task": "django-002",
+        "cell": "none",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "a1942ba6c17c7d202dd0d7cceb50058a080d695ce2bbb607dd4a691544dcd0ea"
+      },
+      {
+        "source": "continuation",
+        "task": "django-002",
+        "cell": "tool",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "b083adb1d573c063e47bbcf5332a29baf4213254803e612075e1c5b7a14c7149"
+      },
+      {
+        "source": "continuation",
+        "task": "django-002",
+        "cell": "inject",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "379f6d31ca67f40fc8850fcd119f9b8597b3cf9aecb8a03ae5832c9c351724ad"
+      },
+      {
+        "source": "continuation",
+        "task": "django-002",
+        "cell": "both",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "0bb4097a595d355377df82ed4fb65ea00bc79678d2265a172b34f9337883a635"
+      },
+      {
+        "source": "continuation",
+        "task": "typst-002",
+        "cell": "none",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "8e7440ee42ffb4b03283cfc0c43b434f54cc2c69e9dd361bcfe10896afe5e6fc"
+      },
+      {
+        "source": "continuation",
+        "task": "typst-002",
+        "cell": "tool",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "79eb446adf0ebca06198b724dbedfb0c1c448ff6edbcaf3109c96c7384878f95"
+      },
+      {
+        "source": "continuation",
+        "task": "typst-002",
+        "cell": "inject",
+        "agent_valid": false,
+        "test_valid": false,
+        "result_sha256": "6c17129e1f60c9f86c0c85147a78d1d41f109a7ba3269b9753740a93c950574a"
+      },
+      {
+        "source": "continuation",
+        "task": "typst-002",
+        "cell": "both",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "21472594d20df11577f5ff458dbbf3f9b4b57c55c9b26ec5ee9ce74d32fead89"
+      },
+      {
+        "source": "continuation",
+        "task": "cargo-002",
+        "cell": "none",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "351dca95de46dc8cd2588fc4660a83b4ed3c2aae2432af29585f42f2a6998d5b"
+      },
+      {
+        "source": "continuation",
+        "task": "cargo-002",
+        "cell": "tool",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "8cfbac3b57d6a15e8536b72b428717ce10cee6c02a71d9f82d84423ce17195aa"
+      },
+      {
+        "source": "continuation",
+        "task": "cargo-002",
+        "cell": "inject",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "ce8630244993ad2e88cdb955e3b9b1d6eec0386c6c47631ba7b4a7f20ce55f44"
+      },
+      {
+        "source": "continuation",
+        "task": "cargo-002",
+        "cell": "both",
+        "agent_valid": true,
+        "test_valid": true,
+        "result_sha256": "b5ea0029cdc2c362f1a707183abc8547ce8760bf6107bf1364f0c2a27b837aa0"
+      }
+    ],
+    "quality_comparisons": null
+  },
+  "limitations": [
+    "Coverage is a snapshot, not completed-study evidence.",
+    "Original and continuation retain separate source labels; original client identity is unpinned.",
+    "Validity counts are diagnostics, not a post-hoc outcome exclusion policy.",
+    "Unfinished streams have unknown cost, not zero cost.",
+    "No full L1 study is authorized; pilot results are descriptive only."
+  ]
+}

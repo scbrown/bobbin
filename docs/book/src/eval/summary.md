@@ -1,92 +1,100 @@
-# Results Summary
+# Evaluation v2: results and study status
 
-## Overall Comparison
+**Partial snapshot — 25 recorded L1 cells; no final results published.**
 
-| Metric | no-bobbin | with-bobbin | with-bobbin+blame_bridging=false | with-bobbin+coupling_depth=0 | with-bobbin+doc_demotion=0.0 | with-bobbin+gate_threshold=1.0 | with-bobbin+recency_weight=0.0 | with-bobbin+semantic_weight=0.0 |
-| ------ | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| Runs | 30 | 36 | 3 | 3 | 3 | 3 | 3 | 4 |
-| Test Pass Rate | 66.7% | 58.3% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
-| Avg Precision | 85.1% | 90.1% | 33.3% | 55.6% | 55.6% | 77.8% | 77.8% | 23.6% |
-| Avg Recall | 60.2% | 64.5% | 33.3% | 33.3% | 55.6% | 55.6% | 55.6% | 33.3% |
-| Avg F1 | 68.3% | 71.9% | 33.3% | 38.9% | 55.6% | 61.1% | 61.1% | 25.2% |
-| Avg Duration | 4.2m | 3.6m | 4.6m | 4.7m | 5.0m | 5.4m | 4.9m | 4.7m |
-| Avg Cost | $1.24 | $1.44 | $1.25 | $1.45 | $1.48 | $1.39 | $1.43 | $1.45 |
-| Avg Input Tokens | 1,250,122 | 1,788,633 | 1,517,002 | 1,780,506 | 1,882,003 | 1,711,955 | 1,813,406 | 1,812,429 |
-| Avg Output Tokens | 7,411 | 8,918 | 7,551 | 8,723 | 8,933 | 8,572 | 8,413 | 9,374 |
+This page replaces the v1 aggregate with the preregistered v2 reporting structure.
+The continuation was still running at the snapshot below. Final tables remain
+withheld until it finishes and its completion report has been reviewed and recorded.
+A completed pilot will remain descriptive; it will not establish effectiveness.
 
-## Metric Overview
+The [historical v1 tables](summary-v1.md) are preserved for audit. They mix model
+attribution, tool availability and automatic injection, and must not be presented
+as v2 results or evidence that Bobbin improves task success.
 
-<div class="eval-chart">
+## What v2 measures
 
-![summary_metrics.svg](./charts/summary_metrics.svg)
+- **L0, offline retrieval:** hunk recall and useful-line density at a fixed line
+  budget, with file recall/precision, injected volume and error/skip counts.
+- **L1, agent pilot:** a paired 2×2 design separates search-tool access from
+  automatic injection. Hidden-test task success is primary; file F1 is secondary.
+- **L2, broader benchmark:** planned, with no results reported here.
 
-</div>
+The L1 cells are `none` (neither), `tool` (search only), `inject` (injection only)
+and `both`. Every intended task has four cells. A result file alone does not prove
+valid execution, and a stream without a result does not count as a completed cell.
 
-## F1 Score by Task
+See the [preregistration](https://github.com/scbrown/bobbin/blob/main/eval/v2/PREREGISTRATION.md)
+and [recovery contract](https://github.com/scbrown/bobbin/blob/main/eval/v2/PILOT_RECOVERY.md)
+for the frozen design and dated deviations.
 
-<div class="eval-chart">
+## Partial L1 coverage — 25 recorded cells
 
-![summary_f1_by_task.svg](./charts/summary_f1_by_task.svg)
+Snapshot: **2026-09-27T03:44:14.862605+00:00**. Counts come from the
+[frozen coverage artifact](https://github.com/scbrown/bobbin/blob/main/eval/v2/reports/partial-20260927.json),
+replayed from stored results without model calls. They will not update automatically.
 
-</div>
+| Source (partial) | Recorded cells | Agent-valid and test-valid cells | Tasks with all four result files | Tasks with all four cells valid |
+| --- | ---: | ---: | ---: | ---: |
+| Original interrupted pilot | 9 | 8 | 2 | 2 |
+| Bounded continuation, 20 cells approved | 16 | 15 | 4 | 3 |
+| Combined coverage snapshot | 25 | 23 | 6 | 5 |
 
-## Score Distribution
+**These validity counts are diagnostics, not a replacement denominator or a
+post-hoc exclusion rule.** The completion report must classify invalid execution
+and apply the registered outcome policy before any success-rate table is published.
 
-<div class="eval-chart">
+- `nushell-005` has only one of four original results and remains incomplete.
+- `typst-002` has four continuation results, but its `inject` cell is invalid.
+  Four files must not be described as four valid measurements.
+- At this snapshot, one continuation stream has no result. Its completion and
+  cost are unknown; neither is assigned zero.
+- Eight original tasks failed fixture controls. Of the 19 untouched tasks checked
+  for recovery, 14 failed the discriminating-fixture requirement; five qualified
+  for the bounded continuation. These exclusions are separate from agent failures.
+- The original plan was 30 tasks × four cells (120 cells). Neither this partial
+  snapshot nor the bounded continuation constitutes that completed pilot.
+- Original and continuation labels stay separate. The continuation pins its
+  client; the original client identity remains unpinned.
 
-![summary_f1_boxplot.svg](./charts/summary_f1_boxplot.svg)
+## Partial L0 coverage — 858 task/arm/budget records
 
-</div>
+The offline campaign stopped before the full task set completed. The frozen file
+contains two manifest records: the first precedes no scores; the second identifies
+all 858 scores. No task/arm/budget keys repeat. The replay is not a new experiment.
 
-## Duration
+| Coverage or outcome (partial; 858 records) | Count |
+| --- | ---: |
+| Tasks with saved scores / planned tasks | 26 / 40 |
+| Arms per recorded task | 11 |
+| Line budgets per arm | 3 (100, 300, 600) |
+| Injected | 569 |
+| Skipped | 212 |
+| Error | 77 |
 
-<div class="eval-chart">
+An error is not a successful empty retrieval. Error and skip counts must accompany
+quality metrics, with the actual paired sample size for each contrast. Empty
+injections have undefined density. The registered comparison uses the 300-line
+budget; the other budgets are secondary. Do not pool the three budgets as extra
+independent tasks. No final L0 estimates or significance claims appear here.
 
-![summary_duration.svg](./charts/summary_duration.svg)
+## Final reporting structure
 
-</div>
+Once the completion gate is met, this page will add:
 
-## Recent Trend
+1. Run identity, model/client/runtime pins, task flow and all exclusions.
+2. L0 paired hunk-recall and density contrasts versus `full`, with per-contrast
+   sample sizes, confidence intervals and registered multiplicity correction.
+3. L1 source-separated descriptive outcomes, invalid/incomplete counts, complete
+   task contrasts, uncertainty, token usage, wall time and recorded cost coverage.
+4. Deviations, fixture attrition, contamination limits and remaining unknowns.
 
-<div class="eval-chart">
+The full L1 study is not approved or run. The pilot cannot support a causal uplift
+headline, an ablation ranking, or a claim that the original task set was completed.
 
-![summary_trend.svg](./charts/summary_trend.svg)
+## Reproduction and companion draft
 
-</div>
-
-[Full historical trends](./trends.md)
-
-## Per-Task Results
-
-| Task | Language | Difficulty | Approach | Tests | Precision | Recall | F1 | Duration | Cost |
-| ---- | -------- | :--------: | -------- | :---: | :-------: | :----: | :-: | :------: | ---: |
-| cargo-001 | rust | easy | no-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 5.2m | $1.04 |
-| cargo-001 | rust | easy | with-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 4.6m | $1.03 |
-| flask-001 | — | — | no-bobbin | 0.0% | 100.0% | 33.3% | 50.0% | 1.3m | $0.00 |
-| flask-001 | — | — | with-bobbin | 0.0% | 100.0% | 33.3% | 50.0% | 1.3m | $0.00 |
-| flask-002 | — | — | no-bobbin | 0.0% | 100.0% | 66.7% | 80.0% | 3.1m | $0.00 |
-| flask-002 | — | — | with-bobbin | 0.0% | 100.0% | 55.6% | 70.0% | 3.5m | $0.00 |
-| flask-003 | — | — | no-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.2m | $0.00 |
-| flask-003 | — | — | with-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 2.4m | $0.00 |
-| flask-004 | — | — | no-bobbin | 0.0% | 100.0% | 70.0% | 81.9% | 3.3m | $0.00 |
-| flask-004 | — | — | with-bobbin | 0.0% | 100.0% | 60.0% | 75.0% | 3.2m | $0.00 |
-| flask-005 | — | — | no-bobbin | 0.0% | 100.0% | 50.0% | 66.7% | 2.6m | $0.00 |
-| flask-005 | — | — | with-bobbin | 0.0% | 100.0% | 58.3% | 73.0% | 1.9m | $0.00 |
-| polars-004 | rust | medium | no-bobbin | 100.0% | 100.0% | 66.7% | 80.0% | 4.4m | $0.81 |
-| polars-005 | rust | medium | no-bobbin | 100.0% | 100.0% | 66.7% | 79.4% | 6.4m | $1.74 |
-| ruff-001 | rust | medium | no-bobbin | 100.0% | 31.7% | 33.3% | 32.4% | 4.3m | $1.23 |
-| ruff-001 | rust | medium | with-bobbin | 100.0% | 70.2% | 61.9% | 63.6% | 4.4m | $1.52 |
-| ruff-001 | rust | medium | with-bobbin+blame_bridging=false | 100.0% | 33.3% | 33.3% | 33.3% | 4.6m | $1.25 |
-| ruff-001 | rust | medium | with-bobbin+coupling_depth=0 | 100.0% | 55.6% | 33.3% | 38.9% | 4.7m | $1.45 |
-| ruff-001 | rust | medium | with-bobbin+doc_demotion=0.0 | 100.0% | 55.6% | 55.6% | 55.6% | 5.0m | $1.48 |
-| ruff-001 | rust | medium | with-bobbin+gate_threshold=1.0 | 100.0% | 77.8% | 55.6% | 61.1% | 5.4m | $1.39 |
-| ruff-001 | rust | medium | with-bobbin+recency_weight=0.0 | 100.0% | 77.8% | 55.6% | 61.1% | 4.9m | $1.43 |
-| ruff-001 | rust | medium | with-bobbin+semantic_weight=0.0 | 100.0% | 23.6% | 33.3% | 25.2% | 4.7m | $1.45 |
-| ruff-002 | rust | easy | no-bobbin | 100.0% | 100.0% | 40.0% | 57.1% | 4.8m | $0.00 |
-| ruff-002 | rust | easy | with-bobbin | 100.0% | 100.0% | 40.0% | 57.1% | 4.3m | $1.38 |
-| ruff-003 | rust | medium | no-bobbin | 100.0% | 100.0% | 83.3% | 90.0% | 9.2m | $0.00 |
-| ruff-003 | rust | medium | with-bobbin | 100.0% | 100.0% | 77.8% | 86.7% | 6.3m | $1.92 |
-| ruff-004 | rust | easy | no-bobbin | 100.0% | 46.7% | 66.7% | 54.2% | 3.9m | $0.00 |
-| ruff-004 | rust | easy | with-bobbin | 100.0% | 63.3% | 83.3% | 70.8% | 4.5m | $1.67 |
-| ruff-005 | rust | easy | no-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 3.6m | $0.00 |
-| ruff-005 | rust | easy | with-bobbin | 100.0% | 100.0% | 100.0% | 100.0% | 2.8m | $0.63 |
+The [replay notes](https://github.com/scbrown/bobbin/blob/main/eval/v2/RESULTS.md)
+explain the stored-output inputs and partial-publication gate. The
+[v0.3 paper draft](https://github.com/scbrown/bobbin/blob/main/docs/paper-context-injection.md)
+uses the same snapshot and withholds final findings. Older per-project pages and
+[historical trends](trends.md) remain v1 material.
