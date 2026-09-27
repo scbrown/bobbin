@@ -21,6 +21,23 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.21.0](https://github.com/scbrown/bobbin/compare/v0.20.1...v0.21.0) (2026-09-27)
+
+
+### Features
+
+* **eval:** audit interrupted pilots and preflight untouched fixtures ([62b2a76](https://github.com/scbrown/bobbin/commit/62b2a76d38a3c42a3fbfef9f8ff17c6830d87f53))
+* **eval:** guard a single nonrepeating pilot continuation ([d294b15](https://github.com/scbrown/bobbin/commit/d294b157e4dba4718a9bfafe80c1ce1187b2c5d3))
+* **eval:** guard nonrepeating pilot continuation ([3942a1f](https://github.com/scbrown/bobbin/commit/3942a1fbae2e37069326026f30f33ca47f28677d))
+* force graph publication without re-embedding files ([cee44c9](https://github.com/scbrown/bobbin/commit/cee44c91e2d4c9fab8cfd49fed6a079d3c2aada5))
+
+
+### Bug Fixes
+
+* preserve unchanged files in graph publication snapshots ([4b8ee2a](https://github.com/scbrown/bobbin/commit/4b8ee2a07ba60194bfac0c3261edab47bc0717ba))
+* preserve unchanged files in graph publication snapshots ([8e647ad](https://github.com/scbrown/bobbin/commit/8e647ad18a2376e35af588b83bcb1702db3ba33e))
+* skip snapshots already published successfully ([d0a4251](https://github.com/scbrown/bobbin/commit/d0a42513f0b2d2151e731a29bd250939fed1cd48))
+
 ## [0.20.1](https://github.com/scbrown/bobbin/compare/v0.20.0...v0.20.1) (2026-09-26)
 
 
