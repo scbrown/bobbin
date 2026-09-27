@@ -121,6 +121,10 @@ pub struct IndexArgs {
     #[arg(long)]
     pub(super) force: bool,
 
+    /// Publish the full graph even if unchanged, without re-embedding files
+    #[arg(long)]
+    pub(super) force_publish: bool,
+
     /// Repository name for multi-repo indexing (auto-detected from source dir name)
     #[arg(long)]
     pub(super) repo: Option<String>,
@@ -425,7 +429,13 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     let archive_enabled = config.archive.enabled && !config.archive.sources.is_empty();
     let sql_enabled = config.sql.enabled && !config.sql.sources.is_empty();
 
-    if total_files == 0 && !commits_enabled && !include_beads && !archive_enabled && !sql_enabled {
+    if total_files == 0
+        && !commits_enabled
+        && !include_beads
+        && !archive_enabled
+        && !sql_enabled
+        && !(cfg!(feature = "knowledge") && config.quipu_push_chunks && !current_files.is_empty())
+    {
         if output.json {
             let json_output = IndexOutput {
                 status: "up_to_date".to_string(),
@@ -978,38 +988,26 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
 
     // Push the chunk graph to quipu as a diffed snapshot (opt-in, W2.P4).
     #[cfg(feature = "knowledge")]
-    if config.quipu_push_chunks && !all_slim_chunks.is_empty() {
-        if config.quipu_endpoint.is_some() && !output.quiet && !output.json {
-            println!(
-                "  Publishing {} chunks and {} edges to remote Quipu (required, 120s timeout)...",
-                all_slim_chunks.len(),
-                all_chunk_edges.len()
-            );
-        }
-        let pushed = if let Some(endpoint) = config.quipu_endpoint.as_deref() {
-            crate::knowledge::chunks::push_chunks_to_remote_quipu(
-                &all_slim_chunks,
-                &all_chunk_edges,
-                repo_name,
-                endpoint,
-            )
-            .await
-        } else {
-            crate::knowledge::chunks::push_chunks_to_quipu(
-                &all_slim_chunks,
-                &all_chunk_edges,
-                repo_name,
-                &source_root,
-            )
-        };
+    if config.quipu_push_chunks && !current_files.is_empty() {
+        // Repository-wide replacement must include unchanged files.
+        let (snapshot_chunks, snapshot_edges) =
+            graph_push::snapshot(&vector_store, repo_name, &current_files).await?;
+        let pushed = graph_push::publish(
+            (&snapshot_chunks, &snapshot_edges),
+            repo_name,
+            &source_root,
+            config.quipu_endpoint.as_deref(),
+            output.quiet || output.json,
+            &metadata_store,
+            args.force || args.force_publish,
+        )
+        .await;
         match graph_push::require(pushed) {
             Ok((_tx, count)) => {
                 if output.verbose && !output.quiet && !output.json {
                     println!("  Pushed {} chunk-graph facts to quipu", count);
                 }
-                // Second pass (W2.P5): resolve the just-written mention
-                // literals against the live entity graph. Honest tri-count —
-                // dangling/ambiguous are reported, never guessed at.
+                // Resolve mentions; report dangling/ambiguous references.
                 match crate::knowledge::mentions::reconcile_mentions_at(&source_root) {
                     Ok(report) => {
                         if output.verbose && !output.quiet && !output.json {
