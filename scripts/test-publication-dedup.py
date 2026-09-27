@@ -67,6 +67,7 @@ gpu = false
                                     '--skip-calibrate', *extra], env=env, capture_output=True,
                                    text=True, timeout=120)
                 assert (p.returncode == 0) == success, p.stdout[-1000:] + p.stderr[-1000:]
+                return p.stdout
 
             index()
             before = len(calls)
@@ -85,7 +86,9 @@ gpu = false
             successful = len(calls)
             index()
             assert len(calls) == successful, 'successful retry hash must persist across processes'
-            index(extra=('--force',))
+            output = index(extra=('--force-publish', '--verbose'))
+            assert '(0 chunks in 0 batches)' in output, 'force-publish must not re-embed'
+            print('force-publish: 0 chunks embedded in 0 batches', flush=True)
             assert len(calls) > successful, 'explicit recovery must bypass the success hash'
             forced = len(calls)
             # A new destination must not inherit another server's success hash.

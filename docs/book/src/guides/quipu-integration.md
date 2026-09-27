@@ -204,4 +204,6 @@ HTTP. See [Governed Path Boundaries](governed-boundaries.md).
 The index stores a SHA-256 hash after successful publication, scoped to the repository
 and destination. An unchanged snapshot sends no publication requests, including across
 process restarts. Failed publishes do not advance this hash and retry on the next run.
-`index --force` bypasses the hash for explicit recovery after remote data loss.
+`index --force-publish` bypasses only the publication hash for recovery after
+remote data loss, without re-embedding unchanged files. Full `index --force` also
+bypasses the hash and retains its existing re-embedding behavior.

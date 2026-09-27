@@ -17,6 +17,7 @@ pub(super) async fn run(
         index::IndexArgs {
             incremental: true,
             force: false,
+            force_publish: false,
             repo: Some(repo),
             source: Some(source),
             include_beads: false,

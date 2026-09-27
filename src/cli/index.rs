@@ -121,6 +121,10 @@ pub struct IndexArgs {
     #[arg(long)]
     pub(super) force: bool,
 
+    /// Publish the full graph even if unchanged, without re-embedding files
+    #[arg(long)]
+    pub(super) force_publish: bool,
+
     /// Repository name for multi-repo indexing (auto-detected from source dir name)
     #[arg(long)]
     pub(super) repo: Option<String>,
@@ -985,8 +989,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     // Push the chunk graph to quipu as a diffed snapshot (opt-in, W2.P4).
     #[cfg(feature = "knowledge")]
     if config.quipu_push_chunks && !current_files.is_empty() {
-        // Replacement is repository-wide. The parse loop contains only changed
-        // files; publishing that delta retracts every unchanged file remotely.
+        // Repository-wide replacement must include unchanged files.
         let (snapshot_chunks, snapshot_edges) =
             graph_push::snapshot(&vector_store, repo_name, &current_files).await?;
         let pushed = graph_push::publish(
@@ -996,7 +999,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             config.quipu_endpoint.as_deref(),
             output.quiet || output.json,
             &metadata_store,
-            args.force,
+            args.force || args.force_publish,
         )
         .await;
         match graph_push::require(pushed) {
@@ -1004,9 +1007,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
                 if output.verbose && !output.quiet && !output.json {
                     println!("  Pushed {} chunk-graph facts to quipu", count);
                 }
-                // Second pass (W2.P5): resolve the just-written mention
-                // literals against the live entity graph. Honest tri-count —
-                // dangling/ambiguous are reported, never guessed at.
+                // Resolve mentions; report dangling/ambiguous references.
                 match crate::knowledge::mentions::reconcile_mentions_at(&source_root) {
                     Ok(report) => {
                         if output.verbose && !output.quiet && !output.json {
