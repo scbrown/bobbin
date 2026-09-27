@@ -92,14 +92,14 @@ def process_env(env):
         os.environ.update(old)
 
 
-def isolated_env(home):
+def isolated_env(home, *, copy_credentials=True):
     """Copy auth, never symlink or mutate the real user's configuration."""
     real_home = Path.home()
     home.mkdir(mode=0o700)
     config = home / ".claude"
     config.mkdir(mode=0o700)
     credentials = real_home / ".claude" / ".credentials.json"
-    if credentials.exists():
+    if copy_credentials and credentials.exists():
         shutil.copyfile(credentials, config / ".credentials.json")
         (config / ".credentials.json").chmod(0o600)
     env = {k: v for k, v in os.environ.items()
@@ -130,6 +130,14 @@ def grade(ws, command, env, timeout):
         m = re.search(r"Ran (\d+) tests? in", output)
         if m:
             counts = {"total": int(m[1]), "skipped": 0}
+    if not counts:
+        # Typst's custom harness has no cargo `test result:` prefix. Its
+        # explicit full summary proves execution; a bare exit zero does not.
+        summaries = re.findall(r"(?m)^(\d+) passed, (\d+) failed, (\d+) skipped\s*$", output)
+        if summaries:
+            executed = sum(int(passed) + int(failed) for passed, failed, _ in summaries)
+            skipped = sum(int(skipped) for _, _, skipped in summaries)
+            counts = {"total": executed + skipped, "skipped": skipped}
     executed = counts.get("total", 0) - counts.get("skipped", 0)
     return {"passed": rc == 0 and executed > 0, "valid": executed > 0,
             "executed": executed, "exit_code": rc, "output": output[-50000:],
@@ -233,6 +241,63 @@ def invoke(task, cell, ws, out, env, bobbin, claude, budget, timeout, turns):
             "valid": rc == 0 and model == MODEL and not result.get("is_error", True)}
 
 
+def run_task(task_id, out, pinned, bobbin, claude, order, runtime, budget, timeout,
+             max_turns, before_spend=None):
+    task = load_task_by_id(task_id, ROOT / "tasks")
+    task_out = out / task_id
+    task_out.mkdir()
+    with tempfile.TemporaryDirectory(prefix="pilot-", dir=out) as temp:
+        scratch = Path(temp)
+        env = isolated_env(scratch / "home")
+        env["PATH"] = str(pinned) + os.pathsep + env["PATH"]
+        try:
+            ws, _parent, tests = prepare(task, scratch, env, timeout)
+            shutil.copy2(scratch / "controls.json", task_out / "controls.json")
+            # One index at the pre-fix tree; all cells receive identical copies.
+            with process_env(env):
+                index_metadata = setup_bobbin(str(ws), timeout=timeout)
+            write_json(task_out / "index.json", index_metadata)
+            if runtime and not index_metadata.get("gpu_acceleration_proven"):
+                raise RuntimeError("GPU index receipt missing; pilot stopped before spend")
+            shutil.rmtree(ws / ".claude")  # setup's v1 arm-specific instructions
+            gold = gold_for_commit(ws, task["commit"])
+            for _, cell in (pair for pair in order if pair[0] == task_id):
+                cell_out = task_out / cell
+                cell_out.mkdir()
+                if runtime is not None:
+                    verify_and_record(runtime, cell_out / 'runtime-verification.json')
+                # Bobbin's local repo identity can derive from the directory
+                # name. Keep it identical to the indexed source in every cell.
+                cell_root = scratch / cell
+                cell_root.mkdir()
+                cell_ws = cell_root / ws.name
+                baseline = cell_checkout(ws, cell_ws, env)
+                if before_spend is not None:
+                    before_spend()
+                agent = invoke(task, cell, cell_ws, cell_out, env, bobbin, claude,
+                               budget, timeout, max_turns)
+                diff = run(["git", "diff", baseline], cell_ws, env).stdout
+                (cell_out / "agent.diff").write_text(diff)
+                touched = set(run(["git", "diff", "--name-only", baseline], cell_ws, env).stdout.splitlines())
+                grade_tests_from_source(ws, cell_ws, task["commit"], tests, env)
+                test_result = grade(cell_ws, task["test_command"], env, timeout)
+                precision = len(touched & gold.keys()) / len(touched) if touched else 0
+                recall = len(touched & gold.keys()) / len(gold) if gold else 0
+                result = {"task": task_id, "cell": cell, "agent": agent, "tests": test_result,
+                          "success": agent["valid"] and test_result["passed"],
+                          "file_f1": 2 * precision * recall / (precision + recall) if precision + recall else 0}
+                write_json(cell_out / "result.json", result)
+                print(f"{task_id} {cell}: success={result['success']}", flush=True)
+                shutil.rmtree(cell_root)
+                if not agent["valid"] and not agent["turn_limit_reached"]:
+                    raise RuntimeError("agent unavailable/misattributed; pilot stopped before further spend")
+        except ValueError as exc:
+            if (scratch / "controls.json").exists():
+                shutil.copy2(scratch / "controls.json", task_out / "controls.json")
+            write_json(task_out / "fixture-error.json", {"error": str(exc)})
+            print(f"{task_id}: fixture_error: {exc}", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
@@ -277,57 +342,8 @@ def main():
         "gpu_guard_sha256": hashlib.sha256(Path(bobbin).read_bytes()).hexdigest() if runtime else None,
     })
     for task_id in tasks:
-        task = load_task_by_id(task_id, ROOT / "tasks")
-        task_out = out / task_id
-        task_out.mkdir()
-        with tempfile.TemporaryDirectory(prefix="pilot-", dir=out) as temp:
-            scratch = Path(temp)
-            env = isolated_env(scratch / "home")
-            env["PATH"] = str(pinned) + os.pathsep + env["PATH"]
-            try:
-                ws, _parent, tests = prepare(task, scratch, env, args.timeout)
-                shutil.copy2(scratch / "controls.json", task_out / "controls.json")
-                # One index at the pre-fix tree; all cells receive identical copies.
-                with process_env(env):
-                    index_metadata = setup_bobbin(str(ws), timeout=args.timeout)
-                write_json(task_out / "index.json", index_metadata)
-                if runtime and not index_metadata.get("gpu_acceleration_proven"):
-                    raise RuntimeError("GPU index receipt missing; pilot stopped before spend")
-                shutil.rmtree(ws / ".claude")  # setup's v1 arm-specific instructions
-                gold = gold_for_commit(ws, task["commit"])
-                for _, cell in (pair for pair in order if pair[0] == task_id):
-                    cell_out = task_out / cell
-                    cell_out.mkdir()
-                    if runtime is not None:
-                        verify_and_record(runtime, cell_out / 'runtime-verification.json')
-                    # Bobbin's local repo identity can derive from the directory
-                    # name. Keep it identical to the indexed source in every cell.
-                    cell_root = scratch / cell
-                    cell_root.mkdir()
-                    cell_ws = cell_root / ws.name
-                    baseline = cell_checkout(ws, cell_ws, env)
-                    agent = invoke(task, cell, cell_ws, cell_out, env, bobbin, claude,
-                                   args.budget, args.timeout, args.max_turns)
-                    diff = run(["git", "diff", baseline], cell_ws, env).stdout
-                    (cell_out / "agent.diff").write_text(diff)
-                    touched = set(run(["git", "diff", "--name-only", baseline], cell_ws, env).stdout.splitlines())
-                    grade_tests_from_source(ws, cell_ws, task["commit"], tests, env)
-                    test_result = grade(cell_ws, task["test_command"], env, args.timeout)
-                    precision = len(touched & gold.keys()) / len(touched) if touched else 0
-                    recall = len(touched & gold.keys()) / len(gold) if gold else 0
-                    result = {"task": task_id, "cell": cell, "agent": agent, "tests": test_result,
-                              "success": agent["valid"] and test_result["passed"],
-                              "file_f1": 2 * precision * recall / (precision + recall) if precision + recall else 0}
-                    write_json(cell_out / "result.json", result)
-                    print(f"{task_id} {cell}: success={result['success']}", flush=True)
-                    shutil.rmtree(cell_root)
-                    if not agent["valid"] and not agent["turn_limit_reached"]:
-                        raise RuntimeError("agent unavailable/misattributed; pilot stopped before further spend")
-            except ValueError as exc:
-                if (scratch / "controls.json").exists():
-                    shutil.copy2(scratch / "controls.json", task_out / "controls.json")
-                write_json(task_out / "fixture-error.json", {"error": str(exc)})
-                print(f"{task_id}: fixture_error: {exc}", flush=True)
+        run_task(task_id, out, pinned, bobbin, claude, order, runtime, args.budget,
+                 args.timeout, args.max_turns)
 
 
 if __name__ == "__main__":
