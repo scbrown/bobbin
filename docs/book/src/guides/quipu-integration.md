@@ -200,3 +200,8 @@ HTTP. See [Governed Path Boundaries](governed-boundaries.md).
 - [MCP Tools Reference](../mcp/tools.md)
 - [Context Assembly](context-assembly.md)
 - [Quipu Integration Plan](https://github.com/scbrown/bobbin/blob/main/docs/plans/quipu-integration.md)
+
+The index stores a SHA-256 hash after successful publication, scoped to the repository
+and destination. An unchanged snapshot sends no publication requests, including across
+process restarts. Failed publishes do not advance this hash and retry on the next run.
+`index --force` bypasses the hash for explicit recovery after remote data loss.

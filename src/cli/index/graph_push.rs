@@ -25,30 +25,65 @@ pub(super) async fn snapshot(
         chunks.extend(stored);
         edges.extend(store.get_chunk_edges(file, Some(repo)).await?);
     }
+    edges.sort_by_cached_key(|edge| serde_json::to_string(edge).expect("serializable edge"));
     Ok((chunks, edges))
 }
 
 #[cfg(feature = "knowledge")]
 pub(super) async fn publish(
-    chunks: &[crate::types::Chunk],
-    edges: &[crate::types::ChunkEdge],
+    graph: (&[crate::types::Chunk], &[crate::types::ChunkEdge]),
     repo: &str,
     root: &std::path::Path,
     endpoint: Option<&str>,
     quiet: bool,
+    metadata: &crate::storage::MetadataStore,
+    force: bool,
 ) -> anyhow::Result<(i64, usize)> {
-    if let Some(endpoint) = endpoint {
+    use sha2::{Digest, Sha256};
+    let (chunks, edges) = graph;
+    let destination = endpoint
+        .map(|e| e.trim_end_matches('/').to_owned())
+        .unwrap_or_else(|| {
+            root.join(quipu::QuipuConfig::load(root).store_path)
+                .to_string_lossy()
+                .into_owned()
+        });
+    let key = format!(
+        "quipu_snapshot_success:v1:{}",
+        hex::encode(Sha256::digest(serde_json::to_vec(&(repo, destination))?))
+    );
+    let turtle = crate::knowledge::chunks::generate_chunk_turtle(chunks, edges, repo);
+    let hash = hex::encode(Sha256::digest(turtle.as_bytes()));
+    let payload_bytes = turtle.len();
+    drop(turtle);
+    if !force && metadata.get_meta(&key)?.as_deref() == Some(hash.as_str()) {
+        return Ok((0, 0));
+    }
+    let started = std::time::Instant::now();
+    let pushed = if let Some(endpoint) = endpoint {
         if !quiet {
             println!(
-                "  Publishing {} chunks and {} edges to remote Quipu (required, 120s timeout)...",
+                "  Publishing {} chunks and {} edges ({} bytes) to remote Quipu...",
                 chunks.len(),
-                edges.len()
+                edges.len(),
+                payload_bytes
             );
         }
         crate::knowledge::chunks::push_chunks_to_remote_quipu(chunks, edges, repo, endpoint).await
     } else {
         crate::knowledge::chunks::push_chunks_to_quipu(chunks, edges, repo, root)
+    }?;
+    // A failed or indeterminate publication must remain eligible on the next
+    // run even when file hashes were already committed by local indexing.
+    metadata.set_meta(&key, &hash)?;
+    if !quiet {
+        println!(
+            "  Published chunk snapshot: {} bytes in {} ms",
+            payload_bytes,
+            started.elapsed().as_millis()
+        );
     }
+    Ok(pushed)
 }
 
 #[cfg(test)]

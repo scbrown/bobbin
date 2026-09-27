@@ -990,12 +990,13 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         let (snapshot_chunks, snapshot_edges) =
             graph_push::snapshot(&vector_store, repo_name, &current_files).await?;
         let pushed = graph_push::publish(
-            &snapshot_chunks,
-            &snapshot_edges,
+            (&snapshot_chunks, &snapshot_edges),
             repo_name,
             &source_root,
             config.quipu_endpoint.as_deref(),
             output.quiet || output.json,
+            &metadata_store,
+            args.force,
         )
         .await;
         match graph_push::require(pushed) {
