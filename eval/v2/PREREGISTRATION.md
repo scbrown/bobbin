@@ -222,9 +222,12 @@ changed rule are labelled as such.
   source-run labels remain visible. The 19 untouched tasks must all receive free
   parent/fix controls first; failed controls are fixture exclusions, never arm outcomes.
   A fresh runtime library lock must derive from the original verified archives, and
-  an exclusive continuation claim must prevent duplicate spending. The read-only
-  [recovery planner and fixture preflight](PILOT_RECOVERY.md) do not implement or
-  authorize paid continuation. Implementation review, complete checks and the posted
+  an exclusive continuation claim must prevent duplicate spending. The
+  [recovery commands](PILOT_RECOVERY.md) default to planning only; execution requires
+  an explicit flag, reviewed input hashes and a new output directory. The original
+  client executable was not pinned; the continuation records that limitation and a
+  new client hash, without claiming original client identity. Implementation review,
+  complete checks and the posted
   fixture-control report are required before any paid cell. Full-study approval is
   unchanged. The grader now recognizes explicit custom Typst result counts; prior
   recorded outcomes are preserved rather than silently rewritten.

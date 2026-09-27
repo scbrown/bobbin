@@ -27,8 +27,8 @@ may predate client, index or runtime library locks. The plan reports whether a r
 library lock exists but does not verify or manufacture one. It does not claim the
 campaign is quiescent or acquire a spend lock. Before any paid continuation, review the
 protocol deviation for omitted partial tasks, derive and verify the runtime lock from
-the original archive pins, verify the client/model contract, and implement an exclusive
-continuation claim with revalidation before spending. Never restart the full pilot to
+the original archive pins, verify the client/model contract, and review the exclusive
+continuation claim with revalidation before spending described below. Never restart the full pilot to
 work around a refusal.
 
 ## Free fixture controls
@@ -44,3 +44,36 @@ the whole remaining list has been checked; an interrupted preflight is not appro
 The custom Typst summary is now recognized using its explicit passed/failed/skipped
 counts. Zero executed tests still fail the control. A Go package-level `ok` line is
 still insufficient evidence that the selected regression test executed.
+
+## Single continuation executor
+
+`python -m runner.pilot_continue <original-output> --manifest-sha256 <sha256>
+--controls <completed-report.json> --controls-sha256 <sha256>
+--runtime <derived-runtime-lock.json> --runtime-sha256 <sha256>
+--client <resolved-client-executable> --client-sha256 <sha256>` validates and prints
+an execution plan without claiming or running the campaign. Each digest identifies
+an input reviewed before launch; do not regenerate expected hashes to bypass a refusal.
+
+The complete free control report must cover every untouched task. Eligible tasks need
+an executed failing parent and passing fix, and matching original evidence/task pins.
+The new runtime lock must preserve every original archive/configuration field and pass
+verification of the actual libraries loaded. The original campaign did not pin its
+client executable: the continuation explicitly records that limitation and its new
+client pin. Do not claim byte-identical original client provenance.
+
+After implementation review, complete CI, approval of the control results and the
+landed preregistration amendment, append `--execute --output <new-directory>`.
+Execution creates `continuation-claim.json` exclusively in the original campaign;
+this is its only source write. The output must be new and outside that campaign.
+Never run this alongside the original campaign: independently verify it is stopped.
+Two concurrent continuations cannot acquire the same claim. A setup failure or
+interruption retains the claim and requires a separately reviewed recovery; deleting
+it to retry is unsupported.
+
+Only eligible untouched tasks run, with the original cell order and limits. Each task
+gets one new parent index shared by its four cells; no old partial pair is extended.
+Original artifacts, the claim, copied executables/configuration, client and fixture
+receipts are checked again before each paid cell. The runtime verifier checks actual
+library loading before cells and the GPU wrapper enforces the hold/proof contract.
+The original complete pairs and continuation pairs must remain labelled by source in
+any descriptive pooling; the original partial pair remains incomplete.
