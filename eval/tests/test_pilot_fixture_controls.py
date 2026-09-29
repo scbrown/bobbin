@@ -62,3 +62,31 @@ def test_custom_summary_still_requires_executed_tests(monkeypatch, summary, rc, 
     result = pilot.grade("unused", "unused", {}, 1)
     assert result["executed"] == executed
     assert result["passed"] is passed
+
+
+def test_standalone_measures_explicit_tasks_and_records_their_digests(tmp_path, monkeypatch):
+    # aegis-bgk9ho: repaired task definitions must be measurable without the
+    # campaign binding that (rightly) refuses changed tasks for paid continuation.
+    root, output = tmp_path / "eval", tmp_path / "output"
+    (root / "tasks").mkdir(parents=True)
+    for task in ("good", "bad"):
+        (root / "tasks" / f"{task}.yaml").write_text(f"id: {task}\n")
+    monkeypatch.setattr(fixtures, "plan", lambda *a: pytest.fail("campaign binding in standalone"))
+    monkeypatch.setattr(fixtures, "load_task_by_id", lambda task, r: {"id": task})
+    monkeypatch.setattr(pilot, "invoke", lambda *a: pytest.fail("paid invocation"))
+    monkeypatch.setattr(pilot, "isolated_env", lambda home, *, copy_credentials: {})
+    def prepare(task, scratch, env, timeout):
+        assert timeout == 900
+        (scratch / "controls.json").write_text("{}")
+        if task["id"] == "bad":
+            raise ValueError("does not discriminate")
+    monkeypatch.setattr(pilot, "prepare", prepare)
+    result = fixtures.standalone(["good", "bad"], 900, output, root)
+    assert result["kind"] == "fixture-controls-standalone"
+    assert result["model_calls"] == 0 and result["all_tasks_checked"] is True
+    assert result["eligible_tasks"] == ["good"]
+    assert set(result["task_sha256"]) == {"good", "bad"} and all(
+        len(v) == 64 for v in result["task_sha256"].values())
+    for bad in ([], ["good", "good"]):
+        with pytest.raises(ValueError):
+            fixtures.standalone(bad, 900, tmp_path / "other", root)
