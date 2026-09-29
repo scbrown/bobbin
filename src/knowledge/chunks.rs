@@ -33,7 +33,11 @@ use crate::types::{Chunk, ChunkEdge, ChunkEdgeType, ChunkType};
 
 #[cfg(test)]
 mod collision_tests;
+mod graph_routing;
+#[cfg(test)]
+mod graph_tests;
 mod remote;
+use graph_routing::require_graph_routing;
 pub use remote::push_chunks_to_remote_quipu;
 pub(crate) use remote::quipu_auth_token;
 
@@ -261,6 +265,7 @@ pub fn push_chunks_to_quipu(
     edges: &[ChunkEdge],
     repo_name: &str,
     repo_root: &Path,
+    target_graph: Option<&str>,
 ) -> Result<(i64, usize)> {
     let quipu_config = quipu::QuipuConfig::load(repo_root);
     let db_path = if quipu_config.store_path.is_relative() {
@@ -276,6 +281,11 @@ pub fn push_chunks_to_quipu(
 
     let snapshot_key = format!("bobbin-chunks:{repo_name}");
 
+    // A named target must be PROVEN honoured before any write, or chunks could land in ROOT.
+    if let Some(graph) = target_graph {
+        require_graph_routing(&mut store, graph)?;
+    }
+
     // Probe snapshot support with an EMPTY payload before writing facts: a
     // quipu that predates replace_snapshot ignores the key (no "replaced"
     // field in the response) and would accumulate one copy of the graph per
@@ -289,6 +299,7 @@ pub fn push_chunks_to_quipu(
             "source": "chunk-index-probe",
             "replace_snapshot": true,
             "snapshot": snapshot_key,
+            "graph": target_graph,
         }),
     )
     .map_err(|e| anyhow::anyhow!("Quipu snapshot probe failed: {e}"))?;
@@ -311,6 +322,7 @@ pub fn push_chunks_to_quipu(
             "source": "chunk-index",
             "replace_snapshot": true,
             "snapshot": snapshot_key,
+            "graph": target_graph,
         }),
     )
     .map_err(|e| anyhow::anyhow!("Failed to push chunks to quipu: {e}"))?;
@@ -333,7 +345,7 @@ mod tests {
     use super::*;
     use crate::types::ChunkType;
 
-    fn chunk(id: &str, file: &str, start: u32, name: Option<&str>) -> Chunk {
+    pub(super) fn chunk(id: &str, file: &str, start: u32, name: Option<&str>) -> Chunk {
         Chunk {
             id: id.to_string(),
             file_path: file.to_string(),
@@ -444,13 +456,13 @@ mod tests {
             chunk("h1", "docs/guide.md", 1, Some("Intro")),
             chunk("h2", "docs/guide.md", 7, Some("Setup")),
         ];
-        let (tx1, n1) = push_chunks_to_quipu(&two, &[], "r", dir.path()).expect("first push");
+        let (tx1, n1) = push_chunks_to_quipu(&two, &[], "r", dir.path(), None).expect("first push");
         assert!(tx1 > 0);
         assert!(n1 > 0);
 
         // Push again with one chunk vanished: its facts must retract.
         let one = vec![chunk("h1", "docs/guide.md", 1, Some("Intro"))];
-        push_chunks_to_quipu(&one, &[], "r", dir.path()).expect("second push");
+        push_chunks_to_quipu(&one, &[], "r", dir.path(), None).expect("second push");
 
         let store = quipu::Store::open(dir.path().join(".bobbin/quipu/quipu.db").to_str().unwrap())
             .unwrap();

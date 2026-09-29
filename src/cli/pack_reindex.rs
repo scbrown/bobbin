@@ -18,6 +18,7 @@ pub(super) async fn run(
             incremental: true,
             force: false,
             force_publish: false,
+            graph: None,
             repo: Some(repo),
             source: Some(source),
             include_beads: false,

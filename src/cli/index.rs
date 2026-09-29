@@ -124,6 +124,8 @@ pub struct IndexArgs {
     /// Publish the full graph even if unchanged, without re-embedding files
     #[arg(long)]
     pub(super) force_publish: bool,
+    #[arg(long = "quipu-graph", help = "Registered quipu graph for chunks")]
+    pub(super) graph: Option<String>,
 
     /// Repository name for multi-repo indexing (auto-detected from source dir name)
     #[arg(long)]
@@ -996,7 +998,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             (&snapshot_chunks, &snapshot_edges),
             repo_name,
             &source_root,
-            config.quipu_endpoint.as_deref(),
+            (config.quipu_endpoint.as_deref(), args.graph.as_deref()),
             output.quiet || output.json,
             &metadata_store,
             args.force || args.force_publish,

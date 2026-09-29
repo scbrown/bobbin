@@ -28,11 +28,12 @@ pub async fn push_chunks_to_remote_quipu(
     edges: &[ChunkEdge],
     repo_name: &str,
     endpoint: &str,
+    target_graph: Option<&str>,
 ) -> Result<(i64, usize)> {
     let token = quipu_auth_token().context(
         "quipu_push_chunks targets a remote ontology but no QUIPU_AUTH_TOKEN or readable token file is available",
     )?;
-    push_with_token(chunks, edges, repo_name, endpoint, &token).await
+    push_with_token(chunks, edges, repo_name, endpoint, &token, target_graph).await
 }
 
 async fn push_with_token(
@@ -41,11 +42,18 @@ async fn push_with_token(
     repo_name: &str,
     endpoint: &str,
     token: &str,
+    target_graph: Option<&str>,
 ) -> Result<(i64, usize)> {
     let turtle = super::generate_chunk_turtle(chunks, edges, repo_name);
     let snapshot = format!("bobbin-chunks:{repo_name}");
     let content_hash = sha256(turtle.as_bytes());
-    let upload_id = sha256(format!("{snapshot}\n{content_hash}").as_bytes());
+    // The target graph is part of the upload's identity: identical content bound for ROOT
+    // and for a named graph must never share a staged upload (it would promote into
+    // whichever graph staged first). ROOT keeps its original id.
+    let upload_id = match target_graph {
+        None => sha256(format!("{snapshot}\n{content_hash}").as_bytes()),
+        Some(graph) => sha256(format!("{snapshot}\n{content_hash}\n{graph}").as_bytes()),
+    };
     let parts = snapshot_parts(&turtle);
     anyhow::ensure!(!parts.is_empty(), "refusing an empty chunk snapshot upload");
     let client = reqwest::Client::builder()
@@ -53,14 +61,21 @@ async fn push_with_token(
         .build()
         .context("building remote Quipu client")?;
     let base = endpoint.trim_end_matches('/');
+    if let Some(graph) = target_graph {
+        require_remote_graph_routing(&client, base, token, graph).await?;
+    }
 
     for (part_number, payload) in parts.iter().enumerate() {
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "upload_id": upload_id, "snapshot": snapshot, "content_hash": content_hash,
             "total_parts": parts.len(), "total_bytes": turtle.len(),
             "part_number": part_number, "part_hash": sha256(payload.as_bytes()), "payload": payload,
             "actor": "bobbin", "source": format!("bobbin chunk index: {repo_name}"),
         });
+        // Only when set, so a ROOT stage body is byte-identical to before (aegis-86f2v7).
+        if let Some(graph) = target_graph {
+            body["graph"] = serde_json::Value::from(graph);
+        }
         post_with_retries(&client, &format!("{base}/knot/stage"), token, &body)
             .await
             .with_context(|| {
@@ -117,6 +132,34 @@ fn snapshot_parts(mut turtle: &str) -> Vec<&str> {
         turtle = remaining;
     }
     parts
+}
+
+/// Prove the remote store routes `/knot` by graph before staging into `graph`: a write
+/// aimed at an unregistered sentinel must be REFUSED as an unknown graph (the key is
+/// honoured), and an empty write to `graph` must SUCCEED (it is registered). Anything
+/// else refuses the push rather than risk the chunks landing in ROOT.
+async fn require_remote_graph_routing(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    graph: &str,
+) -> Result<()> {
+    let knot = format!("{base}/knot");
+    let body = |g: &str| serde_json::json!({"turtle": "", "actor": "bobbin", "source": "chunk-graph-probe", "graph": g});
+    let sentinel = format!("{graph}/bobbin-unregistered-sentinel");
+    match post_with_retries(client, &knot, token, &body(&sentinel)).await {
+        Ok(_) => anyhow::bail!(
+            "remote quipu ACCEPTED a write aimed at an unregistered sentinel graph, so it is \
+             dropping the /knot 'graph' key: chunks meant for <{graph}> would land in ROOT. \
+             Refusing to push."
+        ),
+        Err(e) if e.to_string().contains("unknown graph") => {}
+        Err(e) => anyhow::bail!("remote quipu graph-routing probe failed: {e}"),
+    }
+    post_with_retries(client, &knot, token, &body(graph))
+        .await
+        .with_context(|| format!("target graph <{graph}> is not usable (register it first)"))?;
+    Ok(())
 }
 
 fn sha256(bytes: &[u8]) -> String {
@@ -294,9 +337,16 @@ mod tests {
         let chunks = [large_chunk];
         let expected = super::super::generate_chunk_turtle(&chunks, &[], "repo");
         assert_eq!(
-            push_with_token(&chunks, &[], "repo", &format!("http://{addr}"), "secret")
-                .await
-                .unwrap(),
+            push_with_token(
+                &chunks,
+                &[],
+                "repo",
+                &format!("http://{addr}"),
+                "secret",
+                None
+            )
+            .await
+            .unwrap(),
             (42, 7)
         );
         let guard = seen.0.lock().unwrap();
@@ -332,11 +382,16 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let started = std::time::Instant::now();
-        assert!(
-            push_with_token(&[chunk()], &[], "repo", &format!("http://{addr}"), "secret")
-                .await
-                .is_err()
-        );
+        assert!(push_with_token(
+            &[chunk()],
+            &[],
+            "repo",
+            &format!("http://{addr}"),
+            "secret",
+            None
+        )
+        .await
+        .is_err());
         assert!(started.elapsed() < Duration::from_secs(1));
     }
 }
