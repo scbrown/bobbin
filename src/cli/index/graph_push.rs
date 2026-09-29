@@ -30,11 +30,13 @@ pub(super) async fn snapshot(
 }
 
 #[cfg(feature = "knowledge")]
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn publish(
     graph: (&[crate::types::Chunk], &[crate::types::ChunkEdge]),
     repo: &str,
     root: &std::path::Path,
     endpoint: Option<&str>,
+    target_graph: Option<&str>,
     quiet: bool,
     metadata: &crate::storage::MetadataStore,
     force: bool,
@@ -48,10 +50,23 @@ pub(super) async fn publish(
                 .to_string_lossy()
                 .into_owned()
         });
-    let key = format!(
-        "quipu_snapshot_success:v1:{}",
-        hex::encode(Sha256::digest(serde_json::to_vec(&(repo, destination))?))
-    );
+    // The target graph is part of the destination: moving a repository from ROOT to a
+    // named graph (or between graphs) must publish, not read as "unchanged". ROOT keeps
+    // its original key shape so existing ROOT dedupe records stay valid.
+    let key = match target_graph {
+        None => format!(
+            "quipu_snapshot_success:v1:{}",
+            hex::encode(Sha256::digest(serde_json::to_vec(&(repo, destination))?))
+        ),
+        Some(graph) => format!(
+            "quipu_snapshot_success:v1:{}",
+            hex::encode(Sha256::digest(serde_json::to_vec(&(
+                repo,
+                destination,
+                graph
+            ))?))
+        ),
+    };
     let turtle = crate::knowledge::chunks::generate_chunk_turtle(chunks, edges, repo);
     let hash = hex::encode(Sha256::digest(turtle.as_bytes()));
     let payload_bytes = turtle.len();
@@ -69,9 +84,16 @@ pub(super) async fn publish(
                 payload_bytes
             );
         }
-        crate::knowledge::chunks::push_chunks_to_remote_quipu(chunks, edges, repo, endpoint).await
+        crate::knowledge::chunks::push_chunks_to_remote_quipu(
+            chunks,
+            edges,
+            repo,
+            endpoint,
+            target_graph,
+        )
+        .await
     } else {
-        crate::knowledge::chunks::push_chunks_to_quipu(chunks, edges, repo, root)
+        crate::knowledge::chunks::push_chunks_to_quipu(chunks, edges, repo, root, target_graph)
     }?;
     // A failed or indeterminate publication must remain eligible on the next
     // run even when file hashes were already committed by local indexing.
@@ -158,7 +180,8 @@ mod tests {
             .into_iter()
             .collect();
         let (chunks, edges) = snapshot(&store, "r", &files).await.unwrap();
-        crate::knowledge::chunks::push_chunks_to_quipu(&chunks, &edges, "r", dir.path()).unwrap();
+        crate::knowledge::chunks::push_chunks_to_quipu(&chunks, &edges, "r", dir.path(), None)
+            .unwrap();
 
         // Only b.rs is reparsed. The unchanged a.rs graph must survive replacement.
         store
@@ -184,7 +207,8 @@ mod tests {
         assert!(chunks.iter().all(|c| c.content.is_empty()));
         assert_eq!(edges.len(), 1, "unchanged-file edges must survive too");
         // Control: the previous changed-file-only payload removes a.rs.
-        crate::knowledge::chunks::push_chunks_to_quipu(&chunks[1..], &[], "r", dir.path()).unwrap();
+        crate::knowledge::chunks::push_chunks_to_quipu(&chunks[1..], &[], "r", dir.path(), None)
+            .unwrap();
         let graph = quipu::Store::open(dir.path().join(".bobbin/quipu/quipu.db").to_str().unwrap())
             .unwrap();
         let unchanged = graph
@@ -199,7 +223,8 @@ mod tests {
         drop(graph);
         // A no-change retry can recover the complete snapshot from persisted rows.
         let (chunks, edges) = snapshot(&store, "r", &files).await.unwrap();
-        crate::knowledge::chunks::push_chunks_to_quipu(&chunks, &edges, "r", dir.path()).unwrap();
+        crate::knowledge::chunks::push_chunks_to_quipu(&chunks, &edges, "r", dir.path(), None)
+            .unwrap();
         let graph = quipu::Store::open(dir.path().join(".bobbin/quipu/quipu.db").to_str().unwrap())
             .unwrap();
         let kept = graph
@@ -218,7 +243,8 @@ mod tests {
         let (chunks, edges) = snapshot(&store, "r", &only_b).await.unwrap();
         assert_eq!(chunks.len(), 1);
         assert!(edges.is_empty());
-        crate::knowledge::chunks::push_chunks_to_quipu(&chunks, &edges, "r", dir.path()).unwrap();
+        crate::knowledge::chunks::push_chunks_to_quipu(&chunks, &edges, "r", dir.path(), None)
+            .unwrap();
         let graph = quipu::Store::open(dir.path().join(".bobbin/quipu/quipu.db").to_str().unwrap())
             .unwrap();
         assert!(!graph

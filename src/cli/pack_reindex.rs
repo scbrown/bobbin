@@ -18,6 +18,8 @@ pub(super) async fn run(
             incremental: true,
             force: false,
             force_publish: false,
+            // A pack reindex publishes where its config says (quipu_chunk_graph, else ROOT).
+            quipu_graph: None,
             repo: Some(repo),
             source: Some(source),
             include_beads: false,

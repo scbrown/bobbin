@@ -252,6 +252,33 @@ fn escape_literal(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+/// Prove the store enforces `/knot` graph routing before writing into `graph`.
+///
+/// Two checks, both required: a write aimed at a deliberately UNREGISTERED sentinel
+/// graph must be refused with "unknown graph" (so the key is not being dropped), and
+/// the requested graph itself must be accepted by an empty write (so it is registered).
+/// The empty write replaces nothing: it carries no snapshot key.
+fn require_graph_routing(store: &mut quipu::Store, graph: &str) -> Result<()> {
+    let sentinel = format!("{graph}/bobbin-unregistered-sentinel");
+    match quipu::tool_knot(
+        store,
+        &serde_json::json!({"turtle": "", "actor": "bobbin", "source": "chunk-graph-probe", "graph": sentinel}),
+    ) {
+        Ok(_) => anyhow::bail!(
+            "quipu ACCEPTED a write aimed at an unregistered sentinel graph, so it is dropping \
+             the /knot 'graph' key: chunks meant for <{graph}> would land in ROOT. Refusing to push."
+        ),
+        Err(e) if e.to_string().contains("unknown graph") => {}
+        Err(e) => anyhow::bail!("quipu graph-routing probe failed: {e}"),
+    }
+    quipu::tool_knot(
+        store,
+        &serde_json::json!({"turtle": "", "actor": "bobbin", "source": "chunk-graph-probe", "graph": graph}),
+    )
+    .map_err(|e| anyhow::anyhow!("target graph <{graph}> is not usable (register it first): {e}"))?;
+    Ok(())
+}
+
 /// Push the chunk graph as a diffed snapshot replacement.
 ///
 /// Returns `(tx_id, fact_count)`. Errors — without writing anything — if
@@ -261,6 +288,7 @@ pub fn push_chunks_to_quipu(
     edges: &[ChunkEdge],
     repo_name: &str,
     repo_root: &Path,
+    target_graph: Option<&str>,
 ) -> Result<(i64, usize)> {
     let quipu_config = quipu::QuipuConfig::load(repo_root);
     let db_path = if quipu_config.store_path.is_relative() {
@@ -276,6 +304,13 @@ pub fn push_chunks_to_quipu(
 
     let snapshot_key = format!("bobbin-chunks:{repo_name}");
 
+    // A named target graph (aegis-86f2v7) must be PROVEN to be honoured before any fact
+    // is written: a store that silently drops the /knot `graph` key would put the chunks
+    // in ROOT, which is the one outcome a named target exists to prevent.
+    if let Some(graph) = target_graph {
+        require_graph_routing(&mut store, graph)?;
+    }
+
     // Probe snapshot support with an EMPTY payload before writing facts: a
     // quipu that predates replace_snapshot ignores the key (no "replaced"
     // field in the response) and would accumulate one copy of the graph per
@@ -289,6 +324,7 @@ pub fn push_chunks_to_quipu(
             "source": "chunk-index-probe",
             "replace_snapshot": true,
             "snapshot": snapshot_key,
+            "graph": target_graph,
         }),
     )
     .map_err(|e| anyhow::anyhow!("Quipu snapshot probe failed: {e}"))?;
@@ -311,6 +347,7 @@ pub fn push_chunks_to_quipu(
             "source": "chunk-index",
             "replace_snapshot": true,
             "snapshot": snapshot_key,
+            "graph": target_graph,
         }),
     )
     .map_err(|e| anyhow::anyhow!("Failed to push chunks to quipu: {e}"))?;
@@ -438,19 +475,84 @@ mod tests {
     // the probe passes and a re-push DIFFS instead of accumulating — the
     // failure mode the probe exists to refuse on older stores.
     #[test]
+    fn named_graph_push_lands_in_that_graph_and_leaves_root_untouched() {
+        // aegis-86f2v7: third-party code published to a named graph must not touch ROOT,
+        // and a re-push must replace within that graph only.
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join(".bobbin/quipu/quipu.db");
+        std::fs::create_dir_all(db.parent().unwrap()).unwrap();
+        let graph = "urn:test:graph:third-party-code";
+        let g = quipu::Store::open(db.to_str().unwrap())
+            .unwrap()
+            .graph_create(graph)
+            .unwrap();
+
+        let two = vec![
+            chunk("h1", "docs/guide.md", 1, Some("Intro")),
+            chunk("h2", "docs/guide.md", 7, Some("Setup")),
+        ];
+        push_chunks_to_quipu(&two, &[], "r", dir.path(), Some(graph)).expect("graph push");
+        let store = quipu::Store::open(db.to_str().unwrap()).unwrap();
+        assert!(
+            store.current_facts().unwrap().is_empty(),
+            "ROOT must stay empty"
+        );
+        let n_two = store.current_facts_in_graph(g).unwrap().len();
+        assert!(n_two > 0, "facts must land in the named graph");
+        drop(store);
+
+        let one = vec![chunk("h1", "docs/guide.md", 1, Some("Intro"))];
+        push_chunks_to_quipu(&one, &[], "r", dir.path(), Some(graph)).expect("second graph push");
+        let store = quipu::Store::open(db.to_str().unwrap()).unwrap();
+        let n_one = store.current_facts_in_graph(g).unwrap().len();
+        assert!(
+            n_one > 0 && n_one < n_two,
+            "re-push must retract the vanished chunk IN the graph"
+        );
+        assert!(
+            store.current_facts().unwrap().is_empty(),
+            "ROOT still empty after the replace"
+        );
+    }
+
+    #[test]
+    fn unregistered_graph_is_refused_and_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let chunks = vec![chunk("h1", "docs/guide.md", 1, Some("Intro"))];
+        let err = push_chunks_to_quipu(
+            &chunks,
+            &[],
+            "r",
+            dir.path(),
+            Some("urn:test:graph:never-registered"),
+        )
+        .expect_err("an unregistered target graph must be refused");
+        assert!(
+            err.to_string().contains("not usable"),
+            "unexpected error: {err}"
+        );
+        let store = quipu::Store::open(dir.path().join(".bobbin/quipu/quipu.db").to_str().unwrap())
+            .unwrap();
+        assert!(
+            store.current_facts().unwrap().is_empty(),
+            "nothing may fall back into ROOT"
+        );
+    }
+
+    #[test]
     fn snapshot_push_replaces_instead_of_accumulating() {
         let dir = tempfile::tempdir().unwrap();
         let two = vec![
             chunk("h1", "docs/guide.md", 1, Some("Intro")),
             chunk("h2", "docs/guide.md", 7, Some("Setup")),
         ];
-        let (tx1, n1) = push_chunks_to_quipu(&two, &[], "r", dir.path()).expect("first push");
+        let (tx1, n1) = push_chunks_to_quipu(&two, &[], "r", dir.path(), None).expect("first push");
         assert!(tx1 > 0);
         assert!(n1 > 0);
 
         // Push again with one chunk vanished: its facts must retract.
         let one = vec![chunk("h1", "docs/guide.md", 1, Some("Intro"))];
-        push_chunks_to_quipu(&one, &[], "r", dir.path()).expect("second push");
+        push_chunks_to_quipu(&one, &[], "r", dir.path(), None).expect("second push");
 
         let store = quipu::Store::open(dir.path().join(".bobbin/quipu/quipu.db").to_str().unwrap())
             .unwrap();

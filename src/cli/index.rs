@@ -125,6 +125,11 @@ pub struct IndexArgs {
     #[arg(long)]
     pub(super) force_publish: bool,
 
+    /// Publish the chunk graph into this NAMED quipu graph instead of ROOT
+    /// (overrides `quipu_chunk_graph` in config). The graph must be registered.
+    #[arg(long, value_name = "IRI")]
+    pub(super) quipu_graph: Option<String>,
+
     /// Repository name for multi-repo indexing (auto-detected from source dir name)
     #[arg(long)]
     pub(super) repo: Option<String>,
@@ -992,11 +997,17 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         // Repository-wide replacement must include unchanged files.
         let (snapshot_chunks, snapshot_edges) =
             graph_push::snapshot(&vector_store, repo_name, &current_files).await?;
+        // A CLI --quipu-graph wins over config; neither means ROOT (aegis-86f2v7).
+        let chunk_graph = args
+            .quipu_graph
+            .as_deref()
+            .or(config.quipu_chunk_graph.as_deref());
         let pushed = graph_push::publish(
             (&snapshot_chunks, &snapshot_edges),
             repo_name,
             &source_root,
             config.quipu_endpoint.as_deref(),
+            chunk_graph,
             output.quiet || output.json,
             &metadata_store,
             args.force || args.force_publish,
