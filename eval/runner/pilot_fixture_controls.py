@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -28,6 +29,35 @@ def controls(source, manifest_sha256, output, root):
     report = {"kind": "fixture-controls-only", "model_calls": 0,
               "source_manifest_sha256": manifest_sha256, "tasks": [],
               "all_tasks_checked": False}
+    return _run(tasks, timeout, output, root, report)
+
+
+def standalone(task_ids, timeout, output, root):
+    """Run the free controls over an EXPLICIT task list with no campaign binding.
+
+    `controls` refuses any task whose definition changed since the original
+    campaign, which is right for continuing paid cells and makes it impossible
+    to measure REPAIRED fixtures (aegis-bgk9ho). This mode takes the ids from
+    the operator and records the sha256 of every task file it used, so the
+    report says exactly which definitions it measured. It never touches a
+    campaign and makes no model calls.
+    """
+    if not task_ids or len(set(task_ids)) != len(task_ids):
+        raise ValueError("standalone controls need a non-empty list of distinct task ids")
+    if not isinstance(timeout, int) or not 0 < timeout <= 3600:
+        raise ValueError("timeout must be between 1 and 3600 seconds")
+    output.mkdir(parents=True, mode=0o700, exist_ok=False)
+    digests = {}
+    for task_id in task_ids:
+        path = root / "tasks" / f"{task_id}.yaml"
+        digests[task_id] = hashlib.sha256(path.read_bytes()).hexdigest()
+    report = {"kind": "fixture-controls-standalone", "model_calls": 0,
+              "timeout": timeout, "task_sha256": digests, "tasks": [],
+              "all_tasks_checked": False}
+    return _run(list(task_ids), timeout, output, root, report)
+
+
+def _run(tasks, timeout, output, root, report):
     pilot.write_json(output / "report.json", report)
     for task_id in tasks:
         task_output = output / task_id
@@ -65,13 +95,23 @@ def controls(source, manifest_sha256, output, root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("source", type=Path)
-    parser.add_argument("--manifest-sha256", required=True)
+    parser.add_argument("source", type=Path, nargs="?")
+    parser.add_argument("--manifest-sha256")
+    parser.add_argument("--tasks", help="comma-separated ids: standalone mode, no campaign")
+    parser.add_argument("--timeout", type=int, default=900,
+                        help="per-command seconds in standalone mode")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     os.umask(0o077)
-    controls(args.source, args.manifest_sha256, args.output,
-             Path(__file__).resolve().parent.parent)
+    root = Path(__file__).resolve().parent.parent
+    if args.tasks:
+        if args.source or args.manifest_sha256:
+            parser.error("--tasks is standalone: do not pass a campaign source or manifest")
+        standalone([t for t in args.tasks.split(",") if t], args.timeout, args.output, root)
+    else:
+        if not (args.source and args.manifest_sha256):
+            parser.error("campaign mode needs SOURCE and --manifest-sha256")
+        controls(args.source, args.manifest_sha256, args.output, root)
 
 
 if __name__ == "__main__":
