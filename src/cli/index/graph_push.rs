@@ -29,6 +29,34 @@ pub(super) async fn snapshot(
     Ok((chunks, edges))
 }
 
+/// Refuse to publish a repository into a named graph when this index has already
+/// published it to ROOT at the same destination.
+///
+/// Snapshot replacement is GRAPH-scoped (it retracts only the target graph's prior facts
+/// under this producer key), so moving a ROOT-published repository to a named graph would
+/// leave its whole ROOT snapshot behind as an orphaned copy, silently (review on
+/// bobbin#148). Retract the ROOT snapshot first, or keep publishing to ROOT. The check can
+/// only see publishes this index recorded; a repository published to ROOT from a
+/// different index is not visible here.
+#[cfg(feature = "knowledge")]
+fn refuse_root_to_graph_copy(
+    metadata: &crate::storage::MetadataStore,
+    root_key: &str,
+    repo: &str,
+    target_graph: Option<&str>,
+) -> anyhow::Result<()> {
+    if let Some(graph) = target_graph {
+        if metadata.get_meta(root_key)?.is_some() {
+            anyhow::bail!(
+                "refusing to publish {repo} into <{graph}>: this index already published it to \
+                 ROOT at the same destination, and snapshot replacement is graph-scoped, so the \
+                 ROOT copy would be left behind. Retract the ROOT snapshot first, or keep ROOT."
+            );
+        }
+    }
+    Ok(())
+}
+
 #[cfg(feature = "knowledge")]
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn publish(
@@ -53,11 +81,13 @@ pub(super) async fn publish(
     // The target graph is part of the destination: moving a repository from ROOT to a
     // named graph (or between graphs) must publish, not read as "unchanged". ROOT keeps
     // its original key shape so existing ROOT dedupe records stay valid.
+    let root_key = format!(
+        "quipu_snapshot_success:v1:{}",
+        hex::encode(Sha256::digest(serde_json::to_vec(&(repo, &destination))?))
+    );
+    refuse_root_to_graph_copy(metadata, &root_key, repo, target_graph)?;
     let key = match target_graph {
-        None => format!(
-            "quipu_snapshot_success:v1:{}",
-            hex::encode(Sha256::digest(serde_json::to_vec(&(repo, destination))?))
-        ),
+        None => root_key,
         Some(graph) => format!(
             "quipu_snapshot_success:v1:{}",
             hex::encode(Sha256::digest(serde_json::to_vec(&(
@@ -110,6 +140,23 @@ pub(super) async fn publish(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "knowledge")]
+    #[test]
+    fn refuses_moving_a_root_published_repo_into_a_named_graph() {
+        let dir = tempfile::tempdir().unwrap();
+        let metadata = crate::storage::MetadataStore::open(&dir.path().join("meta.db")).unwrap();
+        let root_key = "quipu_snapshot_success:v1:test-root-key";
+        // Never published to ROOT: a graph target is fine (the gascity case).
+        super::refuse_root_to_graph_copy(&metadata, root_key, "r", Some("urn:g")).unwrap();
+        // ROOT keeps publishing to ROOT regardless.
+        metadata.set_meta(root_key, "hash").unwrap();
+        super::refuse_root_to_graph_copy(&metadata, root_key, "r", None).unwrap();
+        // Already on ROOT: moving to a graph would orphan the ROOT copy, so refuse.
+        let err = super::refuse_root_to_graph_copy(&metadata, root_key, "r", Some("urn:g"))
+            .expect_err("a ROOT-published repo must not be copied into a graph");
+        assert!(err.to_string().contains("left behind"), "{err}");
+    }
+
     use super::*;
 
     #[test]

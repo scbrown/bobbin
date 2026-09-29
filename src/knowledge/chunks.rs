@@ -471,9 +471,6 @@ mod tests {
         assert!(!turtle.contains("beads"));
     }
 
-    // Proof the pinned quipu (0.3.23) handles `replace_snapshot` server-side:
-    // the probe passes and a re-push DIFFS instead of accumulating — the
-    // failure mode the probe exists to refuse on older stores.
     #[test]
     fn named_graph_push_lands_in_that_graph_and_leaves_root_untouched() {
         // aegis-86f2v7: third-party code published to a named graph must not touch ROOT,
@@ -539,6 +536,71 @@ mod tests {
         );
     }
 
+    #[test]
+    fn graph_publish_replaces_only_its_own_source_not_the_whole_graph() {
+        // aegis-86f2v7 condition (sattler): the chunk snapshot may share a named graph with
+        // facts from another producer (an issues graph). replace_snapshot must retract only
+        // bobbin's own snapshot, so the foreign facts are counted EXACTLY before and after.
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join(".bobbin/quipu/quipu.db");
+        std::fs::create_dir_all(db.parent().unwrap()).unwrap();
+        let graph = "urn:test:graph:shared-knowledge";
+        let mut store = quipu::Store::open(db.to_str().unwrap()).unwrap();
+        let g = store.graph_create(graph).unwrap();
+        let foreign = (1..=5)
+            .map(|i| format!("<urn:test:issue:{i}> <http://www.w3.org/2000/01/rdf-schema#label> \"issue {i}\" ."))
+            .collect::<Vec<_>>()
+            .join("\n");
+        quipu::tool_knot(
+            &mut store,
+            &serde_json::json!({"turtle": foreign, "actor": "issue-ingest", "source": "issue-ingest", "graph": graph}),
+        )
+        .expect("seed foreign facts");
+        let foreign_ids: Vec<i64> = (1..=5)
+            .map(|i| {
+                store
+                    .lookup(&format!("urn:test:issue:{i}"))
+                    .unwrap()
+                    .expect("interned")
+            })
+            .collect();
+        let count_foreign = |s: &quipu::Store| {
+            s.current_facts_in_graph(g)
+                .unwrap()
+                .iter()
+                .filter(|f| foreign_ids.contains(&f.entity))
+                .count()
+        };
+        let before = count_foreign(&store);
+        assert_eq!(before, 5, "control: the seed must be visible");
+        drop(store);
+
+        let two = vec![
+            chunk("h1", "docs/guide.md", 1, Some("Intro")),
+            chunk("h2", "docs/guide.md", 7, Some("Setup")),
+        ];
+        push_chunks_to_quipu(&two, &[], "r", dir.path(), Some(graph)).expect("first publish");
+        let store = quipu::Store::open(db.to_str().unwrap()).unwrap();
+        assert_eq!(
+            count_foreign(&store),
+            before,
+            "first publish must not touch foreign facts"
+        );
+        drop(store);
+
+        let one = vec![chunk("h1", "docs/guide.md", 1, Some("Intro"))];
+        push_chunks_to_quipu(&one, &[], "r", dir.path(), Some(graph)).expect("re-publish");
+        let store = quipu::Store::open(db.to_str().unwrap()).unwrap();
+        assert_eq!(
+            count_foreign(&store),
+            before,
+            "a replacing re-publish must not touch them either"
+        );
+    }
+
+    // Proof the pinned quipu (0.3.23) handles `replace_snapshot` server-side:
+    // the probe passes and a re-push DIFFS instead of accumulating — the
+    // failure mode the probe exists to refuse on older stores.
     #[test]
     fn snapshot_push_replaces_instead_of_accumulating() {
         let dir = tempfile::tempdir().unwrap();
