@@ -1,6 +1,6 @@
 id: pandas-003
 repo: pandas-dev/pandas
-commit: 27fdae8f461e16fd46484f89f8b42390e1a8840d
+commit: 1b5b02c08bef32dd93c2ee3553c9d93be1a71818
 description: |
   Fix json_normalize inconsistent validation of the `meta` parameter.
   When `meta` contains non-string elements (e.g., integers), the function

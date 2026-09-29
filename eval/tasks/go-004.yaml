@@ -1,6 +1,6 @@
 id: go-004
 repo: golang/go
-commit: f2e7fa6d31143b2d9fbb94df7aa05b3a0919d112
+commit: 997215446134152d8c3c53b3d052032475ef7cfa
 description: |
   Fix go/build.Context.importGo to return errNoModules when UseAllFiles is
   set. The importGo method invokes the `go` command to resolve module
@@ -10,7 +10,8 @@ description: |
   condition in importGo that checks for non-standard Context configurations
   and returns errNoModules. The fix is a single boolean check added to the
   condition in build.go.
-test_command: "cd src && go test go/build -run TestContextImportGoWithUseAllFiles -count=1"
+setup_command: "cd src && ./make.bash"
+test_command: "cd src && ../bin/go test -v go/build -run TestContextImportGoWithUseAllFiles -count=1"
 language: go
 difficulty: easy
 tags: [bug-fix, go-build, module, configuration, one-liner]

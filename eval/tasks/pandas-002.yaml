@@ -1,6 +1,6 @@
 id: pandas-002
 repo: pandas-dev/pandas
-commit: a4523484f6267501ae0bc240c5baf2108c622373
+commit: 3766a73d48148a2e5621f20fb655929ee3eeac8c
 description: |
   Fix groupby with categorical columns and NA values producing incorrect
   group assignments. When grouping by multiple keys where one is a

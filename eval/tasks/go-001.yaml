@@ -1,13 +1,14 @@
 id: go-001
 repo: golang/go
-commit: 026fa9dc597ea8e5280d7531ce7f193ed157cad0
+commit: 6aef900af4eeb4a35d3ff1237a41cf3f63c56c24
 description: |
   Fix panic in runtime/metrics.Read when called with a nil or empty slice.
   The function unconditionally accesses &m[0] to pass a pointer to the
   runtime, which causes an "index out of range" panic when the slice is
   empty. Add a guard checking len(m) == 0 to return early before accessing
   the first element. The fix is a 3-line addition in sample.go.
-test_command: "cd src && go test runtime/metrics -run TestReadEmptySlice -count=1"
+setup_command: "cd src && ./make.bash"
+test_command: "cd src && ../bin/go test -v runtime/metrics -run TestReadEmptySlice -count=1"
 language: go
 difficulty: easy
 tags: [bug-fix, runtime, panic, bounds-check, nil-safety]

@@ -1,6 +1,6 @@
 id: pandas-005
 repo: pandas-dev/pandas
-commit: 65f88ea9e43670928bc18ffd1d0ed1f295adcf96
+commit: 32b1bc4e0615233b0811665d765d4f216a80cf13
 description: |
   Fix DataFrame.loc filling b'' (empty bytes) instead of NaN when adding
   a new row and new columns simultaneously. When `df.loc["x", ["C","D"]]`

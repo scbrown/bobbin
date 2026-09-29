@@ -1,6 +1,6 @@
 id: pandas-001
 repo: pandas-dev/pandas
-commit: bb0d1cb5af55b9696ea05ab1566eb381f40fc0bc
+commit: 62bf264f85708edb2fa3c866fcd13822074fc149
 description: |
   Fix Series.clip failing when `lower` or `upper` is a 0-dimensional numpy
   array (e.g., `np.array(0)`). The `_flex_method` on Series treats any

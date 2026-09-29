@@ -1,6 +1,6 @@
 id: pandas-004
 repo: pandas-dev/pandas
-commit: 196417f53f120e560fdaf9b04b07760c8a9f46e9
+commit: 17e2d7d82cd6e3c3d14d0c26a0e2728d3a05f1ba
 description: |
   Fix read_excel infinite loop when `skiprows` is a callable that returns
   True for all rows. The `_check_skiprows_func` method counts file rows
