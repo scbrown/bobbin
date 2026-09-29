@@ -11,7 +11,8 @@ description: |
   a panic. Add Cast-unwrapping logic in the join rewrite paths.
 
   Implement the fix. Run the test suite with the test command to verify.
-setup_command: "python3 -m venv .venv && .venv/bin/pip install maturin pytest --quiet && .venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml"
+setup_command: |-
+  python3 -m venv .venv && .venv/bin/pip install --quiet --upgrade pip && D=$(git log -1 --format=%cI HEAD) && .venv/bin/pip install maturin pytest --quiet && .venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pip install --quiet --no-deps -e py-polars && .venv/bin/pip install --quiet --uploaded-prior-to "$D" numpy hypothesis
 test_command: ".venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pytest py-polars/tests/unit/operations/test_join.py -x -k 'test_join_right_with_cast_predicate_pushdown or test_full_join_rewrite_to_right_with_cast'"
 language: rust
 difficulty: medium
