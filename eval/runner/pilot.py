@@ -138,7 +138,14 @@ def grade(ws, command, env, timeout):
             executed = sum(int(passed) + int(failed) for passed, failed, _ in summaries)
             skipped = sum(int(skipped) for _, _, skipped in summaries)
             counts = {"total": executed + skipped, "skipped": skipped}
-    executed = counts.get("total", 0) - counts.get("skipped", 0)
+    if not counts:
+        # `go test -v` prints no totals, only one unindented result line per
+        # top-level test (subtests are indented and belong to their parent).
+        # A bare `ok  pkg` or `[no tests to run]` proves nothing ran.
+        results = re.findall(r"(?m)^--- (PASS|FAIL|SKIP): \S", output)
+        if results:
+            counts = {"total": len(results), "skipped": results.count("SKIP")}
+    executed =counts.get("total", 0) - counts.get("skipped", 0)
     return {"passed": rc == 0 and executed > 0, "valid": executed > 0,
             "executed": executed, "exit_code": rc, "output": output[-50000:],
             "duration_seconds": time.monotonic() - start}

@@ -35,6 +35,13 @@ def test_factors_are_independent(cell, tool, inject):
     ("test result: FAILED. 0 passed; 1 failed; 0 ignored;", 1, False, True),
     ("2 skipped in 0.01s", 0, False, False),
     ("all green", 0, False, False),
+    # go test -v: top-level result lines are the only execution evidence.
+    ("=== RUN   TestX\n--- PASS: TestX (0.00s)\nPASS\nok  \tdebug/elf\t0.004s\n", 0, True, True),
+    ("--- FAIL: TestX (0.00s)\nFAIL\nFAIL\tdebug/elf\t0.002s\nFAIL\n", 1, False, True),
+    ("--- FAIL: TestX (0.00s)\n    --- PASS: TestX/sub (0.00s)\nFAIL\n", 1, False, True),
+    ("--- SKIP: TestX (0.00s)\nok  \tdebug/elf\t0.002s\n", 0, False, False),
+    ("ok  \tdebug/elf\t0.002s\n", 0, False, False),
+    ("ok  \tdebug/elf\t0.002s [no tests to run]\n", 0, False, False),
 ])
 def test_grader_requires_observed_execution(tmp_path, monkeypatch, output, rc, passed, valid):
     monkeypatch.setattr(pilot.subprocess, "run", lambda *a, **k:
