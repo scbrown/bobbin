@@ -1,6 +1,6 @@
 id: go-002
 repo: golang/go
-commit: 0430fa977573866f93e66aa61a66b37ff0738aba
+commit: 9263a71b92e84aa34d0e35887d5c23f5a0a21537
 description: |
   Fix inconsistent state in database/sql Null* types when Scan encounters
   a conversion error. The Scan methods for NullString, NullInt64, NullInt32,
@@ -10,7 +10,8 @@ description: |
   Scan method to capture the error from convertAssign first, then set
   Valid only when err==nil. Seven Scan methods need the same pattern change
   in sql.go (the six named types plus the generic Null[T]).
-test_command: "cd src && go test database/sql -run TestNullTypeScanErrorConsistency -count=1"
+setup_command: "cd src && ./make.bash"
+test_command: "cd src && ../bin/go test -v database/sql -run TestNullTypeScanErrorConsistency -count=1"
 language: go
 difficulty: easy
 tags: [bug-fix, database, sql, error-handling, consistency]

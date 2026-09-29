@@ -1,6 +1,6 @@
 id: go-005
 repo: golang/go
-commit: e2a34c7e9b04564ddad50bd7ec7b52fabde74192
+commit: d4febb45179fa99ee1d5783bcb693ed7ba14115c
 description: |
   Fix a data race in crypto/tls when canceling a QUICConn's context
   concurrently with handshake operations. The race was introduced by a
@@ -13,7 +13,8 @@ description: |
   processed during user calls (Close, HandleData), not asynchronously.
   Changes span conn.go (1 line), quic.go (restructured signal flow),
   and quic_test.go (new race test).
-test_command: "cd src && go test crypto/tls -run TestQUICContextCancelation -race -count=1"
+setup_command: "cd src && ./make.bash"
+test_command: "cd src && ../bin/go test -v crypto/tls -run TestQUICContextCancelation -race -count=1"
 language: go
 difficulty: medium
 tags: [bug-fix, crypto, tls, quic, data-race, concurrency]

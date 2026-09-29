@@ -1,6 +1,6 @@
 id: pandas-003
 repo: pandas-dev/pandas
-commit: 27fdae8f461e16fd46484f89f8b42390e1a8840d
+commit: 1b5b02c08bef32dd93c2ee3553c9d93be1a71818
 description: |
   Fix json_normalize inconsistent validation of the `meta` parameter.
   When `meta` contains non-string elements (e.g., integers), the function
@@ -14,7 +14,8 @@ description: |
   that raises a TypeError with a clear message if any element in `meta`
   is not a string or list of strings. Then call it at the start of
   `json_normalize`.
-setup_command: "python3 -m venv .venv && .venv/bin/pip install -e '.[test]' --quiet"
+setup_command: |-
+  python3 -m venv .venv && .venv/bin/pip install --quiet --upgrade pip && D=$(git log -1 --format=%cI HEAD) && .venv/bin/python -c "import tomllib; print(chr(10).join(tomllib.load(open('pyproject.toml','rb'))['build-system']['requires']))" > .venv/build-requires.txt && .venv/bin/pip install --quiet --uploaded-prior-to "$D" ninja setuptools tzdata -r .venv/build-requires.txt && PATH="$PWD/.venv/bin:$PATH" .venv/bin/pip install --quiet --uploaded-prior-to "$D" --no-build-isolation -e '.[test]'
 test_command: ".venv/bin/pytest pandas/tests/io/json/test_normalize.py -x -k test_json_normalize_meta_string_validation"
 language: python
 difficulty: easy

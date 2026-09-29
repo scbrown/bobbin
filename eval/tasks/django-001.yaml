@@ -12,7 +12,7 @@ description: |
   `xml_serializer.py`. Add test models and test cases for natural key
   XML round-tripping with None values.
 setup_command: "python3 -m venv .venv && .venv/bin/pip install -e . --quiet"
-test_command: "cd tests && ../.venv/bin/python -m django test serializers.test_natural --settings=test_sqlite"
+test_command: "cd tests && ../.venv/bin/python runtests.py serializers.test_natural --settings=test_sqlite"
 language: python
 difficulty: medium
 tags: [bug-fix, serialization, xml, natural-keys, cross-file]

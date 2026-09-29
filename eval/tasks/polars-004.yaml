@@ -10,7 +10,8 @@ description: |
   concatenating multiple sorted columns does not produce a sorted result.
 
   Implement the fix. Run the test suite with the test command to verify.
-setup_command: "python3 -m venv .venv && .venv/bin/pip install maturin pytest --quiet && .venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml"
+setup_command: |-
+  python3 -m venv .venv && .venv/bin/pip install --quiet --upgrade pip && D=$(git log -1 --format=%cI HEAD) && .venv/bin/pip install maturin pytest --quiet && .venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pip install --quiet --no-deps -e py-polars && .venv/bin/pip install --quiet --uploaded-prior-to "$D" numpy hypothesis
 test_command: ".venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pytest py-polars/tests/unit/lazyframe/test_optimizations.py -x -k test_concat_str_sortedness_26466"
 language: rust
 difficulty: medium

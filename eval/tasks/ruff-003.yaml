@@ -9,7 +9,7 @@ description: |
   at the exact private name segment rather than the entire import binding,
   using a tokenizer to locate the private segment in module paths and alias
   name ranges for imported members.
-test_command: "cargo test -p ruff_linter -- PLC2701"
+test_command: "cargo test -p ruff_linter --lib -- importprivatename"
 language: rust
 difficulty: medium
 tags: [linter, bug-fix, diagnostic-range, false-positive, cross-file]

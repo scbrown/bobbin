@@ -1,6 +1,6 @@
 id: pandas-001
 repo: pandas-dev/pandas
-commit: bb0d1cb5af55b9696ea05ab1566eb381f40fc0bc
+commit: 62bf264f85708edb2fa3c866fcd13822074fc149
 description: |
   Fix Series.clip failing when `lower` or `upper` is a 0-dimensional numpy
   array (e.g., `np.array(0)`). The `_flex_method` on Series treats any
@@ -11,7 +11,8 @@ description: |
 
   The fix is in `pandas/core/series.py` in the `_flex_method`. Modify the
   `isinstance` check for `np.ndarray` to also require `other.ndim > 0`.
-setup_command: "python3 -m venv .venv && .venv/bin/pip install -e '.[test]' --quiet"
+setup_command: |-
+  python3 -m venv .venv && .venv/bin/pip install --quiet --upgrade pip && D=$(git log -1 --format=%cI HEAD) && .venv/bin/python -c "import tomllib; print(chr(10).join(tomllib.load(open('pyproject.toml','rb'))['build-system']['requires']))" > .venv/build-requires.txt && .venv/bin/pip install --quiet --uploaded-prior-to "$D" ninja setuptools tzdata -r .venv/build-requires.txt && PATH="$PWD/.venv/bin:$PATH" .venv/bin/pip install --quiet --uploaded-prior-to "$D" --no-build-isolation -e '.[test]'
 test_command: ".venv/bin/pytest pandas/tests/series/methods/test_clip.py -x -k test_clip_with_scalar_array_lower"
 language: python
 difficulty: easy

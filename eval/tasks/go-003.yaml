@@ -1,6 +1,6 @@
 id: go-003
 repo: golang/go
-commit: 8e3104dc269b959083f7e7133841e3366a477ef1
+commit: 858d4bf8511a7741cf5c21f1d51b23ed180fd450
 description: |
   Fix debug/elf.NewFile to return *FormatError instead of a raw io.EOF when
   reading short or empty ELF files. The function reads a 16-byte ELF
@@ -10,7 +10,8 @@ description: |
   `return nil, err` with `return nil, &FormatError{0, "cannot read ELF
   identifier", err}` in file.go, matching the pattern used by all other
   error paths in NewFile.
-test_command: "cd src && go test debug/elf -run TestOpenEmptyFile -count=1"
+setup_command: "cd src && ./make.bash"
+test_command: "cd src && ../bin/go test -v debug/elf -run TestOpenEmptyFile -count=1"
 language: go
 difficulty: easy
 tags: [bug-fix, debug, elf, error-handling, api-contract]
