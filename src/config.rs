@@ -34,15 +34,6 @@ pub struct Config {
     /// Opt-in: requires the `knowledge` feature and snapshot replacement.
     #[serde(default)]
     pub quipu_push_chunks: bool,
-    /// Publish the chunk graph into this NAMED quipu graph instead of ROOT.
-    /// Unset (the default) keeps ROOT, byte-for-byte as before. Set it per
-    /// repository (or pass `bobbin index --quipu-graph <IRI>`) so a
-    /// third-party codebase lands in its own graph rather than in ROOT. The
-    /// graph must already be registered in quipu (strict routing refuses an
-    /// unknown graph), and every push first proves routing is enforced so a
-    /// store that dropped the `graph` key cannot put the chunks in ROOT.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub quipu_chunk_graph: Option<String>,
     /// Run the inferred-track extractor (W3.B) over markdown prose during
     /// indexing and land the candidates in the QUARANTINED camayoc
     /// crew:inferred plane (trust rank 0), as a diffed snapshot replacement.

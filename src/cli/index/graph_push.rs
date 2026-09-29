@@ -58,13 +58,11 @@ fn refuse_root_to_graph_copy(
 }
 
 #[cfg(feature = "knowledge")]
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn publish(
     graph: (&[crate::types::Chunk], &[crate::types::ChunkEdge]),
     repo: &str,
     root: &std::path::Path,
-    endpoint: Option<&str>,
-    target_graph: Option<&str>,
+    (endpoint, target_graph): (Option<&str>, Option<&str>),
     quiet: bool,
     metadata: &crate::storage::MetadataStore,
     force: bool,
