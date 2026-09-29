@@ -15,7 +15,8 @@ description: |
   so, instead of calling `take_nd`, create a fresh `np.void` array of the
   correct size. This preserves the placeholder so that downstream
   `_setitem_single_column` can detect it and infer the proper dtype.
-setup_command: "python3 -m venv .venv && .venv/bin/pip install -e '.[test]' --quiet"
+setup_command: |-
+  python3 -m venv .venv && .venv/bin/pip install --quiet --upgrade pip && D=$(git log -1 --format=%cI HEAD) && .venv/bin/python -c "import tomllib; print(chr(10).join(tomllib.load(open('pyproject.toml','rb'))['build-system']['requires']))" > .venv/build-requires.txt && .venv/bin/pip install --quiet --uploaded-prior-to "$D" ninja setuptools tzdata -r .venv/build-requires.txt && PATH="$PWD/.venv/bin:$PATH" .venv/bin/pip install --quiet --uploaded-prior-to "$D" --no-build-isolation -e '.[test]'
 test_command: ".venv/bin/pytest pandas/tests/indexing/test_loc.py -x -k test_loc_setitem_with_expansion_new_row_and_new_columns"
 language: python
 difficulty: medium

@@ -14,7 +14,8 @@ description: |
   that raises a TypeError with a clear message if any element in `meta`
   is not a string or list of strings. Then call it at the start of
   `json_normalize`.
-setup_command: "python3 -m venv .venv && .venv/bin/pip install -e '.[test]' --quiet"
+setup_command: |-
+  python3 -m venv .venv && .venv/bin/pip install --quiet --upgrade pip && D=$(git log -1 --format=%cI HEAD) && .venv/bin/python -c "import tomllib; print(chr(10).join(tomllib.load(open('pyproject.toml','rb'))['build-system']['requires']))" > .venv/build-requires.txt && .venv/bin/pip install --quiet --uploaded-prior-to "$D" ninja setuptools tzdata -r .venv/build-requires.txt && PATH="$PWD/.venv/bin:$PATH" .venv/bin/pip install --quiet --uploaded-prior-to "$D" --no-build-isolation -e '.[test]'
 test_command: ".venv/bin/pytest pandas/tests/io/json/test_normalize.py -x -k test_json_normalize_meta_string_validation"
 language: python
 difficulty: easy
