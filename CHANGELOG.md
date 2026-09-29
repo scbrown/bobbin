@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.22.0](https://github.com/scbrown/bobbin/compare/v0.21.0...v0.22.0) (2026-09-29)
+
+
+### Features
+
+* **knowledge:** publish the chunk graph into a named quipu graph ([#148](https://github.com/scbrown/bobbin/issues/148)) ([d18dec9](https://github.com/scbrown/bobbin/commit/d18dec910a330cf9da3027384cbb38eeabe7cd2a))
+
 ## [0.21.0](https://github.com/scbrown/bobbin/compare/v0.20.1...v0.21.0) (2026-09-27)
 
 
