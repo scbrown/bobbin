@@ -134,3 +134,16 @@ def test_turn_limit_is_failed_cell_without_false_unavailability(
                           tmp_path, tmp_path, {}, '/bin/bobbin', '/bin/claude', 2, 900, 40)
     assert result['valid'] is False
     assert result['turn_limit_reached'] is limited
+
+
+@pytest.mark.parametrize("path,hidden", [
+    ("crates/ruff_linter/src/rules/flake8_pyi/snapshots/"
+     "ruff_linter__rules__flake8_pyi__tests__PYI034_PYI034.py.snap", True),
+    ("crates/ruff_python_formatter/tests/snapshots/format@statement__try.py.snap", True),
+    ("crates/ruff_linter/resources/test/fixtures/flake8_pyi/PYI034.py", True),
+    ("src/debug/elf/file_test.go", True),
+    ("crates/ruff_linter/src/rules/flake8_pyi/rules/non_self_return_type.rs", False),
+    ("docs/snapshots.md", False),
+])
+def test_hidden_tests_include_snapshot_expectations(path, hidden):
+    assert pilot.is_hidden_test_path(path) is hidden
