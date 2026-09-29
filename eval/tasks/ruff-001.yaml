@@ -8,7 +8,7 @@ description: |
   (exception group syntax) rather than a tuple containing a starred element,
   changing semantics. Add a check for starred expressions in the tuple before
   removing parentheses.
-test_command: "cargo test -p ruff_python_formatter -- except_handler"
+test_command: "cargo test -p ruff_python_formatter --test fixtures -- statement/try.py"
 language: rust
 difficulty: medium
 tags: [formatter, bug-fix, syntax-preservation, cross-file]

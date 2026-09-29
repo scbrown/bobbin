@@ -9,7 +9,7 @@ description: |
   versions were. Add a new `is_name_or_stringized_name` helper that uses
   `match_maybe_stringized_annotation` to resolve both plain and stringized
   annotations, and use it for the return type checks.
-test_command: "cargo test -p ruff_linter -- PYI034"
+test_command: "cargo test -p ruff_linter --lib -- nonselfreturntype"
 language: rust
 difficulty: easy
 tags: [linter, bug-fix, type-annotations, forward-references, cross-file]

@@ -9,7 +9,7 @@ description: |
   parsed, causing a parse error. Fix the control flow in
   `parse_match_block_expression` so the guard check runs correctly after
   multi-arm pattern parsing completes.
-test_command: "cargo test -p nu-command -- match_with_guard_multiarm"
+test_command: "cargo build --bin nu && cargo test -p nu-command -- match_with_guard_multiarm"
 language: rust
 difficulty: easy
 tags: [parser, bug-fix, match-expression, control-flow]
