@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.24.0](https://github.com/scbrown/bobbin/compare/v0.23.1...v0.24.0) (2026-09-30)
+
+
+### Features
+
+* **index:** --no-quipu-publish keeps one run's chunks out of Quipu (aegis-1v555n.1) ([#160](https://github.com/scbrown/bobbin/issues/160)) ([7108a6b](https://github.com/scbrown/bobbin/commit/7108a6b6676987d7a63137f003cf79527cfa283b))
+
 ## [0.23.1](https://github.com/scbrown/bobbin/compare/v0.23.0...v0.23.1) (2026-09-30)
 
 
