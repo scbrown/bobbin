@@ -213,6 +213,19 @@ changed rule are labelled as such.
 
 ## Amendment log
 
+- 2026-09-30, after the resumed run stopped on expired credentials: the resume
+  completed seven tasks (28 cells). Its next cell, nushell-001/tool, returned in 7 s with
+  no serving model, zero cost, terminal reason `api_error` and "OAuth session expired".
+  The agent never reached a model. The harness stopped the campaign as designed. A
+  single, reviewed second resume may re-run that task once, and only that task, in a
+  new output. Its prior receipt is kept, hashed and excluded from arm rates as an
+  infrastructure failure, not an arm outcome. Every other spent task is skipped. The
+  three never-attempted tasks run as scheduled. The bobbin executable, GPU wrapper,
+  runtime verifier, runtime lock, client, model, cells, order and per-cell limits are
+  byte-identical to the first resume. Credentials are refreshed and their expiry is
+  recorded before launch. A receipt showing any model attribution, cost or usage is not
+  eligible for a re-attempt.
+
 - 2026-09-30, after the chained continuation stopped in index setup: the run
   completed ruff-001 (four cells), then `bobbin init` timed out at its fixed 30 s during
   go-003's index setup, before any go-003 cell existed. The pinned GPU wrapper verifies

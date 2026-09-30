@@ -263,3 +263,117 @@ def test_resume_rechecks_stopped_run_evidence_before_spend(stopped, tmp_path, mo
     with pytest.raises(RuntimeError, match="stopped before spending"):
         chain.execute(planned, chained[0], chained[2], tmp_path / "resumed", chained[7],
                       chained[11], lambda: chain.build_resume_plan(*args))
+
+
+INFRA = {"agent": {"serving_model": None, "valid": False,
+                   "result": {"terminal_reason": "api_error", "total_cost_usd": 0, "modelUsage": {},
+                              "result": "Failed to authenticate: OAuth session expired"}}}
+
+
+@pytest.fixture
+def resumed_stop(stopped, tmp_path, monkeypatch):
+    """A first resume whose only cell failed because the agent never reached a model."""
+    chained, chain_out, sha = stopped
+    args = resume_args(stopped)
+    planned = chain.build_resume_plan(*args)
+
+    def run(task, output, *a, before_spend):
+        before_spend()
+        write(output / task / "controls.json", {})
+        write(output / task / "tool/result.json", INFRA)
+        raise RuntimeError("agent unavailable")
+    monkeypatch.setattr(continuation.pilot, "run_task", run)
+    out = tmp_path / "resumed"
+    with pytest.raises(RuntimeError, match="agent unavailable"):
+        chain.execute(planned, chained[0], chained[2], out, chained[7], chained[11],
+                      lambda: chain.build_resume_plan(*args))
+    return stopped, out, resume.digest(out / "manifest.json")
+
+
+def second_args(resumed_stop, cells=("task-003/tool",)):
+    (chained, chain_out, chain_sha), out, sha = resumed_stop
+    return [out, sha, list(cells), chain_out, chain_sha, *chained]
+
+
+def test_second_resume_reattempts_infra_cell_task_once(resumed_stop):
+    planned = chain.build_second_resume_plan(*second_args(resumed_stop))
+    second = planned["second_resume"]
+    assert second["spent_tasks"] == []
+    assert [(r["task"], r["cell"]) for r in second["reattempted_infra_cells"]] == [("task-003", "tool")]
+    assert planned["schedule"] == [["task-003", c] for c in ("none", "tool", "inject", "both")]
+    assert planned["max_spend_usd"]["total"] == 8.0
+    assert planned["resume"]["spent_tasks"] == ["task-002"]
+
+
+@pytest.mark.parametrize("damage", ["reached_model", "cost", "unlisted_cell", "not_spent",
+                                    "bad_cell", "no_list", "guard", "verifier", "manifest",
+                                    "claimed", "evidence"])
+def test_second_resume_refuses(resumed_stop, damage):
+    (chained, chain_out, _), out, _ = resumed_stop
+    args = second_args(resumed_stop)
+    root = chained[11]
+    receipt = out / "task-003/tool/result.json"
+    if damage == "reached_model":
+        data = json.loads(receipt.read_text())
+        data["agent"]["serving_model"] = "claude-sonnet-5"
+        write(receipt, data)
+    elif damage == "cost":
+        data = json.loads(receipt.read_text())
+        data["agent"]["result"]["total_cost_usd"] = 0.4
+        write(receipt, data)
+    elif damage == "unlisted_cell":
+        write(out / "task-003/none/result.json", INFRA)
+    elif damage == "not_spent":
+        args[2] = ["task-002/none"]
+    elif damage == "bad_cell":
+        args[2] = ["task-003/extra"]
+    elif damage == "no_list":
+        args[2] = []  # the spent task is then skipped and nothing remains
+    elif damage == "guard":
+        (root / "runner/gpu_guard.py").write_text("# a different wrapper\n")
+    elif damage == "verifier":
+        (root / "runner/runtime_lock.py").write_text("# a different verifier\n")
+    elif damage == "manifest":
+        args[1] = "0" * 64
+    elif damage == "claimed":
+        (out / "continuation-claim.json").write_text("{}")
+    else:
+        (chain_out / "task-002/none/result.json").write_text("rewritten")
+    with pytest.raises(ValueError):
+        chain.build_second_resume_plan(*args)
+
+
+def test_second_resume_runs_once_with_claim_in_the_resume_run(resumed_stop, tmp_path, monkeypatch):
+    (chained, _, _), out, _ = resumed_stop
+    args = second_args(resumed_stop)
+    planned = chain.build_second_resume_plan(*args)
+    called = []
+
+    def run(task, output, *a, before_spend):
+        before_spend()
+        called.append(task)
+    monkeypatch.setattr(continuation.pilot, "run_task", run)
+    final = tmp_path / "resumed-2"
+    chain.execute(planned, chained[0], chained[2], final, chained[7], chained[11],
+                  lambda: chain.build_second_resume_plan(*args))
+    assert called == ["task-003"]
+    assert (out / "continuation-claim.json").is_file()
+    assert (out / "task-003/tool/result.json").is_file()  # prior receipt kept as evidence
+    with pytest.raises(ValueError, match="already has a second-resume claim"):
+        chain.build_second_resume_plan(*args)
+
+
+def test_second_resume_rechecks_resume_run_evidence_before_spend(resumed_stop, tmp_path, monkeypatch):
+    (chained, _, _), out, _ = resumed_stop
+    args = second_args(resumed_stop)
+    planned = chain.build_second_resume_plan(*args)
+
+    def run(task, output, *a, before_spend):
+        before_spend()
+        (out / "task-003/tool/result.json").write_text("rewritten")
+        before_spend()
+        pytest.fail("second spend allowed")
+    monkeypatch.setattr(continuation.pilot, "run_task", run)
+    with pytest.raises(RuntimeError, match="stopped before spending"):
+        chain.execute(planned, chained[0], chained[2], tmp_path / "resumed-2", chained[7],
+                      chained[11], lambda: chain.build_second_resume_plan(*args))
