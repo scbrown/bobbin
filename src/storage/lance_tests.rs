@@ -2106,3 +2106,56 @@ async fn a_store_without_an_fts_index_still_builds_it_once() {
     again.ensure_fts_index().await.unwrap();
     assert_eq!(again.fts_build_attempts(), 0, "and is then never rebuilt");
 }
+
+/// aegis-4h7zw8: rows inserted after the FTS index was built are NOT covered by
+/// it (Lance text-scans them on every FTS query), and `fts_coverage` says so.
+/// Control: right after a build, everything is covered; with no index, None.
+#[tokio::test]
+async fn fts_coverage_counts_rows_added_after_the_index_as_unindexed() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("vectors");
+    let mut store = VectorStore::open(&path).await.unwrap();
+    store
+        .insert(
+            &[
+                sample_chunk("c1", "authenticate"),
+                sample_chunk("c2", "authorize"),
+            ],
+            &[sample_embedding(), sample_embedding()],
+            &no_contexts(2),
+            "repo",
+            "h",
+            "100",
+        )
+        .await
+        .unwrap();
+    let bare = VectorStore::open(&path).await.unwrap();
+    if !VectorStore::has_content_fts_index(bare.table.as_ref().unwrap()).await {
+        assert_eq!(bare.fts_coverage().await, None, "no index, no coverage");
+    }
+    store.rebuild_fts_index().await.unwrap();
+    let built = VectorStore::open(&path).await.unwrap();
+    assert_eq!(
+        built.fts_coverage().await,
+        Some((2, 0)),
+        "control: a fresh build covers all"
+    );
+    let mut later = VectorStore::open(&path).await.unwrap();
+    later
+        .insert(
+            &[sample_chunk("c3", "authorize again")],
+            &[sample_embedding()],
+            &no_contexts(1),
+            "repo",
+            "h",
+            "101",
+        )
+        .await
+        .unwrap();
+    let after = VectorStore::open(&path).await.unwrap();
+    assert_eq!(
+        after.fts_coverage().await,
+        Some((2, 1)),
+        "the new row is outside the index"
+    );
+}

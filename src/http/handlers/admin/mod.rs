@@ -124,6 +124,25 @@ pub(super) async fn metrics(State(state): State<Arc<AppState>>) -> impl IntoResp
     out.push_str("# TYPE bobbin_up gauge\n");
     out.push_str("bobbin_up 1\n");
     out.push_str(&crate::operational_metrics::render_fts_metrics());
+    // FTS coverage (aegis-4h7zw8): unindexed rows are text-scanned on every
+    // keyword/hybrid query, so this is the gauge for that per-query cost.
+    let coverage = store.fts_coverage().await;
+    out.push_str("# HELP bobbin_fts_index_present Whether a content FTS index exists.\n");
+    out.push_str("# TYPE bobbin_fts_index_present gauge\n");
+    out.push_str(&format!(
+        "bobbin_fts_index_present {}\n",
+        u8::from(coverage.is_some())
+    ));
+    if let Some((indexed, unindexed)) = coverage {
+        out.push_str("# HELP bobbin_fts_indexed_rows Rows the content FTS index covers.\n");
+        out.push_str("# TYPE bobbin_fts_indexed_rows gauge\n");
+        out.push_str(&format!("bobbin_fts_indexed_rows {indexed}\n"));
+        out.push_str(
+            "# HELP bobbin_fts_unindexed_rows Rows outside the FTS index, scanned on every keyword query.\n",
+        );
+        out.push_str("# TYPE bobbin_fts_unindexed_rows gauge\n");
+        out.push_str(&format!("bobbin_fts_unindexed_rows {unindexed}\n"));
+    }
 
     if let Some(s) = stats {
         out.push_str("# HELP bobbin_index_files_total Total indexed files.\n");

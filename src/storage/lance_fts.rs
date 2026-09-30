@@ -89,6 +89,22 @@ impl VectorStore {
             .unwrap_or(false)
     }
 
+    /// Rows the `content` FTS index covers, and rows it does not, as
+    /// `(indexed, unindexed)`. Lance answers an FTS query for unindexed rows by
+    /// scanning their text on every query, so the second number is a per-query
+    /// cost (aegis-4h7zw8). `None` when there is no content FTS index or the
+    /// stats cannot be read. Reads index metadata only; trains nothing.
+    pub async fn fts_coverage(&self) -> Option<(usize, usize)> {
+        let table = self.table.as_ref()?;
+        let indices = table.list_indices().await.ok()?;
+        let index = indices.iter().find(|index| {
+            index.index_type == lancedb::index::IndexType::FTS
+                && index.columns.iter().any(|c| c == "content")
+        })?;
+        let stats = table.index_stats(&index.name).await.ok()??;
+        Some((stats.num_indexed_rows, stats.num_unindexed_rows))
+    }
+
     /// Force-(re)build the FTS index over the `content` column, replacing any
     /// existing index. Used to self-heal a missing/stale index.
     pub async fn rebuild_fts_index(&self) -> Result<()> {
