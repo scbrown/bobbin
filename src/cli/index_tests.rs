@@ -265,3 +265,44 @@ fn read_indexable_content_extracts_html_only_when_enabled() {
     let text = read_indexable_content(&path, &config).unwrap();
     assert_eq!(text, "# Title\n\nBody.\n");
 }
+
+#[test]
+fn include_flag_replaces_the_config_include_for_the_run_and_refuses_a_bad_glob() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("main.rs"), "fn main() {}").unwrap();
+    std::fs::write(root.join("book.txt"), "chapter one").unwrap();
+    std::fs::write(root.join("page.html"), "<p>hi</p>").unwrap();
+    let names = |c: &Config| -> Vec<String> {
+        let mut v: Vec<String> = collect_files(root, c)
+            .unwrap()
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        v.sort();
+        v
+    };
+    // Control: the default include takes the code file and not the text types.
+    let base = Config::default();
+    assert!(names(&base).contains(&"main.rs".to_string()));
+    assert!(!names(&base).contains(&"book.txt".to_string()));
+
+    // --include replaces the list: only what it names, and main.rs is no
+    // longer matched (so an earlier-indexed main.rs would be pruned).
+    let mut run = Config::default();
+    args::apply_include(&mut run, &["**/*.txt".into(), "**/*.html".into()]).unwrap();
+    assert_eq!(names(&run), ["book.txt", "page.html"]);
+
+    // It is per run: a config the flag was not applied to is unchanged.
+    assert_eq!(names(&base), names(&Config::default()));
+    // No flag leaves the config include alone.
+    let mut none = Config::default();
+    args::apply_include(&mut none, &[]).unwrap();
+    assert_eq!(none.index.include, Config::default().index.include);
+
+    // A glob collect_files would silently drop is refused instead.
+    let mut bad = Config::default();
+    let err = args::apply_include(&mut bad, &["**/*.[txt".into()]).unwrap_err();
+    assert!(err.to_string().contains("not a valid glob"), "{err}");
+    assert_eq!(bad.index.include, Config::default().index.include);
+}
