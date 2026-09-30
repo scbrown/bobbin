@@ -23,6 +23,7 @@ pub(super) async fn run(
             source: Some(source),
             include_beads: false,
             no_quipu_publish: false,
+            include_globs: Vec::new(),
             skip_calibrate: true,
             path: home,
         },
