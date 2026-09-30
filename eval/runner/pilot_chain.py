@@ -176,7 +176,7 @@ def chain_evidence(output, tasks):
 
 def build_resume_plan(chain, chain_sha, source, manifest_sha, parent, parent_sha,
                       evidence_sha, report_path, report_sha, lock_path, lock_sha,
-                      claude, claude_sha, root):
+                      claude, claude_sha, root, allow_chain_claim=False):
     """Plan the single resume of a stopped chained continuation.
 
     The recorded execution must be reproduced exactly from the same reviewed
@@ -184,7 +184,7 @@ def build_resume_plan(chain, chain_sha, source, manifest_sha, parent, parent_sha
     """
     if chain.is_symlink() or not chain.is_dir():
         raise ValueError("stopped chained run must be a real directory")
-    if (chain / "continuation-claim.json").exists():
+    if (chain / "continuation-claim.json").exists() and not allow_chain_claim:
         raise ValueError("chained run already has a resume claim")
     manifest = pilot_continue.pinned_json(chain / "manifest.json", chain_sha)
     first = manifest.get("continuation")
@@ -218,9 +218,101 @@ def build_resume_plan(chain, chain_sha, source, manifest_sha, parent, parent_sha
                            regular(root / "runner" / "runtime_lock.py"))}}
 
 
+def infra_receipt(cell_dir):
+    """Return the result digest if a cell's agent never reached a model, else None.
+
+    Only an unattributed, invalid, zero-cost agent receipt ending in an API error
+    qualifies: that is an infrastructure failure (e.g. expired credentials), not
+    an arm outcome.
+    """
+    result = cell_dir / "result.json"
+    if not result.is_file() or result.is_symlink():
+        return None
+    try:
+        agent = json.loads(result.read_text())["agent"]
+        terminal = agent["result"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    if (agent.get("serving_model") is None and agent.get("valid") is False
+            and terminal.get("terminal_reason") == "api_error"
+            and not terminal.get("total_cost_usd")
+            and not terminal.get("modelUsage")):
+        return digest(result)
+    return None
+
+
+def build_second_resume_plan(resumed, resumed_sha, reattempt_cells, chain, chain_sha, source,
+                             manifest_sha, parent, parent_sha, evidence_sha, report_path,
+                             report_sha, lock_path, lock_sha, claude, claude_sha, root):
+    """Plan the single, reviewed resume of a stopped RESUME run.
+
+    The first resume must be reproduced exactly from the same reviewed inputs.
+    Spent tasks leave the schedule, except a task whose only cell directories
+    are the reviewed ``reattempt_cells`` and whose receipts show the agent never
+    reached a model: that task is re-run once in the new output, and its prior
+    receipts stay in place as evidence. The GPU wrapper and runtime verifier must
+    be byte-identical to the first resume. Nothing is claimed here.
+    """
+    if resumed.is_symlink() or not resumed.is_dir():
+        raise ValueError("stopped resume run must be a real directory")
+    if (resumed / "continuation-claim.json").exists():
+        raise ValueError("resume run already has a second-resume claim")
+    manifest = pilot_continue.pinned_json(resumed / "manifest.json", resumed_sha)
+    first = manifest.get("continuation")
+    if (not isinstance(first, dict) or not isinstance(first.get("resume"), dict)
+            or "second_resume" in first):
+        raise ValueError("only a stopped first resume can be resumed a second time")
+    if first["resume"].get("path") != str(chain.resolve()) or first["resume"].get(
+            "manifest_sha256") != chain_sha:
+        raise ValueError("resume run does not name this chained run")
+    claim = json.loads(regular(chain / "continuation-claim.json").read_text())
+    if claim.get("output") != str(resumed.resolve()) or claim.get("execution") != first:
+        raise ValueError("resume run is not the one claimed in the chained run")
+    current = build_resume_plan(chain, chain_sha, source, manifest_sha, parent, parent_sha,
+                                evidence_sha, report_path, report_sha, lock_path, lock_sha,
+                                claude, claude_sha, root, allow_chain_claim=True)
+    if current != first:
+        raise ValueError("reviewed inputs no longer reproduce the stopped resume run")
+    if digest(regular(root / "runner" / "gpu_guard.py")) != manifest.get("gpu_guard_sha256"):
+        raise ValueError("second resume would change the GPU wrapper; review required")
+    if digest(regular(root / "runner" / "runtime_lock.py")) != manifest.get("runtime_verifier_sha256"):
+        raise ValueError("second resume would change the runtime verifier; review required")
+    tasks = list(dict.fromkeys(task for task, _ in first["schedule"]))
+    artifacts, spent, unspent = chain_evidence(resumed, tasks)
+    wanted = {}
+    for item in reattempt_cells:
+        task, _, cell = item.partition("/")
+        if cell not in CELLS or task not in spent:
+            raise ValueError(f"re-attempt cell is not a spent cell of this run: {item}")
+        wanted.setdefault(task, set()).add(cell)
+    receipts = []
+    for task, cells in wanted.items():
+        present = {c for c in CELLS if (resumed / task / c).exists()}
+        if present != cells:
+            raise ValueError(f"{task}: re-attempt must name exactly its cell directories")
+        for cell in sorted(cells, key=CELLS.index):
+            sha = infra_receipt(resumed / task / cell)
+            if sha is None:
+                raise ValueError(f"{task}/{cell} reached a model or lacks an infra receipt")
+            receipts.append({"task": task, "cell": cell, "result_sha256": sha})
+    skip = [task for task in spent if task not in wanted]
+    schedule = [pair for pair in first["schedule"] if pair[0] not in skip]
+    if not schedule:
+        raise ValueError("no unspent tasks remain; nothing to resume")
+    budget = first["recovery"]["original_parameters"]["budget_per_run"]
+    return {**first, "schedule": schedule,
+            "max_spend_usd": {"cells": len(schedule), "budget_per_cell": budget,
+                              "total": round(len(schedule) * budget, 2)},
+            "second_resume": {"path": str(resumed.resolve()), "manifest_sha256": resumed_sha,
+                              "artifact_sha256": artifacts, "spent_tasks": skip,
+                              "reattempted_unspent_tasks": unspent,
+                              "reattempted_infra_cells": receipts}}
+
+
 def execute(execution, source, parent, output, lock_path, root, revalidate):
     resume = execution.get("resume")
-    claim_dir = Path(resume["path"]) if resume else parent
+    second = execution.get("second_resume")
+    claim_dir = Path((second or resume)["path"]) if resume else parent
     if output.absolute().resolve().is_relative_to(parent.resolve()):
         raise ValueError("continuation output must be new and outside the first continuation")
 
@@ -240,6 +332,14 @@ def execute(execution, source, parent, output, lock_path, root, revalidate):
             tasks = list(dict.fromkeys(task for task, _ in json.loads(
                 (chain / "manifest.json").read_text())["continuation"]["schedule"]))
             if chain_evidence(chain, tasks)[0] != resume["artifact_sha256"]:
+                return False
+        if second:
+            resumed = Path(second["path"])
+            if digest(regular(resumed / "manifest.json")) != second["manifest_sha256"]:
+                return False
+            tasks = list(dict.fromkeys(task for task, _ in json.loads(
+                (resumed / "manifest.json").read_text())["continuation"]["schedule"]))
+            if chain_evidence(resumed, tasks)[0] != second["artifact_sha256"]:
                 return False
         return all(digest(regular(root / "tasks" / f"{task}.yaml")) == sha
                    for task, sha in execution["task_sha256"].items())
@@ -261,6 +361,12 @@ def main():
     parser.add_argument("--resume", type=Path,
                         help="stopped chained-run output to resume once (skips spent tasks)")
     parser.add_argument("--resume-manifest-sha256")
+    parser.add_argument("--second-resume", type=Path,
+                        help="stopped RESUME output to resume once more (requires --resume)")
+    parser.add_argument("--second-resume-manifest-sha256")
+    parser.add_argument("--reattempt-infra-cell", action="append", default=[],
+                        metavar="TASK/CELL",
+                        help="reviewed cell whose agent never reached a model; re-run once")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
@@ -268,7 +374,21 @@ def main():
     if bool(args.resume) != bool(args.resume_manifest_sha256):
         parser.error("--resume and --resume-manifest-sha256 go together")
 
+    if bool(args.second_resume) != bool(args.second_resume_manifest_sha256):
+        parser.error("--second-resume and --second-resume-manifest-sha256 go together")
+    if args.second_resume and not args.resume:
+        parser.error("--second-resume requires --resume (the chained run it resumed)")
+    if args.reattempt_infra_cell and not args.second_resume:
+        parser.error("--reattempt-infra-cell requires --second-resume")
+
     def validate():
+        if args.second_resume:
+            return build_second_resume_plan(
+                args.second_resume, args.second_resume_manifest_sha256, args.reattempt_infra_cell,
+                args.resume, args.resume_manifest_sha256, args.source, args.manifest_sha256,
+                args.parent, args.parent_sha256, args.parent_evidence_sha256, args.controls,
+                args.controls_sha256, args.runtime, args.runtime_sha256, args.client,
+                args.client_sha256, root)
         if args.resume:
             return build_resume_plan(
                 args.resume, args.resume_manifest_sha256, args.source, args.manifest_sha256,
