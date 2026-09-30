@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.23.1](https://github.com/scbrown/bobbin/compare/v0.23.0...v0.23.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **knowledge:** named-graph chunk stage uses quipu's upload_id (aegis-86f2v7) ([#158](https://github.com/scbrown/bobbin/issues/158)) ([4214224](https://github.com/scbrown/bobbin/commit/4214224b7bfc0f5cc6a69181a95a662add39a71f))
+
 ## [0.23.0](https://github.com/scbrown/bobbin/compare/v0.22.0...v0.23.0) (2026-09-30)
 
 
