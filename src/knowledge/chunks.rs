@@ -28,6 +28,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
+use super::turtle::escape_literal;
 use crate::iri::ONTOLOGY_NS;
 use crate::types::{Chunk, ChunkEdge, ChunkEdgeType, ChunkType};
 
@@ -250,10 +251,6 @@ fn governed_symbol_kind(chunk_type: ChunkType) -> Option<&'static str> {
         ChunkType::Trait | ChunkType::Impl => None,
         _ => None,
     }
-}
-
-fn escape_literal(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// Push the chunk graph as a diffed snapshot replacement.
