@@ -257,13 +257,6 @@ fn is_commit_conflict<E: std::fmt::Display>(err: &E) -> bool {
 /// The join boundary is stable across Lance releases; requiring both the
 /// inverted-index source path and a worker panic avoids treating ordinary
 /// compaction failures as rebuildable index state.
-/// Whether a failed chunks-table maintenance step should fall back to a full
-/// FTS rebuild: only the inverted-builder panic, only on `chunks`, never an
-/// unrelated error (I/O, schema, OOM), which a rebuild would not fix.
-fn should_rebuild_fts_after<T>(table: &str, r: &Result<T>) -> bool {
-    table == "chunks" && r.as_ref().err().is_some_and(|e| is_fts_compaction_panic(e))
-}
-
 fn is_fts_compaction_panic<E: std::fmt::Display>(err: &E) -> bool {
     let msg = format!("{err:#}");
     msg.contains("scalar/inverted/builder.rs") && msg.contains("panicked")
@@ -959,45 +952,6 @@ impl VectorStore {
         }
         self.record_maintenance(compacted.is_ok(), pruned.is_ok());
         pruned.and(compacted).map(|()| MaintenanceOutcome::Ran)
-    }
-
-    /// Add unindexed rows to every table's existing indices, without
-    /// retraining them. CALLER MUST HOLD the maintenance lock.
-    ///
-    /// ALL indices of every maintained table, not only the content FTS index
-    /// (wu, bobbin#164): today only `chunks` carries one (the FTS index; there
-    /// is no ANN index), but a future index gets the same treatment rather
-    /// than silently going stale the same way.
-    async fn optimize_indices_locked(&self, tables: &[(&'static str, &Table)]) -> Result<()> {
-        let mut first_err = None;
-        for (name, table) in tables {
-            let mut r = retry_on_conflict!(
-                table,
-                table.optimize(OptimizeAction::Index(
-                    lancedb::table::OptimizeOptions::default()
-                ))
-            )
-            .with_context(|| format!("Failed to optimize indices of {name} table"));
-            // Optimizing the FTS index runs the same inverted-index builder
-            // whose incremental path can panic during compaction (see
-            // compact_locked). Same recovery: a full replacement build. It
-            // indexes every row, so it also achieves what the optimize was for.
-            if should_rebuild_fts_after(name, &r) {
-                tracing::warn!(
-                    error = %r.as_ref().expect_err("checked above"),
-                    "FTS incremental optimize panicked; rebuilding the FTS index instead"
-                );
-                r = self
-                    .rebuild_fts_index()
-                    .await
-                    .map(|()| lancedb::table::OptimizeStats::default())
-                    .context("Failed to rebuild FTS index after incremental optimize panic");
-            }
-            if let Err(e) = r {
-                first_err.get_or_insert(e);
-            }
-        }
-        first_err.map_or(Ok(()), Err)
     }
 
     /// Compact every table. CALLER MUST HOLD the maintenance lock.
@@ -3370,6 +3324,8 @@ fn str_to_chunk_type(s: &str) -> ChunkType {
 
 #[path = "lance_fts.rs"]
 mod fts;
+#[cfg(test)]
+use fts::should_rebuild_fts_after;
 
 #[cfg(test)]
 #[path = "lance_tests.rs"]
