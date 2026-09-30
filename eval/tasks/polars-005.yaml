@@ -12,7 +12,7 @@ description: |
 
   Implement the fix. Run the test suite with the test command to verify.
 setup_command: |-
-  python3 -m venv .venv && .venv/bin/pip install --quiet --upgrade pip && D=$(git log -1 --format=%cI HEAD) && .venv/bin/pip install maturin pytest --quiet && .venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pip install --quiet --no-deps -e py-polars && .venv/bin/pip install --quiet --uploaded-prior-to "$D" numpy hypothesis
+  python3 -m venv .venv && .venv/bin/pip install --quiet --upgrade pip && D=$(git log -1 --format=%cI HEAD) && .venv/bin/pip install maturin pytest --quiet && .venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pip install --quiet --no-deps -e py-polars && .venv/bin/pip install --quiet --uploaded-prior-to "$D" numpy hypothesis python-dateutil
 test_command: ".venv/bin/maturin develop -m py-polars/runtime/polars-runtime-32/Cargo.toml && .venv/bin/pytest py-polars/tests/unit/expr/test_literal.py -x -k test_floordiv_mod"
 language: rust
 difficulty: medium

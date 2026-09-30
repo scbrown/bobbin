@@ -60,6 +60,35 @@ class TestParsePytestOutput:
         assert result["failed"] == 4
         assert result["passed"] == 0
 
+    # aegis-bgk9ho: every filtered (-k) pytest run reports deselections, and the
+    # fixed-order pattern read these real pandas/polars summaries as no tests.
+    def test_deselected_is_not_counted_and_does_not_hide_the_summary(self):
+        output = "====================== 4 passed, 2331 deselected in 0.09s ======================"
+        result = _parse_pytest_output(output)
+        assert (result["passed"], result["failed"], result["total"]) == (4, 0, 4)
+
+    def test_failed_with_deselected(self):
+        output = "================= 1 failed, 2 passed, 2331 deselected in 0.12s ================="
+        result = _parse_pytest_output(output)
+        assert (result["passed"], result["failed"], result["total"]) == (2, 1, 3)
+
+    def test_last_summary_wins_over_trailing_build_output(self):
+        output = (
+            "======================= 1 failed, 19 deselected in 0.04s =======================\n"
+            "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.23s\n"
+        )
+        result = _parse_pytest_output(output)
+        assert (result["failed"], result["total"]) == (1, 1)
+
+    def test_warnings_and_xfail(self):
+        output = "== 3 passed, 1 xfailed, 2 warnings in 0.40s =="
+        result = _parse_pytest_output(output)
+        assert (result["passed"], result["skipped"], result["total"]) == (3, 1, 4)
+
+    def test_build_timing_line_alone_is_not_a_summary(self):
+        output = "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 06s\n in 0.23s"
+        assert _parse_pytest_output(output) == {}
+
 
 class TestParseCargoTestOutput:
     def test_all_passed(self):
