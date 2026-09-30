@@ -1,5 +1,4 @@
 use anyhow::{bail, Context, Result};
-use clap::Args;
 use colored::Colorize;
 use ignore::WalkBuilder;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -15,6 +14,8 @@ use crate::index::{beads, embedder, resolver, Embedder, Parser};
 use crate::storage::{LockWait, MaintenanceOutcome, MetadataStore, VectorStore};
 use crate::types::{Chunk, ImportDependency, ImportEdge};
 
+mod args;
+pub use args::IndexArgs;
 #[cfg(feature = "knowledge")]
 mod graph_push;
 mod profile;
@@ -111,43 +112,6 @@ impl MaintenanceReport {
     }
 }
 
-#[derive(Args)]
-pub struct IndexArgs {
-    /// Only update changed files (now the default; kept for backwards compatibility)
-    #[arg(long)]
-    pub(super) incremental: bool,
-
-    /// Force reindex all files
-    #[arg(long)]
-    pub(super) force: bool,
-
-    /// Publish the full graph even if unchanged, without re-embedding files
-    #[arg(long)]
-    pub(super) force_publish: bool,
-    #[arg(long = "quipu-graph", help = "Registered quipu graph for chunks")]
-    pub(super) graph: Option<String>,
-
-    /// Repository name for multi-repo indexing (auto-detected from source dir name)
-    #[arg(long)]
-    pub(super) repo: Option<String>,
-
-    /// Source directory to index files from (defaults to path)
-    #[arg(long)]
-    pub(super) source: Option<PathBuf>,
-
-    /// Also index beads (issues) from the configured bead store
-    #[arg(long)]
-    pub(super) include_beads: bool,
-
-    /// Skip auto-calibration after indexing
-    #[arg(long)]
-    pub(super) skip_calibrate: bool,
-
-    /// Directory containing .bobbin/ config (defaults to current directory)
-    #[arg(default_value = ".")]
-    pub(super) path: PathBuf,
-}
-
 #[derive(Serialize)]
 struct IndexOutput {
     status: String,
@@ -213,7 +177,10 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
         bail!("{}", super::not_initialized_error(&repo_root));
     }
 
-    let config = Config::load(&config_path).with_context(|| "Failed to load configuration")?;
+    let mut config = Config::load(&config_path).with_context(|| "Failed to load configuration")?;
+    if args.no_quipu_publish {
+        (config.quipu_push_chunks, config.quipu_push_inferred) = (false, false);
+    }
 
     // Load tags config for tag resolution during indexing
     let tags_config =
