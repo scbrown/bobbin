@@ -133,3 +133,29 @@ fn graph_publish_replaces_only_its_own_source_not_the_whole_graph() {
         "a replacing re-publish must not touch them either"
     );
 }
+
+#[test]
+fn multi_line_literal_publishes_and_round_trips() {
+    // aegis-86f2v7.1: a heading carrying a raw newline made the whole gascity
+    // snapshot fail with "Line jumps are not allowed in string literals".
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join(".bobbin/quipu/quipu.db");
+    std::fs::create_dir_all(db.parent().unwrap()).unwrap();
+    let graph = "urn:test:graph:escaping";
+    let g = quipu::Store::open(db.to_str().unwrap())
+        .unwrap()
+        .graph_create(graph)
+        .unwrap();
+
+    let heading = "Line one\nline \"two\"\r\n\ttabbed \\ end";
+    let chunks = vec![chunk("h1", "docs/multi.md", 1, Some(heading))];
+    push_chunks_to_quipu(&chunks, &[], "r", dir.path(), Some(graph))
+        .expect("a multi-line heading must publish");
+
+    let store = quipu::Store::open(db.to_str().unwrap()).unwrap();
+    let facts = format!("{:?}", store.current_facts_in_graph(g).unwrap());
+    assert!(
+        facts.contains(&format!("{heading:?}").trim_matches('"').to_string()),
+        "the stored value must be the original text, not its escaped form: {facts}"
+    );
+}

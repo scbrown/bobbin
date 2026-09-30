@@ -54,6 +54,7 @@
 use anyhow::{bail, Context, Result};
 
 use super::inferred::{Extraction, InferredExtractor};
+use super::turtle::escape_literal;
 use crate::iri::{iri_encode, INFERRED_BASE, ONTOLOGY_NS};
 
 /// Trust rank of the inferred plane — the bottom of the provenance chain.
@@ -342,10 +343,6 @@ pub fn push_inferred_to_quipu(
     let mut store = quipu::Store::open(db_path.to_string_lossy().as_ref())
         .map_err(|e| anyhow::anyhow!("Failed to open quipu store: {e}"))?;
     push_inferred(&mut store, facts)
-}
-
-fn escape_literal(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// FNV-1a 64 — deterministic relation-IRI disambiguator (same digest quipu
