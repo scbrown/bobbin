@@ -22,6 +22,7 @@ pub(super) async fn run(
             repo: Some(repo),
             source: Some(source),
             include_beads: false,
+            no_quipu_publish: false,
             skip_calibrate: true,
             path: home,
         },
