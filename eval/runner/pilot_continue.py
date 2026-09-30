@@ -84,10 +84,23 @@ def build_plan(source, manifest_sha, report_path, report_sha, lock_path, lock_sh
             "fixture_exclusions": [row for row in rows if row["eligible"] is False]}
 
 
-def execute(execution, source, output, lock_path, root, revalidate):
+def execute(execution, source, output, lock_path, root, revalidate, claim_dir=None,
+            evidence=None):
+    """Claim once, then run the eligible schedule.
+
+    ``claim_dir`` holds the single-use claim (default: the original campaign).
+    ``evidence`` re-checks prior evidence before every paid cell; by default it
+    re-plans the original campaign. A chained continuation supplies both.
+    """
     output = output.absolute()
-    if output.exists() or output.resolve().is_relative_to(source.resolve()):
+    claim_dir = source if claim_dir is None else claim_dir
+    if (output.exists() or output.resolve().is_relative_to(source.resolve())
+            or output.resolve().is_relative_to(claim_dir.resolve())):
         raise ValueError("continuation output must be new and outside the original campaign")
+    if evidence is None:
+        def evidence():
+            current = plan(source, root, execution["recovery"]["source_manifest_sha256"])
+            return current == execution["recovery"]
     if not execution["schedule"]:
         raise ValueError("no eligible untouched tasks; no continuation will be claimed")
     # Validate everything again before the single-use claim. A failed setup or
@@ -95,7 +108,7 @@ def execute(execution, source, output, lock_path, root, revalidate):
     if revalidate() != execution:
         raise ValueError("continuation inputs changed before claim")
     runtime = pinned_json(lock_path, execution["runtime_lock_sha256"])
-    claim = source / "continuation-claim.json"
+    claim = claim_dir / "continuation-claim.json"
     fd = os.open(claim, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as stream:
         json.dump({"output": str(output.resolve()), "execution": execution}, stream, sort_keys=True)
@@ -129,8 +142,7 @@ def execute(execution, source, output, lock_path, root, revalidate):
     def before_spend():
         # The original single-use claim is the only new source artifact.
         try:
-            current = plan(source, root, execution["recovery"]["source_manifest_sha256"])
-            if current != execution["recovery"] or digest(claim) != expected_claim:
+            if not evidence() or digest(claim) != expected_claim:
                 raise ValueError("original evidence or continuation claim changed")
             if digest(regular(Path(execution["client_path"]))) != execution["client_sha256"]:
                 raise ValueError("client executable changed")

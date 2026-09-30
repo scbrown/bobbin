@@ -213,6 +213,19 @@ changed rule are labelled as such.
 
 ## Amendment log
 
+- 2026-09-30, after the bounded continuation and before any further paid cell: a
+  second, chained continuation may complete the approved pilot's remaining slots. It
+  skips every task attempted by the original run or the first continuation. Fixture
+  repairs made since (bobbin #150, #152, #153: ten tasks had pinned the fixing commit's
+  first parent, and grader/setup defects for Go, pytest, Ruff, pandas and polars) change
+  task definitions only for tasks with no paid evidence; the executor refuses a changed
+  definition of any paid task. Eligibility again requires fresh free parent/fix controls
+  on the exact definitions that will run, with the discrimination rule unchanged. Model,
+  cells, order, per-cell limits, runtime and client pins are the first continuation's.
+  The three cohorts (original, first continuation, chained continuation) stay labelled
+  in any descriptive pooling, and cohort-3 tasks ran on repaired definitions. The pilot
+  remains descriptive; full-study approval is unchanged.
+
 - 2026-09-27, after a partial pilot: conservative continuation must skip every
   previously attempted task, including fixture failures and incomplete pairs. The
   original run has two complete tasks (eight cells), one incomplete task (one of four
