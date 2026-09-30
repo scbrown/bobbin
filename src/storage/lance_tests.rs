@@ -2216,3 +2216,24 @@ async fn maintain_folds_unindexed_rows_into_the_fts_index() {
         );
     }
 }
+
+/// wu's ask on bobbin#164: the optimize step reuses the compaction step's FTS
+/// panic -> rebuild recovery, and ONLY for that panic on the chunks table.
+#[test]
+fn optimize_falls_back_to_an_fts_rebuild_only_for_the_builder_panic_on_chunks() {
+    let panic: anyhow::Result<()> = Err(anyhow::anyhow!(
+        "task 7 panicked with message at lance-index/src/scalar/inverted/builder.rs:412"
+    ));
+    let io: anyhow::Result<()> = Err(anyhow::anyhow!("I/O error: No space left on device"));
+    let ok: anyhow::Result<()> = Ok(());
+    assert!(should_rebuild_fts_after("chunks", &panic));
+    assert!(
+        !should_rebuild_fts_after("chunk_edges", &panic),
+        "other tables: no FTS"
+    );
+    assert!(
+        !should_rebuild_fts_after("chunks", &io),
+        "a rebuild would not fix I/O"
+    );
+    assert!(!should_rebuild_fts_after("chunks", &ok));
+}
