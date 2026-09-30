@@ -181,6 +181,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     if args.no_quipu_publish {
         (config.quipu_push_chunks, config.quipu_push_inferred) = (false, false);
     }
+    args::apply_include(&mut config, &args.include_globs)?;
 
     // Load tags config for tag resolution during indexing
     let tags_config =
