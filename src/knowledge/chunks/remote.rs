@@ -36,6 +36,12 @@ pub async fn push_chunks_to_remote_quipu(
     push_with_token(chunks, edges, repo_name, endpoint, &token, target_graph).await
 }
 
+/// quipu `snapshot_upload_id`, which `/knot/stage` recomputes and refuses on mismatch. The
+/// graph is NOT part of it: quipu keeps the graph in the immutable upload manifest, so the
+/// same content staged for another graph fails closed (aegis-86f2v7).
+fn upload_id(snapshot: &str, content_hash: &str) -> String {
+    sha256(format!("{snapshot}\n{content_hash}").as_bytes())
+}
 async fn push_with_token(
     chunks: &[Chunk],
     edges: &[ChunkEdge],
@@ -47,13 +53,7 @@ async fn push_with_token(
     let turtle = super::generate_chunk_turtle(chunks, edges, repo_name);
     let snapshot = format!("bobbin-chunks:{repo_name}");
     let content_hash = sha256(turtle.as_bytes());
-    // The target graph is part of the upload's identity: identical content bound for ROOT
-    // and for a named graph must never share a staged upload (it would promote into
-    // whichever graph staged first). ROOT keeps its original id.
-    let upload_id = match target_graph {
-        None => sha256(format!("{snapshot}\n{content_hash}").as_bytes()),
-        Some(graph) => sha256(format!("{snapshot}\n{content_hash}\n{graph}").as_bytes()),
-    };
+    let upload_id = upload_id(&snapshot, &content_hash);
     let parts = snapshot_parts(&turtle);
     anyhow::ensure!(!parts.is_empty(), "refusing an empty chunk snapshot upload");
     let client = reqwest::Client::builder()
@@ -244,6 +244,9 @@ pub(crate) fn quipu_auth_token() -> Option<String> {
         })
 }
 
+#[cfg(test)]
+#[path = "remote_graph_tests.rs"]
+mod graph_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
