@@ -49,6 +49,7 @@ def test_plan_skips_original_and_first_continuation_tasks(chained):
     planned = chain.build_plan(*chained)
     assert planned["schedule"] == [["task-002", c] for c in ("none", "tool", "inject", "both")]
     assert planned["parent"]["tasks"] == ["task-001"]
+    assert planned["max_spend_usd"] == {"cells": 4, "budget_per_cell": 2.0, "total": 8.0}
     assert "task-001/none/result.json" in planned["parent"]["artifact_sha256"]
     assert list(planned["recovery"]["amended_task_sha256"]) == ["task-003"]
     assert not (chained[2] / "continuation-claim.json").exists()

@@ -118,7 +118,11 @@ def build_plan(source, manifest_sha, parent, parent_sha, evidence_sha, report_pa
     if digest(regular(claude)) != claude_sha:
         raise ValueError("reviewed client executable changed")
     verification = verify_runtime(runtime)
-    return {"recovery": recovery, "fixture_report_sha256": report_sha,
+    schedule = [pair for pair in remaining if pair[0] in eligible]
+    budget = recovery["original_parameters"]["budget_per_run"]
+    return {"recovery": recovery,
+            "max_spend_usd": {"cells": len(schedule), "budget_per_cell": budget,
+                              "total": round(len(schedule) * budget, 2)}, "fixture_report_sha256": report_sha,
             "fixture_report_path": str(report_path.resolve()),
             "fixture_control_sha256": control_pins, "runtime_lock_sha256": lock_sha,
             "runtime_verified_libraries": verification["verified_libraries"],
@@ -128,7 +132,7 @@ def build_plan(source, manifest_sha, parent, parent_sha, evidence_sha, report_pa
                        "tasks": parent_tasks, "artifact_sha256": parent_artifacts,
                        "evidence_sha256": evidence_sha},
             "task_sha256": current,
-            "schedule": [pair for pair in remaining if pair[0] in eligible],
+            "schedule": schedule,
             "fixture_exclusions": [row for row in rows if row["eligible"] is False]}
 
 
