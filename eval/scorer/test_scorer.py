@@ -14,43 +14,49 @@ class TestScorerError(Exception):
     """Raised when the test scorer encounters a fatal error."""
 
 
+# A pytest summary: "N word[, N word]... in 1.23s", optionally framed by "=".
+# Every count names its outcome, so the words are matched explicitly rather than
+# assumed to arrive in a fixed order (aegis-bgk9ho: "4 passed, 2331 deselected
+# in 0.09s" defeated the fixed-order pattern, and every filtered (-k) run of
+# pandas/polars scored as zero tests executed).
+_PYTEST_WORD = (
+    r"(?:passed|failed|error(?:s|ed)?|skipped|deselected|xfailed|xpassed|warnings?|rerun)"
+)
+_PYTEST_SUMMARY = re.compile(
+    rf"(?m)^[=\s]*((?:\d+ {_PYTEST_WORD}(?:, )?)+) in [\d.]+s\b"
+)
+_PYTEST_COUNT = re.compile(rf"(\d+) ({_PYTEST_WORD})")
+
+
 def _parse_pytest_output(output: str) -> dict:
     """Extract pass/fail counts from pytest output.
 
-    Looks for the summary line like:
+    Reads the LAST summary line, like:
         "5 passed, 2 failed, 1 error in 3.45s"
-        "10 passed in 1.23s"
+        "==== 4 passed, 2331 deselected in 0.09s ===="
+        "1 failed, 19 deselected in 0.04s"
+
+    The line must start with a count and name only pytest outcomes, so cargo's
+    "Finished `dev` profile ... in 0.23s" (aegis-mzdcm0) never matches.
+    Deselected tests and warnings did not run and are not counted.
     """
-    # Match the final summary line.
-    pattern = re.compile(
-        r"(?:(\d+) passed)?"
-        r"(?:,?\s*(\d+) failed)?"
-        r"(?:,?\s*(\d+) error(?:s|ed)?)?"
-        r"(?:,?\s*(\d+) skipped)?"
-        r"\s+in\s+[\d.]+s"
-    )
-    match = pattern.search(output)
-    if not match:
+    summaries = _PYTEST_SUMMARY.findall(output)
+    if not summaries:
         return {}
+    counts: dict[str, int] = {}
+    for number, word in _PYTEST_COUNT.findall(summaries[-1]):
+        key = {"error": "errors", "errored": "errors", "warning": "warnings"}.get(word, word)
+        counts[key] = counts.get(key, 0) + int(number)
 
-    # aegis-mzdcm0: every group in this pattern is optional, so the trailing
-    # "in <float>s" alone is enough to match -- and cargo's "finished in 0.00s"
-    # satisfies exactly that.  A match that captured NO counts is not a pytest
-    # summary; claiming it shadows the correct parser and reports total=0.
-    if not any(match.group(i) for i in range(1, 5)):
-        return {}
-
-    passed = int(match.group(1) or 0)
-    failed = int(match.group(2) or 0)
-    errors = int(match.group(3) or 0)
-    skipped = int(match.group(4) or 0)
-
+    passed = counts.get("passed", 0) + counts.get("xpassed", 0)
+    failed = counts.get("failed", 0) + counts.get("errors", 0)
+    skipped = counts.get("skipped", 0) + counts.get("xfailed", 0)
     return {
         "framework": "pytest",
         "passed": passed,
-        "failed": failed + errors,
+        "failed": failed,
         "skipped": skipped,
-        "total": passed + failed + errors + skipped,
+        "total": passed + failed + skipped,
     }
 
 
