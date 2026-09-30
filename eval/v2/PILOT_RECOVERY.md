@@ -19,8 +19,8 @@ an incomplete pair. Fixture failures remain recorded; the plan does not retry th
 
 The remaining schedule retains the original cell order. Excluded tasks, missing cells
 and incomplete pairs are reported explicitly; they are never successes or completed
-pairs. A continuation of a continuation is refused until an ancestry-aware mechanism
-is implemented and reviewed.
+pairs. A continuation of a continuation needs the ancestry-aware
+[chained executor](#chained-continuation) below; this planner alone still refuses it.
 
 This command is a review artifact, **not a continuation executor**. The original pilot
 may predate client, index or runtime library locks. The plan reports whether a runtime
@@ -77,3 +77,32 @@ receipts are checked again before each paid cell. The runtime verifier checks ac
 library loading before cells and the GPU wrapper enforces the hold/proof contract.
 The original complete pairs and continuation pairs must remain labelled by source in
 any descriptive pooling; the original partial pair remains incomplete.
+
+## Chained continuation
+
+`python -m runner.pilot_chain <original-output> --manifest-sha256 <sha256>
+--parent <first-continuation-output> --parent-sha256 <its manifest sha256>
+--parent-evidence-sha256 <sha256> --controls <standalone-report.json>
+--controls-sha256 <sha256> --runtime <lock> --runtime-sha256 <sha256>
+--client <client> --client-sha256 <sha256>` plans a second continuation. Like the
+first, it prints a plan by default and needs `--execute --output <new-directory>`.
+
+It skips every task attempted by the original campaign **and** by the first
+continuation, whatever the outcome. The first continuation must be the one named by
+the original campaign's claim, with an unchanged manifest; its task evidence is hashed
+and must match `--parent-evidence-sha256`, the `parent.evidence_sha256` a reviewer
+read from a dry run. Original evidence fields recorded by the first continuation must
+be unchanged. Runtime and client pins must equal the first continuation's, so both
+cohorts ran the same treatment binaries.
+
+Task definitions may have been repaired since the original run, but only for tasks
+with no paid evidence in either cohort; a changed definition of any paid task is
+refused. The fixture report must be a complete standalone report
+(`runner.pilot_fixture_controls --tasks ...`) covering exactly the never-attempted
+tasks in schedule order, and its recorded task hashes must equal the definitions that
+will run. Eligibility uses the same discriminating-control rule as before.
+
+The claim is created exclusively in the first continuation's output, so the chain can
+run once; the original campaign's claim is not modified. Original evidence, the first
+continuation's manifest and evidence, the task definitions, pins and receipts are
+checked again before each paid cell. Deeper chains are refused until reviewed.

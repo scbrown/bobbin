@@ -36,11 +36,13 @@ def original_file(root, commit, name):
         raise ValueError(f"original source unavailable: {name}") from exc
 
 
-def plan(source, root, expected_manifest):
+def plan(source, root, expected_manifest, allow_amended=False):
     """Validate the original campaign and classify every preregistered slot.
 
     No imports of the agent runner, credential access, writes or model calls.
     The operator supplies the exact manifest digest reviewed for continuation.
+    ``allow_amended`` (chained continuations only) records a changed task
+    definition instead of refusing it, provided the task has no paid evidence.
     """
     if source.is_symlink() or not source.is_dir():
         raise ValueError("source must be a real campaign directory")
@@ -88,12 +90,15 @@ def plan(source, root, expected_manifest):
     for name, expected_hash in pins.items():
         if digest(regular(binary / name)) != expected_hash:
             raise ValueError(f"pinned executable digest mismatch: {name}")
-    artifacts, task_hashes, excluded = {}, {}, []
+    artifacts, task_hashes, excluded, amended = {}, {}, [], {}
     for task in tasks:
         original = original_file(root, commit, f"tasks/{task}.yaml")
         current = regular(root / "tasks" / f"{task}.yaml").read_bytes()
         if original != current:
-            raise ValueError(f"task definition changed: {task}")
+            if not allow_amended:
+                raise ValueError(f"task definition changed: {task}")
+            amended[task] = {"original": hashlib.sha256(original).hexdigest(),
+                             "current": hashlib.sha256(current).hexdigest()}
         task_hashes[task] = hashlib.sha256(original).hexdigest()
         directory = source / task
         if not directory.exists() and not directory.is_symlink():
@@ -109,11 +114,14 @@ def plan(source, root, expected_manifest):
                 artifacts[str(path.relative_to(source))] = digest(path)
                 results += path.name == "result.json"
                 streams += path.name == "stream.jsonl"
+        if task in amended and (results or streams):
+            raise ValueError(f"task definition changed after paid evidence: {task}")
         excluded.append({"task": task, "reason": "previously_attempted",
                          "result_records": results, "stream_records": streams,
                          "fixture_error": (directory / "fixture-error.json").is_file()})
     skipped = {item["task"] for item in excluded}
-    return {"source": str(source.resolve()), "source_manifest_sha256": expected_manifest,
+    extra = {"amended_task_sha256": amended} if allow_amended else {}
+    return {**extra, "source": str(source.resolve()), "source_manifest_sha256": expected_manifest,
             "source_harness_commit": commit, "source_pins": pins,
             "original_parameters": {key: manifest.get(key) for key in (
                 "model", "budget_per_run", "timeout", "max_turns",
