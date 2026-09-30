@@ -39,6 +39,15 @@ pub struct IndexArgs {
     #[arg(long)]
     pub(in crate::cli) no_quipu_publish: bool,
 
+    /// Index only files matching this glob for this run, REPLACING the config's
+    /// `index.include` (repeatable). For a source whose file types differ from
+    /// the repos' (e.g. a document share, aegis-1v555n.1). The run's include is
+    /// the repo's include: files indexed earlier that it no longer matches are
+    /// removed, exactly as if the config list had changed. The `documents` and
+    /// `multimodal` config switches still add their own types.
+    #[arg(long = "include", value_name = "GLOB")]
+    pub(in crate::cli) include_globs: Vec<String>,
+
     /// Skip auto-calibration after indexing
     #[arg(long)]
     pub(in crate::cli) skip_calibrate: bool,
@@ -46,4 +55,22 @@ pub struct IndexArgs {
     /// Directory containing .bobbin/ config (defaults to current directory)
     #[arg(default_value = ".")]
     pub(in crate::cli) path: PathBuf,
+}
+
+/// Apply `--include`: replace the config's include list for this run. An
+/// invalid glob is refused here, because `collect_files` drops a pattern it
+/// cannot parse, and a typo would then index nothing and prune everything.
+pub(in crate::cli) fn apply_include(
+    config: &mut crate::config::Config,
+    globs: &[String],
+) -> anyhow::Result<()> {
+    if globs.is_empty() {
+        return Ok(());
+    }
+    for g in globs {
+        glob::Pattern::new(g)
+            .map_err(|e| anyhow::anyhow!("--include {g:?} is not a valid glob: {e}"))?;
+    }
+    config.index.include = globs.to_vec();
+    Ok(())
 }
