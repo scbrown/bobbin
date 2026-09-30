@@ -2159,3 +2159,60 @@ async fn fts_coverage_counts_rows_added_after_the_index_as_unindexed() {
         "the new row is outside the index"
     );
 }
+
+/// aegis-4h7zw8 fix: the maintenance sweep folds rows added after the FTS
+/// index was built into it, so no row is left to be text-scanned per query,
+/// and keyword search still finds every row (old and new) afterwards.
+#[tokio::test]
+async fn maintain_folds_unindexed_rows_into_the_fts_index() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("vectors");
+    let mut store = VectorStore::open(&path).await.unwrap();
+    store
+        .insert(
+            &[
+                sample_chunk("c1", "authenticate"),
+                sample_chunk("c2", "authorize"),
+            ],
+            &[sample_embedding(), sample_embedding()],
+            &no_contexts(2),
+            "repo",
+            "h",
+            "100",
+        )
+        .await
+        .unwrap();
+    store.rebuild_fts_index().await.unwrap();
+    let mut later = VectorStore::open(&path).await.unwrap();
+    later
+        .insert(
+            &[sample_chunk("c3", "tokenize")],
+            &[sample_embedding()],
+            &no_contexts(1),
+            "repo",
+            "h",
+            "101",
+        )
+        .await
+        .unwrap();
+    let before = VectorStore::open(&path).await.unwrap();
+    assert_eq!(
+        before.fts_coverage().await,
+        Some((2, 1)),
+        "control: one row outside"
+    );
+    before.maintain(LockWait::NoWait).await.expect("sweep runs");
+    let after = VectorStore::open(&path).await.unwrap();
+    assert_eq!(
+        after.fts_coverage().await.map(|c| c.1),
+        Some(0),
+        "nothing left unindexed"
+    );
+    for word in ["authenticate", "authorize", "tokenize"] {
+        assert_eq!(
+            after.search_fts(word, 10, None).await.unwrap().len(),
+            1,
+            "{word}"
+        );
+    }
+}

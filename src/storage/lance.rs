@@ -940,8 +940,37 @@ impl VectorStore {
         // with it and the next compaction is bigger — self-perpetuating.
         let pruned = self.prune_locked(&tables).await;
         let compacted = self.compact_locked(&tables).await;
+        // THEN fold rows added since each index was built into it
+        // (aegis-4h7zw8). Lance never adds new rows to an existing index on its
+        // own: it text-scans them on every FTS query, so without this the
+        // keyword leg slows with every incremental reindex. A failure here
+        // leaves search exactly as it was (slow, still correct), so it is
+        // reported loudly but does not fail the sweep.
+        if let Err(e) = self.optimize_indices_locked(&tables).await {
+            tracing::warn!(error = %e, "index optimize failed; unindexed rows stay text-scanned");
+            eprintln!("bobbin: index optimize failed (search stays correct but slower): {e:#}");
+        }
         self.record_maintenance(compacted.is_ok(), pruned.is_ok());
         pruned.and(compacted).map(|()| MaintenanceOutcome::Ran)
+    }
+
+    /// Add unindexed rows to every table's existing indices, without
+    /// retraining them. CALLER MUST HOLD the maintenance lock.
+    async fn optimize_indices_locked(&self, tables: &[(&'static str, &Table)]) -> Result<()> {
+        let mut first_err = None;
+        for (name, table) in tables {
+            let r = retry_on_conflict!(
+                table,
+                table.optimize(OptimizeAction::Index(
+                    lancedb::table::OptimizeOptions::default()
+                ))
+            )
+            .with_context(|| format!("Failed to optimize indices of {name} table"));
+            if let Err(e) = r {
+                first_err.get_or_insert(e);
+            }
+        }
+        first_err.map_or(Ok(()), Err)
     }
 
     /// Compact every table. CALLER MUST HOLD the maintenance lock.
