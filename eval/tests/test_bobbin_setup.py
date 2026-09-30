@@ -134,6 +134,20 @@ class TestSetupBobbin:
         with pytest.raises(BobbinSetupError, match="bobbin init failed"):
             setup_bobbin(str(tmp_path))
 
+    def test_init_timeout_is_a_setup_error_with_the_callers_budget(self, mock_bobbin, tmp_path):
+        # aegis-bgk9ho: a GPU wrapper's runtime verification runs inside init.
+        mock_run, _ = mock_bobbin
+        mock_run.side_effect = subprocess.TimeoutExpired(
+            cmd=["bobbin", "init"], timeout=900, stderr=b"GPU paused")
+        with pytest.raises(BobbinSetupError, match="init timed out after 900s"):
+            setup_bobbin(str(tmp_path), init_timeout=900)
+        assert mock_run.call_args.kwargs["timeout"] == 900
+
+    def test_init_timeout_default_is_unchanged(self, mock_bobbin, tmp_path):
+        mock_run, _ = mock_bobbin
+        setup_bobbin(str(tmp_path))
+        assert mock_run.call_args_list[0].kwargs["timeout"] == 30
+
     def test_index_failure_raises(self, mock_bobbin, tmp_path: Path):
         mock_run, mock_popen = mock_bobbin
         # Make the Popen index step return non-zero.

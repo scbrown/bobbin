@@ -106,3 +106,22 @@ The claim is created exclusively in the first continuation's output, so the chai
 run once; the original campaign's claim is not modified. Original evidence, the first
 continuation's manifest and evidence, the task definitions, pins and receipts are
 checked again before each paid cell. Deeper chains are refused until reviewed.
+
+### Resuming a stopped chained run
+
+Add `--resume <stopped-chain-output> --resume-manifest-sha256 <its manifest sha256>` to
+the same six reviewed input hashes. The resume is allowed once. The same inputs must
+reproduce the stopped run's recorded execution exactly: the same pins, controls report
+and schedule. The parent's claim must name the stopped run.
+
+A task is **spent** if its directory in the stopped run contains anything besides
+`controls.json`, `index.json`, `fixture-error.json` or `infrastructure-error.json`.
+That includes any cell directory, stream or result. A cell directory is created before
+the spend check and the agent call, so a task without one never reached a model. Spent
+tasks are skipped. Unspent tasks are re-run from a fresh index, and they are listed as
+`reattempted_unspent_tasks`.
+
+The GPU wrapper must be byte-identical to the stopped run's. The copied runtime
+verifier may differ only through reviewed verification-tooling changes. The plan
+records its hash before and after. The claim is created exclusively in the stopped
+run's output. That output's evidence is checked again before every paid cell.

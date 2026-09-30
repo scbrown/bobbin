@@ -147,3 +147,28 @@ def test_turn_limit_is_failed_cell_without_false_unavailability(
 ])
 def test_hidden_tests_include_snapshot_expectations(path, hidden):
     assert pilot.is_hidden_test_path(path) is hidden
+
+
+def test_index_setup_failure_is_recorded_stops_and_never_invokes(tmp_path, monkeypatch):
+    # aegis-bgk9ho: bobbin init timed out in setup; no cell may exist afterwards.
+    monkeypatch.setattr(pilot, "load_task_by_id", lambda task, root: {"id": task, "commit": "x"})
+    monkeypatch.setattr(pilot, "isolated_env", lambda home: {"PATH": ""})
+
+    def prepare(task, scratch, env, timeout):
+        (scratch / "controls.json").write_text("{}")
+        return scratch, "parent", []
+    monkeypatch.setattr(pilot, "prepare", prepare)
+    seen = {}
+
+    def setup(ws, *, timeout, init_timeout):
+        seen["init_timeout"] = init_timeout
+        raise pilot.BobbinSetupError("bobbin init timed out after 900s")
+    monkeypatch.setattr(pilot, "setup_bobbin", setup)
+    monkeypatch.setattr(pilot, "invoke", lambda *a: pytest.fail("paid invocation"))
+    with pytest.raises(pilot.BobbinSetupError):
+        pilot.run_task("t", tmp_path, tmp_path, "bobbin", "claude",
+                       [("t", c) for c in pilot.CELLS], None, 2.0, 900, 40)
+    assert seen["init_timeout"] == 900
+    assert json.loads((tmp_path / "t/infrastructure-error.json").read_text())["error"]
+    assert sorted(p.name for p in (tmp_path / "t").iterdir()) == [
+        "controls.json", "infrastructure-error.json"]

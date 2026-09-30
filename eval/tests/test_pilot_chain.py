@@ -154,3 +154,112 @@ def test_output_inside_first_continuation_refused(chained):
 def test_default_plan_still_refuses_amended_definitions(chained):
     with pytest.raises(ValueError, match="task definition changed"):
         resume.plan(chained[0], chained[11], chained[1])
+
+
+@pytest.fixture
+def stopped(chained, tmp_path, monkeypatch):
+    """A chained run that spent task-002 and stopped in task-003's setup."""
+    root = chained[11]
+    # task-003 is eligible too, so the stopped run had two tasks scheduled.
+    report = chained[5]
+    data = json.loads(report.read_text())
+    for row in data["tasks"]:
+        if row["task"] == "task-003":
+            row.update(eligible=True, status="fixture_pass")
+    data["eligible_tasks"] = ["task-002", "task-003"]
+    write(report, data)
+    write(report.parent / "task-003/controls.json", {
+        "parent": {"valid": True, "passed": False, "executed": 1},
+        "fix": {"valid": True, "passed": True, "executed": 1}})
+    chained[6] = resume.digest(report)
+    (root / "runner/gpu_guard.py").write_text("# current guarded implementation\n")
+
+    def run(task, output, *args, before_spend):
+        if task == "task-002":
+            before_spend()
+            write(output / task / "none/result.json", {"spent": task})
+            write(output / task / "controls.json", {})
+            return
+        write(output / task / "controls.json", {})
+        write(output / task / "infrastructure-error.json", {"error": "init timed out"})
+        raise RuntimeError("stopped in setup")
+    with pytest.raises(RuntimeError, match="stopped in setup"):
+        execute(chained, tmp_path, monkeypatch, run)
+    chain_out = tmp_path / "chained-out"
+    return chained, chain_out, resume.digest(chain_out / "manifest.json")
+
+
+def resume_args(stopped):
+    chained, chain_out, sha = stopped
+    return [chain_out, sha, *chained]
+
+
+def test_resume_skips_spent_and_reattempts_unspent_task(stopped):
+    planned = chain.build_resume_plan(*resume_args(stopped))
+    assert planned["resume"]["spent_tasks"] == ["task-002"]
+    assert planned["resume"]["reattempted_unspent_tasks"] == ["task-003"]
+    assert planned["schedule"] == [["task-003", c] for c in ("none", "tool", "inject", "both")]
+    assert planned["max_spend_usd"] == {"cells": 4, "budget_per_cell": 2.0, "total": 8.0}
+    assert "runtime_verifier_sha256_after" in planned["resume"]
+
+
+@pytest.mark.parametrize("damage", ["cell_dir", "stream", "unknown_file", "unknown_top",
+                                    "manifest", "guard", "controls", "claimed"])
+def test_resume_refuses(stopped, damage):
+    chained, chain_out, sha = stopped
+    if damage == "cell_dir":
+        # A cell directory means a spend may have happened: task-003 must be skipped,
+        # and with nothing left the resume refuses rather than re-running it.
+        (chain_out / "task-003/none").mkdir()
+    elif damage == "stream":
+        (chain_out / "task-003/stream.jsonl").write_text("{}")
+    elif damage == "unknown_file":
+        (chain_out / "task-003/notes.txt").write_text("?")
+    elif damage == "unknown_top":
+        (chain_out / "pilot-leftover").mkdir()
+    elif damage == "manifest":
+        sha = "0" * 64
+    elif damage == "guard":
+        (chained[11] / "runner/gpu_guard.py").write_text("# a different wrapper\n")
+    elif damage == "controls":
+        (chained[5].parent / "task-003/controls.json").write_text("changed")
+    else:
+        (chain_out / "continuation-claim.json").write_text("{}")
+    with pytest.raises(ValueError):
+        chain.build_resume_plan(chain_out, sha, *chained)
+
+
+def test_resume_runs_once_with_claim_in_the_stopped_run(stopped, tmp_path, monkeypatch):
+    chained, chain_out, sha = stopped
+    args = resume_args(stopped)
+    planned = chain.build_resume_plan(*args)
+    called = []
+
+    def run(task, output, *a, before_spend):
+        before_spend()
+        called.append(task)
+    monkeypatch.setattr(continuation.pilot, "run_task", run)
+    out = tmp_path / "resumed"
+    chain.execute(planned, chained[0], chained[2], out, chained[7], chained[11],
+                  lambda: chain.build_resume_plan(*args))
+    assert called == ["task-003"]
+    assert (chain_out / "continuation-claim.json").is_file()
+    assert json.loads((out / "manifest.json").read_text())["continuation"]["resume"]["spent_tasks"] == ["task-002"]
+    with pytest.raises(ValueError, match="already has a resume claim"):
+        chain.build_resume_plan(*args)
+
+
+def test_resume_rechecks_stopped_run_evidence_before_spend(stopped, tmp_path, monkeypatch):
+    chained, chain_out, sha = stopped
+    args = resume_args(stopped)
+    planned = chain.build_resume_plan(*args)
+
+    def run(task, output, *a, before_spend):
+        before_spend()
+        (chain_out / "task-002/none/result.json").write_text("rewritten")
+        before_spend()
+        pytest.fail("second spend allowed")
+    monkeypatch.setattr(continuation.pilot, "run_task", run)
+    with pytest.raises(RuntimeError, match="stopped before spending"):
+        chain.execute(planned, chained[0], chained[2], tmp_path / "resumed", chained[7],
+                      chained[11], lambda: chain.build_resume_plan(*args))

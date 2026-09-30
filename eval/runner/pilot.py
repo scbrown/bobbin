@@ -21,7 +21,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from runner.agent_runner import _find_claude, parse_stream_json
-from runner.bobbin_setup import _find_bobbin, setup_bobbin
+from runner.bobbin_setup import BobbinSetupError, _find_bobbin, setup_bobbin
 from runner.l0 import _TEST_FILE, _TEST_PATH, SEED, gold_for_commit
 from runner.runtime_lock import verify_and_record
 from runner.task_loader import load_task_by_id
@@ -272,8 +272,14 @@ def run_task(task_id, out, pinned, bobbin, claude, order, runtime, budget, timeo
             ws, _parent, tests = prepare(task, scratch, env, timeout)
             shutil.copy2(scratch / "controls.json", task_out / "controls.json")
             # One index at the pre-fix tree; all cells receive identical copies.
-            with process_env(env):
-                index_metadata = setup_bobbin(str(ws), timeout=timeout)
+            try:
+                with process_env(env):
+                    index_metadata = setup_bobbin(str(ws), timeout=timeout, init_timeout=timeout)
+            except BobbinSetupError as exc:
+                # Infrastructure, before any cell exists: record it, then stop
+                # the campaign. It is never an arm outcome (aegis-bgk9ho).
+                write_json(task_out / "infrastructure-error.json", {"error": str(exc)})
+                raise
             write_json(task_out / "index.json", index_metadata)
             if runtime and not index_metadata.get("gpu_acceleration_proven"):
                 raise RuntimeError("GPU index receipt missing; pilot stopped before spend")

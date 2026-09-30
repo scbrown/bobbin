@@ -213,6 +213,19 @@ changed rule are labelled as such.
 
 ## Amendment log
 
+- 2026-09-30, after the chained continuation stopped in index setup: the run
+  completed ruff-001 (four cells), then `bobbin init` timed out at its fixed 30 s during
+  go-003's index setup, before any go-003 cell existed. The pinned GPU wrapper verifies
+  the runtime inside that budget. Measured under host load 22–37, verification took
+  12–374 s. One attempt also failed on its 10 s package-query timeout. `init` now
+  receives the task timeout, and an init timeout is a recorded setup error that still
+  stops the campaign. The package query allows 120 s. **Deviation:** the resumed run's
+  copied runtime verifier differs only by that timeout, so `runtime_verifier_sha256`
+  changes. The bobbin executable, GPU wrapper, runtime lock, client, model, cells, order
+  and per-cell limits are unchanged. A single resume skips every spent task and re-runs
+  tasks with no cell directory (go-003 made zero model calls). The spent ruff-001 cells
+  are kept and labelled with the chained cohort.
+
 - 2026-09-30, after the bounded continuation and before any further paid cell: a
   second, chained continuation may complete the approved pilot's remaining slots. It
   skips every task attempted by the original run or the first continuation. Fixture
