@@ -51,11 +51,12 @@ def evidence_digest(artifacts):
 
 
 def build_plan(source, manifest_sha, parent, parent_sha, evidence_sha, report_path,
-               report_sha, lock_path, lock_sha, claude, claude_sha, root):
+               report_sha, lock_path, lock_sha, claude, claude_sha, root,
+               allow_parent_claim=False):
     recovery = plan(source, root, manifest_sha, allow_amended=True)
     if parent.is_symlink() or not parent.is_dir():
         raise ValueError("first continuation must be a real directory")
-    if (parent / "continuation-claim.json").exists():
+    if (parent / "continuation-claim.json").exists() and not allow_parent_claim:
         raise ValueError("first continuation already has a chained claim")
     claim = json.loads(regular(source / "continuation-claim.json").read_text())
     parent_manifest = pilot_continue.pinned_json(parent / "manifest.json", parent_sha)
@@ -136,7 +137,93 @@ def build_plan(source, manifest_sha, parent, parent_sha, evidence_sha, report_pa
             "fixture_exclusions": [row for row in rows if row["eligible"] is False]}
 
 
+CELLS = ("none", "tool", "inject", "both")
+# Files a task directory can hold before its first cell directory exists.
+PRE_CELL = {"controls.json", "index.json", "fixture-error.json", "infrastructure-error.json"}
+
+
+def chain_evidence(output, tasks):
+    """Hash a stopped chain's task evidence and split spent from unspent tasks.
+
+    A cell directory is created before the spend check and the agent call, so
+    a task directory without one never reached a model. Any cell directory,
+    stream or result makes the whole task spent, and it is never re-run.
+    """
+    allowed = PARENT_FIXED | set(tasks) | {"continuation-claim.json"}
+    if {p.name for p in output.iterdir()} - allowed:
+        raise ValueError("unrecognized chained-run artifacts; review before resuming")
+    artifacts, spent, unspent = {}, [], []
+    for task in tasks:
+        directory = output / task
+        if not directory.exists() and not directory.is_symlink():
+            continue
+        if directory.is_symlink() or not directory.is_dir():
+            raise ValueError(f"invalid chained-run task directory: {task}")
+        names = set()
+        for path in directory.rglob("*"):
+            if path.is_symlink():
+                raise ValueError(f"symlink in chained-run evidence: {task}")
+            if path.is_file():
+                artifacts[str(path.relative_to(output))] = digest(path)
+            if path.parent == directory:
+                names.add(path.name)
+        if names - PRE_CELL:
+            spent.append(task)
+        else:
+            unspent.append(task)
+    return artifacts, spent, unspent
+
+
+def build_resume_plan(chain, chain_sha, source, manifest_sha, parent, parent_sha,
+                      evidence_sha, report_path, report_sha, lock_path, lock_sha,
+                      claude, claude_sha, root):
+    """Plan the single resume of a stopped chained continuation.
+
+    The recorded execution must be reproduced exactly from the same reviewed
+    inputs; only spent tasks leave the schedule. Nothing is claimed here.
+    """
+    if chain.is_symlink() or not chain.is_dir():
+        raise ValueError("stopped chained run must be a real directory")
+    if (chain / "continuation-claim.json").exists():
+        raise ValueError("chained run already has a resume claim")
+    manifest = pilot_continue.pinned_json(chain / "manifest.json", chain_sha)
+    first = manifest.get("continuation")
+    if not isinstance(first, dict) or "parent" not in first or "resume" in first:
+        raise ValueError("only a stopped first chained continuation can be resumed")
+    claim = json.loads(regular(parent / "continuation-claim.json").read_text())
+    if claim.get("output") != str(chain.resolve()) or claim.get("execution") != first:
+        raise ValueError("chained run is not the one claimed in the first continuation")
+    current = build_plan(source, manifest_sha, parent, parent_sha, evidence_sha, report_path,
+                         report_sha, lock_path, lock_sha, claude, claude_sha, root,
+                         allow_parent_claim=True)
+    if current != first:
+        raise ValueError("reviewed inputs no longer reproduce the stopped chained run")
+    guard = digest(regular(root / "runner" / "gpu_guard.py"))
+    if guard != manifest.get("gpu_guard_sha256"):
+        raise ValueError("resume would change the GPU wrapper; review required")
+    tasks = list(dict.fromkeys(task for task, _ in first["schedule"]))
+    artifacts, spent, unspent = chain_evidence(chain, tasks)
+    schedule = [pair for pair in first["schedule"] if pair[0] not in spent]
+    if not schedule:
+        raise ValueError("no unspent tasks remain; nothing to resume")
+    budget = first["recovery"]["original_parameters"]["budget_per_run"]
+    return {**first, "schedule": schedule,
+            "max_spend_usd": {"cells": len(schedule), "budget_per_cell": budget,
+                              "total": round(len(schedule) * budget, 2)},
+            "resume": {"path": str(chain.resolve()), "manifest_sha256": chain_sha,
+                       "artifact_sha256": artifacts, "spent_tasks": spent,
+                       "reattempted_unspent_tasks": unspent,
+                       "runtime_verifier_sha256_before": manifest.get("runtime_verifier_sha256"),
+                       "runtime_verifier_sha256_after": digest(
+                           regular(root / "runner" / "runtime_lock.py"))}}
+
+
 def execute(execution, source, parent, output, lock_path, root, revalidate):
+    resume = execution.get("resume")
+    claim_dir = Path(resume["path"]) if resume else parent
+    if output.absolute().resolve().is_relative_to(parent.resolve()):
+        raise ValueError("continuation output must be new and outside the first continuation")
+
     def evidence():
         current = plan(source, root, execution["recovery"]["source_manifest_sha256"],
                        allow_amended=True)
@@ -146,10 +233,18 @@ def execute(execution, source, parent, output, lock_path, root, revalidate):
             return False
         if parent_evidence(parent, execution["parent"]["tasks"])[0] != execution["parent"]["artifact_sha256"]:
             return False
+        if resume:
+            chain = Path(resume["path"])
+            if digest(regular(chain / "manifest.json")) != resume["manifest_sha256"]:
+                return False
+            tasks = list(dict.fromkeys(task for task, _ in json.loads(
+                (chain / "manifest.json").read_text())["continuation"]["schedule"]))
+            if chain_evidence(chain, tasks)[0] != resume["artifact_sha256"]:
+                return False
         return all(digest(regular(root / "tasks" / f"{task}.yaml")) == sha
                    for task, sha in execution["task_sha256"].items())
     pilot_continue.execute(execution, source, output, lock_path, root, revalidate,
-                           claim_dir=parent, evidence=evidence)
+                           claim_dir=claim_dir, evidence=evidence)
 
 
 def main():
@@ -163,12 +258,23 @@ def main():
     for name in ("controls", "runtime", "client"):
         parser.add_argument(f"--{name}", required=True, type=Path)
         parser.add_argument(f"--{name}-sha256", required=True)
+    parser.add_argument("--resume", type=Path,
+                        help="stopped chained-run output to resume once (skips spent tasks)")
+    parser.add_argument("--resume-manifest-sha256")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
+    if bool(args.resume) != bool(args.resume_manifest_sha256):
+        parser.error("--resume and --resume-manifest-sha256 go together")
 
     def validate():
+        if args.resume:
+            return build_resume_plan(
+                args.resume, args.resume_manifest_sha256, args.source, args.manifest_sha256,
+                args.parent, args.parent_sha256, args.parent_evidence_sha256, args.controls,
+                args.controls_sha256, args.runtime, args.runtime_sha256, args.client,
+                args.client_sha256, root)
         return build_plan(args.source, args.manifest_sha256, args.parent, args.parent_sha256,
                           args.parent_evidence_sha256, args.controls, args.controls_sha256, args.runtime,
                           args.runtime_sha256, args.client, args.client_sha256, root)

@@ -119,6 +119,7 @@ def setup_bobbin(
     timeout: int = 1800,
     config_overrides: dict[str, str] | None = None,
     initialize: bool = True,
+    init_timeout: int = 30,
 ) -> dict[str, Any]:
     """Run bobbin init and index on the given workspace.
 
@@ -131,6 +132,11 @@ def setup_bobbin(
     config_overrides:
         Optional dict of ``{key: raw_value}`` overrides to apply to
         ``.bobbin/config.toml`` after init but before indexing.
+    init_timeout:
+        Max seconds for ``bobbin init``. A wrapper that verifies a pinned GPU
+        runtime before exec spends this budget too; the pilot passes its task
+        timeout because that verification exceeded 30 s under host load
+        (aegis-bgk9ho).
 
     Returns a metadata dict with index timing and bobbin status info.
 
@@ -148,10 +154,14 @@ def setup_bobbin(
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=init_timeout,
             )
         except subprocess.CalledProcessError as exc:
             raise BobbinSetupError(f"bobbin init failed: {exc.stderr.strip()}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise BobbinSetupError(
+                f"bobbin init timed out after {init_timeout}s: {(exc.stderr or '')[-2000:]!r}"
+            ) from exc
 
     # Apply config overrides between init and index so that index-time
     # parameters (coupling_depth) take effect.

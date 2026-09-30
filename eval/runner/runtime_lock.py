@@ -63,7 +63,7 @@ def package_pin(path):
 
     def query(*args):
         return subprocess.run(['dpkg-query', *args], check=True, text=True,
-                              capture_output=True, timeout=10).stdout.strip()
+                              capture_output=True, timeout=120).stdout.strip()
 
     ownership = query('-S', str(path)).splitlines()
     if len(ownership) != 1:
