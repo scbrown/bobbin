@@ -399,11 +399,11 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .to_string();
 
         if !args.force {
-            let content = read_indexable_content(file_path, &config)?;
-            let hash = compute_hash(&content);
-
-            if let Some(stored_hash) = metadata_store.get_file_hash(repo_name, &rel_path)? {
-                if stored_hash == hash {
+            // Unreadable (non-UTF-8, failed extraction): the indexing loop records it in
+            // `errors` as under --force, instead of aborting the run (aegis-1v555n.1).
+            if let Ok(content) = read_indexable_content(file_path, &config) {
+                let stored = metadata_store.get_file_hash(repo_name, &rel_path)?;
+                if stored.as_deref() == Some(compute_hash(&content).as_str()) {
                     skipped_count += 1;
                     continue;
                 }
