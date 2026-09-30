@@ -21,6 +21,23 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.23.0](https://github.com/scbrown/bobbin/compare/v0.22.0...v0.23.0) (2026-09-30)
+
+
+### Features
+
+* **eval:** a reviewed second resume re-runs one infra-failed task once (aegis-bgk9ho) ([#156](https://github.com/scbrown/bobbin/issues/156)) ([625d0eb](https://github.com/scbrown/bobbin/commit/625d0ebb29d5003b5900f5b49fc0b83e61b050db))
+* **eval:** chained pilot continuation that skips both prior cohorts (aegis-bgk9ho) ([#154](https://github.com/scbrown/bobbin/issues/154)) ([d0d2358](https://github.com/scbrown/bobbin/commit/d0d23585bdc2b7e0691a655b62497e76a0d3ef76))
+* **eval:** standalone free controls over an explicit task list ([#152](https://github.com/scbrown/bobbin/issues/152)) ([6dd6116](https://github.com/scbrown/bobbin/commit/6dd611691cc83402a60f0418fc4c0f4f73a6d43f))
+
+
+### Bug Fixes
+
+* **eval:** init gets the task timeout, and a stopped chained run can resume once (aegis-bgk9ho) ([#155](https://github.com/scbrown/bobbin/issues/155)) ([14e3222](https://github.com/scbrown/bobbin/commit/14e32228c264f835f0c543942cd17ce7c8865e4c))
+* **eval:** pytest summaries with deselected counts parse; polars-005 installs dateutil (aegis-bgk9ho) ([#153](https://github.com/scbrown/bobbin/issues/153)) ([59f0d42](https://github.com/scbrown/bobbin/commit/59f0d42f11312ad06d847473552eee46ba7d0240))
+* **eval:** repair pilot fixtures so the free controls can discriminate ([#150](https://github.com/scbrown/bobbin/issues/150)) ([e2ddc0a](https://github.com/scbrown/bobbin/commit/e2ddc0ad6b8f70a4f3278dc6928a5ac44a7b9d4c))
+* **index:** an unreadable file no longer aborts an incremental run (aegis-1v555n.1) ([#157](https://github.com/scbrown/bobbin/issues/157)) ([2e1f8e7](https://github.com/scbrown/bobbin/commit/2e1f8e7f825a688dc01f1bec2a0c67f9d50f5c45))
+
 ## [0.22.0](https://github.com/scbrown/bobbin/compare/v0.21.0...v0.22.0) (2026-09-29)
 
 
