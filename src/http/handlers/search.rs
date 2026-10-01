@@ -315,14 +315,13 @@ pub(super) async fn search(
     };
 
     let elapsed = start.elapsed();
-    tracing::info!(
-        query = %params.q,
-        repo = params.repo.as_deref().unwrap_or("-"),
-        role = params.role.as_deref().unwrap_or("-"),
-        mode = mode,
-        results = filtered.len(),
-        duration_ms = elapsed.as_millis() as u64,
-        "search"
+    log_search(
+        &params.q,
+        params.repo.as_deref(),
+        params.role.as_deref(),
+        mode,
+        filtered.len(),
+        elapsed.as_millis() as u64,
     );
 
     // Check for bundle keyword matches
@@ -452,4 +451,28 @@ fn to_search_item(r: &crate::types::SearchResult) -> SearchResultItem {
         language: r.chunk.language.clone(),
         content_preview: truncate(&r.chunk.content, 300),
     }
+}
+
+/// The per-request search log. INFO carries the operational fields and a
+/// fingerprint of the query, never its text; the text is DEBUG (aegis-uy7boa).
+pub(super) fn log_search(
+    q: &str,
+    repo: Option<&str>,
+    role: Option<&str>,
+    mode: &str,
+    results: usize,
+    duration_ms: u64,
+) {
+    let query_sha = super::query_sha(q);
+    tracing::debug!(query = %q, query_sha = %query_sha, "search query");
+    tracing::info!(
+        query_len = q.chars().count(),
+        query_sha = %query_sha,
+        repo = repo.unwrap_or("-"),
+        role = role.unwrap_or("-"),
+        mode = mode,
+        results = results,
+        duration_ms = duration_ms,
+        "search"
+    );
 }
