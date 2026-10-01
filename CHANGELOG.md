@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.25.2](https://github.com/scbrown/bobbin/compare/v0.25.1...v0.25.2) (2026-10-01)
+
+
+### Bug Fixes
+
+* **http:** log query and prompt text at DEBUG; INFO keeps a fingerprint (aegis-uy7boa) ([#170](https://github.com/scbrown/bobbin/issues/170)) ([b21af06](https://github.com/scbrown/bobbin/commit/b21af0682211424f84f90a8fdfac5d710794d0d0))
+
 ## [0.25.1](https://github.com/scbrown/bobbin/compare/v0.25.0...v0.25.1) (2026-10-01)
 
 
