@@ -251,15 +251,13 @@ pub(super) async fn context(
 
     let file_count = bundle.files.len();
     let elapsed = start.elapsed();
-    tracing::info!(
-        query = %bundle.query,
-        repo = params.repo.as_deref().unwrap_or("-"),
-        role = params.role.as_deref().unwrap_or("-"),
-        files = file_count,
-        budget_used = bundle.budget.used_lines,
-        budget_max = bundle.budget.max_lines,
-        duration_ms = elapsed.as_millis() as u64,
-        "context"
+    log_context(
+        &bundle.query,
+        params.repo.as_deref(),
+        params.role.as_deref(),
+        file_count,
+        (bundle.budget.used_lines, bundle.budget.max_lines),
+        elapsed.as_millis() as u64,
     );
 
     // Classify query intent and include in response for client-side gating
@@ -365,4 +363,30 @@ fn read_file_lines(
     };
 
     Ok((selected, actual_start, actual_end))
+}
+
+/// The per-request context log. Its query is the user's PROMPT on the
+/// inject-context hook path, so INFO carries only a fingerprint and the
+/// length; the text is DEBUG (aegis-uy7boa).
+pub(super) fn log_context(
+    query: &str,
+    repo: Option<&str>,
+    role: Option<&str>,
+    files: usize,
+    (budget_used, budget_max): (usize, usize),
+    duration_ms: u64,
+) {
+    let query_sha = super::query_sha(query);
+    tracing::debug!(query = %query, query_sha = %query_sha, "context query");
+    tracing::info!(
+        query_len = query.chars().count(),
+        query_sha = %query_sha,
+        repo = repo.unwrap_or("-"),
+        role = role.unwrap_or("-"),
+        files = files,
+        budget_used = budget_used,
+        budget_max = budget_max,
+        duration_ms = duration_ms,
+        "context"
+    );
 }

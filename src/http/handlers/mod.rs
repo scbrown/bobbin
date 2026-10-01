@@ -381,3 +381,18 @@ fn to_context_summary(s: &crate::search::context::ContextSummary) -> ContextSumm
         gate_boost: None,
     }
 }
+
+/// A short, non-reversible fingerprint of user-supplied text (a search query,
+/// a hook prompt) for INFO logs: the first 12 hex of its sha256. INFO lines
+/// carry this and the length, never the text, so a journal scan for words
+/// such as `oom-kill` cannot match a search FOR them, and prompts do not land
+/// in the shared journal. The text itself is logged at DEBUG with the same
+/// fingerprint, so the two lines correlate (aegis-uy7boa).
+pub(crate) fn query_sha(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(text.as_bytes());
+    digest.iter().take(6).map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(test)]
+mod query_log_tests;
