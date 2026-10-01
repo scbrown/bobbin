@@ -21,6 +21,18 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.25.0](https://github.com/scbrown/bobbin/compare/v0.24.0...v0.25.0) (2026-09-30)
+
+
+### Features
+
+* **index:** --include &lt;glob&gt; replaces the config include for one run (aegis-1v555n.1) ([#162](https://github.com/scbrown/bobbin/issues/162)) ([63b418a](https://github.com/scbrown/bobbin/commit/63b418a5f135c3a75127151b45b8120a2554bf0c))
+
+
+### Bug Fixes
+
+* **knowledge:** escape line jumps and control chars in Turtle literals (aegis-86f2v7.1) ([#165](https://github.com/scbrown/bobbin/issues/165)) ([b482ad1](https://github.com/scbrown/bobbin/commit/b482ad1b6ee957427789c2d3d1ec026744ae5e38))
+
 ## [0.24.0](https://github.com/scbrown/bobbin/compare/v0.23.1...v0.24.0) (2026-09-30)
 
 
