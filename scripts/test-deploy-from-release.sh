@@ -53,3 +53,30 @@ for mode in plain siblings missing corrupt; do
   esac
   echo "PASS: $mode"
 done
+
+# Cutover hand-off: the real script, beside a stub cutover, must pass the cutover's
+# exit status through AND remove its work dir. `exec` used to skip the EXIT trap, so
+# every deploy leaked its work dir into /tmp (aegis-86f2v7.1).
+mkdir -p "$scratch/handoff"
+cp "$root/scripts/deploy-from-release.sh" "$scratch/handoff/"
+printf '%s  %s\n' "$sum" "$asset" > "$scratch/release/SHA256SUMS.txt"
+for want_rc in 0 3; do
+  cat > "$scratch/handoff/deploy-cutover.sh" <<STUB
+#!/usr/bin/env bash
+[[ -x "\$1" ]] && "\$1" | grep -q 'bobbin 0.20.1' && echo seen > "$scratch/cutover-saw-binary"
+exit $want_rc
+STUB
+  chmod +x "$scratch/handoff/deploy-cutover.sh"
+  rm -rf "$scratch/tmp" "$scratch/cutover-saw-binary"; mkdir -p "$scratch/tmp"
+  rc=0
+  env PATH="$scratch/bin:/usr/bin:/bin" FIXTURE_RELEASE="$scratch/release" TMPDIR="$scratch/tmp" \
+    DEPLOY_HOST=serving.test bash "$scratch/handoff/deploy-from-release.sh" v0.20.1 \
+    > "$scratch/log" 2>&1 || rc=$?
+  if [[ "$rc" != "$want_rc" || ! -e "$scratch/cutover-saw-binary" ]]; then
+    cat "$scratch/log"; echo "FAIL: handoff rc=$rc want=$want_rc"; exit 1
+  fi
+  if [[ -n "$(ls -A "$scratch/tmp")" ]]; then
+    ls -la "$scratch/tmp"; echo "FAIL: handoff rc=$want_rc left its work dir behind"; exit 1
+  fi
+  echo "PASS: handoff rc=$want_rc, work dir removed"
+done
