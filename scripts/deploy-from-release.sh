@@ -103,5 +103,8 @@ if [ "${DRY_RUN:-0}" = 1 ]; then
 fi
 
 # --- 5. hand to the cutover, which owns the dangerous half -------------------
+# Not `exec`: exec replaces this shell, so the EXIT trap never ran and every
+# deploy left its ~250 MB work dir behind in a RAM-backed /tmp (aegis-86f2v7.1).
+# Under `set -e` a failed cutover still exits with its status; the trap cleans up.
 echo "==> handing to deploy-cutover.sh (host $DEPLOY_HOST)"
-exec "$here/deploy-cutover.sh" "$bin"
+"$here/deploy-cutover.sh" "$bin"
