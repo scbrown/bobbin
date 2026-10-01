@@ -131,6 +131,7 @@ Caboodle installs these together and proves each one works; every tool also stan
 | [bobbin](https://github.com/scbrown/bobbin) **(you are here)** | search and context over your repositories, served over MCP |
 | [yupana](https://github.com/scbrown/yupana) | which code calls which: the blast radius before an edit |
 | [desire-path](https://github.com/scbrown/desire-path) | the tool calls your agents get wrong, so you can fix them |
+| [seeds](https://github.com/scbrown/seeds) | the work your agents track, as facts in the graph with full history |
 
 ## Contributing
 
