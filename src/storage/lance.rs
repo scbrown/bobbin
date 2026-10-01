@@ -940,6 +940,16 @@ impl VectorStore {
         // with it and the next compaction is bigger — self-perpetuating.
         let pruned = self.prune_locked(&tables).await;
         let compacted = self.compact_locked(&tables).await;
+        // THEN fold rows added since each index was built into it
+        // (aegis-4h7zw8). Lance never adds new rows to an existing index on its
+        // own: it text-scans them on every FTS query, so without this the
+        // keyword leg slows with every incremental reindex. A failure here
+        // leaves search exactly as it was (slow, still correct), so it is
+        // reported loudly but does not fail the sweep.
+        if let Err(e) = self.optimize_indices_locked(&tables).await {
+            tracing::warn!(error = %e, "index optimize failed; unindexed rows stay text-scanned");
+            eprintln!("bobbin: index optimize failed (search stays correct but slower): {e:#}");
+        }
         self.record_maintenance(compacted.is_ok(), pruned.is_ok());
         pruned.and(compacted).map(|()| MaintenanceOutcome::Ran)
     }
@@ -3314,6 +3324,8 @@ fn str_to_chunk_type(s: &str) -> ChunkType {
 
 #[path = "lance_fts.rs"]
 mod fts;
+#[cfg(test)]
+use fts::should_rebuild_fts_after;
 
 #[cfg(test)]
 #[path = "lance_tests.rs"]

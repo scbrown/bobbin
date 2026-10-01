@@ -8,9 +8,10 @@ use std::sync::atomic::Ordering;
 use anyhow::{Context, Result};
 use lancedb::index::scalar::FtsIndexBuilder;
 use lancedb::index::Index;
+use lancedb::table::OptimizeAction;
 use lancedb::Table;
 
-use super::VectorStore;
+use super::{is_commit_conflict, VectorStore};
 
 impl VectorStore {
     /// Ensure FTS index exists on the content column.
@@ -89,6 +90,22 @@ impl VectorStore {
             .unwrap_or(false)
     }
 
+    /// Rows the `content` FTS index covers, and rows it does not, as
+    /// `(indexed, unindexed)`. Lance answers an FTS query for unindexed rows by
+    /// scanning their text on every query, so the second number is a per-query
+    /// cost (aegis-4h7zw8). `None` when there is no content FTS index or the
+    /// stats cannot be read. Reads index metadata only; trains nothing.
+    pub async fn fts_coverage(&self) -> Option<(usize, usize)> {
+        let table = self.table.as_ref()?;
+        let indices = table.list_indices().await.ok()?;
+        let index = indices.iter().find(|index| {
+            index.index_type == lancedb::index::IndexType::FTS
+                && index.columns.iter().any(|c| c == "content")
+        })?;
+        let stats = table.index_stats(&index.name).await.ok()??;
+        Some((stats.num_indexed_rows, stats.num_unindexed_rows))
+    }
+
     /// Force-(re)build the FTS index over the `content` column, replacing any
     /// existing index. Used to self-heal a missing/stale index.
     pub async fn rebuild_fts_index(&self) -> Result<()> {
@@ -108,4 +125,58 @@ impl VectorStore {
         self.fts_indexed.store(true, Ordering::Relaxed);
         Ok(())
     }
+}
+
+impl VectorStore {
+    /// Add unindexed rows to every table's existing indices, without
+    /// retraining them. CALLER MUST HOLD the maintenance lock.
+    ///
+    /// ALL indices of every maintained table, not only the content FTS index
+    /// (wu, bobbin#164): today only `chunks` carries one (the FTS index; there
+    /// is no ANN index), but a future index gets the same treatment rather
+    /// than silently going stale the same way.
+    pub(super) async fn optimize_indices_locked(
+        &self,
+        tables: &[(&'static str, &Table)],
+    ) -> Result<()> {
+        let mut first_err = None;
+        for (name, table) in tables {
+            let mut r = retry_on_conflict!(
+                table,
+                table.optimize(OptimizeAction::Index(
+                    lancedb::table::OptimizeOptions::default()
+                ))
+            )
+            .with_context(|| format!("Failed to optimize indices of {name} table"));
+            // Optimizing the FTS index runs the same inverted-index builder
+            // whose incremental path can panic during compaction (see
+            // compact_locked). Same recovery: a full replacement build. It
+            // indexes every row, so it also achieves what the optimize was for.
+            if should_rebuild_fts_after(name, &r) {
+                tracing::warn!(
+                    error = %r.as_ref().expect_err("checked above"),
+                    "FTS incremental optimize panicked; rebuilding the FTS index instead"
+                );
+                r = self
+                    .rebuild_fts_index()
+                    .await
+                    .map(|()| lancedb::table::OptimizeStats::default())
+                    .context("Failed to rebuild FTS index after incremental optimize panic");
+            }
+            if let Err(e) = r {
+                first_err.get_or_insert(e);
+            }
+        }
+        first_err.map_or(Ok(()), Err)
+    }
+}
+
+/// Whether a failed chunks-table maintenance step should fall back to a full
+/// FTS rebuild: only the inverted-builder panic, only on `chunks`, never an
+/// unrelated error (I/O, schema, OOM), which a rebuild would not fix.
+pub(super) fn should_rebuild_fts_after<T>(table: &str, r: &Result<T>) -> bool {
+    table == "chunks"
+        && r.as_ref()
+            .err()
+            .is_some_and(|e| super::is_fts_compaction_panic(e))
 }

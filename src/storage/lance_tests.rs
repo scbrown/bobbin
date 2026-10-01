@@ -2106,3 +2106,134 @@ async fn a_store_without_an_fts_index_still_builds_it_once() {
     again.ensure_fts_index().await.unwrap();
     assert_eq!(again.fts_build_attempts(), 0, "and is then never rebuilt");
 }
+
+/// aegis-4h7zw8: rows inserted after the FTS index was built are NOT covered by
+/// it (Lance text-scans them on every FTS query), and `fts_coverage` says so.
+/// Control: right after a build, everything is covered; with no index, None.
+#[tokio::test]
+async fn fts_coverage_counts_rows_added_after_the_index_as_unindexed() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("vectors");
+    let mut store = VectorStore::open(&path).await.unwrap();
+    store
+        .insert(
+            &[
+                sample_chunk("c1", "authenticate"),
+                sample_chunk("c2", "authorize"),
+            ],
+            &[sample_embedding(), sample_embedding()],
+            &no_contexts(2),
+            "repo",
+            "h",
+            "100",
+        )
+        .await
+        .unwrap();
+    let bare = VectorStore::open(&path).await.unwrap();
+    if !VectorStore::has_content_fts_index(bare.table.as_ref().unwrap()).await {
+        assert_eq!(bare.fts_coverage().await, None, "no index, no coverage");
+    }
+    store.rebuild_fts_index().await.unwrap();
+    let built = VectorStore::open(&path).await.unwrap();
+    assert_eq!(
+        built.fts_coverage().await,
+        Some((2, 0)),
+        "control: a fresh build covers all"
+    );
+    let mut later = VectorStore::open(&path).await.unwrap();
+    later
+        .insert(
+            &[sample_chunk("c3", "authorize again")],
+            &[sample_embedding()],
+            &no_contexts(1),
+            "repo",
+            "h",
+            "101",
+        )
+        .await
+        .unwrap();
+    let after = VectorStore::open(&path).await.unwrap();
+    assert_eq!(
+        after.fts_coverage().await,
+        Some((2, 1)),
+        "the new row is outside the index"
+    );
+}
+
+/// aegis-4h7zw8 fix: the maintenance sweep folds rows added after the FTS
+/// index was built into it, so no row is left to be text-scanned per query,
+/// and keyword search still finds every row (old and new) afterwards.
+#[tokio::test]
+async fn maintain_folds_unindexed_rows_into_the_fts_index() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("vectors");
+    let mut store = VectorStore::open(&path).await.unwrap();
+    store
+        .insert(
+            &[
+                sample_chunk("c1", "authenticate"),
+                sample_chunk("c2", "authorize"),
+            ],
+            &[sample_embedding(), sample_embedding()],
+            &no_contexts(2),
+            "repo",
+            "h",
+            "100",
+        )
+        .await
+        .unwrap();
+    store.rebuild_fts_index().await.unwrap();
+    let mut later = VectorStore::open(&path).await.unwrap();
+    later
+        .insert(
+            &[sample_chunk("c3", "tokenize")],
+            &[sample_embedding()],
+            &no_contexts(1),
+            "repo",
+            "h",
+            "101",
+        )
+        .await
+        .unwrap();
+    let before = VectorStore::open(&path).await.unwrap();
+    assert_eq!(
+        before.fts_coverage().await,
+        Some((2, 1)),
+        "control: one row outside"
+    );
+    before.maintain(LockWait::NoWait).await.expect("sweep runs");
+    let after = VectorStore::open(&path).await.unwrap();
+    assert_eq!(
+        after.fts_coverage().await.map(|c| c.1),
+        Some(0),
+        "nothing left unindexed"
+    );
+    for word in ["authenticate", "authorize", "tokenize"] {
+        assert_eq!(
+            after.search_fts(word, 10, None).await.unwrap().len(),
+            1,
+            "{word}"
+        );
+    }
+}
+
+/// wu's ask on bobbin#164: the optimize step reuses the compaction step's FTS
+/// panic -> rebuild recovery, and ONLY for that panic on the chunks table.
+#[test]
+fn optimize_falls_back_to_an_fts_rebuild_only_for_the_builder_panic_on_chunks() {
+    let panic: anyhow::Result<()> = Err(anyhow::anyhow!(
+        "task 7 panicked with message at lance-index/src/scalar/inverted/builder.rs:412"
+    ));
+    let io: anyhow::Result<()> = Err(anyhow::anyhow!("I/O error: No space left on device"));
+    let ok: anyhow::Result<()> = Ok(());
+    assert!(should_rebuild_fts_after("chunks", &panic));
+    assert!(
+        !should_rebuild_fts_after("chunk_edges", &panic),
+        "other tables: no FTS"
+    );
+    assert!(
+        !should_rebuild_fts_after("chunks", &io),
+        "a rebuild would not fix I/O"
+    );
+    assert!(!should_rebuild_fts_after("chunks", &ok));
+}
