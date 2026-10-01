@@ -21,6 +21,14 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.25.1](https://github.com/scbrown/bobbin/compare/v0.25.0...v0.25.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* **deploy:** stop leaking the release work dir on every pull deploy ([#167](https://github.com/scbrown/bobbin/issues/167)) ([0d6ada5](https://github.com/scbrown/bobbin/commit/0d6ada5817a9045773527cc2dbc8a4749394afb8))
+* **storage:** fold unindexed rows into the FTS index during maintenance, plus coverage gauges (aegis-4h7zw8) ([#164](https://github.com/scbrown/bobbin/issues/164)) ([4dd2751](https://github.com/scbrown/bobbin/commit/4dd2751ad97baa7c305ea21cecc0bcc5b580ff0b))
+
 ## [0.25.0](https://github.com/scbrown/bobbin/compare/v0.24.0...v0.25.0) (2026-09-30)
 
 
