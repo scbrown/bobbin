@@ -1,5 +1,9 @@
 # Evaluation Methodology
 
+> **Historical v1 methodology.** For the current registered design and partial
+> coverage, start with [Evaluation v2](summary.md). This page and its project
+> catalog describe earlier runs; they do not define the v2 task set.
+
 Bobbin's evaluation framework measures how semantic code context affects AI agent performance on real bug fixes across open-source projects.
 
 ## Approach: Commit-Revert
