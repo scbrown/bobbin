@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.26.0](https://github.com/scbrown/bobbin/compare/v0.25.2...v0.26.0) (2026-10-07)
+
+
+### Features
+
+* **eval:** J4 harness: per-chunk Jev admission + offline A1 report ([#120](https://github.com/scbrown/bobbin/issues/120)) ([a30fea6](https://github.com/scbrown/bobbin/commit/a30fea6623b095713d4665dac88d5f818417527b))
+
 ## [0.25.2](https://github.com/scbrown/bobbin/compare/v0.25.1...v0.25.2) (2026-10-01)
 
 
