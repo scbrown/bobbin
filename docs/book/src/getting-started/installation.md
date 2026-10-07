@@ -16,11 +16,11 @@ x86-64, with `curl`, `tar` and `sha256sum` installed:
 
 ```bash
 mkdir -p bobbin-download && cd bobbin-download
-base=https://github.com/scbrown/bobbin/releases/download/v0.18.1
-asset=bobbin-v0.18.1-x86_64-unknown-linux-gnu.tar.gz
+base=https://github.com/scbrown/bobbin/releases/download/v0.26.0
+asset=bobbin-v0.26.0-x86_64-unknown-linux-gnu.tar.gz
 curl -fLO "$base/$asset" && curl -fLO "$base/SHA256SUMS.txt"
 sha256sum --check --ignore-missing SHA256SUMS.txt && tar xzf "$asset"
-export PATH="$PWD/bobbin-v0.18.1-x86_64-unknown-linux-gnu:$PATH"
+export PATH="$PWD/bobbin-v0.26.0-x86_64-unknown-linux-gnu:$PATH"
 bobbin --version
 ```
 
@@ -28,7 +28,7 @@ Keep the extracted directory intact: its `lib/` contains ONNX Runtime.
 The pinned release reports:
 
 ```text
-bobbin 0.18.1 (bc246f84003f89eec07618e8c341bb6835500f58)
+bobbin 0.26.0 (58f4726fe4973240966704bbc9fe171c5ddb3e9a)
 ```
 
 For [other platforms and runtime prerequisites](#choose-your-platform),
@@ -40,7 +40,7 @@ for another installation earlier in `PATH`.
 ## Choose your platform
 
 Download the archive and `SHA256SUMS.txt` from the
-[v0.18.1 release](https://github.com/scbrown/bobbin/releases/tag/v0.18.1).
+[v0.26.0 release](https://github.com/scbrown/bobbin/releases/tag/v0.26.0).
 
 | System | Archive suffix |
 |---|---|
@@ -49,7 +49,7 @@ Download the archive and `SHA256SUMS.txt` from the
 | macOS Intel | `x86_64-apple-darwin.tar.gz` |
 | macOS Apple Silicon | `aarch64-apple-darwin.tar.gz` |
 
-Every filename starts with `bobbin-v0.18.1-`. On macOS, use `shasum -a 256`
+Every filename starts with `bobbin-v0.26.0-`. On macOS, use `shasum -a 256`
 and compare the archive's digest with its entry in `SHA256SUMS.txt` before
 extracting. Add the extracted directory to your shell's `PATH`.
 
@@ -68,7 +68,7 @@ bobbin --version
 ```
 
 For repository development, install `just` and follow
-[Contributing](../../../../CONTRIBUTING.md). `just build` includes the
+[Contributing](https://github.com/scbrown/bobbin/blob/main/CONTRIBUTING.md). `just build` includes the
 `knowledge` feature for Quipu integration; a default Cargo install does not.
 
 ## First-run behavior

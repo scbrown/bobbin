@@ -28,11 +28,11 @@ x86-64, with `curl`, `tar` and `sha256sum` installed:
 
 ```bash
 mkdir -p bobbin-download && cd bobbin-download
-base=https://github.com/scbrown/bobbin/releases/download/v0.18.1
-asset=bobbin-v0.18.1-x86_64-unknown-linux-gnu.tar.gz
+base=https://github.com/scbrown/bobbin/releases/download/v0.26.0
+asset=bobbin-v0.26.0-x86_64-unknown-linux-gnu.tar.gz
 curl -fLO "$base/$asset" && curl -fLO "$base/SHA256SUMS.txt"
 sha256sum --check --ignore-missing SHA256SUMS.txt && tar xzf "$asset"
-export PATH="$PWD/bobbin-v0.18.1-x86_64-unknown-linux-gnu:$PATH"
+export PATH="$PWD/bobbin-v0.26.0-x86_64-unknown-linux-gnu:$PATH"
 bobbin --version
 ```
 
@@ -40,7 +40,7 @@ Keep the extracted directory intact: its `lib/` contains ONNX Runtime.
 The pinned release reports:
 
 ```text
-bobbin 0.18.1 (bc246f84003f89eec07618e8c341bb6835500f58)
+bobbin 0.26.0 (58f4726fe4973240966704bbc9fe171c5ddb3e9a)
 ```
 
 For [other platforms and runtime prerequisites](https://scbrown.github.io/bobbin/getting-started/installation.html),
@@ -86,10 +86,17 @@ See the [CLI reference](https://scbrown.github.io/bobbin/cli/overview.html) for 
 ## Wire it into your agent
 
 From the indexed repository, `bobbin serve` starts an MCP server on standard input/output.
-Configure your MCP client to run it in that repository:
+Register it by **absolute path**: MCP clients launch servers without your shell's `PATH`,
+so a bare `bobbin` fails with `ENOENT`. For Claude Code, from the indexed repository:
+
+```bash
+claude mcp add bobbin -- "$(command -v bobbin)" serve "$PWD"
+```
+
+Other clients take the same command as JSON (use the output of `command -v bobbin`):
 
 ```json
-{"mcpServers":{"bobbin":{"command":"bobbin","args":["serve"]}}}
+{"mcpServers":{"bobbin":{"command":"/absolute/path/to/bobbin","args":["serve","/path/to/repo"]}}}
 ```
 
 For automatic Claude Code context injection, run `bobbin hook install` in the

@@ -15,19 +15,15 @@ Step-by-step MCP configuration for each supported AI coding client.
 
 ### MCP Server
 
-Add to `.claude/settings.json` (project-level) or `~/.claude/settings.json` (global):
+Register it by **absolute path**: clients launch MCP servers without your shell's
+`PATH`, so a bare `bobbin` fails with `ENOENT`. From the indexed repository:
 
-```json
-{
-  "mcpServers": {
-    "bobbin": {
-      "command": "bobbin",
-      "args": ["serve"],
-      "env": {}
-    }
-  }
-}
+```bash
+claude mcp add bobbin -- "$(command -v bobbin)" serve "$PWD"
 ```
+
+The default scope is this project only; `--scope project` writes a shared
+`.mcp.json`, and `--scope user` applies to every project.
 
 Claude Code will launch the bobbin MCP server automatically when you start a session. The agent can then call tools like `search`, `context`, and `find_refs` directly.
 
@@ -60,14 +56,14 @@ Add to `.cursor/mcp.json` in your project root:
 {
   "mcpServers": {
     "bobbin": {
-      "command": "bobbin",
-      "args": ["serve"]
+      "command": "/absolute/path/to/bobbin",
+      "args": ["serve", "/path/to/repo"]
     }
   }
 }
 ```
 
-Restart Cursor after adding the configuration. The MCP server will start automatically.
+Use the output of `command -v bobbin` for the command. Restart Cursor after adding the configuration. The MCP server will start automatically.
 
 ## Windsurf
 
@@ -77,8 +73,8 @@ Add to your Windsurf MCP configuration:
 {
   "mcpServers": {
     "bobbin": {
-      "command": "bobbin",
-      "args": ["serve"]
+      "command": "/absolute/path/to/bobbin",
+      "args": ["serve", "/path/to/repo"]
     }
   }
 }
@@ -105,7 +101,7 @@ For shared or centralized deployments, use HTTP mode instead of stdio:
 
 ```bash
 # Start HTTP server on port 3030
-bobbin serve --server --port 3030
+bobbin serve --http --port 3030
 ```
 
 Then configure your client to use the `--server` flag for thin-client mode:
