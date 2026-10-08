@@ -105,7 +105,7 @@ The with-bobbin approach requires indexing the target codebase before the agent 
 
 GPU acceleration makes large-codebase evaluation practical. Without it, indexing ruff's 57K chunks was the primary bottleneck — consistently timing out at the 30-minute mark. With GPU (RTX 4070 Super), embedding throughput jumps from ~100 chunks/s to ~2,400 chunks/s.
 
-The GPU is only used during the indexing phase. Search queries are sub-100ms regardless.
+The GPU is only used during the indexing phase; search does not use it, so query latency is the same with or without one.
 
 ## Native Metrics
 
