@@ -40,7 +40,6 @@ mod graph_tests;
 mod remote;
 use graph_routing::require_graph_routing;
 pub use remote::push_chunks_to_remote_quipu;
-pub(crate) use remote::quipu_auth_token;
 
 /// Build the durable IRI for a chunk from stable coordinates.
 pub(crate) use crate::iri::chunk_iri;

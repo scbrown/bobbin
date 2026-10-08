@@ -120,8 +120,7 @@ impl BobbinMcpServer {
             .header("X-Quipu-Client", "agent-adhoc")
             .json(&body);
         if authenticated {
-            let token = crate::knowledge::chunks::quipu_auth_token()
-                .context("remote Quipu write requires QUIPU_AUTH_TOKEN or a readable token file")?;
+            let token = crate::knowledge::quipu_auth::require(base)?;
             request = request.bearer_auth(token);
         }
         let response = request
@@ -130,6 +129,9 @@ impl BobbinMcpServer {
             .with_context(|| format!("POST {path} to remote quipu"))?;
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
+        if authenticated && status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(crate::knowledge::quipu_auth::rejected(base));
+        }
         if !status.is_success() {
             anyhow::bail!(
                 "remote quipu {path} returned HTTP {status}: {}",

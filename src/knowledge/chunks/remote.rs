@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -30,9 +29,7 @@ pub async fn push_chunks_to_remote_quipu(
     endpoint: &str,
     target_graph: Option<&str>,
 ) -> Result<(i64, usize)> {
-    let token = quipu_auth_token().context(
-        "quipu_push_chunks targets a remote ontology but no QUIPU_AUTH_TOKEN or readable token file is available",
-    )?;
+    let token = crate::knowledge::quipu_auth::require(endpoint)?;
     push_with_token(chunks, edges, repo_name, endpoint, &token, target_graph).await
 }
 
@@ -182,6 +179,12 @@ async fn post_with_retries_timeout(
     body: &serde_json::Value,
     timeout: Duration,
 ) -> Result<serde_json::Value> {
+    let base = url
+        .strip_suffix("/knot/stage")
+        .or_else(|| url.strip_suffix("/knot/promote"))
+        .or_else(|| url.strip_suffix("/knot"))
+        .unwrap_or(url);
+    crate::knowledge::quipu_auth::check(base)?;
     let mut last_error = None;
     for attempt in 1..=MAX_ATTEMPTS {
         match client
@@ -203,6 +206,9 @@ async fn post_with_retries_timeout(
                 // A deterministic 4xx cannot improve on retry. 5xx is
                 // indeterminate and safe to retry because stage/promote are
                 // content-addressed and idempotent.
+                if status == reqwest::StatusCode::UNAUTHORIZED {
+                    return Err(crate::knowledge::quipu_auth::rejected(base));
+                }
                 if status.is_client_error() {
                     anyhow::bail!(
                         "remote Quipu returned HTTP {status}: {}",
@@ -224,24 +230,6 @@ async fn post_with_retries_timeout(
         "POST {url} failed after {MAX_ATTEMPTS} idempotent attempts: {}",
         last_error.unwrap_or_else(|| "unknown error".into())
     )
-}
-
-pub(crate) fn quipu_auth_token() -> Option<String> {
-    std::env::var("QUIPU_AUTH_TOKEN")
-        .ok()
-        .filter(|token| !token.trim().is_empty())
-        .or_else(|| {
-            let path = std::env::var_os("QUIPU_AUTH_TOKEN_FILE")
-                .map(PathBuf::from)
-                .or_else(|| {
-                    directories::BaseDirs::new()
-                        .map(|dirs| dirs.home_dir().join(".config/aegis/quipu_token"))
-                })?;
-            std::fs::read_to_string(path)
-                .ok()
-                .map(|token| token.trim().to_string())
-                .filter(|token| !token.is_empty())
-        })
 }
 
 #[cfg(test)]
@@ -301,6 +289,40 @@ mod tests {
             assert_eq!(parts.len(), size.div_ceil(PART_BYTES));
             assert_eq!(parts.concat(), snapshot);
         }
+    }
+
+    #[tokio::test]
+    async fn rejected_bearer_stops_subsequent_requests_without_echoing_response() {
+        #[derive(Clone, Default)]
+        struct Calls(Arc<std::sync::atomic::AtomicUsize>);
+        async fn refuse(State(calls): State<Calls>) -> (axum::http::StatusCode, &'static str) {
+            calls.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            (
+                axum::http::StatusCode::UNAUTHORIZED,
+                "fixture-secret-must-not-appear",
+            )
+        }
+        let calls = Calls::default();
+        let app = Router::new()
+            .route("/knot/stage", post(refuse))
+            .with_state(calls.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/knot/stage", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = reqwest::Client::new();
+        for _ in 0..2 {
+            let error = post_with_retries(
+                &client,
+                &url,
+                "fixture-secret-must-not-appear",
+                &serde_json::json!({}),
+            )
+            .await
+            .unwrap_err();
+            assert!(!error.to_string().contains("fixture-secret-must-not-appear"));
+        }
+        assert_eq!(calls.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+        server.abort();
     }
 
     #[tokio::test]

@@ -4,6 +4,7 @@ pub mod embedding;
 pub mod inferred;
 pub mod mentions;
 pub mod quarantine;
+pub(crate) mod quipu_auth;
 pub mod share_contract;
 pub(crate) mod turtle;
 
