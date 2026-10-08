@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.27.2](https://github.com/scbrown/bobbin/compare/v0.27.1...v0.27.2) (2026-10-08)
+
+
+### Bug Fixes
+
+* resolve canonical Quipu credentials and suppress refused session writes ([#180](https://github.com/scbrown/bobbin/issues/180)) ([6c93743](https://github.com/scbrown/bobbin/commit/6c93743755322aca5e4920647bbf7d05b66c0534))
+
 ## [0.27.1](https://github.com/scbrown/bobbin/compare/v0.27.0...v0.27.1) (2026-10-08)
 
 
