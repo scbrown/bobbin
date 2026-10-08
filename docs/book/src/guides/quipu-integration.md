@@ -207,3 +207,16 @@ process restarts. Failed publishes do not advance this hash and retry on the nex
 `index --force-publish` bypasses only the publication hash for recovery after
 remote data loss, without re-embedding unchanged files. Full `index --force` also
 bypasses the hash and retains its existing re-embedding behavior.
+
+## Remote client credentials
+
+Remote chunk and MCP share writes use one resolver: nonempty
+`QUIPU_AUTH_TOKEN`, then `QUIPU_AUTH_TOKEN_FILE`, then
+`~/.config/quipu/token`. An explicit file never falls back when missing or empty.
+The older token location is supported only through an explicit file override.
+
+Missing or unreadable credentials and HTTP 401 print an actionable diagnostic
+once per server and disable further writes to that server for the current Bobbin
+process. Public reads remain available. Install the issued credential at the
+canonical path, run `caboodle doctor`, then restart the Bobbin client to re-enable
+writes. Bobbin never rotates credentials or relaxes server authorization.
