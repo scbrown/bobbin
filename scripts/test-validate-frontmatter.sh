@@ -48,4 +48,4 @@ if bash "$validator" "$fixture/docs" > "$fixture/log" 2>&1; then
   echo 'FAIL unterminated metadata accepted' >&2; exit 1
 fi
 /usr/bin/grep -q 'Unterminated frontmatter' "$fixture/log"
-echo 'PASS invalid status, absent metadata, missing source and unterminated header refuse' 
+echo 'PASS invalid status, absent metadata, missing source and unterminated header refuse'

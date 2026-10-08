@@ -1228,15 +1228,8 @@ pub struct KnowledgeShareRequest {
     pub max_bytes: Option<usize>,
 }
 
-/// Request to stage a canonical v1 Quipu share. This never promotes it.
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct KnowledgeImportRequest {
-    pub manifest: serde_json::Value,
-    pub export_ntriples: String,
-    pub shapes_turtle: Option<String>,
-    pub source: String,
-    pub actor: Option<String>,
-}
+mod manifest_schema;
+pub use manifest_schema::KnowledgeImportRequest;
 
 /// Request to explicitly promote a previously staged Quipu share into ROOT.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
