@@ -179,7 +179,12 @@ async fn post_with_retries_timeout(
     body: &serde_json::Value,
     timeout: Duration,
 ) -> Result<serde_json::Value> {
-    crate::knowledge::quipu_auth::check(url)?;
+    let base = url
+        .strip_suffix("/knot/stage")
+        .or_else(|| url.strip_suffix("/knot/promote"))
+        .or_else(|| url.strip_suffix("/knot"))
+        .unwrap_or(url);
+    crate::knowledge::quipu_auth::check(base)?;
     let mut last_error = None;
     for attempt in 1..=MAX_ATTEMPTS {
         match client
@@ -202,7 +207,7 @@ async fn post_with_retries_timeout(
                 // indeterminate and safe to retry because stage/promote are
                 // content-addressed and idempotent.
                 if status == reqwest::StatusCode::UNAUTHORIZED {
-                    return Err(crate::knowledge::quipu_auth::rejected(url));
+                    return Err(crate::knowledge::quipu_auth::rejected(base));
                 }
                 if status.is_client_error() {
                     anyhow::bail!(

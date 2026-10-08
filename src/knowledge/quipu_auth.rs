@@ -11,7 +11,11 @@ static DISABLED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 fn key(endpoint: &str) -> String {
     match reqwest::Url::parse(endpoint) {
-        Ok(url) => url.origin().ascii_serialization(),
+        Ok(mut url) => {
+            url.set_query(None);
+            url.set_fragment(None);
+            url.to_string().trim_end_matches('/').to_owned()
+        }
         Err(_) => endpoint.trim_end_matches('/').to_owned(),
     }
 }
@@ -213,6 +217,11 @@ mod tests {
         run("session-one", &endpoint, "disabled");
         run("session-two", &endpoint, "enabled");
         run("session-one", "http://other-circuit.invalid", "enabled");
+        run(
+            "session-one",
+            "http://circuit.invalid/another-service",
+            "enabled",
+        );
     }
 
     #[test]
@@ -220,7 +229,7 @@ mod tests {
         let endpoint = "http://auth-circuit.test:23456/knot/stage"; // gitleaks:allow synthetic URL, no credential
         check(endpoint).unwrap();
         assert!(rejected(endpoint).to_string().contains("rejected"));
-        assert!(check("http://auth-circuit.test:23456/import").is_err());
+        assert!(check(endpoint).is_err());
         assert!(check("http://auth-circuit-control.test:23456/import").is_ok());
     }
 }
