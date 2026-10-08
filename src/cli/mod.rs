@@ -14,6 +14,7 @@ mod feedback;
 mod grep;
 mod history;
 mod hook;
+mod hooks;
 mod hotspots;
 mod impact;
 mod index;
@@ -168,6 +169,9 @@ enum Commands {
     /// Manage Claude Code hooks for automatic context injection
     Hook(hook::HookArgs),
 
+    /// Install bobbin's hooks into Claude Code AND Codex (st-registered when present)
+    Hooks(hooks::HooksArgs),
+
     /// Interactive guided walkthrough of bobbin features
     Tour(tour::TourArgs),
 
@@ -235,6 +239,7 @@ impl Commands {
             Commands::Watch(_) => "watch",
             Commands::Completions(_) => "completions",
             Commands::Hook(_) => "hook",
+            Commands::Hooks(_) => "hooks",
             Commands::Tour(_) => "tour",
             Commands::Purge(_) => "purge",
             Commands::Prime(_) => "prime",

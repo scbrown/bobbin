@@ -45,6 +45,7 @@ pub(super) async fn dispatch_command(command: Commands, output: OutputConfig) ->
             Ok(())
         }
         Commands::Hook(args) => hook::run(args, output).await,
+        Commands::Hooks(args) => hooks::run(args, output).await,
         Commands::Tour(args) => tour::run(args, output).await,
         Commands::Purge(args) => purge::run(args, output).await,
         Commands::Prime(args) => prime::run(args, output).await,

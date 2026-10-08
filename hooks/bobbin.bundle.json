@@ -1,0 +1,43 @@
+{
+ "schema": "st.hook-bundle/1",
+ "name": "bobbin",
+ "version": "{{VERSION}}",
+ "owner": "bobbin",
+ "roles": [
+  "*"
+ ],
+ "hooks": [
+  {
+   "event": "UserPromptSubmit",
+   "command": "bobbin hook inject-context --budget 60 || true",
+   "timeout": 10,
+   "evidence": {
+    "command": "python3 -c 'PATHS=['\"'\"'~/gt/*/crew/*/.bobbin/metrics.jsonl'\"'\"', '\"'\"'~/.bobbin/metrics.jsonl'\"'\"']\nFIELD='\"'\"'timestamp'\"'\"'\nWANT=('\"'\"'hook_injection'\"'\"', '\"'\"'hook_gate_skip'\"'\"')\nimport sys,os,json,glob,datetime as d\nbest=None\nfor p in PATHS:\n for path in glob.glob(os.path.expanduser(p)):\n  try:\n   f=open(path,'\"'\"'rb'\"'\"'); f.seek(0,2); f.seek(max(0,f.tell()-262144)); lines=f.read().splitlines(); f.close()\n  except OSError: continue\n  for l in reversed(lines):\n   try: r=json.loads(l)\n   except Exception: continue\n   if WANT and r.get('\"'\"'kind'\"'\"') not in WANT and r.get('\"'\"'event_type'\"'\"') not in WANT: continue\n   v=r.get(FIELD)\n   if isinstance(v,(int,float)): t=int(v)\n   elif isinstance(v,str): t=int(d.datetime.fromisoformat(v[:19]).replace(tzinfo=d.timezone.utc).timestamp())\n   else: continue\n   best=t if best is None else max(best,t); break\nif best is None: sys.exit(1)\nprint(best)\n'",
+    "max_age_seconds": 3600
+   }
+  },
+  {
+   "event": "SessionStart",
+   "matcher": "compact",
+   "command": "bobbin hook session-context || true",
+   "timeout": 10,
+   "harnesses": [
+    "claude"
+   ]
+  },
+  {
+   "event": "PostToolUse",
+   "matcher": "Write|Edit|Bash|Grep|Glob|Read",
+   "command": "bobbin hook post-tool-use || true",
+   "timeout": 10
+  },
+  {
+   "event": "PostToolUseFailure",
+   "command": "bobbin hook post-tool-use-failure || true",
+   "timeout": 10,
+   "harnesses": [
+    "claude"
+   ]
+  }
+ ]
+}
