@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.27.0](https://github.com/scbrown/bobbin/compare/v0.26.0...v0.27.0) (2026-10-08)
+
+
+### Features
+
+* **hooks:** bobbin hooks bundle|install|uninstall|status for Claude AND Codex ([#175](https://github.com/scbrown/bobbin/issues/175)) ([d7b24b8](https://github.com/scbrown/bobbin/commit/d7b24b84feed0f6bf582d809d17d4ca8864ef364))
+
 ## [0.26.0](https://github.com/scbrown/bobbin/compare/v0.25.2...v0.26.0) (2026-10-07)
 
 
