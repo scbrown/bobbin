@@ -14,9 +14,9 @@ Bobbin can run as an HTTP REST API server for centralized deployments, shared te
 ## Starting the HTTP Server
 
 ```bash
-bobbin serve --server                  # HTTP on port 3030 (default)
-bobbin serve --server --port 8080      # Custom port
-bobbin serve --server --mcp            # HTTP + MCP stdio simultaneously
+bobbin serve --http                  # HTTP on port 3030 (default)
+bobbin serve --http --port 8080      # Custom port
+bobbin serve --http --mcp            # HTTP + MCP stdio simultaneously
 ```
 
 The server binds to `0.0.0.0` on the specified port and includes CORS headers for browser-based clients.
@@ -305,7 +305,7 @@ Run bobbin on a shared machine with a large codebase indexed once:
 # On the server
 bobbin init
 bobbin index
-bobbin serve --server --port 3030
+bobbin serve --http --port 3030
 ```
 
 Team members connect via `--server` flag or configure their AI client to point at the server.
@@ -324,7 +324,7 @@ curl -X POST http://bobbin-server:3030/webhook/push
 Run both HTTP and MCP simultaneously for maximum flexibility:
 
 ```bash
-bobbin serve --server --mcp
+bobbin serve --http --mcp
 ```
 
 This starts the HTTP server on the configured port and the MCP stdio server concurrently. The MCP server handles AI client connections while the HTTP server handles REST API requests and webhooks.

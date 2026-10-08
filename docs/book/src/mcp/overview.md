@@ -35,8 +35,8 @@ The MCP server runs as a subprocess of the AI client. It communicates via stdin/
 
 ```bash
 bobbin serve              # MCP server on stdio (default)
-bobbin serve --server     # HTTP REST API
-bobbin serve --server --mcp  # Both HTTP and MCP simultaneously
+bobbin serve --http     # HTTP REST API
+bobbin serve --http --mcp  # Both HTTP and MCP simultaneously
 ```
 
 In normal use, you don't start the server manually. Your AI client launches it automatically based on its MCP configuration.

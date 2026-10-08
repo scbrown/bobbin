@@ -15,23 +15,28 @@ Bobbin integrates with AI coding assistants through the [Model Context Protocol 
 
 ### Option 1: MCP Server (Recommended)
 
-Add bobbin as an MCP server in your Claude Code configuration:
+Register bobbin by **absolute path**. MCP clients launch servers without your
+shell's `PATH`, so a bare `bobbin` fails with `ENOENT`. From the indexed repository:
 
-**Project-level** (`.claude/settings.json`):
+```bash
+claude mcp add bobbin -- "$(command -v bobbin)" serve "$PWD"
+```
+
+That registers it for this project only (Claude Code's default *local* scope).
+Add `--scope project` to write a shared `.mcp.json` at the repository root, or
+`--scope user` to make it available in every project. The equivalent
+`.mcp.json` is:
 
 ```json
 {
   "mcpServers": {
     "bobbin": {
-      "command": "bobbin",
-      "args": ["serve"],
-      "env": {}
+      "command": "/absolute/path/to/bobbin",
+      "args": ["serve", "/path/to/repo"]
     }
   }
 }
 ```
-
-**Global** (`~/.claude/settings.json`): Same format, applies to all projects.
 
 Once configured, Claude Code can use bobbin's tools (`search`, `grep`, `context`, `related`, `find_refs`, `list_symbols`, `read_chunk`, `hotspots`, `prime`) directly in conversation.
 
@@ -66,7 +71,7 @@ MCP server and hooks complement each other:
 ```bash
 # Set up both
 bobbin hook install
-# Add MCP server to .claude/settings.json (see above)
+claude mcp add bobbin -- "$(command -v bobbin)" serve "$PWD"
 ```
 
 ## Cursor
@@ -79,8 +84,8 @@ Add bobbin as an MCP server in Cursor's settings:
 {
   "mcpServers": {
     "bobbin": {
-      "command": "bobbin",
-      "args": ["serve"]
+      "command": "/absolute/path/to/bobbin",
+      "args": ["serve", "/path/to/repo"]
     }
   }
 }
@@ -92,7 +97,7 @@ Any MCP-compatible client can connect to bobbin. The server communicates via std
 
 ```bash
 bobbin serve            # MCP server on stdio
-bobbin serve --server   # HTTP REST API instead
+bobbin serve --http   # HTTP REST API instead
 ```
 
 For remote or shared deployments, see [HTTP Mode](../mcp/http-mode.md).
