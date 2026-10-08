@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.27.1](https://github.com/scbrown/bobbin/compare/v0.27.0...v0.27.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **mcp:** keep unrestricted import schemas compatible with object-only clients ([26a6f94](https://github.com/scbrown/bobbin/commit/26a6f945028397685d441f68228bad975f45624e))
+
 ## [0.27.0](https://github.com/scbrown/bobbin/compare/v0.26.0...v0.27.0) (2026-10-08)
 
 
