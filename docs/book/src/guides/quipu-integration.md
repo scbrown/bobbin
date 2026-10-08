@@ -216,7 +216,9 @@ Remote chunk and MCP share writes use one resolver: nonempty
 The older token location is supported only through an explicit file override.
 
 Missing or unreadable credentials and HTTP 401 print an actionable diagnostic
-once per server and disable further writes to that server for the current Bobbin
-process. Public reads remain available. Install the issued credential at the
-canonical path, run `caboodle doctor`, then restart the Bobbin client to re-enable
-writes. Bobbin never rotates credentials or relaxes server authorization.
+once per server and disable further writes to that server for the current
+harness session, across new Bobbin processes. Without a stable harness session
+ID or writable session-state directory, the diagnostic names its process-only
+limit. Public reads remain available. Install the issued credential at the
+canonical path, run `caboodle doctor`, then start a new harness session (or restart
+a process without a session ID) to re-enable writes. Bobbin never rotates credentials or relaxes server authorization.
