@@ -1,3 +1,11 @@
+---
+title: "Evaluation Methodology"
+description: "Bobbin's evaluation framework measures how semantic code context affects AI agent performance on real bug fixes across open-source projects."
+tags: [evaluation]
+status: published
+category: evaluation
+---
+
 # Evaluation Methodology
 
 Bobbin's evaluation framework measures how semantic code context affects AI agent performance on real bug fixes across open-source projects.

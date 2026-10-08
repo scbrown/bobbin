@@ -1,3 +1,11 @@
+---
+title: "Results Summary"
+description: "| Metric | no-bobbin | with-bobbin | with-bobbin+blame_bridging=false | with-bobbin+coupling_depth=0 | with-bobbin+doc_demotion=0.0 | with-bobbin+gate_threshold=1.0 | with-bobbin+r"
+tags: [evaluation]
+status: published
+category: evaluation
+---
+
 # Results Summary
 
 ## Overall Comparison

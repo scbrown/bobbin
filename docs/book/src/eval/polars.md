@@ -1,3 +1,11 @@
+---
+title: "Polars (Rust)"
+description: "**Commit**: [052e68fc47](https://github.com/pola-rs/polars/commit/052e68fc47a7be9500c99da063eac41afa180449)"
+tags: [evaluation]
+status: published
+category: evaluation
+---
+
 # Polars (Rust)
 
 ## polars-004 <span class="eval-medium">medium</span>
