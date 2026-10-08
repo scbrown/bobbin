@@ -1,3 +1,11 @@
+---
+title: "pack"
+description: "`bobbin pack` moves a complete, prebuilt local index between checkouts. A pack includes the"
+tags: [cli]
+status: published
+category: cli-reference
+---
+
 # pack
 
 `bobbin pack` moves a complete, prebuilt local index between checkouts. A pack includes the

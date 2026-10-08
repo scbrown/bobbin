@@ -7,7 +7,7 @@ category: cli-reference
 related: [cli/hook.md]
 commands: [bead]
 feature: telemetry
-source_files: [src/cli/bead.rs]
+source_files: [src/cli/bead/mod.rs]
 ---
 
 # bead

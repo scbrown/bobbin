@@ -8,7 +8,7 @@ category: appendix
 
 # Docs map
 
-Start with the [book introduction](README.md), [installation](getting-started/installation.md)
+Start with the [book introduction](./), [installation](getting-started/installation.md)
 and [agent setup](getting-started/agent-setup.md). The book is the user-facing reference.
 The source documents below preserve design rationale, research and implementation history.
 Historical plans describe proposals at the time they were written, not guarantees of current behavior.

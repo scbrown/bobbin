@@ -1,3 +1,11 @@
+---
+title: "Cargo (Rust)"
+description: "**Commit**: [a96e747227](https://github.com/rust-lang/cargo/commit/a96e747227001f0752344077e25402ceb5cbf214)"
+tags: [evaluation]
+status: published
+category: evaluation
+---
+
 # Cargo (Rust)
 
 ## cargo-001 <span class="eval-easy">easy</span>

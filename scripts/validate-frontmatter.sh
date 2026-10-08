@@ -29,7 +29,8 @@ files_checked=0
 # Extract frontmatter from a file (between first --- and second ---)
 extract_frontmatter() {
     local file="$1"
-    sed -n '/^---$/,/^---$/p' "$file" | sed '1d;$d'
+    awk 'NR == 1 { next } /^---$/ { closed = 1; exit } { print }
+         END { if (!closed) exit 1 }' "$file"
 }
 
 # Check if a file has frontmatter
@@ -82,7 +83,12 @@ while IFS= read -r -d '' file; do
         continue
     fi
 
-    fm="$(extract_frontmatter "$file")"
+    if ! fm="$(extract_frontmatter "$file")"; then
+        echo "$rel_path"
+        error "Unterminated frontmatter block"
+        echo
+        continue
+    fi
 
     if [ -z "$fm" ]; then
         echo "$rel_path"

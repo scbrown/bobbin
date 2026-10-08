@@ -1,3 +1,11 @@
+---
+title: "index-bead"
+description: "Reindex a single bead by id, without fetching the whole bead corpus."
+tags: [cli]
+status: published
+category: cli-reference
+---
+
 # index-bead
 
 Reindex a single bead by id, without fetching the whole bead corpus.
