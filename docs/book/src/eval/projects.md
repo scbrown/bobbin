@@ -1,3 +1,11 @@
+---
+title: "Project Catalog"
+description: "Projects used in bobbin evaluations, with codebase statistics."
+tags: [evaluation]
+status: published
+category: evaluation
+---
+
 # Project Catalog
 
 Projects used in bobbin evaluations, with codebase statistics.

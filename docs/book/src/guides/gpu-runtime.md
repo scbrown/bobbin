@@ -1,3 +1,11 @@
+---
+title: "Automatic GPU runtime for indexing"
+description: "On Linux x86_64, `bobbin index` detects an NVIDIA GPU through `nvidia-smi`."
+tags: [guide]
+status: published
+category: guide
+---
+
 # Automatic GPU runtime for indexing
 
 On Linux x86_64, `bobbin index` detects an NVIDIA GPU through `nvidia-smi`.

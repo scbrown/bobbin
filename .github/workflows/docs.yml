@@ -6,6 +6,8 @@ on:
       - 'docs/**'
       - 'README.md'
       - 'scripts/check-md-links.py'
+      - 'scripts/validate-frontmatter.sh'
+      - 'scripts/test-validate-frontmatter.sh'
       - '.pre-commit-config.yaml'
       - 'CONTRIBUTING.md'
       - '.markdownlint-cli2.yaml'
@@ -18,6 +20,8 @@ on:
       - 'docs/**'
       - 'README.md'
       - 'scripts/check-md-links.py'
+      - 'scripts/validate-frontmatter.sh'
+      - 'scripts/test-validate-frontmatter.sh'
       - '.pre-commit-config.yaml'
       - 'CONTRIBUTING.md'
       - '.markdownlint-cli2.yaml'
@@ -38,6 +42,9 @@ jobs:
 
       - name: Check published documentation links
         run: python3 scripts/check-md-links.py
+
+      - name: Validate metadata and page-body boundaries
+        run: bash scripts/test-validate-frontmatter.sh && bash scripts/validate-frontmatter.sh
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

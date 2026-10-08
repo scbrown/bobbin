@@ -128,7 +128,7 @@ docs cmd="build":
         fix)      npx markdownlint-cli2 --fix "docs/book/src/**/*.md" "README.md" "CONTRIBUTING.md" ;;
         fmt)      npx prettier --write "docs/book/src/**/*.md" --prose-wrap preserve ;;
         vale)     vale docs/book/src/ ;;
-        validate) bash scripts/validate-frontmatter.sh ;;
+        validate) bash scripts/test-validate-frontmatter.sh && bash scripts/validate-frontmatter.sh ;;
         coverage) bash scripts/doc-coverage.sh ;;
         check)    just docs lint && just docs vale && just docs validate && just docs build ;;
         *)        echo "Unknown: {{cmd}}. Try: build serve lint fix fmt vale validate coverage check" ;;

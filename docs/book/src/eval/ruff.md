@@ -1,3 +1,11 @@
+---
+title: "Ruff (Rust)"
+description: "**Commit**: [f14fd5d885](https://github.com/astral-sh/ruff/commit/f14fd5d88507553830d78cf3cfae625a17297ebd)"
+tags: [evaluation]
+status: published
+category: evaluation
+---
+
 # Ruff (Rust)
 
 ## ruff-001 <span class="eval-medium">medium</span>
