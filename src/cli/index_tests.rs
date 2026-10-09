@@ -306,3 +306,22 @@ fn include_flag_replaces_the_config_include_for_the_run_and_refuses_a_bad_glob()
     assert!(err.to_string().contains("not a valid glob"), "{err}");
     assert_eq!(bad.index.include, Config::default().index.include);
 }
+
+#[test]
+fn read_indexable_content_preserves_utf8_and_decodes_legacy_latin1() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("legacy.java");
+    let config = Config::default();
+    std::fs::write(&path, "// café 日本語\nclass Example {}\n").unwrap();
+    assert_eq!(
+        read_indexable_content(&path, &config).unwrap(),
+        "// café 日本語\nclass Example {}\n"
+    );
+    std::fs::write(&path, b"// caf\xe9\nclass Example {}\n").unwrap();
+    assert_eq!(
+        read_indexable_content(&path, &config).unwrap(),
+        "// café\nclass Example {}\n"
+    );
+    std::fs::remove_file(&path).unwrap();
+    assert!(read_indexable_content(&path, &config).is_err());
+}

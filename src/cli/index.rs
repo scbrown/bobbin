@@ -1,3 +1,7 @@
+#[path = "index_encoding.rs"]
+mod encoding;
+use encoding::read_indexable_content;
+
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
 use ignore::WalkBuilder;
@@ -367,7 +371,7 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
             .to_string();
 
         if !args.force {
-            // Unreadable (non-UTF-8, failed extraction): the indexing loop records it in
+            // Unreadable (I/O or failed extraction): the indexing loop records it in
             // `errors` as under --force, instead of aborting the run (aegis-1v555n.1).
             if let Ok(content) = read_indexable_content(file_path, &config) {
                 let stored = metadata_store.get_file_hash(repo_name, &rel_path)?;
@@ -1489,22 +1493,6 @@ pub async fn run(args: IndexArgs, output: OutputConfig) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Read a file's text content for indexing.
-///
-/// For multimodal-enabled file types (currently PDFs) the text is extracted via
-/// [`crate::index::multimodal`]; everything else is read as UTF-8. The
-/// multimodal branch only activates when `index.multimodal` is set, so default
-/// indexing behavior is unchanged.
-fn read_indexable_content(path: &Path, config: &Config) -> Result<String> {
-    if config.index.multimodal && crate::index::multimodal::is_multimodal_file(path) {
-        crate::index::multimodal::extract_text(path)
-    } else if config.index.documents && crate::index::documents::is_document_file(path) {
-        crate::index::documents::extract_text(path)
-    } else {
-        std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))
-    }
 }
 
 /// Collect all files to index based on configuration patterns
