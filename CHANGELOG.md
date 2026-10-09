@@ -21,6 +21,13 @@ until release-please cuts the section.
 
 [#62]: https://github.com/scbrown/bobbin/issues/62
 
+## [0.27.3](https://github.com/scbrown/bobbin/compare/v0.27.2...v0.27.3) (2026-10-09)
+
+
+### Bug Fixes
+
+* **index:** decode legacy Latin-1 source text ([#182](https://github.com/scbrown/bobbin/issues/182)) ([158aa55](https://github.com/scbrown/bobbin/commit/158aa55365ecd425b9cdc198a5eea18dcceadfb7))
+
 ## [0.27.2](https://github.com/scbrown/bobbin/compare/v0.27.1...v0.27.2) (2026-10-08)
 
 
